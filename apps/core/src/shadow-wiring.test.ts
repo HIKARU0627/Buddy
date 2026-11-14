@@ -51,6 +51,7 @@ test('Core は比較の入口をつなぎ、設定が無い間は比較も保存
   });
   assert.equal(created.status, 201, created.text);
   const session = String(created.json?.['session_id']);
+  const generation = String(created.json?.['segment_generation']);
   const turn = await postJson(
     core,
     device as TestDevice,
@@ -60,6 +61,9 @@ test('Core は比較の入口をつなぎ、設定が無い間は比較も保存
       command_scope_id: scope,
       text: '今日の予定を見せて',
       input_kind: 'text',
+      // 会話の作成が返した区切りの由来（#233 で必須）。設定が無い間は比較も保存もしないことを見る試験で、
+      // 由来は受け付けるための前提だけ。
+      origin: { segment_id: session, segment_generation: generation },
     },
   );
   assert.equal(turn.status, 200, turn.text);

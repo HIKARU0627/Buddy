@@ -128,7 +128,12 @@ const KINDS: ReadonlySet<string> = new Set<IntentShadowOpKind>([
 ]);
 
 function isUtcTime(value: unknown): value is string {
-  return typeof value === 'string' && UTC_TIME.test(value);
+  return (
+    typeof value === 'string' &&
+    UTC_TIME.test(value) &&
+    // 形が合っていても暦にない日時（月 13 など）は Date.parse が NaN になる。行に NaN を入れない。
+    Number.isFinite(Date.parse(value))
+  );
 }
 
 function isJudgment(value: unknown): value is IntentShadowJudgmentInput {
@@ -225,13 +230,19 @@ export function countShadows(db: SqliteDatabase, campaignId: string): number {
 // --- 保存 ---
 
 // judgments の列に置く値。列にならない残り（schema・判定・実行に使わない印）を JCS の JSON にする。
+// 引数の中に JSON にできない値（NaN・Infinity など）があれば、保存する形ではないので拒否する（入力の不正。
+// 想定外の例外として worker を止めない）。
 function judgmentsJson(record: IntentShadowRecordInput): string {
-  return canonicalIntentJson({
-    schema: record.schema,
-    primary: record.primary,
-    shadows: record.shadows,
-    used_for_execution: record.used_for_execution,
-  });
+  try {
+    return canonicalIntentJson({
+      schema: record.schema,
+      primary: record.primary,
+      shadows: record.shadows,
+      used_for_execution: record.used_for_execution,
+    });
+  } catch {
+    throw new IntentShadowRejection(['judgments_invalid']);
+  }
 }
 
 function saveRecord(

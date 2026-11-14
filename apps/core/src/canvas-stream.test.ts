@@ -1853,7 +1853,7 @@ test('UI-05: a boundary that starts while a forget is being saved still starts t
 
 test('UI-05: a storage mode change right after a forget carries no summary', async () => {
   const canvas = new CanvasHub(contract);
-  let at = Date.parse('2026-10-05T09:00:00+09:00');
+  const at = Date.parse('2026-10-05T09:00:00+09:00');
   let sessions = 0;
   let turns = 0;
   let mode: StreamStorageMode = 'normal';

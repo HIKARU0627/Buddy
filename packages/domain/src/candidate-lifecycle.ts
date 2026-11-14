@@ -169,22 +169,34 @@ export type CandidateRetentionPhase =
   // 97 日以降。行ごと消す。
   | 'delete';
 
+export type CandidateRetentionResult =
+  | { readonly ok: true; readonly phase: CandidateRetentionPhase }
+  | { readonly ok: false; readonly reason: 'now_invalid' };
+
 // いまの保持の段階。境界は掃除の規則と同じく「期限 ≦ いま」で期限切れ。
-// 状態を変えた時刻が読めないときは、個人の内容は消す側へ倒す（identifier_only）。識別子は残して再通知を防ぐ。
+// 注入された時計（now）が読めないときは、段階を返さず拒否する。now は全行に共通なので、読めないまま倒すと
+// すべての候補の内容が消える方向へ動き、取り消せない（忘却・保持の最終ガード）。
+// 状態を変えた時刻（changedAt）が 1 行だけ読めないときは、その行の個人の内容は消す側へ倒す（identifier_only）。識別子は残して
+// 再通知を防ぐ。
 export function candidateRetentionPhase(
   state: CandidateState,
   changedAt: string,
   now: string,
-): CandidateRetentionPhase {
-  if (state !== 'dismissed' && state !== 'resolved') return 'active';
-  const changed = parseUtc(changedAt);
+): CandidateRetentionResult {
   const nowMillis = parseUtc(now);
-  if (changed === null || nowMillis === null) return 'identifier_only';
+  if (nowMillis === null) return { ok: false, reason: 'now_invalid' };
+  const ok = (phase: CandidateRetentionPhase): CandidateRetentionResult => ({
+    ok: true,
+    phase,
+  });
+  if (state !== 'dismissed' && state !== 'resolved') return ok('active');
+  const changed = parseUtc(changedAt);
+  if (changed === null) return ok('identifier_only');
   if (nowMillis < changed + CANDIDATE_CONTENT_RETENTION_DAYS * DAY_MS)
-    return 'content_kept';
+    return ok('content_kept');
   const identifierEnd =
     changed +
     (CANDIDATE_CONTENT_RETENTION_DAYS + CANDIDATE_IDENTIFIER_RETENTION_DAYS) *
       DAY_MS;
-  return nowMillis < identifierEnd ? 'identifier_only' : 'delete';
+  return ok(nowMillis < identifierEnd ? 'identifier_only' : 'delete');
 }

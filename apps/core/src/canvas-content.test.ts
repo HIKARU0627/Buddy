@@ -399,6 +399,7 @@ test('the mail body is returned only for the opened row, and only for a mail car
     canvas: hub,
     createSession: () => Promise.reject(new Error('unused')),
     postTurn: () => Promise.reject(new Error('unused')),
+    storage: { origin: () => ({ segment_generation: '1' }) },
   });
   const handler = routes.handlers['postCanvasContent'] as ApiRouteHandler;
   const item = (

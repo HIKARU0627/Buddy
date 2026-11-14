@@ -453,6 +453,8 @@ export interface StreamRoutesOptions {
   // 既存の会話・発言の処理（api-turns.ts の createSession・postTurn）。関数として呼ぶだけで、中身は変えない。
   readonly createSession: ApiRouteHandler;
   readonly postTurn: ApiRouteHandler;
+  // 保存境界の保持者（今の区切りの世代）。流れの発言の由来に使う（ADR 0045・0059）。
+  readonly storage: { origin(): { readonly segment_generation: string } };
   readonly contract?: ApiContract;
   readonly now?: () => number;
   // 本人の時間帯（自動の区切りの日付の判定。設計 07 §5 の設定と同じ値。既定は +09:00）。
@@ -910,6 +912,10 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
           command_scope_id: scopeId,
           text: stringOf(body, 'text'),
           input_kind: stringOf(body, 'input_kind'),
+          origin: {
+            segment_id: stream.sessionId,
+            segment_generation: options.storage.origin().segment_generation,
+          },
         },
       });
     } finally {

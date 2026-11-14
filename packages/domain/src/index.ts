@@ -24,6 +24,8 @@ export * from './conversation.js';
 // B04-01: 操作の種類・connector の能力・照合（ADR 0027）。
 export * from './connectors.js';
 export * from './desktop.js';
+// B14-01: 画面承認が必要な外部変更の送出直前の照合（ADR 0075）。
+export * from './dispatch-guard.js';
 export * from './evaluation.js';
 export * from './extraction.js';
 // B06-03: 忘却の計画（対象の解決・派生の閉包・台帳のエントリ）と遅着の検査（ADR 0044）。

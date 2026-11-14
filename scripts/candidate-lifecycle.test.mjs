@@ -239,7 +239,11 @@ test('evidence observations decide the state change, the standing of the evidenc
 test('the retention phase follows live, seven days, ninety-seven days, then deletion', () => {
   const changed = '2030-01-01T00:00:00Z';
   const phase = (state, now, changedAt = changed) =>
-    candidateRetentionPhase(state, changedAt, now);
+    (() => {
+      const out = candidateRetentionPhase(state, changedAt, now);
+      assert.equal(out.ok, true, JSON.stringify(out));
+      return out.phase;
+    })();
   for (const state of ACTIVE)
     assert.equal(phase(state, '2035-01-01T00:00:00Z'), 'active', state);
   for (const state of ['resolved', 'dismissed']) {
@@ -252,7 +256,22 @@ test('the retention phase follows live, seven days, ninety-seven days, then dele
   }
   // 状態を変えた時刻が読めないときは、内容を消す側で、識別子は残す。
   assert.equal(phase('resolved', NOW, 'unknown'), 'identifier_only');
-  assert.equal(phase('resolved', 'now'), 'identifier_only');
+  // 時計（now）が読めないときは、どの状態でも段階を返さず拒否する（全候補の内容が消える方向へ倒さない）。
+  for (const state of [...ACTIVE, 'resolved', 'dismissed'])
+    for (const bad of [
+      'now',
+      '',
+      '2030-01-08T00:00:00',
+      '2030-02-30T00:00:00Z',
+    ])
+      assert.deepEqual(
+        candidateRetentionPhase(state, changed, bad),
+        {
+          ok: false,
+          reason: 'now_invalid',
+        },
+        `${state} ${bad}`,
+      );
 });
 
 test('a deadline on a local time that happens twice is passed only after the later one, and never un-passes', () => {

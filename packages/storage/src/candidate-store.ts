@@ -886,11 +886,14 @@ function sweepCandidates(
   const contentDeleted: string[] = [];
   const deleted: string[] = [];
   for (const row of rows) {
-    const phase = candidateRetentionPhase(
+    const result = candidateRetentionPhase(
       row.state,
       new Date(row.closed_at).toISOString(),
       nowIso,
     );
+    // 時計が読めないときは 1 行も消さない（全体を巻き戻して拒否する）。
+    if (!result.ok) throw new CandidateRejection([result.reason]);
+    const phase = result.phase;
     if (phase === 'delete') {
       db.prepare(
         'DELETE FROM notification_candidates WHERE candidate_id = ?',

@@ -510,7 +510,10 @@
       "phases": ["B05", "B10"],
       "contract_fixtures": [
         "packages/contracts/fixtures/delivery-cases.json#voice-result-old-session",
-        "packages/contracts/fixtures/delivery-cases.json#voice-result-while-suspended"
+        "packages/contracts/fixtures/delivery-cases.json#voice-result-while-suspended",
+        "packages/contracts/fixtures/voice-contract-cases.json#voice-event-delegation-processing",
+        "packages/contracts/fixtures/voice-contract-cases.json#voice-event-delegation-backgrounded",
+        "packages/contracts/fixtures/voice-contract-cases.json#voice-event-delegation-finished"
       ],
       "status": "contract_fixture",
       "product_test": "not_run",

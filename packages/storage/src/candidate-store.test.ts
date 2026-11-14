@@ -1367,3 +1367,63 @@ test('forgetting removes a candidate whose sealed content was already swept, and
     );
   });
 });
+
+test('list pages with a keyset cursor and reaches every row exactly once, even when rows change between pages', async () => {
+  await withDb((db) => {
+    // 受信: C1 が最も古く、C2・C3 は同じ受信時刻（同じ受信は ID の昇順）。
+    create(db, {
+      candidate_id: C1,
+      notification_key: KEY_A,
+      received_at: '2031-01-01T00:00:00Z',
+    });
+    create(db, {
+      candidate_id: C2,
+      notification_key: KEY_B,
+      received_at: '2031-01-01T02:00:00Z',
+    });
+    create(db, {
+      candidate_id: C3,
+      notification_key: KEY_C,
+      received_at: '2031-01-01T02:00:00Z',
+    });
+    const page = (after?: { received_at: number; candidate_id: string }) =>
+      run(db, {
+        kind: 'candidate.list',
+        limit: 1,
+        ...(after === undefined ? {} : { after }),
+      }).value as CandidateOpValues['candidate.list'];
+    const first = page();
+    assert.deepEqual(
+      first.candidates.map((c) => c.candidate_id),
+      [C2],
+    );
+    assert.equal(first.truncated, true);
+    assert.deepEqual(first.next_after, {
+      received_at: T0_MS + 2 * 3_600_000,
+      candidate_id: C2,
+    });
+    // 1 ページ目の候補が閉じても、続きの位置は動かない。
+    assert.equal(transition(db, C2, 'dismiss', 'new').ok, true);
+    const second = page(first.next_after ?? undefined);
+    assert.deepEqual(
+      second.candidates.map((c) => c.candidate_id),
+      [C3],
+    );
+    const third = page(second.next_after ?? undefined);
+    assert.deepEqual(
+      third.candidates.map((c) => c.candidate_id),
+      [C1],
+    );
+    assert.equal(third.truncated, false);
+    assert.equal(third.next_after, null);
+    // 位置の形が不正なら拒む。
+    for (const after of [
+      { received_at: 1.5, candidate_id: C1 },
+      { received_at: 1, candidate_id: 'x' },
+    ])
+      assert.deepEqual(
+        run(db, { kind: 'candidate.list', limit: 1, after } as never).reasons,
+        ['after_invalid'],
+      );
+  });
+});

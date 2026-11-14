@@ -388,18 +388,18 @@ test('a time stated in the original text keeps the confirmed instant, for reques
     });
 });
 
-test('timeExpressed recognises time words and rejects dates alone', () => {
+test('timeExpressed recognises specific times only; 午前/午後/午前中 alone and durations are not times (review)', () => {
   for (const yes of [
     '17時',
     '5:30',
     '１７：００',
-    '午後',
-    '午前中',
+    '午後5時',
+    '午後3:30',
+    '午前9時',
     '正午',
     '5pm',
     '5 P.M.',
     'noon',
-    'midnight',
   ])
     assert.equal(timeExpressed(yes), true, yes);
   for (const no of [
@@ -409,8 +409,71 @@ test('timeExpressed recognises time words and rejects dates alone', () => {
     'Oct 9, 2030',
     '2030-10-09',
     '時間をください',
+    '24時間以内',
+    '3時限目',
+    // 時と分が決まらない語だけでは時刻としない。
+    '2030年10月9日午後に打合せ',
+    '午前中',
+    '午後',
+    '真夜中',
+    'midnight',
     'cannon',
     'spam',
   ])
     assert.equal(timeExpressed(no), false, no);
+});
+
+test('a bare 午後 in the original does not make the model-supplied 13:00 a confirmed instant (review)', async () => {
+  const original = '2030年10月9日午後に';
+  const body = `${original}打合せがあります。${ASK}`;
+  const outcome = await run(
+    wireOf([
+      request({
+        deadline: deadline('exact_datetime', {
+          local_datetime: '2030-10-09T13:00',
+          original_text: original,
+        }),
+        evidence: [
+          {
+            part: 'body',
+            source_id: 'body',
+            source_revision: 'r1',
+            quote: body,
+          },
+        ],
+      }),
+    ]),
+    mail(body),
+  );
+  assert.equal(outcome.status, 'extracted');
+  if (outcome.status !== 'extracted') return;
+  assert.deepEqual(outcome.result.requests[0]?.deadline, {
+    kind: 'date',
+    date: '2030-10-09',
+    original_text: original,
+  });
+  assert.equal(outcome.diagnostics.time_downgrades, 1);
+  // 原文が照合できず missing になる場合も、下げたことを診断に数える。
+  const missing = await run(
+    wireOf([
+      request({
+        deadline: deadline('exact_datetime', {
+          local_datetime: '2030-10-09T13:00',
+          original_text: '2030年10月9日午後に',
+        }),
+        evidence: [
+          {
+            part: 'body',
+            source_id: 'body',
+            source_revision: 'r1',
+            quote: ASK,
+          },
+        ],
+      }),
+    ]),
+    mail(ASK),
+  );
+  assert.equal(missing.status, 'extracted');
+  if (missing.status === 'extracted')
+    assert.equal(missing.diagnostics.time_downgrades, 1);
 });

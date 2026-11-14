@@ -1053,8 +1053,8 @@ export function semanticErrors(name, value) {
   }
   if (
     name === 'WebSourceRecord' &&
-    value.excerpt === null &&
-    value.summary === null
+    (value.excerpt ?? '').trim() === '' &&
+    (value.summary ?? '').trim() === ''
   )
     errors.push('missing_page_evidence');
   if (name === 'WebResearchStatus') {

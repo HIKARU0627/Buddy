@@ -368,6 +368,15 @@ export type PersistedCandidate =
       readonly outcome: 'rejected';
       readonly index: number;
       readonly reasons: readonly string[];
+    }
+  // 保存の成否が不明（COMMIT の失敗・応答の喪失）。書けたかもしれないので、未保存の拒否と区別する。照合に使う
+  // candidate_id と notification_key を返す。同じ下書きを保存し直すと、書けていれば duplicate になる。
+  | {
+      readonly outcome: 'unknown';
+      readonly index: number;
+      readonly candidate_id: string;
+      readonly notification_key: string;
+      readonly reasons: readonly string[];
     };
 
 function seal(
@@ -467,7 +476,17 @@ export async function persistCandidateDrafts(
       },
     });
     if (!outcome.ok) {
-      results.push({ outcome: 'rejected', index, reasons: outcome.reasons });
+      results.push(
+        outcome.outcome === 'unknown'
+          ? {
+              outcome: 'unknown',
+              index,
+              candidate_id: candidateId,
+              notification_key: key,
+              reasons: outcome.reasons,
+            }
+          : { outcome: 'rejected', index, reasons: outcome.reasons },
+      );
       continue;
     }
     results.push(

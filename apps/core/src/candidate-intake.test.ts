@@ -869,3 +869,86 @@ test('two occurrences of one recurring event that overlap are saved with a singl
     );
   });
 });
+
+test('an unknown save result is kept apart from a refusal, so it can be reconciled', async () => {
+  await withStore(async (db, ports) => {
+    const { drafts } = mailCandidateDrafts(extraction([request()]), CONTEXT);
+    // COMMIT の後に応答を失う: 書けているが、呼び出し側には成否不明で返る。
+    const lostAfterCommit = {
+      candidate: (async (op: CandidateOp) => {
+        executeCandidateOp(db, op, { platform: 'macos', halted: false });
+        return { ok: false, outcome: 'unknown', reasons: ['commit_failed'] };
+      }) as never,
+    } as CandidatePersistPorts['client'];
+    const first = await persistCandidateDrafts(
+      { ...ports, client: lostAfterCommit },
+      drafts,
+    );
+    assert.equal(first[0]?.outcome, 'unknown');
+    if (first[0]?.outcome !== 'unknown') return;
+    assert.deepEqual(first[0].reasons, ['commit_failed']);
+    // 返した candidate_id と notification_key で、保存されたかを照合できる。
+    const stored = db
+      .prepare(
+        'SELECT notification_key FROM notification_candidates WHERE candidate_id = ?',
+      )
+      .get(first[0].candidate_id) as { notification_key: string } | undefined;
+    assert.equal(stored?.notification_key, first[0].notification_key);
+    // 保存し直すと、書けていたので duplicate（二重に作らず、新着として扱わない）。
+    const again = await persistCandidateDrafts(ports, drafts);
+    assert.equal(again[0]?.outcome, 'duplicate');
+    assert.equal(
+      again[0]?.outcome === 'duplicate' ? again[0].candidate_id : '',
+      first[0].candidate_id,
+    );
+    // 書けなかった成否不明（応答を失う前に落ちた）は、保存し直すと作られる。
+    const lostBeforeCommit = {
+      candidate: (async () => ({
+        ok: false,
+        outcome: 'unknown',
+        reasons: ['worker_timeout'],
+      })) as never,
+    } as CandidatePersistPorts['client'];
+    const other = mailCandidateDrafts(
+      extraction([
+        request({ request_revision: '9', deadline: dateOnly('2030-11-01') }),
+      ]),
+      CONTEXT,
+    ).drafts;
+    const lost = await persistCandidateDrafts(
+      { ...ports, client: lostBeforeCommit },
+      other,
+    );
+    assert.equal(lost[0]?.outcome, 'unknown');
+    assert.equal(
+      (
+        db
+          .prepare('SELECT count(*) AS n FROM notification_candidates')
+          .get() as { n: number }
+      ).n,
+      1,
+    );
+    assert.equal(
+      (await persistCandidateDrafts(ports, other))[0]?.outcome,
+      'created',
+    );
+    // 保存側が書かなかったと確かな拒否は、unknown にならない。
+    const refused = {
+      candidate: (async () => ({
+        ok: false,
+        outcome: 'rejected',
+        reasons: ['origin_not_found'],
+      })) as never,
+    } as CandidatePersistPorts['client'];
+    const third = mailCandidateDrafts(
+      extraction([
+        request({ request_revision: '10', deadline: dateOnly('2030-11-02') }),
+      ]),
+      CONTEXT,
+    ).drafts;
+    assert.deepEqual(
+      (await persistCandidateDrafts({ ...ports, client: refused }, third))[0],
+      { outcome: 'rejected', index: 0, reasons: ['origin_not_found'] },
+    );
+  });
+});

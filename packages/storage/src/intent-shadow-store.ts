@@ -3,9 +3,12 @@
 // - intent_shadow.count: campaign ごとの記録の件数（Core が campaign の停止条件に使う）。
 // - intent_shadow.save: 1 つの入力に対する比較の記録を 1 行で保存する。INSERT と同じ BEGIN IMMEDIATE の transaction の中で
 //   次の順に判定する（読んでから書くまでの間に別の writer が入らない）。
+//     0. 書込みの前提: 保存モードの record_shadow が許可（記録しない会話では書かない）、入力の版が input_snapshots に
+//        あり発言（turn_id）に結び付いている、expires_at が元の発言の期限と一致する。
 //     1. 同じ組（campaign_id, input_id, request_revision）の行があれば、書かずに duplicate（再送・復元の後の再保存で増やさない）。
 //     2. campaign ごとの件数が limit 以上なら、書かずに limit_reached（300 件の上限。Core の事前の確認とは別の最後のガード）。
-//     3. それ以外は INSERT して saved。
+//     3. それ以外は INSERT して saved。同時に、入力の発言への由来の辺（derivations）を書く。辺がないと期限の掃除
+//        （derivations から派生物を拾う）と忘却の閉包の対象にならない。
 // - limit は 1〜300 だけを受ける（設定が 300 を超えていても、保存側で 300 を超えて書かない）。
 // - 発話の本文は持たない。判定（本線と比較モデルの outcome・意図・引数・遅延）だけを judgments の列に JCS の JSON で置き、
 //   記録は input_id（と request_revision）で発言を指す。used_for_execution は常に false。
@@ -13,9 +16,11 @@
 // 結果には ID と件数だけを入れ、本文・SQL・パスを入れない。
 
 import Database from 'better-sqlite3';
+import { isStorageModeName, storageModeStateEffects } from '@buddy/domain';
 import { writeConnectionReasons } from './connection.js';
 import type { SqliteDatabase, StoragePlatform } from './connection.js';
 import { canonicalIntentJson } from './content-hash.js';
+import { writeDerivation } from './derivation-store.js';
 import { isUuid } from './forget-store.js';
 import { runImmediate } from './operation-store.js';
 
@@ -77,6 +82,8 @@ export type IntentShadowOp =
       readonly record: IntentShadowRecordInput;
       // この campaign の記録の上限（1〜300）。
       readonly limit: number;
+      // 観測した会話の保存モード（Core が渡す）。保存側でも record_shadow の許可を確かめる。
+      readonly storage_mode: string;
     };
 
 export type IntentShadowOpKind = IntentShadowOp['kind'];
@@ -198,6 +205,7 @@ export function intentShadowOpShapeReasons(op: IntentShadowOp): string[] {
       ? []
       : ['campaign_id_invalid'];
   const reasons = recordReasons(op.record);
+  if (!isStorageModeName(op.storage_mode)) reasons.push('storage_mode_invalid');
   if (
     typeof op.limit !== 'number' ||
     !Number.isSafeInteger(op.limit) ||
@@ -243,6 +251,31 @@ function saveRecord(
 ): IntentShadowOpValues['intent_shadow.save'] {
   const record = op.record;
   const revision = Number(record.request_revision);
+  const effects = storageModeStateEffects(op.storage_mode);
+  // 0. 書込みの前提（Core の判断を信じ切らない）。
+  //    - 記録しない会話・保存期限の決まらない会話では書かない。
+  //    - 入力の版が input_snapshots にあり、発言（turn_id）に結び付いていること（忘却の閉包の結合条件。
+  //      turn_id が NULL の記録は、発言を忘れても閉包に入らない）。
+  //    - expires_at が元の発言の期限と一致すること（比較の待ち時間で記録だけ長く残さない）。
+  if (
+    effects === null ||
+    !effects.record_shadow ||
+    effects.turn_retention_days === null
+  )
+    throw new IntentShadowRejection(['shadow_not_permitted']);
+  const snapshot = db
+    .prepare(
+      'SELECT turn_id FROM input_snapshots WHERE input_id = ? AND request_revision = ?',
+    )
+    .get(record.input_id, revision) as { turn_id: string | null } | undefined;
+  if (snapshot === undefined || snapshot.turn_id === null)
+    throw new IntentShadowRejection(['input_not_found']);
+  const turn = db
+    .prepare('SELECT expires_at FROM turns WHERE turn_id = ?')
+    .get(snapshot.turn_id) as { expires_at: number } | undefined;
+  if (turn === undefined) throw new IntentShadowRejection(['input_not_found']);
+  if (turn.expires_at !== Date.parse(record.expires_at))
+    throw new IntentShadowRejection(['expiry_mismatch']);
   // 1. 同じ組は 1 行だけ（再送・復元の後の再保存で増やさない）。上限より先に見る: すでにある行は上限で「書けなかった」
   //    のではなく、内容が変わっていない。
   const exists = db
@@ -255,7 +288,8 @@ function saveRecord(
   // 2. 上限。件数の確認と INSERT を同じ transaction で行う（同時の保存でも超えない）。
   if (countShadows(db, record.campaign_id) >= op.limit)
     return { record_id: record.record_id, result: 'limit_reached' };
-  // 3. INSERT。expires_at > recorded_at は表の CHECK が最後に確かめる。
+  // 3. INSERT と、入力の発言への由来の辺。expires_at > recorded_at は表の CHECK が最後に確かめる。
+  //    辺がないと、期限の掃除（expiry-store は derivations から派生物を拾う）と忘却の閉包の対象にならない。
   db.prepare(
     'INSERT INTO intent_shadow (record_id, campaign_id, input_id, request_revision, judgments, recorded_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
   ).run(
@@ -267,6 +301,13 @@ function saveRecord(
     Date.parse(record.recorded_at),
     Date.parse(record.expires_at),
   );
+  writeDerivation(db, {
+    artifact_kind: 'intent_shadow',
+    artifact_id: record.record_id,
+    source_kind: 'turn',
+    source_id: snapshot.turn_id,
+    created_at: Date.parse(record.recorded_at),
+  });
   return { record_id: record.record_id, result: 'saved' };
 }
 

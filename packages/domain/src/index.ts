@@ -18,10 +18,14 @@ export * from './canvas.js';
 export * from './canvas-layout.js';
 // UI-07: キャンバスの物の中身の意味の検査（ADR 0032）。
 export * from './canvas-content.js';
+// B11-01: 気づき（候補）の状態・保持（ADR 0073）。
+export * from './candidate.js';
 export * from './conversation.js';
 // B04-01: 操作の種類・connector の能力・照合（ADR 0027）。
 export * from './connectors.js';
 export * from './desktop.js';
+// B14-01: 画面承認が必要な外部変更の送出直前の照合（ADR 0075）。
+export * from './dispatch-guard.js';
 export * from './evaluation.js';
 export * from './extraction.js';
 // B06-03: 忘却の計画（対象の解決・派生の閉包・台帳のエントリ）と遅着の検査（ADR 0044）。
@@ -44,6 +48,7 @@ export * from './operation-steps.js';
 export * from './operations.js';
 export * from './readiness.js';
 export * from './response-plan.js';
+export * from './reply-text.js';
 export * from './retention.js';
 export * from './retention-sweep.js';
 // B06-04: 記録しない会話の保存の境界（許可表・入る／出るの遷移・独立した確認の中身。ADR 0045）。
@@ -54,6 +59,8 @@ export * from './backup-keys.js';
 export * from './restore-plan.js';
 export * from './restore-aftermath.js';
 export * from './sync.js';
+// B08-02: 取得範囲（カレンダー・フォルダー／ラベル・期間・添付の種類とサイズ）の検査と版（ADR 0086）。
+export * from './fetch-scope.js';
 // B05-01: 音声レンダラーの限定 IPC・Live の制御接続・リースの更新・input_kind の受付・外部への送信の同意（ADR 0038）。
 export * from './voice.js';
 // B05-02: リースの期限・世代の発行と逆行の拒否・3 層の停止の時間・無音・追加予約・通知の頻度・方式 A/C・ASR の比較（ADR 0041）。

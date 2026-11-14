@@ -22,6 +22,8 @@ import {
   SESSION_CONTROL_TABLE,
   assessReadiness,
   checkIntentArgs,
+  REPLY_TEXT_INTENTS,
+  admitReplyText,
   isRealLocalDateTime,
   resolveSessionControl,
 } from '@buddy/domain';
@@ -32,6 +34,7 @@ import type {
   IntentName,
   SessionControlAction,
   StartupGateDecision,
+  StorageModeName,
 } from '@buddy/domain';
 import {
   openOperationIntent,
@@ -63,7 +66,10 @@ import type { JsonObject } from './strict-json.js';
 import { canRead, canWrite, replyFields } from './turn-ports.js';
 import type {
   CandidateSource,
+  InterpretationContext,
   Interpreter,
+  InterpreterReply,
+  OpenWorkflow,
   ProviderConnection,
   ProviderReader,
   TurnPolicy,
@@ -74,10 +80,23 @@ export interface TurnRouteStore extends EventQueryStore {
   conversation: DbWorkerClient['conversation'];
 }
 
+// 今の区切りの世代を読む口（StorageModeGate.origin）。発言の由来の照合に使う（ADR 0045・0059）。
+// mode は保存境界の保持者の今の保存モード。記録しない区切りの間は DB の sessions を引かない（ADR 0060 の 2b）。
+export interface StorageOriginSource {
+  // 今の保存モード。記録しない区切りの間は DB の sessions を引かない（ADR 0060 の 2b）。
+  readonly mode: StorageModeName;
+  origin(): {
+    readonly segment_id: string;
+    readonly segment_generation: string;
+  };
+}
+
 export interface TurnRoutesOptions {
   readonly store: TurnRouteStore;
   readonly keyStore: DataKeyProvider;
   readonly interpreter: Interpreter;
+  // 保存境界の保持者（記録しない会話のゲート）。今の区切りの世代を発言の由来と照合する。
+  readonly storage: StorageOriginSource;
   // 連携の provider の読み取り。null は接続なし（Read・RemoteMutation は聞き返し）。
   readonly provider: ProviderReader | null;
   readonly candidates: CandidateSource;
@@ -91,10 +110,30 @@ export interface TurnRoutesOptions {
   readonly onOperationCreated?: () => void;
   // 会話の操作（照合表に当たった発言。LLM を呼ばない）を保存した後に呼ぶ（B05-05）。再送では呼ばない。
   // 音声の接続が開いていれば、同じ操作を接続へ行う（画面のボタンと同じ処理）。
+  // 発言の解釈を保存した後に呼ぶ（影モードの比較の入口。再送・会話の操作・Live では呼ばない）。同期で戻り、本線の応答を
+  // 待たせない。失敗しても発言の結果に影響しない。
+  readonly onInterpreted?: (event: {
+    readonly session_id: string;
+    readonly storage_mode: string;
+    readonly input_id: string;
+    readonly request_revision: string;
+    // 保存した発言の期限（UTC のミリ秒）。比較の記録は会話全文と同じ期限にそろえる。
+    readonly turn_expires_at: number;
+    readonly context: InterpretationContext;
+    readonly primary: InterpreterReply;
+  }) => void;
   readonly onSessionControl?: (event: {
     readonly device_id: string;
     readonly session_id: string;
     readonly action: SessionControlAction;
+  }) => void;
+  // 発言を保存した後に、保存した時点で確定した生成の時刻と期限を渡す（UI-05 の流れの区切り・要約の期限。ADR 0068）。
+  // 応答を返す時点の時計ではなく、保存の命令に渡した値を使う（DB の待ちで期限が後ろへずれない）。再送では呼ばない。
+  readonly onTurnRecorded?: (event: {
+    readonly session_id: string;
+    readonly turn_id: string;
+    readonly created_at: string;
+    readonly expires_at: string;
   }) => void;
   // 保存期限の掃除のゲート（ADR 0053）。Read・RemoteMutation の前に掃除が済むのを待ち、閉じていれば聞き返す。
   // 検索（予定の照会）とクラウドへの送信（下書き・ラベル）の入口は、今あるものだけをここにつなぐ。
@@ -126,6 +165,10 @@ function derivedId(...parts: readonly string[]): string {
 
 const OFFSET = /^([+-])([01][0-9]|2[0-3]):([0-5][0-9])$/u;
 
+// 契約の UtcTime（UTC の RFC 3339。端数の 0 は付けない。domain の deleteAt と同じ表し方）。
+const utcTime = (ms: number): string =>
+  new Date(ms).toISOString().replace('.000Z', 'Z');
+
 function offsetMinutes(offset: string): number {
   const match = OFFSET.exec(offset);
   if (match === null) throw new Error('utc_offset_invalid');
@@ -146,6 +189,11 @@ const CLARIFY = {
   no_change: 'すでにその状態です。変更はありません。',
   blocked: '今は進められません。少し待ってからもう一度お願いします。',
   unsupported: 'その依頼にはまだ対応していません。',
+  // 判定の失敗（モデルが分からないと答えたのではない）。実行へは進まない（QA02・QA03）。
+  model_invalid:
+    'うまく読み取れませんでした。もう一度、言い換えてお願いします。',
+  model_unavailable:
+    '今は判定できませんでした。少し待ってから、もう一度お願いします。',
   // 声（方式 C）の入力は 4 操作だけを進める。それ以外は画面で全文を確かめてから（B05-05）。
   full_text:
     'この操作は、画面で内容を確かめてからにします。画面から送ってください。',
@@ -205,6 +253,13 @@ export type TurnPlan =
       // 上限で切って返さなかった予定の件数（ResultView の more_count）。
       readonly more: number;
     }
+  // 雑談・一般の質問への返答文（B10-04、U217）。実行も承認の対象も作らない。text は admitReplyText を通った平文で、
+  // 応答には載せるが DB には保存しない（turn_responses は平文の列で、モデルの文を平文のまま残さない）。
+  | {
+      readonly kind: 'reply';
+      readonly intent: IntentName;
+      readonly text: string;
+    }
   | {
       readonly kind: 'operation';
       readonly intent: IntentName;
@@ -229,7 +284,14 @@ const clarify = (
 // 解釈の結果（意図表・契約で検査済み）。Live の委譲は、解釈の後・保存の前に入力の受付（方式 C の限定）を挟むので、
 // 解釈と保存を分けて呼ぶ（解釈を 2 回しない）。
 export type InterpretedTurn =
-  | { readonly kind: 'plan'; readonly plan: TurnPlan }
+  | {
+      readonly kind: 'plan';
+      readonly plan: TurnPlan;
+      // 意図は分からないが、直前の依頼への取消・訂正・補足だと分かった発話の関係（B05-05、5A-4）。実行はせず、
+      // 保留中の依頼の解決（取消・訂正の確定、対象不明なら聞き返し）にだけ使う。
+      readonly relation?: HoldRelation;
+      readonly target_workflow_id?: string | null;
+    }
   | {
       readonly kind: 'intent';
       readonly intent: IntentName;
@@ -237,6 +299,9 @@ export type InterpretedTurn =
       // 直前の依頼との関係（5A-4）。モデルの値は信用せず、分からなければ unknown（保留中の変更を再開しない側）。
       readonly relation: HoldRelation;
       readonly target_workflow_id: string | null;
+      // モデルの返答文（smalltalk・general_question のときだけ持つ。信用しない平文で、表示の前に admitReplyText で検査する。
+      // 保存しない）。
+      readonly reply_text?: string | null;
     };
 
 // Live の委譲から保存する発言（B05-05）。共通の workflow（意図表・意味検証・readiness・承認待ちの操作）を通す。
@@ -277,7 +342,10 @@ export interface TurnRoutes {
   readonly previewCurrent: (previewId: string) => boolean;
   readonly prime: () => Promise<void>;
   // 発言の解釈（外部へは送らない。副作用なし）。
-  readonly interpret: (text: string) => Promise<InterpretedTurn>;
+  readonly interpret: (
+    text: string,
+    options?: { readonly open_workflows?: readonly OpenWorkflow[] },
+  ) => Promise<InterpretedTurn>;
   // Live の委譲から発言・依頼・操作（承認待ち）を保存する。
   readonly commitLive: (input: LiveCommitInput) => Promise<LiveCommitResult>;
 }
@@ -287,6 +355,25 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
   const now = options.now ?? (() => Date.now());
   const contract = options.contract ?? createApiContract();
   const offset = offsetMinutes(options.utcOffset);
+
+  // 端末が見ていた区切り（会話の ID と世代）が今のものかを確かめる（ADR 0045 の P2-1・ADR 0059）。
+  // 形が違う・古い世代・別の会話は、発言を保存せずに 409 で断る。
+  const originMatches = (
+    origin: unknown,
+    sessionId: string,
+    generation: string,
+  ): boolean => {
+    if (typeof origin !== 'object' || origin === null || Array.isArray(origin))
+      return false;
+    const value = origin as Record<string, unknown>;
+    return (
+      Object.keys(value).every(
+        (key) => key === 'segment_id' || key === 'segment_generation',
+      ) &&
+      value['segment_id'] === sessionId &&
+      value['segment_generation'] === generation
+    );
+  };
 
   const loadKey = async (): Promise<DataKeyMaterial | null> => {
     try {
@@ -326,17 +413,28 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     };
   };
 
+  // 会話ごとの由来の控え（会話の ID → 作成したときの区切りと世代）。保存境界の保持者の状態は書き換えない。
+  // 再送ではこの控えの世代を返し、発言は控えと今の区切りの両方に一致するときだけ通す。
+  // 再起動で失われるが、そのときは '0'（今の世代と一致しない）を返して最初の発言を 409 にし、会話を作り直させる。
+  const sessionOrigins = new Map<
+    string,
+    { readonly gate_segment_id: string; readonly generation: string }
+  >();
+
   const createSession: ApiRouteHandler = async (request) => {
     const device = request.device;
     const requestId = stringOf(request.body, 'request_id');
     if (device === null) return apiErrorResponse(401, 'unauthenticated');
     const mode = stringOf(request.body, 'storage_mode');
-    // 記録しない会話（private）は保存しない会話の扱い（B05）が要るため、B04-03 では受け付けない。
+    // 記録しない会話（private）は流れの経路（POST /v1/stream/storage-mode）が持つ。画面からの会話の作成では
+    // normal／extended だけを作り、private は受け付けない（ADR 0060 の入口の整理。503）。
     if (mode !== 'normal' && mode !== 'extended')
       return apiErrorResponse(503, 'dependency_unavailable', requestId);
+    const origin = options.storage.origin();
+    const newSessionId = randomUUID();
     const result = await store.conversation({
       kind: 'session.create',
-      session_id: randomUUID(),
+      session_id: newSessionId,
       storage_mode: mode,
       display_device_id: device.device_id,
       created_at: now(),
@@ -346,12 +444,24 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     const session = result.value;
     if (session === null)
       return apiErrorResponse(503, 'dependency_unavailable', requestId);
+    // 再送では最初の受付の世代を返す（今の世代に付け替えない）。再起動で控えが無ければ '0' を返す。
+    let responseGeneration = origin.segment_generation;
+    if (session.session_id === newSessionId) {
+      sessionOrigins.set(newSessionId, {
+        gate_segment_id: origin.segment_id,
+        generation: origin.segment_generation,
+      });
+    } else {
+      responseGeneration =
+        sessionOrigins.get(session.session_id)?.generation ?? '0';
+    }
     return {
       status: 201,
       body: {
         request_id: requestId,
         session_id: session.session_id,
         storage_mode: session.storage_mode,
+        segment_generation: responseGeneration,
         route_revision: session.route_revision,
       },
     };
@@ -774,6 +884,20 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
       if (early.full_text)
         return { plan: blocked(early, intent), permissionAtInput: null };
     }
+    // 雑談・一般の質問の返答文（U217）。文字で返す入力（submitted_text）だけ、検査を通った平文を答えにする。声の入力・
+    // 検査に通らない文は、従来の「未対応」の聞き返しのまま（モデルの文を出さない）。実行・承認・読み取りの経路には入らない。
+    if ((REPLY_TEXT_INTENTS as readonly string[]).includes(intent)) {
+      const admitted = admitReplyText({
+        intent,
+        input_kind: evidence === 'submitted_text' ? 'text' : 'voice_live',
+        reply_text: result.reply_text ?? null,
+      });
+      if (admitted.decision === 'show')
+        return {
+          plan: { kind: 'reply', intent, text: admitted.text },
+          permissionAtInput: null,
+        };
+    }
     if (!PROVIDER_INTENTS.includes(intent))
       return {
         plan:
@@ -816,7 +940,35 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
   };
 
   // 解釈と、意図表・契約での引数の検査。聞き返しなら plan、通れば意図と引数を返す。
-  const interpretTurn = async (text: string): Promise<InterpretedTurn> => {
+  // 解釈に渡した入力と本線の返答（影モードの比較用）。解釈の結果の object ごとに控える。
+  const bases = new WeakMap<
+    object,
+    { context: InterpretationContext; reply: InterpreterReply }
+  >();
+
+  const interpretTurn = async (
+    text: string,
+    interpretOptions: {
+      readonly open_workflows?: readonly OpenWorkflow[];
+    } = {},
+  ): Promise<InterpretedTurn> => {
+    const basis: {
+      context?: InterpretationContext;
+      reply?: InterpreterReply;
+    } = {};
+    const result = await interpretInner(text, interpretOptions, basis);
+    if (basis.context !== undefined && basis.reply !== undefined)
+      bases.set(result, { context: basis.context, reply: basis.reply });
+    return result;
+  };
+
+  const interpretInner = async (
+    text: string,
+    interpretOptions: {
+      readonly open_workflows?: readonly OpenWorkflow[];
+    },
+    basis: { context?: InterpretationContext; reply?: InterpreterReply },
+  ): Promise<InterpretedTurn> => {
     const done = (plan: TurnPlan) => ({ kind: 'plan' as const, plan });
     let candidates;
     try {
@@ -825,15 +977,56 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
       candidates = [];
     }
     let reply;
+    const context: InterpretationContext = {
+      text,
+      today: today(),
+      mail_candidates: candidates,
+      ...(interpretOptions.open_workflows === undefined
+        ? {}
+        : { open_workflows: interpretOptions.open_workflows }),
+    };
     try {
-      reply = await options.interpreter.interpret({
-        text,
-        today: today(),
-        mail_candidates: candidates,
-      });
+      reply = await options.interpreter.interpret(context);
     } catch {
       return done(clarify('unclear', null));
     }
+    basis.context = context;
+    basis.reply = reply;
+    // 判定の失敗は「意図が不明」と混ぜず、別の聞き返しにする（実行へは進まない。QA02・QA03）。
+    if (reply !== null && typeof reply === 'object' && reply.kind === 'failed')
+      return done(
+        clarify(
+          [
+            'timeout',
+            'unavailable',
+            'budget_denied',
+            'cancelled',
+            'stale',
+          ].includes(reply.failure)
+            ? 'model_unavailable'
+            : 'model_invalid',
+          null,
+        ),
+      );
+    // 意図は分からないが、直前の依頼の取消・訂正・補足だと答えた: 意図は作らず、関係だけを保つ（実行へは進まない）。
+    if (
+      reply !== null &&
+      typeof reply === 'object' &&
+      reply.kind === 'unclear' &&
+      (['clarification', 'correction', 'cancel'] as const).some(
+        (value) => value === reply.relation,
+      )
+    )
+      return {
+        kind: 'plan',
+        plan: clarify('unclear', null),
+        relation: reply.relation as HoldRelation,
+        target_workflow_id:
+          typeof reply.target_workflow_id === 'string' &&
+          reply.target_workflow_id.length > 0
+            ? reply.target_workflow_id
+            : null,
+      };
     // 解釈の結果を信用しない: 意図表にない意図・契約に合わない引数は知らない文と同じ扱い。
     if (
       reply === null ||
@@ -875,13 +1068,19 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
       args,
       relation,
       target_workflow_id: target,
+      // 返答文は表示の対象の意図だけ持つ（他の意図の値は捨てる）。
+      reply_text:
+        (REPLY_TEXT_INTENTS as readonly string[]).includes(intent) &&
+        typeof reply.reply_text === 'string'
+          ? reply.reply_text
+          : null,
     };
   };
 
   const workflowState = (plan: TurnPlan): WorkflowState | null => {
     // 会話の操作は依頼ではない（workflow を作らない）。
     if (plan.kind === 'session_control') return null;
-    if (plan.kind === 'read') return 'done';
+    if (plan.kind === 'read' || plan.kind === 'reply') return 'done';
     if (plan.kind === 'operation') return 'ready';
     return plan.intent === null ? null : 'clarifying';
   };
@@ -937,6 +1136,11 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
         readonly body: object;
         readonly replayed: boolean;
         readonly plan: TurnPlan;
+        // 保存した時点で確定した値（再送では null。保存していないものを新しい期限として扱わない）。
+        readonly created_at: string | null;
+        readonly expires_at: string | null;
+        // 発言を保存したときの期限（UTC のミリ秒。影モードの比較に使う。保存した場合だけ）。
+        readonly expires_at_ms?: number;
       }
     | { readonly kind: 'held' }
   > => {
@@ -949,6 +1153,8 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
         body,
         replayed: false,
         plan,
+        created_at: null,
+        expires_at: null,
       }) as const;
     const key = await loadKey();
     if (key === null) {
@@ -985,6 +1191,12 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
       );
       return fail(response.status, response.body);
     }
+    const expiresAt = createdAt + rule.ms;
+    // 保存した時点で確定した値（応答の時点の時計では作り直さない）。
+    const savedTimes = {
+      created_at: utcTime(createdAt),
+      expires_at: utcTime(expiresAt),
+    };
     const state = workflowState(plan);
     const workflowId =
       state === null ? null : (args.workflowId ?? randomUUID());
@@ -1036,25 +1248,31 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
                 : view(plan.intent, 'clarification', 'confirming_input', []),
               CLARIFY[plan.reason],
             )
-          : plan.kind === 'read'
+          : plan.kind === 'reply'
             ? responseOf(
                 'answered',
-                view(
-                  plan.intent,
-                  'schedule_cards',
-                  plan.overlaps ? 'needs_review' : 'ready',
-                  plan.items,
-                  plan.more,
-                ),
-                null,
+                view(plan.intent, 'speech_bubble', 'ready', []),
+                plan.text,
               )
-            : responseOf(
-                'answered',
-                view(plan.intent, 'approval_link', 'needs_review', [
-                  { kind: 'operation', id: plan.operation_id },
-                ]),
-                null,
-              );
+            : plan.kind === 'read'
+              ? responseOf(
+                  'answered',
+                  view(
+                    plan.intent,
+                    'schedule_cards',
+                    plan.overlaps ? 'needs_review' : 'ready',
+                    plan.items,
+                    plan.more,
+                  ),
+                  null,
+                )
+              : responseOf(
+                  'answered',
+                  view(plan.intent, 'approval_link', 'needs_review', [
+                    { kind: 'operation', id: plan.operation_id },
+                  ]),
+                  null,
+                );
     // 送出の直前の再検査（新しい発話の開始による保留）。保存の直前に同期で確かめる（この後に await があるのは DB への
     // 送信だけで、保留は保存の命令を送る前に決める）。
     if (args.precommit !== undefined && !args.precommit())
@@ -1082,7 +1300,12 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
       request: ref,
       ...(args.input === undefined ? {} : { input: args.input }),
       operation,
-      response_json: JSON.stringify(responseBody),
+      // 返答文はモデルの文なので、平文の列には残さない（再送の応答は返答文なしの同じ結果になる）。
+      response_json: JSON.stringify(
+        plan.kind === 'reply'
+          ? { ...responseBody, reply_text: null }
+          : responseBody,
+      ),
     });
     if (!recorded.ok) {
       const response = conversationError(recorded, requestId);
@@ -1097,6 +1320,8 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
         body: response.body,
         replayed: true,
         plan,
+        created_at: null,
+        expires_at: null,
       };
     }
     if (operation !== null) options.onOperationCreated?.();
@@ -1106,6 +1331,8 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
       body: responseBody,
       replayed: false,
       plan,
+      ...savedTimes,
+      expires_at_ms: createdAt + rule.ms,
     };
   };
 
@@ -1117,6 +1344,10 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     const body = request.body as JsonObject;
     const requestId = stringOf(body, 'request_id');
     if (device === null) return apiErrorResponse(401, 'unauthenticated');
+    // 記録しない区切りの間は DB の sessions を引かない（流れの経路は private の会話を作らない。ADR 0060）。
+    // 記録しない発言の受け取りは RAM の経路（2c）で足す。
+    if (options.storage.mode === 'private')
+      return apiErrorResponse(503, 'dependency_unavailable', requestId);
     // 端末内の音声認識（local_asr）の入力は音声の区間と世代の照合が要る（B06）。B04-03 は文字入力だけ。
     // Live の文字起こし（voice_live）は端末のこの経路では受け付けない（中枢がサイドバンドで受ける。X49）。
     if (stringOf(body, 'input_kind') !== 'text')
@@ -1130,15 +1361,30 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     if (session.value === null || session.value.ended_at !== null)
       return apiErrorResponse(409, 'conflict', requestId);
     // 再送の判定は解釈より先（保存済みの応答をそのまま返し、解釈・意味検証をやり直さない）。
+    // 保存済みの受付は、区切りの世代が進んだ後（private の出入り）でも同じ要求なら返せるよう、由来の照合より先に見る。
+    // 新しい要求（保存済みの受付がない）は、下の由来の照合を通らないと進めない。
     const ref = requestRef(request, sessionId);
     const found = await store.conversation({ kind: 'turn.find', request: ref });
     if (!found.ok) return conversationError(found, requestId);
     if (found.value !== null)
       return storedResponse(found.value.response_json, requestId);
+    // 端末が見ていた区切りが今のものか（会話の ID と世代）。会話ごとの控えと、今の区切りの両方に
+    // 一致するときだけ保存する。再起動・壊れた境界からの復旧で区切りが変わると、前の会話の控えは
+    // 今の区切りと一致しない（世代が 1 に戻っても通らない）。
+    const expected = sessionOrigins.get(sessionId);
+    const current = options.storage.origin();
+    if (
+      expected === undefined ||
+      expected.gate_segment_id !== current.segment_id ||
+      expected.generation !== current.segment_generation ||
+      !originMatches(body['origin'], sessionId, current.segment_generation)
+    )
+      return apiErrorResponse(409, 'conflict', requestId);
     const text = stringOf(body, 'text');
     // 会話の操作（照合表に全体が一致した短い発話）は、LLM を呼ばず、依頼も作らない（10 §5、X58）。
     const control = resolveSessionControl(text, SESSION_CONTROL_TABLE, 'text');
     // 記録する入力の時点の許可の版は provider を使う意図だけで、連携の接続がない・使わないなら 0 として記録する。
+    const interpreted = control === null ? await interpretTurn(text) : null;
     const planned: {
       readonly plan: TurnPlan;
       readonly permissionAtInput: string | null;
@@ -1148,7 +1394,11 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
             plan: { kind: 'session_control', action: control.action },
             permissionAtInput: null,
           }
-        : await planFrom(await interpretTurn(text), input, 'submitted_text');
+        : await planFrom(
+            interpreted ?? { kind: 'plan', plan: clarify('unclear', null) },
+            input,
+            'submitted_text',
+          );
     const done = await recordTurn({
       requestId,
       sessionId,
@@ -1160,6 +1410,14 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     });
     if (done.kind === 'held')
       return apiErrorResponse(503, 'dependency_unavailable', requestId);
+    // 保存した時点で確定した生成の時刻と期限を、流れの区切りへ渡す（UI-05。再送では渡さない）。
+    if (done.status === 200 && !done.replayed && done.expires_at !== null)
+      options.onTurnRecorded?.({
+        session_id: sessionId,
+        turn_id: (done.body as TurnResponse).turn_id,
+        created_at: done.created_at as string,
+        expires_at: done.expires_at,
+      });
     if (
       control !== null &&
       done.status === 200 &&
@@ -1171,6 +1429,29 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
         session_id: sessionId,
         action: done.plan.action,
       });
+    // 影モードの比較の入口。保存した発言（再送でない）の解釈だけを渡し、本線の応答を待たせない。
+    const basis = interpreted === null ? undefined : bases.get(interpreted);
+    if (
+      options.onInterpreted !== undefined &&
+      basis !== undefined &&
+      done.status === 200 &&
+      !done.replayed &&
+      done.expires_at_ms !== undefined
+    ) {
+      try {
+        options.onInterpreted({
+          session_id: sessionId,
+          storage_mode: session.value.storage_mode,
+          input_id: stringOf(done.body as JsonObject, 'input_id'),
+          request_revision: '1',
+          turn_expires_at: done.expires_at_ms,
+          context: basis.context,
+          primary: basis.reply,
+        });
+      } catch {
+        // 比較の失敗で発言の結果を変えない。
+      }
+    }
     return { status: done.status, body: done.body };
   };
 

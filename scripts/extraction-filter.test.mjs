@@ -383,3 +383,42 @@ test('decision records hold metadata only and the counts use the latest decision
     handled_elsewhere: 0,
   });
 });
+
+test('review: date cues without a year and English dates keep an automated mail analyzed (not skipped)', () => {
+  const cueBodies = [
+    'お支払い 11/30 引落予定。残高をご確認ください',
+    'お支払い 11/20（金）に引落します',
+    '20日に引落します',
+    '11月分の請求です',
+    'Payment due Nov 20.',
+    'Your plan renews on November 20',
+    'Your plan renews on 20 November',
+    'It renews on 3rd of March',
+    'Please see you on Friday',
+    'See you Fri, at the office',
+    'The service ends tomorrow',
+    'This ends tonight',
+    'Please finish by next week',
+    'Please finish by end of the day',
+    'Do it EOD',
+    'ASAP please',
+  ];
+  for (const body of cueBodies)
+    assert.deepEqual(
+      prefilterDecision(automated, plainMail({ body }), noContext),
+      { kind: 'analyze', reasons: ['cue_found'] },
+      body,
+    );
+  // 日付の手がかりを持たない文は、広げても外れる（過剰に解析へ回さない）。
+  for (const body of [
+    'ご利用ありがとうございます。会員サイトでご確認いただけます。',
+    'We may contact you with news. Thank you for using the service.',
+    'The sun is up and the cannon is quiet.',
+    'May the best team win.',
+  ])
+    assert.equal(
+      prefilterDecision(automated, plainMail({ body }), noContext).kind,
+      'skip_automated',
+      body,
+    );
+});

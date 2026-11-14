@@ -318,14 +318,17 @@ function resolvedYear(deadline: Deadline): number | null {
   return null;
 }
 
-// 原文に時刻の表現があるか（「17時」「17:00」「午後」「正午」「5pm」「noon」など）。日付だけの原文は false。
+// 原文に時刻の表現があるか（「17時」「17:00」「午後5時」「正午」「5pm」「noon」など。「午後」「午前中」だけは時と分が決まらないので含めない）。日付だけの原文は false。
 export function timeExpressed(text: string): boolean {
   return (
+    // 時刻（17:00・17時）。「24時間以内」「3時限目」は時刻でない。
     /[0-9０-９]{1,2}\s*[:：]\s*[0-9０-９]{2}/u.test(text) ||
-    /[0-9０-９]{1,2}\s*時/u.test(text) ||
-    /午前|午後|正午|真夜中/u.test(text) ||
+    /[0-9０-９]{1,2}\s*時(?![間限])/u.test(text) ||
+    // 「午前」「午後」「午前中」だけでは時と分が決まらない。数字と組み合わさったもの（午後5時・午後3:30）は上で拾う。
+    // 正午・noon は 12:00 に決まる。
+    /正午/u.test(text) ||
     /[0-9]\s*(?:a\.?m\.?|p\.?m\.?)(?![a-z])/iu.test(text) ||
-    /\b(?:noon|midnight)\b/iu.test(text)
+    /\bnoon\b/iu.test(text)
   );
 }
 
@@ -412,7 +415,7 @@ function resolveDeadline(
       },
       verified: false,
       year_downgraded: false,
-      time_downgraded: false,
+      time_downgraded: timeDowngraded,
     };
   const year = resolvedYear(base);
   const receivedYear = Number(context.received_at_local.slice(0, 4));

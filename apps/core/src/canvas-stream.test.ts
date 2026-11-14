@@ -1635,6 +1635,107 @@ test('UI-05: a forget that is only clarified does not open a new segment', async
   assert.equal(rig.sessions(), 1);
 });
 
+test('UI-05: a save that finishes out of order does not move the segment start backwards', async () => {
+  const canvas = new CanvasHub(contract);
+  let at = Date.parse('2026-10-05T23:59:59+09:00');
+  let sessions = 0;
+  let turns = 0;
+  let releaseA: (() => void) | null = null;
+  const gateA = new Promise<void>((resolve) => {
+    releaseA = resolve;
+  });
+  const id = (n: number) =>
+    `00000000-0000-4000-8000-${n.toString(16).padStart(12, '0')}`;
+  let routes: ReturnType<typeof createStreamRoutes> | null = null;
+  routes = createStreamRoutes({
+    canvas,
+    now: () => at,
+    utcOffset: '+09:00',
+    createSession: () => {
+      sessions += 1;
+      return Promise.resolve({
+        status: 201,
+        body: { session_id: id(sessions) },
+      });
+    },
+    postTurn: async (request) => {
+      turns += 1;
+      const turn = turns;
+      const sessionId = request.params['session_id'] as string;
+      const body = request.body as Record<string, string>;
+      if (turn === 1) {
+        // 23:59:59.900 の保存。完了は B より後になる（並行した保存の逆順の完了）。
+        await gateA;
+        routes?.recordTurn({
+          session_id: sessionId,
+          turn_id: id(100 + turn),
+          created_at: '2026-10-05T14:59:59.900Z',
+          expires_at: '2026-10-12T14:59:59.900Z',
+        });
+      } else if (turn === 2)
+        // 0 時をまたいだ 00:00:00.100 の保存。こちらが先に終わる。
+        routes?.recordTurn({
+          session_id: sessionId,
+          turn_id: id(100 + turn),
+          created_at: '2026-10-05T15:00:00.100Z',
+          expires_at: '2026-10-12T15:00:00.100Z',
+        });
+      return {
+        status: 200,
+        body: {
+          request_id: body['request_id'],
+          session_id: sessionId,
+          turn_id: id(100 + turn),
+          input_id: id(200 + turn),
+          workflow_id: null,
+          status: 'answered',
+          result_view: null,
+          reply_text: null,
+        },
+      };
+    },
+  });
+  const handler = routes.handlers['postStreamTurn'];
+  assert(handler !== undefined);
+  const route = API_ROUTES.find(
+    (entry) => entry.operationId === 'postStreamTurn',
+  );
+  assert(route !== undefined);
+  const device = { device_id: id(9) } as unknown as DeviceRecord;
+  const request = (): ApiHandlerRequest => ({
+    route,
+    device,
+    body: {
+      request_id: randomUUID(),
+      command_scope_id: id(400),
+      text: 'こんにちは',
+      input_kind: 'text',
+      expected_canvas_revision: '0',
+    },
+    params: {},
+    remoteAddress: '127.0.0.1',
+    query: {},
+    declaredLockState: null,
+  });
+  const first = handler(request());
+  await new Promise((resolve) => setImmediate(resolve));
+  // 同じ区切りのまま、0 時をまたいだ発言 B を先に完了させる（時計は 23:59:59 のまま）。
+  const second = handler(request());
+  const secondDone = await second;
+  assert.equal(secondDone.status, 200);
+  assert(releaseA !== null);
+  (releaseA as () => void)();
+  const firstDone = await first;
+  assert.equal(firstDone.status, 200);
+  const a = (firstDone.body as unknown as StreamTurnResponse).segment;
+  // 00:10 の次の発言: 起点は遅い方（00:00:00.100）なので、日付の理由では切らない（30 分もまだ）。
+  at = Date.parse('2026-10-06T00:10:00+09:00');
+  const third = await handler(request());
+  const b = (third.body as unknown as StreamTurnResponse).segment;
+  assert.equal(b.segment_id, a.segment_id);
+  assert.equal(sessions, 1);
+});
+
 test(
   'UI-03: clarifications and approval links place nothing on the canvas (approval is never put on it)',
   { timeout: 60_000 },

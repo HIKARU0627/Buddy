@@ -782,9 +782,15 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
     readonly expires_at: string;
   }): void => {
     if (current === null || current.sessionId !== event.session_id) return;
+    // 経過の起点は**遅い方**を取る。並行した発言の保存は完了の順が前後するので、後から終わった古い発言で
+    // 起点を過去へ戻さない（戻すと、実際にはやりとりがあったのに日付・30 分の区切りが早まる。レビュー P2）。
+    const lastTurnAt =
+      Date.parse(event.created_at) > Date.parse(current.lastTurnAt)
+        ? event.created_at
+        : current.lastTurnAt;
     current = {
       ...current,
-      lastTurnAt: event.created_at,
+      lastTurnAt,
       turnExpiresAt: [...current.turnExpiresAt, event.expires_at],
     };
   };

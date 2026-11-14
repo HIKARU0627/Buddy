@@ -1,17 +1,17 @@
 # ADR 0056: B06-08 段階 2 — 復元の CLI（段階 1〜2 の台帳の確認と鍵の取り出し）
 
 - 日付: 2026-11-01
-- 状態: B06-08 段階 2 の**一部**（Issue #144、親 #11）。復元の段階 1〜2 を確かめる `restore check` だけを実装した。段階 3〜6（忘却の適用・DB の検証・作り直し・外部の照合）・`applyRestoreAftermath` の実行（J3 の保留）・`installRestoredDatabase` による差し替え・`store_generation` の更新・U109 の手での復旧は、同じ ADR の続き（次の PR）と ADR 0057 で足す。模擬の試験だけで、実機の Mac mini・実際のキーチェーン・実際のバックアップからの復元は未実施（B15）。
+- 状態: B06-08 段階 2 の**一部**（Issue #144、親 #11）。復元の段階 1〜2 を確かめる `restore check` と、段階 3〜6（忘却の適用・DB の検証・作り直し・外部の照合）・鍵の導入・承認の失効（J3）・`store_generation` の更新・`installRestoredDatabase` による差し替えを行う `restore run` を実装した。U109 の手での復旧は ADR 0057（別 PR）。模擬の試験だけで、実機の Mac mini・実際のキーチェーン・実際のバックアップからの復元は未実施（B15）。
 - 根拠: 設計 03（バックアップ・復元・忘却と再取り込み）、08 §4〜§6、09（X15〜X17・T06）、ADR 0016・0040・0047・0054（U109・U113）・0055、#11 の本人の判断 J1〜J6（2026-10-24）、本人の決定 U128〜U130（2026-10-31）、Issue #144 の分け方（段階 1・2・3）。原本は権限のある接続で読み取りだけ行い、全文は写していない。
 - 番号: ADR 0056（この文書）、未決事項 U131〜U135。マイグレーションは足していない（0013 は未使用のまま。段階 3〜6 でもスキーマの変更は要らない見込み）。
 
 ## 段階 2 の分け方
 
-| 段階 2 の範囲                                                               | PR      | 状態               |
-| --------------------------------------------------------------------------- | ------- | ------------------ |
-| 段階 1〜2 の確認（`restore check`）・鍵の取り出し・作業用 DB の作成         | この PR | 実装（模擬の試験） |
-| 段階 3〜6・J3 の保留の書き込み・DB の差し替え・`store_generation` の更新    | 次の PR | 未着手             |
-| U109 の手での復旧（壊れた・進んだ台帳のファイルを退避して DB から作り直す） | 次の PR | 未着手（ADR 0057） |
+| 段階 2 の範囲                                                               | PR       | 状態               |
+| --------------------------------------------------------------------------- | -------- | ------------------ |
+| 段階 1〜2 の確認（`restore check`）・鍵の取り出し・作業用 DB の作成         | 前の PR  | 実装（模擬の試験） |
+| 段階 3〜6・J3 の保留の書き込み・DB の差し替え・`store_generation` の更新    | この ADR | 実装（模擬の試験） |
+| U109 の手での復旧（壊れた・進んだ台帳のファイルを退避して DB から作り直す） | 次の PR  | 未着手（ADR 0057） |
 
 `restore check` は、復元を始める前に「この封筒・鍵・台帳で記憶と会話を戻してよいか」を本人が確かめるための読み取り中心の確認である。記憶と会話はまだ戻さない。
 
@@ -60,11 +60,26 @@
 - 平文の後始末: 成功の経路だけでなく、台帳の確認などで拒否した経路でも、作業用のディレクトリを消せなければ `plaintext_delete_failed` を最後の段階に付けて拒否を返す（消えたことを確かめずに拒否だけを返さない）。
 - 平文を残さない: 作業用の DB の書き込みが途中で失敗しても、`restore-work/restore-<restore_id>/` に平文が残らない。削除（`rm`）が失敗したときは成功（終了コード 0）を返さず、`plaintext_delete_failed` で止める。
 - 復旧キーの入力: TTY でない（`not_a_tty`）、空（`input_empty`）、形が違う（`invalid_code`）、Ctrl-C（`interrupted`）。区切りと小文字を受け付け、値が案内の文に出ない。
+- 段階 3（`applyRestoreLedger` の単体）: 忘却の後の台帳を、忘却の前の DB に当てると、忘れた記憶・そこから作った記憶・気づき・指示の発言が消え、台帳の連鎖の世代と `entry_hash` は与えられた値のまま（`packages/storage/src/forget-store.test.ts`）。台帳の「除外する由来」の HMAC から、その由来を持つ派生物（バックアップの後に作られた記憶を忘れた場合の気づき）も消え、由来の発言自体は残る。派生して消えた記憶を新しい起点にしない（T1→M1、T1/T2→M2、T2→M3 で M1 を忘れたとき、復元後も M3 は残る）。
+- 段階 1〜6 と差し替え（`restore run`）: 本物の Core の設定とバックアップから、承認付きの操作を含む封筒を作り、復元した後に承認がすべて失効していること（`approvals_revoked_count` と DB の `revoked`）・`store_generation` が新しくなっていること・`restore_restored_at` が入っていること・台帳の別ファイルが復元した DB から作り直されること・作業用の平文が残らないこと・鍵が KeyStore にあることを確かめる（`apps/core/src/restore-run.test.ts`）。差し替えの記録が残った失敗では、作業用の DB を消さず、`installed: false`・`plaintext_deleted: false` を返し、中枢の DB が差し替わっていないことを確かめる。旧 DB の退避の後に差し替えと巻き戻しの両方が失敗すると今の名前の DB が無くなるが、その状態を確かめるために空の DB を作らない（作ると次の復旧が退避した旧 DB と今の DB の両方を見て止まる）。障害を取り除けば次の復旧が旧 DB を元へ戻せることを確かめる。check の後に封筒の `backup_id` を書き換えると、認証済み manifest の digest と違うため `manifest_changed` で差し替えない。
 
-**模擬の期待値だけ**。`tests/test-map.json` の X15〜X17 の `product_test` は `not_run` のまま（復元の段階 3〜6 がそろうまで変えない）。実機のキーチェーン・実際のバックアップからの復元・Mac mini は B15 で未実施。
+**模擬の期待値だけ**。`tests/test-map.json` の X15〜X17 の `product_test` は `not_run` のまま（段階 1〜6 の模擬の統合試験 X15〜X17 は未実施）。実機のキーチェーン・実際のバックアップからの復元・Mac mini は B15 で未実施。
 
-## 次の PR への引き継ぎ
+## 段階 3〜6 の実行（`restore run`）
 
-- 段階 3〜6: 段階 1 で選んだ台帳の head まで忘却を適用し（`restoreForgetCheck`）、DB の検証（`restoreDbVerifyCheck`）・作り直し（`restoreRebuildCheck`）・外部の照合（`restoreReconcileCheck`、`pending`）を行う。`buildRestoreResult` で契約の `RestoreResult` を組み立てる。
-- J3: 差し替える前の作業用の DB に `applyRestoreAftermath` を 1 つの transaction で書き、`installRestoredDatabase` で差し替える。`store_generation` の更新・鍵の導入（U134 の実行）・`ledger_hmac_key_id` の記録も同じ transaction の側で行う。承認がすべて失効することを試験で確かめる。
-- U109 の手での復旧: 壊れた・DB より進んだ `forget-ledger.json` を退避し、DB の台帳から作り直す CLI（ADR 0057）。台帳の確認（この PR の段階 1）を使う。
+`restore check` が ready を返した後、作業用の DB に対して次を行う（`apps/core/src/restore-run.ts`）。
+
+1. **段階 3（忘却の適用）**: 段階 1 で選んだ台帳（中枢の DB か台帳の別ファイル）の連鎖のうち、バックアップの世代より後のものを `applyRestoreLedger` で当てる。台帳の 1 件は当時の削除対象（`forgotten`）と除外する由来の HMAC（`blocked_source_hmacs`）を持ち、派生物は持たない。台帳の `forgotten` を「削除済み（非 core）」、blocked を「除外する由来」として、domain の閉包の規則 A・C・D をそのまま再適用する（`forgotten` の全件を新しい core にしない。通常の忘却が広げなかった由来まで規則 B で辿らない）。範囲の展開は、core に触れた範囲の全体を除外する分を blocked の一覧がすでに持っているので、新たな由来を足さず、範囲が削除する物・除外する由来に触れるときだけ派生物を消す。元情報は HMAC しか台帳にないので、今の DB の元情報の ID を同じ鍵で HMAC にして照合する。発言・記憶も、実体が期限切れで消えて系譜の辺にだけ残っている ID を照合の対象に含める。由来そのものは残し、その由来を持つ派生物を消す（バックアップの後に作られた記憶を忘れた場合、記憶から由来へ遡れないため）。台帳の `entry_hash` は与えられた値を保ち、連鎖を書き換えない。系譜がなければ封筒の `ledger_id` を付ける。当てた後の世代が段階 1 の head 以上であることを `restoreForgetCheck` で確かめる。
+2. **段階 4（DB の検証）**: 整合性・外部キー・版・表の一覧・`store_generation`・`ledger_id`・忘却の世代を読み、`restoreDbVerifyCheck` に渡す。操作の隔離の計画が立つことも確かめる（読めない状態・経路があれば `db_integrity_failed`）。
+3. **段階 5（作り直し）**: `VACUUM` と WAL の checkpoint で空き領域を戻し、索引を作り直す（失敗は `rebuild_failed`）。
+4. **段階 6（外部の照合）**: OAuth トークンは封筒にないので、再認証が済むまで `pending`（`restoreReconcileCheck`）。
+5. **鍵の導入（U134）**: 封筒の `backup_file`・`ledger_hmac_key` を KeyStore に足し（同じ ID に同じ素材があれば何もしない。違えば止める）、データ鍵は KeyStore にないときだけ `data-key-v1` に置く。読み戻して素材を確かめる。
+6. **J3・`store_generation`**: 差し替える前の作業用の DB に `applyRestoreAftermath` を 1 つの transaction で書き、承認をすべて失効させ、操作を隔離し、`store_generation` を新しい UUID にし、使う台帳の鍵の ID を `schema_meta` に記録する。
+7. **結果**: `buildRestoreResult` で契約の `RestoreResult` を組み立てる（段階 6 は `pending` のまま `restored`）。
+8. **差し替え**: `installRestoredDatabase` で作業用の DB を今の DB と入れ替える（Core のロックは `restore check` の前から差し替えと台帳の別ファイルの作り直しまで連続して持ち、途中で Core が起動して忘却を進めないようにする）。check は本体を認証した manifest の正準化 SHA-256 を返し、run は読み直した封筒の digest と照合する（確認と後段の間に封筒が変わったら `manifest_changed` で止める）。差し替えた後、台帳の別ファイルを復元した DB から作り直す（Core の起動時の照合で止まらないように）。作業用の平文は、拒否・例外の経路でも DB を閉じてから消し、消せないときは `plaintext_delete_failed` として報告する。差し替えの記録（`restore-install.json`）が残った失敗では、次の起動・差し替えの復旧が参照する作業用の DB を消さない。差し替えの記録が残ったときに今の DB が復元した DB かを確かめるため、今の名前のファイルが無ければ書き込みの接続を開かない（空の DB を作ると、次の復旧が退避した旧 DB との二重の存在を見て `restore_install_inconsistent` で止まる）。差し替えの前に止まった拒否と、差し替えた後に台帳の別ファイルだけを作れなかった拒否を、`installed` で区別する。
+
+設定だけを戻す `settings_only` の実行は、この PR では行わない（`restore check` が候補を報告するところまで。次の PR で扱う）。
+
+## 次の PR への引き継ぎ（U109）
+
+- 壊れた・DB より進んだ `forget-ledger.json` を退避し、DB の台帳から作り直す CLI（ADR 0057）。台帳の確認（この ADR の段階 1）を使う。DB が古い（封筒の台帳が進んでいる）ときは復元（`restore run`）に進ませる。

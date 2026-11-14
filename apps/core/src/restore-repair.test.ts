@@ -18,8 +18,12 @@ import { BACKUP_ZERO_HASH, buildLedgerEntry } from '@buddy/domain';
 import { createMockBackupKeyStore, createMockKeyStore } from '@buddy/platform';
 import {
   buildLedgerFile,
+  encodeBackupFile,
   ledgerEntryHash,
+  openWriteConnection,
   parseLedgerFile,
+  readLedgerId,
+  storagePlatform,
   writeLedgerFileAtomic,
 } from '@buddy/storage';
 import type { LedgerChainEntry } from '@buddy/storage';
@@ -42,6 +46,7 @@ const T0 = Date.parse('2031-03-01T00:00:00.000Z');
 
 interface Rig {
   readonly dataDir: string;
+  readonly backupDir: string;
   readonly handle: CoreHandle;
 }
 
@@ -102,7 +107,7 @@ async function rig(t: test.TestContext): Promise<Rig> {
   const run = await handle.backup.run();
   assert.ok(run.ok, JSON.stringify(run));
   await handle.stop('test');
-  return { dataDir, handle };
+  return { dataDir, backupDir, handle };
 }
 
 async function repair(dataDir: string) {
@@ -202,4 +207,111 @@ test('台帳の復旧: DB の台帳が読めないときは何もしない', asy
   const report = await repair(r.dataDir);
   assert.equal(report.outcome, 'refused', JSON.stringify(report));
   assert.equal(report.reason, 'hub_ledger_invalid');
+});
+
+// DB の台帳に 1 世代を足す（hash は読み出し時に計算される。0012 より前の行と同じ形）。
+// ledger_id は既にあればそれを返す（schema_meta の ledger_id は変えられない）。
+function addDbGeneration(dataDir: string, turnId: string): string {
+  const entryId = randomUUID();
+  const built = buildLedgerEntry(
+    {
+      forgotten: [{ source_kind: 'turn', source_id: turnId }],
+      blocked_source_hmacs: [],
+      blocked_content_keys: [],
+    },
+    {
+      entry_id: entryId,
+      previous_generation: '0',
+      recorded_at: new Date(T0).toISOString(),
+    },
+  );
+  assert.ok(built.ok);
+  const db = openWriteConnection(join(dataDir, DB_FILE), {
+    platform: storagePlatform(process.platform),
+  });
+  try {
+    db.prepare(
+      'INSERT INTO forget_ledger (forgetting_generation, entry_id, recorded_at, entry_hash, item_count) VALUES (1, ?, ?, ?, 1)',
+    ).run(entryId, T0, ledgerEntryHash(built.entry, BACKUP_ZERO_HASH));
+    db.prepare(
+      "INSERT INTO forget_ledger_items (forgetting_generation, item_kind, item_id) VALUES (1, 'turn', ?)",
+    ).run(turnId);
+    const existing = readLedgerId(db);
+    if (existing !== null) return existing;
+    const created = randomUUID();
+    db.prepare(
+      "INSERT INTO schema_meta (key, value) VALUES ('ledger_id', ?)",
+    ).run(created);
+    return created;
+  } finally {
+    db.close();
+  }
+}
+
+test('台帳の復旧: 同じ系譜で履歴が分岐しているファイルは退避も再生成もせず拒否する', async (t) => {
+  const r = await rig(t);
+  const path = join(r.dataDir, FORGET_LEDGER_FILE);
+  // DB は世代 1 に対象 A を持つ。封筒は分岐の前（世代 0）のものだけ。
+  const ledgerId = addDbGeneration(r.dataDir, randomUUID());
+  // ファイルは同じ系譜・同じ世代数のまま、対象 B を持つ（hash が食い違う）。
+  const built = buildLedgerEntry(
+    {
+      forgotten: [{ source_kind: 'turn', source_id: randomUUID() }],
+      blocked_source_hmacs: [],
+      blocked_content_keys: [],
+    },
+    {
+      entry_id: randomUUID(),
+      previous_generation: '0',
+      recorded_at: new Date(T0).toISOString(),
+    },
+  );
+  assert.ok(built.ok);
+  const entry: LedgerChainEntry = {
+    entry: built.entry,
+    previous_hash: BACKUP_ZERO_HASH,
+    entry_hash: ledgerEntryHash(built.entry, BACKUP_ZERO_HASH),
+  };
+  await writeLedgerFileAtomic(
+    path,
+    buildLedgerFile(
+      {
+        ledger_id: ledgerId,
+        entries: [entry],
+        head: { forgetting_generation: '1', entry_hash: entry.entry_hash },
+      },
+      new Date(T0 + 1000),
+    ),
+  );
+  const before = await readFile(path, 'utf8');
+  const report = await repair(r.dataDir);
+  assert.equal(report.outcome, 'refused', JSON.stringify(report));
+  assert.equal(report.reason, 'ledger_file_diverged');
+  assert.equal(report.aside_kept, false);
+  // ファイルは変更せず、退避もしない（どちらの履歴が正しいか決められない）。
+  assert.equal(await readFile(path, 'utf8'), before);
+  const names = await readdir(r.dataDir);
+  assert.equal(
+    names.some((name) => name.startsWith(`${FORGET_LEDGER_FILE}.repair-`)),
+    false,
+  );
+});
+
+test('台帳の復旧: 契約検査に通らない封筒は、系譜が違っても読み飛ばさず拒否する', async (t) => {
+  const r = await rig(t);
+  const path = join(r.dataDir, FORGET_LEDGER_FILE);
+  // 先に DB と一致するファイルを作る（拒否のときに変更しないことを比べる）。
+  const first = await repair(r.dataDir);
+  assert.equal(first.outcome, 'rebuilt', JSON.stringify(first));
+  const before = await readFile(path, 'utf8');
+  // ledger_id が数値の壊れた封筒（マジック・長さ・JSON としては読める）。
+  await writeFile(
+    join(r.backupDir, 'broken.buddybackup'),
+    encodeBackupFile({ ledger_id: 5 }, Buffer.alloc(16)),
+  );
+  const report = await repair(r.dataDir);
+  assert.equal(report.outcome, 'refused', JSON.stringify(report));
+  assert.equal(report.reason, 'backup_manifest_invalid');
+  assert.equal(report.aside_kept, false);
+  assert.equal(await readFile(path, 'utf8'), before);
 });

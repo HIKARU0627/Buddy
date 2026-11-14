@@ -11,7 +11,11 @@
 import { randomUUID } from 'node:crypto';
 import { lstat, readFile, readdir, rename, rm } from 'node:fs/promises';
 import { join } from 'node:path';
-import { BACKUP_ZERO_HASH, type BackupManifestLike } from '@buddy/domain';
+import {
+  BACKUP_ZERO_HASH,
+  backupManifestProblems,
+  type BackupManifestLike,
+} from '@buddy/domain';
 import {
   buildLedgerFile,
   exportForgetLedger,
@@ -109,7 +113,18 @@ async function checkEnvelopes(
       join(config.config.directory, name),
     );
     if (!header.ok) return { ok: false, reason: 'backup_unreadable' };
-    const manifest = header.manifest as unknown as BackupManifestLike;
+    // 封筒の manifest は、系譜による除外より先に契約・意味検査へ通す（読めない・形が違う封筒は、新しい世代を
+    // 持っていた可能性を排除できないので、系譜が違っても読み飛ばさない）。
+    const raw = header.manifest;
+    if (
+      raw === null ||
+      typeof raw !== 'object' ||
+      Array.isArray(raw) ||
+      !contract.valid('BackupManifest', raw) ||
+      backupManifestProblems(raw as BackupManifestLike).length > 0
+    )
+      return { ok: false, reason: 'backup_manifest_invalid' };
+    const manifest = raw as unknown as BackupManifestLike;
     if (
       exported.ledger_id !== null &&
       manifest.ledger_id !== exported.ledger_id
@@ -246,8 +261,11 @@ async function repair(
       if (
         file.entries[index]?.entry_hash !== exported.entries[index]?.entry_hash
       ) {
-        fileProblem = 'ledger_file_diverged';
-        break;
+        // 同じ系譜で共通の世代の hash が違う＝履歴が分岐している。どちらが正しいか決められず、ファイル側の
+        // 忘却を落とすと取り返しがつかないので、退避も再生成もせず拒否する（restore check の ledger_chain_invalid
+        // と同じ扱い）。古い封筒と一致することは、DB 側の分岐が正しい証拠にならない。
+        log('台帳の別ファイルの履歴が DB と食い違っています（分岐）。');
+        return refuse('ledger_file_diverged');
       }
     if (
       fileProblem === null &&

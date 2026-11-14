@@ -195,6 +195,11 @@ test('the dispatch guard turns every required rejection into a reason', () => {
     dispatchGuardReasons(byId('guard-calendar-recipient-changed').value),
     ['recipient_changed'],
   );
+  // 宛先を持つ種類で、宛先を読めない（null）場合は素通りさせない。
+  assert.deepEqual(
+    dispatchGuardReasons(byId('guard-missing-recipients').value),
+    ['recipient_changed'],
+  );
   // 結果不明は拒否の語彙に入れず、保留として別に扱う。
   assert(!DISPATCH_GUARD_REJECTIONS.includes('unknown_result'));
 });

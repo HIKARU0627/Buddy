@@ -400,6 +400,13 @@ function routingErrors(budget, routing) {
   return [...errors];
 }
 
+// 予定の開始・終了を比べるための、地域時間に依存しない文字列。日付だけなら 00:00:00。
+function localTimeKey(value) {
+  const [date, time = '00:00'] = value.split('T');
+  const second = time.split(':')[2] ?? '00';
+  return `${date}T${time.split(':').slice(0, 2).join(':')}:${second}`;
+}
+
 export function semanticErrors(name, value) {
   const errors = [];
   if (name === 'CreditObservation') {
@@ -981,13 +988,8 @@ export function semanticErrors(name, value) {
     )
       errors.push('recipient_effects_mismatch');
     // 終日の予定も、日時と同じように前後を比べる（終日・日時の混在も含む、ADR 0075）。
-    const eventStart = value.action.start.includes('T')
-      ? value.action.start
-      : `${value.action.start}T00:00`;
-    const eventEnd = value.action.end.includes('T')
-      ? value.action.end
-      : `${value.action.end}T00:00`;
-    if (Date.parse(eventEnd) <= Date.parse(eventStart))
+    // 実行環境の地域時間に依存しないよう、年月日と時分秒の数値で比べる。
+    if (localTimeKey(value.action.end) <= localTimeKey(value.action.start))
       errors.push('event_time_order');
   }
   // 一般化した intent と preview は、action.kind で種類ごとの意味検査へ回す（ADR 0027・0075）。

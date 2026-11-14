@@ -103,7 +103,9 @@ export function dispatchGuardReasons(
     reasons.push('content_changed');
   if (
     hasRecipients(guard.operation_kind) &&
-    !sameRecipients(guard.recipients, guard.expected_recipients)
+    (guard.recipients === null ||
+      guard.expected_recipients === null ||
+      !sameRecipients(guard.recipients, guard.expected_recipients))
   )
     reasons.push('recipient_changed');
   if (!sameTarget(guard.target, guard.expected_target))

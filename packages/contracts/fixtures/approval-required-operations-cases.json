@@ -629,6 +629,36 @@
           "reconcile_scope": "exact_target"
         }
       }
+    },
+    {
+      "id": "guard-missing-recipients",
+      "schema": "DispatchGuard",
+      "valid": true,
+      "expected_reasons": ["recipient_changed"],
+      "value": {
+        "schema": "buddy.dispatch-guard.v1",
+        "operation_id": "00000000-0000-4000-8000-000000000801",
+        "operation_kind": "mail.send",
+        "content_version": "1",
+        "content_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+        "state_revision": "3",
+        "approval": {
+          "content_version": "1",
+          "content_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+          "state_revision": "3",
+          "cancelled": false
+        },
+        "target": {
+          "content_version": "1",
+          "content_hash": "2222222222222222222222222222222222222222222222222222222222222222"
+        },
+        "expected_target": {
+          "content_version": "1",
+          "content_hash": "2222222222222222222222222222222222222222222222222222222222222222"
+        },
+        "recipients": null,
+        "expected_recipients": null
+      }
     }
   ]
 }

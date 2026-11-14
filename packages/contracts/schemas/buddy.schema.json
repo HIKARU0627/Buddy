@@ -209,6 +209,9 @@
       "$ref": "#/$defs/WebResearchStatus"
     },
     {
+      "$ref": "#/$defs/WebResearchAttempts"
+    },
+    {
       "$ref": "#/$defs/SyncBatch"
     },
     {
@@ -4913,6 +4916,207 @@
       ],
       "additionalProperties": false,
       "description": "公開 Web 調査の受付・進捗・完了の応答（B12-02、ADR 0125、設計 10 §5「裏のジョブ」）。completed だけが result を持ち、no_results・held・failed・canceled は stop を持つ。transient_links は応答の時点でメモリにあるときだけ付き、保存する形には含めない。"
+    },
+    "WebSearchFailureCause": {
+      "type": "string",
+      "enum": [
+        "timeout",
+        "http_error",
+        "rate_limited",
+        "unauthorized",
+        "invalid_response",
+        "network_error"
+      ],
+      "description": "検索の呼出しが失敗した原因（B12-02 P2、ADR 0129）。0 件（zero_hits）は失敗ではない。"
+    },
+    "WebSearchDenial": {
+      "type": "string",
+      "enum": ["search_limit", "budget_denied", "query_rejected"],
+      "description": "検索を送らずに断った理由（B12-02 P2、ADR 0128）。search_limit は 1 依頼 3 検索の上限、budget_denied は予算の門（B07）、query_rejected は検索語の検査（ADR 0127）。送っていないので検索の回数には数えない。"
+    },
+    "WebSearchAttempt": {
+      "type": "object",
+      "properties": {
+        "search_index": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3
+        },
+        "query_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "outcome": {
+          "type": "string",
+          "enum": ["hits", "zero_hits", "failed"]
+        },
+        "hit_count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "failure_cause": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WebSearchFailureCause"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "search_index",
+        "query_id",
+        "outcome",
+        "hit_count",
+        "failure_cause"
+      ],
+      "additionalProperties": false,
+      "description": "送った検索 1 回分の記録（B12-02 P2、ADR 0128・0129）。結果（URL・タイトル・スニペット）は持たず、件数だけを残す。hits は 1 件以上、zero_hits は 0 件、failed は原因を持つ。失敗した検索も 1 回に数える。"
+    },
+    "WebPageOutcome": {
+      "type": "string",
+      "enum": [
+        "read",
+        "unreadable_format",
+        "login_required",
+        "empty_text",
+        "blocked_target",
+        "too_large",
+        "timeout",
+        "redirect_limit",
+        "redirect_loop",
+        "http_error",
+        "network_error"
+      ],
+      "description": "ページの取得の結果の種類（B12-02 P2、ADR 0129）。read だけが根拠になる。読めない形式（PDF 等）・会員限定・本文が空は、取得はできても根拠にならないので別に数える。blocked_target は接続の前に拒否した（B12-04）。"
+    },
+    "WebPageAttempt": {
+      "type": "object",
+      "properties": {
+        "page_index": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5
+        },
+        "query_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "outcome": {
+          "$ref": "#/$defs/WebPageOutcome"
+        },
+        "source_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "http_status": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 100,
+              "maximum": 599
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "redirects": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2000000
+        },
+        "elapsed_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 15000
+        }
+      },
+      "required": [
+        "page_index",
+        "query_id",
+        "outcome",
+        "source_id",
+        "http_status",
+        "redirects",
+        "bytes",
+        "elapsed_ms"
+      ],
+      "additionalProperties": false,
+      "description": "取得を試みたページ 1 件の記録（B12-02 P2、ADR 0128・0129）。URL・タイトルは持たない（検索結果に由来するので保存しない。ADR 0126）。取得の試行はすべて 1 ページに数える。source_id は read のときだけ持ち、永続の出典（WebSourceRecord）と対応する。"
+    },
+    "WebResearchSummaryOutcome": {
+      "type": "string",
+      "enum": ["not_attempted", "ok", "budget_denied", "failed"],
+      "description": "要約の結果（B12-02 P2、ADR 0129）。読めたページがあっても、要約が作れなければ完了にしない。"
+    },
+    "WebResearchAttempts": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "const": "buddy.web-research-attempts.v1"
+        },
+        "workflow_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "request_revision": {
+          "$ref": "#/$defs/RequestRevision"
+        },
+        "searches": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/WebSearchAttempt"
+          },
+          "maxItems": 3
+        },
+        "search_denials": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/WebSearchDenial"
+          },
+          "maxItems": 8
+        },
+        "pages": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/WebPageAttempt"
+          },
+          "maxItems": 5
+        },
+        "page_limit_denials": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "summary": {
+          "$ref": "#/$defs/WebResearchSummaryOutcome"
+        }
+      },
+      "required": [
+        "schema",
+        "workflow_id",
+        "request_revision",
+        "searches",
+        "search_denials",
+        "pages",
+        "page_limit_denials",
+        "summary"
+      ],
+      "additionalProperties": false,
+      "description": "1 依頼の検索・取得・要約の試行の記録（B12-02 P2、ADR 0128・0129）。上限（3 検索・5 ページ）の数え方と、完了・0 件・保留・失敗の最終状態の根拠になる。検索結果・URL・本文を持たず、件数と種類だけを残す。"
     },
     "SourceQuote": {
       "type": "object",

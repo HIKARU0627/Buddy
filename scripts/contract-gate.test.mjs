@@ -35,6 +35,7 @@ const FILES = [
   'packages/contracts/fixtures/approval-required-operations-cases.json',
   'packages/contracts/fixtures/web-research-cases.json',
   'packages/contracts/fixtures/web-research-status-cases.json',
+  'packages/contracts/fixtures/web-research-attempts-cases.json',
   'packages/contracts/openapi.yaml',
   'packages/contracts/model-evaluation.json',
   'packages/contracts/src/generated.ts',

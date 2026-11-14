@@ -72,6 +72,7 @@ export type BuddyContract =
   | WebQueryScreening
   | WebSourceRecord
   | WebResearchStatus
+  | WebResearchAttempts
   | SyncBatch
   | SyncScopeState
   | SyncStateResponse
@@ -715,6 +716,41 @@ export type WebResearchStopReason =
   | 'summary_failed'
   | 'user_canceled'
   | 'superseded';
+/**
+ * 検索の呼出しが失敗した原因（B12-02 P2、ADR 0129）。0 件（zero_hits）は失敗ではない。
+ */
+export type WebSearchFailureCause =
+  | 'timeout'
+  | 'http_error'
+  | 'rate_limited'
+  | 'unauthorized'
+  | 'invalid_response'
+  | 'network_error';
+/**
+ * 検索を送らずに断った理由（B12-02 P2、ADR 0128）。search_limit は 1 依頼 3 検索の上限、budget_denied は予算の門（B07）、query_rejected は検索語の検査（ADR 0127）。送っていないので検索の回数には数えない。
+ */
+export type WebSearchDenial =
+  'search_limit' | 'budget_denied' | 'query_rejected';
+/**
+ * ページの取得の結果の種類（B12-02 P2、ADR 0129）。read だけが根拠になる。読めない形式（PDF 等）・会員限定・本文が空は、取得はできても根拠にならないので別に数える。blocked_target は接続の前に拒否した（B12-04）。
+ */
+export type WebPageOutcome =
+  | 'read'
+  | 'unreadable_format'
+  | 'login_required'
+  | 'empty_text'
+  | 'blocked_target'
+  | 'too_large'
+  | 'timeout'
+  | 'redirect_limit'
+  | 'redirect_loop'
+  | 'http_error'
+  | 'network_error';
+/**
+ * 要約の結果（B12-02 P2、ADR 0129）。読めたページがあっても、要約が作れなければ完了にしない。
+ */
+export type WebResearchSummaryOutcome =
+  'not_attempted' | 'ok' | 'budget_denied' | 'failed';
 /**
  * 同期の実行担当の世代（設計 11 §1A）。再起動で新しい担当になると上がり、旧担当の遅着ページ・公開要求を拒否する。
  */
@@ -4318,6 +4354,106 @@ export interface WebTransientLink {
   source_id: Id;
   url: string;
   title: string | null;
+}
+/**
+ * 1 依頼の検索・取得・要約の試行の記録（B12-02 P2、ADR 0128・0129）。上限（3 検索・5 ページ）の数え方と、完了・0 件・保留・失敗の最終状態の根拠になる。検索結果・URL・本文を持たず、件数と種類だけを残す。
+ */
+export interface WebResearchAttempts {
+  schema: 'buddy.web-research-attempts.v1';
+  workflow_id: Id;
+  request_revision: RequestRevision;
+  /**
+   * @maxItems 3
+   */
+  searches:
+    | []
+    | [WebSearchAttempt]
+    | [WebSearchAttempt, WebSearchAttempt]
+    | [WebSearchAttempt, WebSearchAttempt, WebSearchAttempt];
+  /**
+   * @maxItems 8
+   */
+  search_denials:
+    | []
+    | [WebSearchDenial]
+    | [WebSearchDenial, WebSearchDenial]
+    | [WebSearchDenial, WebSearchDenial, WebSearchDenial]
+    | [WebSearchDenial, WebSearchDenial, WebSearchDenial, WebSearchDenial]
+    | [
+        WebSearchDenial,
+        WebSearchDenial,
+        WebSearchDenial,
+        WebSearchDenial,
+        WebSearchDenial,
+      ]
+    | [
+        WebSearchDenial,
+        WebSearchDenial,
+        WebSearchDenial,
+        WebSearchDenial,
+        WebSearchDenial,
+        WebSearchDenial,
+      ]
+    | [
+        WebSearchDenial,
+        WebSearchDenial,
+        WebSearchDenial,
+        WebSearchDenial,
+        WebSearchDenial,
+        WebSearchDenial,
+        WebSearchDenial,
+      ]
+    | [
+        WebSearchDenial,
+        WebSearchDenial,
+        WebSearchDenial,
+        WebSearchDenial,
+        WebSearchDenial,
+        WebSearchDenial,
+        WebSearchDenial,
+        WebSearchDenial,
+      ];
+  /**
+   * @maxItems 5
+   */
+  pages:
+    | []
+    | [WebPageAttempt]
+    | [WebPageAttempt, WebPageAttempt]
+    | [WebPageAttempt, WebPageAttempt, WebPageAttempt]
+    | [WebPageAttempt, WebPageAttempt, WebPageAttempt, WebPageAttempt]
+    | [
+        WebPageAttempt,
+        WebPageAttempt,
+        WebPageAttempt,
+        WebPageAttempt,
+        WebPageAttempt,
+      ];
+  page_limit_denials: number;
+  summary: WebResearchSummaryOutcome;
+}
+/**
+ * 送った検索 1 回分の記録（B12-02 P2、ADR 0128・0129）。結果（URL・タイトル・スニペット）は持たず、件数だけを残す。hits は 1 件以上、zero_hits は 0 件、failed は原因を持つ。失敗した検索も 1 回に数える。
+ */
+export interface WebSearchAttempt {
+  search_index: number;
+  query_id: Id;
+  outcome: 'hits' | 'zero_hits' | 'failed';
+  hit_count: number;
+  failure_cause: WebSearchFailureCause | null;
+}
+/**
+ * 取得を試みたページ 1 件の記録（B12-02 P2、ADR 0128・0129）。URL・タイトルは持たない（検索結果に由来するので保存しない。ADR 0126）。取得の試行はすべて 1 ページに数える。source_id は read のときだけ持ち、永続の出典（WebSourceRecord）と対応する。
+ */
+export interface WebPageAttempt {
+  page_index: number;
+  query_id: Id;
+  outcome: WebPageOutcome;
+  source_id: Id | null;
+  http_status: number | null;
+  redirects: number;
+  bytes: number;
+  elapsed_ms: number;
 }
 /**
  * 同期の 1 回の走査（設計 11 §1・§1A F04、03 データ表）。最初のページ取得から公開または abandoned まで、同じ取得集合で有効な走査は 1 件だけ。開始時の世代・watermark・cursor・担当世代を公開時に照合する。

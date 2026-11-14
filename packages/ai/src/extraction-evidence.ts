@@ -133,9 +133,46 @@ function clockTime(text: string): boolean {
   );
 }
 
+// resolution ごとに全ての欄の組み合わせを見る。使わない欄に値が入った出力（例: 確定した日時に unresolved_reason が付く）は、
+// 矛盾として拒否する（組立てで黙って捨てて確定値にしない）。
+function deadlineShapeConsistent(wire: WireDeadline): boolean {
+  const none = (value: unknown): boolean => value === null;
+  const some = (value: unknown): boolean => value !== null;
+  switch (wire.resolution) {
+    case 'exact_datetime':
+      return (
+        some(wire.local_datetime) &&
+        none(wire.local_date) &&
+        some(wire.original_text) &&
+        none(wire.unresolved_reason)
+      );
+    case 'date_only':
+      return (
+        none(wire.local_datetime) &&
+        some(wire.local_date) &&
+        some(wire.original_text) &&
+        none(wire.unresolved_reason)
+      );
+    case 'relative_unresolved':
+      return (
+        none(wire.local_datetime) &&
+        none(wire.local_date) &&
+        some(wire.original_text) &&
+        some(wire.unresolved_reason)
+      );
+    case 'none':
+      return (
+        none(wire.local_datetime) &&
+        none(wire.local_date) &&
+        none(wire.original_text) &&
+        none(wire.unresolved_reason)
+      );
+  }
+}
+
 function deadlineErrors(wire: WireDeadline, label: string): string[] {
   const reasons: string[] = [];
-  if (toDeadline(wire, 'zone') === null)
+  if (!deadlineShapeConsistent(wire) || toDeadline(wire, 'zone') === null)
     reasons.push(`deadline_inconsistent:${label}`);
   for (const value of [wire.local_datetime, wire.local_date]) {
     if (value !== null && !(calendarDate(value) && clockTime(value)))
@@ -311,22 +348,29 @@ function resolveDeadline(
   const inQuotes = quoteRefs.filter((ref) => ref.quote.includes(original));
   let refs: SourceRef[] = [...inQuotes];
   if (refs.length === 0) {
-    const direct = context.sources.flatMap((source) => {
-      const located = locateQuote(source.text, original);
-      return located.kind === 'found'
+    const located = context.sources.map((source) => ({
+      source,
+      result: locateQuote(source.text, original),
+    }));
+    const found = located.flatMap(({ source, result }) =>
+      result.kind === 'found'
         ? [
             {
               source_id: source.source_id,
               source_revision: source.source_revision,
               quote: original,
-              start: located.start,
-              end: located.end,
+              start: result.start,
+              end: result.end,
             },
           ]
-        : [];
-    });
-    // 複数のソースに同じ原文があり一つに決まらないときは照合できない。
-    if (direct.length === 1) refs = direct;
+        : [],
+    );
+    // 原文が全体で一つに決まるときだけ照合できる。どこかのソースで曖昧（同じソースに複数）なら、
+    // 別のソースで一意に見つかっても照合できないとする（曖昧な期限を一意に見せない）。
+    const anyAmbiguous = located.some(
+      ({ result }) => result.kind === 'ambiguous',
+    );
+    if (found.length === 1 && !anyAmbiguous) refs = found;
   }
   if (refs.length === 0)
     return {

@@ -22,6 +22,8 @@ import {
   SESSION_CONTROL_TABLE,
   assessReadiness,
   checkIntentArgs,
+  REPLY_TEXT_INTENTS,
+  admitReplyText,
   isRealLocalDateTime,
   resolveSessionControl,
 } from '@buddy/domain';
@@ -237,6 +239,13 @@ export type TurnPlan =
       // 上限で切って返さなかった予定の件数（ResultView の more_count）。
       readonly more: number;
     }
+  // 雑談・一般の質問への返答文（B10-04、U217）。実行も承認の対象も作らない。text は admitReplyText を通った平文で、
+  // 応答には載せるが DB には保存しない（turn_responses は平文の列で、モデルの文を平文のまま残さない）。
+  | {
+      readonly kind: 'reply';
+      readonly intent: IntentName;
+      readonly text: string;
+    }
   | {
       readonly kind: 'operation';
       readonly intent: IntentName;
@@ -276,6 +285,9 @@ export type InterpretedTurn =
       // 直前の依頼との関係（5A-4）。モデルの値は信用せず、分からなければ unknown（保留中の変更を再開しない側）。
       readonly relation: HoldRelation;
       readonly target_workflow_id: string | null;
+      // モデルの返答文（smalltalk・general_question のときだけ持つ。信用しない平文で、表示の前に admitReplyText で検査する。
+      // 保存しない）。
+      readonly reply_text?: string | null;
     };
 
 // Live の委譲から保存する発言（B05-05）。共通の workflow（意図表・意味検証・readiness・承認待ちの操作）を通す。
@@ -816,6 +828,20 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
       if (early.full_text)
         return { plan: blocked(early, intent), permissionAtInput: null };
     }
+    // 雑談・一般の質問の返答文（U217）。文字で返す入力（submitted_text）だけ、検査を通った平文を答えにする。声の入力・
+    // 検査に通らない文は、従来の「未対応」の聞き返しのまま（モデルの文を出さない）。実行・承認・読み取りの経路には入らない。
+    if ((REPLY_TEXT_INTENTS as readonly string[]).includes(intent)) {
+      const admitted = admitReplyText({
+        intent,
+        input_kind: evidence === 'submitted_text' ? 'text' : 'voice_live',
+        reply_text: result.reply_text ?? null,
+      });
+      if (admitted.decision === 'show')
+        return {
+          plan: { kind: 'reply', intent, text: admitted.text },
+          permissionAtInput: null,
+        };
+    }
     if (!PROVIDER_INTENTS.includes(intent))
       return {
         plan:
@@ -986,13 +1012,19 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
       args,
       relation,
       target_workflow_id: target,
+      // 返答文は表示の対象の意図だけ持つ（他の意図の値は捨てる）。
+      reply_text:
+        (REPLY_TEXT_INTENTS as readonly string[]).includes(intent) &&
+        typeof reply.reply_text === 'string'
+          ? reply.reply_text
+          : null,
     };
   };
 
   const workflowState = (plan: TurnPlan): WorkflowState | null => {
     // 会話の操作は依頼ではない（workflow を作らない）。
     if (plan.kind === 'session_control') return null;
-    if (plan.kind === 'read') return 'done';
+    if (plan.kind === 'read' || plan.kind === 'reply') return 'done';
     if (plan.kind === 'operation') return 'ready';
     return plan.intent === null ? null : 'clarifying';
   };
@@ -1160,25 +1192,31 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
                 : view(plan.intent, 'clarification', 'confirming_input', []),
               CLARIFY[plan.reason],
             )
-          : plan.kind === 'read'
+          : plan.kind === 'reply'
             ? responseOf(
                 'answered',
-                view(
-                  plan.intent,
-                  'schedule_cards',
-                  plan.overlaps ? 'needs_review' : 'ready',
-                  plan.items,
-                  plan.more,
-                ),
-                null,
+                view(plan.intent, 'speech_bubble', 'ready', []),
+                plan.text,
               )
-            : responseOf(
-                'answered',
-                view(plan.intent, 'approval_link', 'needs_review', [
-                  { kind: 'operation', id: plan.operation_id },
-                ]),
-                null,
-              );
+            : plan.kind === 'read'
+              ? responseOf(
+                  'answered',
+                  view(
+                    plan.intent,
+                    'schedule_cards',
+                    plan.overlaps ? 'needs_review' : 'ready',
+                    plan.items,
+                    plan.more,
+                  ),
+                  null,
+                )
+              : responseOf(
+                  'answered',
+                  view(plan.intent, 'approval_link', 'needs_review', [
+                    { kind: 'operation', id: plan.operation_id },
+                  ]),
+                  null,
+                );
     // 送出の直前の再検査（新しい発話の開始による保留）。保存の直前に同期で確かめる（この後に await があるのは DB への
     // 送信だけで、保留は保存の命令を送る前に決める）。
     if (args.precommit !== undefined && !args.precommit())
@@ -1206,7 +1244,12 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
       request: ref,
       ...(args.input === undefined ? {} : { input: args.input }),
       operation,
-      response_json: JSON.stringify(responseBody),
+      // 返答文はモデルの文なので、平文の列には残さない（再送の応答は返答文なしの同じ結果になる）。
+      response_json: JSON.stringify(
+        plan.kind === 'reply'
+          ? { ...responseBody, reply_text: null }
+          : responseBody,
+      ),
     });
     if (!recorded.ok) {
       const response = conversationError(recorded, requestId);

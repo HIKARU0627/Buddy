@@ -203,6 +203,7 @@ async function withConversation(
       policy: options.policy ?? TEST_TURN_POLICY,
       previews: new PreviewRegistry(),
       storage: {
+        mode: 'normal',
         origin: () => ({ segment_id: SESSION, segment_generation: '1' }),
       },
       utcOffset: '+09:00',

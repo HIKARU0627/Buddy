@@ -69,6 +69,9 @@ export type BuddyContract =
   | WebResearchSource
   | WebResearchLimits
   | WebUsagePolicy
+  | WebQueryScreening
+  | WebSourceRecord
+  | WebResearchStatus
   | SyncBatch
   | SyncScopeState
   | SyncStateResponse
@@ -675,6 +678,43 @@ export type Deadline =
  * 抽出した依頼（request_entity）の版（設計 11 §5A）。本人の依頼の版 RequestRevision と同じ object に並べない。
  */
 export type RequestEntityRevision = string;
+/**
+ * 検索語の機械検査が拒否した理由（B12-02、ADR 0127）。検査は下限で、氏名・予定の詳細などの私的情報を見分けられない。見分けられない分は、検索語の入力元を本人の質問に限る前提で守る。
+ */
+export type WebQueryRejectReason =
+  | 'empty'
+  | 'too_long'
+  | 'too_many_words'
+  | 'line_break'
+  | 'email_address'
+  | 'phone_number'
+  | 'secret_like_token'
+  | 'contains_url';
+/**
+ * 公開 Web 調査の状態（B12-02、ADR 0125）。completed だけが結果と出典を持ち、完了と表示できる。no_results・failed・canceled は終端、held は本人の操作や予算の回復を待つ保留。
+ */
+export type WebResearchState =
+  | 'accepted'
+  | 'searching'
+  | 'reading'
+  | 'summarizing'
+  | 'completed'
+  | 'no_results'
+  | 'held'
+  | 'failed'
+  | 'canceled';
+/**
+ * 完了にならなかった理由（B12-02、ADR 0125）。検索の失敗と 0 件は区別し、読めたページが無いときは完了にしない。低い層の原因（取得の失敗の種類）は B12-02 の PR2 で足す。
+ */
+export type WebResearchStopReason =
+  | 'zero_hits'
+  | 'budget_held'
+  | 'query_rejected'
+  | 'search_failed'
+  | 'no_readable_page'
+  | 'summary_failed'
+  | 'user_canceled'
+  | 'superseded';
 /**
  * 同期の実行担当の世代（設計 11 §1A）。再起動で新しい担当になると上がり、旧担当の遅着ページ・公開要求を拒否する。
  */
@@ -4167,6 +4207,117 @@ export interface WebUsagePolicy {
   retention: 'transient_only';
   model_use: 'grounding_only';
   url_storage: 'undecided' | 'allowed' | 'disallowed';
+}
+/**
+ * 検索語を検査した記録（B12-02、ADR 0127、設計 05「検索語は本人の質問から必要な一般語を作り、メール全文、API キー、個人の詳細予定を含めません」）。passed のときだけ検索の要求を受け付け、rejected のときは拒否した検索語を保存しない（screened_query は null）。
+ */
+export interface WebQueryScreening {
+  schema: 'buddy.web-query-screening.v1';
+  query_id: Id;
+  screened_query: string | null;
+  /**
+   * 検索語の元にした入力。本人の質問だけで、メール・予定・記憶・取得済みページの本文を元にしない。
+   *
+   * @minItems 1
+   * @maxItems 1
+   */
+  input_sources: ['user_question'];
+  rules_version: 1;
+  outcome: 'passed' | 'rejected';
+  rejected_reasons: WebQueryRejectReason[];
+  screened_at: UtcTime;
+}
+/**
+ * 永続保存してよい出典（B12-02、ADR 0126）。自分で取得した本文（page_read）から作った短い抜粋・要約と取得時刻・本文の hash だけを持つ。検索結果のタイトル・スニペット・要約は持たず、page_title は自分で取得したページの title。url は WebUsagePolicy.url_storage が allowed のときだけ非 null にできる（U183・U290）。
+ */
+export interface WebSourceRecord {
+  schema: 'buddy.web-source-record.v1';
+  source_id: Id;
+  query_id: Id;
+  basis: 'page_read';
+  fetched_at: UtcTime;
+  page_title: string | null;
+  excerpt: string | null;
+  summary: string | null;
+  content_hash: Hash;
+  url: string | null;
+}
+/**
+ * 公開 Web 調査の受付・進捗・完了の応答（B12-02、ADR 0125、設計 10 §5「裏のジョブ」）。completed だけが result を持ち、no_results・held・failed・canceled は stop を持つ。transient_links は応答の時点でメモリにあるときだけ付き、保存する形には含めない。
+ */
+export interface WebResearchStatus {
+  schema: 'buddy.web-research-status.v1';
+  workflow_id: Id;
+  request_revision: RequestRevision;
+  state_revision: StateRevision;
+  state: WebResearchState;
+  accepted_at: UtcTime;
+  updated_at: UtcTime;
+  finished_at: UtcTime | null;
+  result: WebResearchResult | null;
+  stop: WebResearchStop | null;
+  transient_links: WebTransientLinks | null;
+}
+/**
+ * 完了した調査の結果（B12-02、ADR 0125）。出典は 1 件以上で、すべて自分で取得した本文（page_read）。読めなかったページの数と、上限や予算で範囲を減らしたかを必ず示す。
+ */
+export interface WebResearchResult {
+  summary: string;
+  /**
+   * @minItems 1
+   * @maxItems 5
+   */
+  sources:
+    | [WebSourceRecord]
+    | [WebSourceRecord, WebSourceRecord]
+    | [WebSourceRecord, WebSourceRecord, WebSourceRecord]
+    | [WebSourceRecord, WebSourceRecord, WebSourceRecord, WebSourceRecord]
+    | [
+        WebSourceRecord,
+        WebSourceRecord,
+        WebSourceRecord,
+        WebSourceRecord,
+        WebSourceRecord,
+      ];
+  unread_count: number;
+  scope_reduced: boolean;
+}
+/**
+ * 完了にならなかった状態の種類と理由（B12-02、ADR 0125）。kind は状態と同じ名前で、kind と reason の組み合わせは domain が検査する。
+ */
+export interface WebResearchStop {
+  kind: 'no_results' | 'held' | 'failed' | 'canceled';
+  reason: WebResearchStopReason;
+}
+/**
+ * 出典のリンクの一時表示（B12-02、ADR 0126）。中枢のメモリの中だけに置き、データベース・イベントの記録・ファイル・キャッシュに書かない。再起動や表示の後は無くなってよい。
+ */
+export interface WebTransientLinks {
+  retention: 'transient_only';
+  /**
+   * @maxItems 5
+   */
+  items:
+    | []
+    | [WebTransientLink]
+    | [WebTransientLink, WebTransientLink]
+    | [WebTransientLink, WebTransientLink, WebTransientLink]
+    | [WebTransientLink, WebTransientLink, WebTransientLink, WebTransientLink]
+    | [
+        WebTransientLink,
+        WebTransientLink,
+        WebTransientLink,
+        WebTransientLink,
+        WebTransientLink,
+      ];
+}
+/**
+ * その場で表示する出典のリンク（B12-02、ADR 0126）。検索結果に由来するので保存しない。
+ */
+export interface WebTransientLink {
+  source_id: Id;
+  url: string;
+  title: string | null;
 }
 /**
  * 同期の 1 回の走査（設計 11 §1・§1A F04、03 データ表）。最初のページ取得から公開または abandoned まで、同じ取得集合で有効な走査は 1 件だけ。開始時の世代・watermark・cursor・担当世代を公開時に照合する。

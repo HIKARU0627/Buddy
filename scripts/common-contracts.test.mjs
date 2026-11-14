@@ -84,6 +84,8 @@ const OPAQUE_VERSION_FIELDS = new Set([
   // バックアップを取った時点の DB のマイグレーションの版（正の整数。ADR 0040）。復元ではコードの最新より新しければ拒否する
   // だけで、版どうしの大小を契約では比べない。
   'db_schema_version',
+  // 検索語の機械検査の規則の版（定数 1。B12-02、ADR 0127）。受け付けるときは一致だけを見て、版どうしの大小は比べない。
+  'rules_version',
 ]);
 // 抽出した依頼の版を使う定義。RequestEntity 等を追加した時点で登録する（U04）。
 const REQUEST_ENTITY_DEFS = new Set([

@@ -1039,6 +1039,48 @@ export function semanticErrors(name, value) {
       if (value.summary !== null) errors.push('summary_source_summary_stored');
     }
   }
+  // 公開 Web 調査の検索語の検査・永続の出典・状態（B12-02 P1、ADR 0125〜0127）。
+  // URL の保存の可否は WebUsagePolicy.url_storage との組み合わせなので、domain の試験が確かめる。
+  if (name === 'WebQueryScreening') {
+    if (value.outcome === 'passed') {
+      if (value.rejected_reasons.length > 0) errors.push('passed_with_reasons');
+      if (value.screened_query === null) errors.push('passed_without_query');
+    } else {
+      if (value.rejected_reasons.length === 0)
+        errors.push('rejected_without_reasons');
+      if (value.screened_query !== null) errors.push('rejected_query_stored');
+    }
+  }
+  if (
+    name === 'WebSourceRecord' &&
+    (value.excerpt ?? '').trim() === '' &&
+    (value.summary ?? '').trim() === ''
+  )
+    errors.push('missing_page_evidence');
+  if (name === 'WebResearchStatus') {
+    const terminal = ['completed', 'no_results', 'failed', 'canceled'];
+    const stopped = [...terminal.filter((s) => s !== 'completed'), 'held'];
+    if (value.state === 'completed') {
+      if (value.result === null) errors.push('completed_without_result');
+      if (value.stop !== null) errors.push('completed_with_stop');
+      if (value.result !== null && value.result.sources.length === 0)
+        errors.push('completed_without_source');
+    } else {
+      if (value.result !== null) errors.push('result_without_completion');
+      if (value.transient_links !== null)
+        errors.push('transient_links_without_completion');
+      if (stopped.includes(value.state)) {
+        if (value.stop === null) errors.push('stop_missing');
+        else if (value.stop.kind !== value.state)
+          errors.push('stop_kind_mismatch');
+      } else if (value.stop !== null) errors.push('stop_in_progress');
+    }
+    const finishes = terminal.includes(value.state);
+    if (finishes && value.finished_at === null)
+      errors.push('finished_at_missing');
+    if (!finishes && value.finished_at !== null)
+      errors.push('finished_at_unexpected');
+  }
   // 宛先と CC に同じ相手を重ねない（ADR 0027）。
   if (
     name === 'DraftReplyOperationIntent' &&

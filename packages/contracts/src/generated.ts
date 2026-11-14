@@ -59,6 +59,8 @@ export type BuddyContract =
   | RequestEntity
   | RelatedAnalysis
   | CandidateSnapshot
+  | CandidateListResponse
+  | CandidateEvidence
   | SyncBatch
   | SyncScopeState
   | SyncStateResponse
@@ -3751,6 +3753,39 @@ export interface CandidateSnapshot {
     published_generation: PublishedGeneration;
   } | null;
   operation_ids: Id[];
+}
+/**
+ * 気づきの一覧（設計 11 §4、ADR 0073）。表示順は domain が決める。本文・添付の内容は含めない。
+ */
+export interface CandidateListResponse {
+  candidates: CandidateSnapshot[];
+  counts: CandidateStateCounts;
+  next_cursor: EventCursor | null;
+}
+/**
+ * 気づきの状態ごとの件数（設計 11 §4、ADR 0073）。一覧の見出しと端末のバッジに使う。
+ */
+export interface CandidateStateCounts {
+  new: number;
+  seen: number;
+  acted: number;
+  dismissed: number;
+  snoozed: number;
+  resolved: number;
+}
+/**
+ * 気づきの根拠（設計 11 §4、ADR 0073）。許可範囲から取り直した根拠の版と引用だけを返し、本文を無期限に複製しない。
+ */
+export interface CandidateEvidence {
+  candidate_id: Id;
+  request_entity_id: Id | null;
+  request_revision: RequestEntityRevision | null;
+  source: SourceRef;
+  unread: boolean;
+  /**
+   * 表示用の抄録（200 文字以内）。本文全体ではない。
+   */
+  excerpt: string | null;
 }
 /**
  * 同期の 1 回の走査（設計 11 §1・§1A F04、03 データ表）。最初のページ取得から公開または abandoned まで、同じ取得集合で有効な走査は 1 件だけ。開始時の世代・watermark・cursor・担当世代を公開時に照合する。

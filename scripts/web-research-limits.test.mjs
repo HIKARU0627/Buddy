@@ -99,39 +99,65 @@ test('B12-02 P2: the search and page limits refuse the request after the limit',
     );
   for (const entry of cases.domain_cases.admission.page)
     assert.deepEqual(
-      webPageAdmissionLimitErrors({
-        searches: [
-          {
-            search_index: 1,
+      webPageAdmissionLimitErrors(
+        {
+          searches: [
+            {
+              search_index: 1,
+              query_id: 'q',
+              outcome: 'hits',
+              hit_count: entry.hits,
+              failure_cause: null,
+            },
+          ],
+          pages: Array.from({ length: entry.pages }, () => ({
             query_id: 'q',
-            outcome: 'hits',
-            hit_count: entry.hits,
-            failure_cause: null,
-          },
-        ],
-        pages: Array.from({ length: entry.pages }, (_, index) => ({
-          page_index: index + 1,
-        })),
-      }),
+          })),
+        },
+        'q',
+      ),
       entry.expected,
       `${entry.pages} pages of ${entry.hits} hits`,
     );
   // 失敗した検索の件数・0 件の検索は、取得できる件数に入らない。
   assert.deepEqual(
-    webPageAdmissionLimitErrors({
-      searches: [
-        {
-          search_index: 1,
-          query_id: 'q',
-          outcome: 'failed',
-          hit_count: 0,
-          failure_cause: 'timeout',
-        },
-      ],
-      pages: [],
-    }),
+    webPageAdmissionLimitErrors(
+      {
+        searches: [
+          {
+            search_index: 1,
+            query_id: 'q',
+            outcome: 'failed',
+            hit_count: 0,
+            failure_cause: 'timeout',
+          },
+        ],
+        pages: [],
+      },
+      'q',
+    ),
     ['no_more_hits'],
   );
+  // 検索ごとの件数で数える。検索 A が 1 件・検索 B が 4 件のとき、A の 2 件目は取らず、B は取れる
+  // （B の未使用の件数を A のページに使わない）。見つかっていない検索の取得は受け付けない。
+  const hits = (index, queryId, count) => ({
+    search_index: index,
+    query_id: queryId,
+    outcome: 'hits',
+    hit_count: count,
+    failure_cause: null,
+  });
+  const twoSearches = {
+    searches: [hits(1, 'a', 1), hits(2, 'b', 4)],
+    pages: [{ query_id: 'a' }],
+  };
+  assert.deepEqual(webPageAdmissionLimitErrors(twoSearches, 'a'), [
+    'no_more_hits',
+  ]);
+  assert.deepEqual(webPageAdmissionLimitErrors(twoSearches, 'b'), []);
+  assert.deepEqual(webPageAdmissionLimitErrors(twoSearches, 'c'), [
+    'no_more_hits',
+  ]);
 });
 
 test('B12-02 P2: attempts are counted whether they failed, were rejected or were read', () => {

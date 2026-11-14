@@ -70,15 +70,23 @@ export function webSearchAdmissionLimitErrors(
     : [];
 }
 
-// 次のページを取得してよいか。5 ページ試みたら、6 ページ目は拒否する。検索で見つかった件数より多くは取らない。
+// 次のページ（検索 queryId の結果の 1 件）を取得してよいか。5 ページ試みたら、6 ページ目は拒否する。
+// その検索で見つかった件数より多くは取らない（別の検索の未使用の件数を使わない）。
 export function webPageAdmissionLimitErrors(
-  attempts: Pick<WebResearchAttemptsLike, 'searches' | 'pages'>,
+  attempts: {
+    readonly searches: readonly WebSearchAttemptLike[];
+    readonly pages: readonly Pick<WebPageAttemptLike, 'query_id'>[];
+  },
+  queryId: string,
 ): string[] {
   const errors: string[] = [];
   if (attempts.pages.length >= WEB_RESEARCH_MAX_PAGES)
     errors.push('page_limit');
-  if (attempts.pages.length >= hitTotal(attempts.searches))
-    errors.push('no_more_hits');
+  const available = hitTotal(
+    attempts.searches.filter((search) => search.query_id === queryId),
+  );
+  const tried = attempts.pages.filter((page) => page.query_id === queryId);
+  if (tried.length >= available) errors.push('no_more_hits');
   return errors;
 }
 

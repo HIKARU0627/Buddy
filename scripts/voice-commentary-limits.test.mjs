@@ -90,7 +90,7 @@ test('commentary: no sentence other than the confirmed completion says that some
   ]);
 });
 
-test('commentary: the rest of a schedule list says "put on the screen" only when it was placed', () => {
+test('commentary: the rest of a schedule list is only counted, and never said to be on the screen (the screen holds the first 50 and the count only)', () => {
   const base = {
     kind: 'schedule_cards',
     event_count: 3,
@@ -102,19 +102,10 @@ test('commentary: the rest of a schedule list says "put on the screen" only when
     '予定は3件です。',
     'ほかに4件あります。',
   ]);
-  assert.deepEqual(
-    parts(resultCommentary({ ...base, more_on_screen: false })),
-    ['予定は3件です。', 'ほかに4件あります。'],
-  );
-  assert.deepEqual(parts(resultCommentary({ ...base, more_on_screen: true })), [
+  // 残りがなければ、件数の文は付かない。
+  assert.deepEqual(parts(resultCommentary({ ...base, more_count: 0 })), [
     '予定は3件です。',
-    'ほかに4件。画面に出しました。',
   ]);
-  // 残りがなければ、置いたかどうかに関係なく画面の案内は付かない。
-  assert.deepEqual(
-    parts(resultCommentary({ ...base, more_count: 0, more_on_screen: true })),
-    ['予定は3件です。'],
-  );
 });
 
 test('commentary: the limits are 3 parts and 200 characters, and what is over is not cut but sent to the screen', () => {
@@ -156,20 +147,20 @@ test('commentary: the limits are 3 parts and 200 characters, and what is over is
 });
 
 test('commentary: the overflow notice is added without ever exceeding 3 parts', () => {
-  assert.deepEqual(withOverflowNotice([]), ['ほかは画面に出しました。']);
+  assert.deepEqual(withOverflowNotice([]), ['ほかは画面で確認してください。']);
   assert.deepEqual(withOverflowNotice(['あ']), [
     'あ',
-    'ほかは画面に出しました。',
+    'ほかは画面で確認してください。',
   ]);
   assert.deepEqual(withOverflowNotice(['あ', 'い']), [
     'あ',
     'い',
-    'ほかは画面に出しました。',
+    'ほかは画面で確認してください。',
   ]);
   // 満杯のときは、最後の部分を案内に置き換える（3 部を超えない）。
   assert.deepEqual(withOverflowNotice(['あ', 'い', 'う']), [
     'あ',
     'い',
-    'ほかは画面に出しました。',
+    'ほかは画面で確認してください。',
   ]);
 });

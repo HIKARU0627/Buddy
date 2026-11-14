@@ -65,7 +65,7 @@ const SCREEN = '画面で確認してください。';
 const BRIDGE = '確認しますね。';
 const BACKGROUND = '少し時間がかかるので、できたら知らせます。';
 const ACCEPTED = '受け付けました。終わったら知らせます。';
-const OVERFLOW = 'ほかは画面に出しました。';
+const OVERFLOW = 'ほかは画面で確認してください。';
 
 export interface ResultCommentaryInput {
   readonly kind: ResultViewKind;
@@ -74,8 +74,6 @@ export interface ResultCommentaryInput {
   readonly more_count: number;
   // 聞き返しの文（Core の決まった文。モデルの文ではない）。それ以外の種類では使わない。
   readonly clarification_text: string | null;
-  // 残りの件数を画面にも置いたか（置いたときだけ「画面に出しました」と言う。置いていないものを出したと言わない）。省略は置いていない。
-  readonly more_on_screen?: boolean;
 }
 
 const count = (value: number): number =>
@@ -98,12 +96,7 @@ export function resultCommentary(input: ResultCommentaryInput): Commentary {
       const parts = [`予定は${events}件です。`];
       if (input.overlap) parts.push('時間が重なっている予定があります。');
       // 声で返すときは、画面へ置いていない（画面への配信は U120）。置いていないものを「画面に出した」と言わず、件数だけ伝える。
-      if (more > 0)
-        parts.push(
-          input.more_on_screen === true
-            ? `ほかに${more}件。画面に出しました。`
-            : `ほかに${more}件あります。`,
-        );
+      if (more > 0) parts.push(`ほかに${more}件あります。`);
       return {
         template_id: 'schedule.count',
         template_version: COMMENTARY_TEMPLATE_VERSION,
@@ -236,8 +229,8 @@ export function completionCommentary(input: {
 export interface FittedCommentary {
   // 1 回の追記に入れる部分（3 つ以内・各 200 文字以内・空でない）。超えた分を除いたもの（案内の文は含まない）。
   readonly parts: readonly string[];
-  // 超えた分（3 つを超える部分・200 文字を超える部分）があった。あれば呼び出し側が画面へ出し、出せたときだけ
-  // withOverflowNotice で案内の文を足す。
+  // 超えた分（3 つを超える部分・200 文字を超える部分）があった。あれば呼び出し側が結果を画面へも置き、
+  // withOverflowNotice で「画面で確認してください」の案内を足す（画面に出したとは言わない）。
   readonly overflow: boolean;
 }
 
@@ -254,7 +247,9 @@ export function fitCommentary(commentary: Commentary): FittedCommentary {
   return { parts, overflow };
 }
 
-// 超えた分を画面に出せたときだけ、案内の文を末尾に足す。3 部を超えないよう、満杯なら最後の部分を案内に置き換える。
+// 超えた分の案内（画面で確認してください）を末尾に足す。案内は確認を頼む文で、画面に出したという事実は告げない
+// （画面が持つのは結果の種類ごとの表示で、声に載せなかった文がそのまま載るとは限らない）。3 部を超えないよう、満杯なら
+// 最後の部分を案内に置き換える。
 export function withOverflowNotice(parts: readonly string[]): string[] {
   const kept = [...parts];
   if (kept.length >= COMMENTARY_MAX_PARTS)

@@ -17,11 +17,14 @@ import test from 'node:test';
 import { BACKUP_ZERO_HASH, buildLedgerEntry } from '@buddy/domain';
 import { createMockBackupKeyStore, createMockKeyStore } from '@buddy/platform';
 import {
+  applyMigrations,
   buildLedgerFile,
   encodeBackupFile,
   ledgerEntryHash,
+  ledgerFileText,
   openWriteConnection,
   parseLedgerFile,
+  readBackupFileHeader,
   readLedgerId,
   storagePlatform,
   writeLedgerFileAtomic,
@@ -314,4 +317,109 @@ test('台帳の復旧: 契約検査に通らない封筒は、系譜が違って
   assert.equal(report.reason, 'backup_manifest_invalid');
   assert.equal(report.aside_kept, false);
   assert.equal(await readFile(path, 'utf8'), before);
+});
+
+test('台帳の復旧: 系譜のない DB でも封筒が新しい世代なら拒否する', async (t) => {
+  const r = await rig(t);
+  // 系譜のない DB（まだ忘れていない・忘却の前へ戻された）のデータディレクトリ。
+  const dir = await mkdtemp(join(tmpdir(), 'buddy-restore-repair-empty-'));
+  onCleanup(t, () =>
+    rm(dir, { recursive: true, force: true, maxRetries: 5 }).catch(
+      () => undefined,
+    ),
+  );
+  const fresh = openWriteConnection(join(dir, DB_FILE), {
+    platform: storagePlatform(process.platform),
+  });
+  try {
+    applyMigrations(fresh);
+  } finally {
+    fresh.close();
+  }
+  // 新しい世代の封筒を別の置き場所に作り、そこを設定にする。
+  const envelopeDir = join(dir, 'backups');
+  await mkdir(envelopeDir, { recursive: true });
+  const original = (await readdir(r.backupDir)).find((name) =>
+    name.endsWith('.buddybackup'),
+  );
+  assert.ok(original !== undefined);
+  const header = await readBackupFileHeader(join(r.backupDir, original));
+  assert.ok(header.ok);
+  await writeFile(
+    join(envelopeDir, 'ahead.buddybackup'),
+    encodeBackupFile(
+      {
+        ...(header.manifest as Record<string, unknown>),
+        forgetting_generation: '1',
+        ledger_head_hash: 'ab'.repeat(32),
+      },
+      Buffer.alloc(16),
+    ),
+  );
+  await writeFile(
+    join(dir, BACKUP_CONFIG_FILE),
+    JSON.stringify({
+      schema: 'buddy.backup-config.v1',
+      directory: envelopeDir,
+      keep_generations: 7,
+    }),
+    { mode: 0o600 },
+  );
+  const report = await repair(dir);
+  assert.equal(report.outcome, 'refused', JSON.stringify(report));
+  assert.equal(report.reason, 'backup_newer_than_ledger');
+  // 台帳のファイルは作らない（知らない新しい忘却を安全と報告しない）。
+  assert.equal((await readdir(dir)).includes(FORGET_LEDGER_FILE), false);
+});
+
+test('台帳の復旧: 書きかけの一時ファイルが DB より進んでいるときは本体を退避せず拒否する', async (t) => {
+  const r = await rig(t);
+  const path = join(r.dataDir, FORGET_LEDGER_FILE);
+  const first = await repair(r.dataDir);
+  assert.equal(first.outcome, 'rebuilt', JSON.stringify(first));
+  const current = parseLedgerFile(await readFile(path, 'utf8'));
+  assert.ok(current !== null);
+  // 一時ファイルだけが世代 1 を持つ（本体は壊れている）。
+  const built = buildLedgerEntry(
+    {
+      forgotten: [{ source_kind: 'turn', source_id: randomUUID() }],
+      blocked_source_hmacs: [],
+      blocked_content_keys: [],
+    },
+    {
+      entry_id: randomUUID(),
+      previous_generation: '0',
+      recorded_at: new Date(T0).toISOString(),
+    },
+  );
+  assert.ok(built.ok);
+  const entry: LedgerChainEntry = {
+    entry: built.entry,
+    previous_hash: BACKUP_ZERO_HASH,
+    entry_hash: ledgerEntryHash(built.entry, BACKUP_ZERO_HASH),
+  };
+  await writeFile(
+    join(r.dataDir, `.forget-ledger-${randomUUID()}.tmp`),
+    ledgerFileText(
+      buildLedgerFile(
+        {
+          ledger_id: current.ledger_id,
+          entries: [entry],
+          head: { forgetting_generation: '1', entry_hash: entry.entry_hash },
+        },
+        new Date(T0 + 1000),
+      ),
+    ),
+  );
+  await writeFile(path, '{broken');
+  const report = await repair(r.dataDir);
+  assert.equal(report.outcome, 'refused', JSON.stringify(report));
+  assert.equal(report.reason, 'ledger_file_ahead');
+  // 本体は壊れたまま、退避も作らない（Core の起動時の同期も拒否し続けるため）。
+  assert.equal(await readFile(path, 'utf8'), '{broken');
+  const names = await readdir(r.dataDir);
+  assert.equal(
+    names.some((name) => name.startsWith(`${FORGET_LEDGER_FILE}.repair-`)),
+    false,
+  );
 });

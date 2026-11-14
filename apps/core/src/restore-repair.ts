@@ -19,6 +19,7 @@ import {
 import {
   buildLedgerFile,
   exportForgetLedger,
+  ledgerTempsRefusal,
   openWriteConnection,
   parseLedgerFile,
   readBackupFileHeader,
@@ -211,11 +212,22 @@ async function repair(
   const db = await readDbLedger(options.dataDir);
   if (!db.ok) return refuse(db.reason);
   const exported = db.value;
+  // 封筒と書きかけの一時ファイルは、DB の系譜の有無にかかわらず先に確かめる（知らない新しい忘却を見落とさない。
+  // 系譜のない DB は、初回だけでなく忘却の前へ戻された DB でも起こる）。
+  const envelopes = await checkEnvelopes(
+    options.dataDir,
+    options.contract,
+    exported,
+  );
+  if (!envelopes.ok) return refuse(envelopes.reason);
+  const path = join(options.dataDir, FORGET_LEDGER_FILE);
+  const temps = await ledgerTempsRefusal(path, exported);
+  if (temps !== null) return refuse(temps);
   if (exported.ledger_id === null) {
     // 台帳に系譜がない（まだ 1 件も忘れていない）。ファイルに項目があれば DB が古い疑い。
     let text: string | null = null;
     try {
-      text = await readFile(join(options.dataDir, FORGET_LEDGER_FILE), 'utf8');
+      text = await readFile(path, 'utf8');
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT')
         return refuse('ledger_file_unreadable');
@@ -233,14 +245,6 @@ async function repair(
       aside_kept: false,
     };
   }
-  const envelopes = await checkEnvelopes(
-    options.dataDir,
-    options.contract,
-    exported,
-  );
-  if (!envelopes.ok) return refuse(envelopes.reason);
-
-  const path = join(options.dataDir, FORGET_LEDGER_FILE);
   let text: string | null = null;
   let fileProblem: string | null = null;
   try {

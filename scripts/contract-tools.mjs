@@ -1031,6 +1031,9 @@ export function semanticErrors(name, value) {
     if (value.graph_account?.rejection_reason && value.status === 'active')
       errors.push('rejection_with_active');
   }
+  // 気づきの根拠は SourceRef の意味検査（引用の範囲）をそのまま使う（B11-01、ADR 0073）。
+  if (name === 'CandidateEvidence')
+    errors.push(...semanticErrors('SourceRef', value.source));
   // 無音の延長の値は、その種類のイベントだけが持つ（B05-05、ADR 0052）。
   if (name === 'VoiceEvent') {
     if (

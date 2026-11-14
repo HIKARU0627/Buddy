@@ -62,11 +62,12 @@ jobs:
         if: matrix.shard == 1
         run: pnpm run security:staged
       - name: Test (shard ${{ matrix.shard }}/${{ strategy.job-total }})
-        # 通常の PR の CI でも、macOS の既存 shard 2（B07）・shard 3（B04）だけで模擬証拠を作る。
+        # 通常の PR の CI でも、macOS の既存 shard 2（B07）・shard 3（B04）・shard 4（B05）だけで模擬証拠を作る。
         # POSIX のファイル権限の観測を含むため macOS だけで生成し、他の OS では空にして保存しない。
         # 生成物は artifact にだけ残し、commit しない。strict な照合は evidence:check（必須チェックとは別）。
         env:
           BUDDY_B04_EVIDENCE_PATH: "${{ runner.os == 'macOS' && format('{0}/evidence-b04-simulated.json', runner.temp) || '' }}"
+          BUDDY_B05_EVIDENCE_PATH: "${{ runner.os == 'macOS' && format('{0}/evidence-b05-simulated.json', runner.temp) || '' }}"
           BUDDY_B07_EVIDENCE_PATH: "${{ runner.os == 'macOS' && format('{0}/evidence-b07-simulated.json', runner.temp) || '' }}"
         run: node scripts/run-tests.mjs --shard ${{ matrix.shard }}/${{ strategy.job-total }}
       # 生成器は全反復が時間内に成功したときだけ書く（tests/integration/evidence-run.mjs）。
@@ -77,6 +78,9 @@ jobs:
       - name: Format B07 evidence
         if: runner.os == 'macOS' && matrix.shard == 2
         run: pnpm exec prettier --write "${{ runner.temp }}/evidence-b07-simulated.json"
+      - name: Format B05 evidence
+        if: runner.os == 'macOS' && matrix.shard == 4
+        run: pnpm exec prettier --write "${{ runner.temp }}/evidence-b05-simulated.json"
       # ここでは artifact に残す前に、記録の形と実行した commit を確かめる。
       - name: Check generated B04 evidence
         if: runner.os == 'macOS' && matrix.shard == 3
@@ -110,6 +114,22 @@ jobs:
             if (commits.size !== 1 || !commits.has(process.env.GITHUB_SHA)) throw new Error(`${path}: commit ${[...commits].join(",")} !== ${process.env.GITHUB_SHA}`);
             console.log(`${path}: ${evidence.records.length} records, commit ${process.env.GITHUB_SHA}`);
           '
+      - name: Check generated B05 evidence
+        if: runner.os == 'macOS' && matrix.shard == 4
+        env:
+          EVIDENCE_PATH: ${{ runner.temp }}/evidence-b05-simulated.json
+        run: |
+          node --input-type=module -e '
+            import { readFileSync } from "node:fs";
+            const path = process.env.EVIDENCE_PATH;
+            const evidence = JSON.parse(readFileSync(path, "utf8"));
+            if (evidence.status !== "recorded") throw new Error(`${path}: status`);
+            if (!Array.isArray(evidence.records) || evidence.records.length === 0) throw new Error(`${path}: records`);
+            if (!Array.isArray(evidence.source_sha256) || evidence.source_sha256.length === 0) throw new Error(`${path}: source_sha256`);
+            const commits = new Set(evidence.records.map((record) => record.commit));
+            if (commits.size !== 1 || !commits.has(process.env.GITHUB_SHA)) throw new Error(`${path}: commit ${[...commits].join(",")} !== ${process.env.GITHUB_SHA}`);
+            console.log(`${path}: ${evidence.records.length} records, commit ${process.env.GITHUB_SHA}`);
+          '
       - name: Upload B04 evidence artifact
         if: runner.os == 'macOS' && matrix.shard == 3
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -124,5 +144,13 @@ jobs:
         with:
           name: simulated-evidence-b07-${{ github.sha }}
           path: ${{ runner.temp }}/evidence-b07-simulated.json
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload B05 evidence artifact
+        if: runner.os == 'macOS' && matrix.shard == 4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: simulated-evidence-b05-${{ github.sha }}
+          path: ${{ runner.temp }}/evidence-b05-simulated.json
           if-no-files-found: error
           retention-days: 30

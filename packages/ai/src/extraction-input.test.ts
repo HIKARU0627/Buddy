@@ -471,3 +471,40 @@ test('a subject that is cut down to blanks is still recorded as truncated and ne
     false,
   );
 });
+
+test('the id of a blank attachment with a cut extraction is counted in the overhead too, so a long body still fits (review)', () => {
+  const assembled = assemble({
+    ...base,
+    subject: '',
+    body: { state: 'extracted', text: 'い'.repeat(7000) },
+    attachments: [
+      attachment('x'.repeat(100), '', {
+        extraction_truncated: true,
+        source_revision: 'r1',
+      }),
+    ],
+  });
+  assert.deepEqual(assembled.completeness.truncated_source_ids, [
+    'body',
+    'x'.repeat(100),
+  ]);
+  assert.equal(userTokens(assembled) <= EXTRACTION_INPUT_TOKEN_LIMIT, true);
+  // 付加部分が増えた分、本文は削られている（枠いっぱいまで入れてから ID を足していない）。
+  assert.equal(
+    userTokens(assembled) > EXTRACTION_INPUT_TOKEN_LIMIT - 150,
+    true,
+  );
+  // 空の切詰め添付を 10 件並べても、message 全体は枠に収まる。
+  const many = assemble({
+    ...base,
+    subject: '',
+    body: { state: 'extracted', text: 'い'.repeat(7000) },
+    attachments: Array.from({ length: 10 }, (_, index) =>
+      attachment(String(index).repeat(100), '', {
+        extraction_truncated: true,
+        source_revision: 'r1',
+      }),
+    ),
+  });
+  assert.equal(userTokens(many) <= EXTRACTION_INPUT_TOKEN_LIMIT, true);
+});

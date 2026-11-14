@@ -40,6 +40,12 @@ export type NotificationKeyParts =
 
 // 識別子の部品は、短い記号の列だけ受ける。メールアドレス（@）・空白・改行・本文らしい文は材料にならない。
 const ID_PART = /^[0-9A-Za-z][0-9A-Za-z._-]{0,127}$/u;
+// 予定の参照（calendarOccurrenceRef の形）。各部分は URI 成分として符号化済みなので、区切り（# /）と '@'・空白を含まない。
+const REF_PART = "[A-Za-z0-9._~!*'()%-]";
+const EVENT_REF = new RegExp(
+  `^(?:ical:${REF_PART}+#${REF_PART}*|id:${REF_PART}+/${REF_PART}+#${REF_PART}*)$`,
+  'u',
+);
 const VERSION = /^(?:0|[1-9][0-9]*)$/u;
 const DATE = /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/u;
 // 改行・制御文字（U+0000〜U+001F、U+007F）を含むか。材料の行を差し込めないようにする。
@@ -119,7 +125,7 @@ export function notificationKeyMaterial(
       if (
         refs.length < 2 ||
         new Set(refs).size !== refs.length ||
-        refs.some((ref) => ref === '' || ref.length > 512 || hasControl(ref))
+        refs.some((ref) => ref.length > 512 || !EVENT_REF.test(ref))
       )
         return null;
       const period = periodMaterial(parts.period);

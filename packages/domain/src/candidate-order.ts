@@ -7,6 +7,7 @@
 import {
   candidateDateToDay as dateToDay,
   candidateLocalClock as localClock,
+  parseCandidateUtc as parseUtc,
 } from './candidate-time.js';
 import { isRealLocalDateTime } from './local-time.js';
 import type { Deadline } from './extraction.js';
@@ -184,20 +185,6 @@ function classify(
   const endOfWeek = today + (6 - weekdayOfDay(today));
   if (target <= endOfWeek) return { heading: 'this_week', sortKey };
   return { heading: 'later', sortKey };
-}
-
-const UTC_TIME =
-  /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:.[0-9]{1,9})?Z$/u;
-
-// UTC の RFC 3339（末尾 Z）だけを読む。タイムゾーンの無い時刻（端末の時計で読まれてしまう）や、暦にない日時
-// （2 月 30 日を繰り上げてしまう）は null。
-function parseUtc(value: unknown): number | null {
-  if (typeof value !== 'string' || !UTC_TIME.test(value)) return null;
-  const millis = Date.parse(value);
-  if (Number.isNaN(millis)) return null;
-  return new Date(millis).toISOString().slice(0, 19) === value.slice(0, 19)
-    ? millis
-    : null;
 }
 
 // 受信の時刻が読めない候補は、最も古いものとして並べる（隠さない）。

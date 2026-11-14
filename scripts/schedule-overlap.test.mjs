@@ -139,7 +139,7 @@ test('a recurring event is compared by occurrence, not as a whole series', () =>
   const result = run([week1, week2, other]);
   assert.equal(result.overlaps.length, 1);
   assert.deepEqual(result.overlaps[0].refs, [
-    'ical:uid-s#2030-10-16T01:00:00Z',
+    'ical:uid-s#2030-10-16T01%3A00%3A00Z',
     'ical:uid-z#',
   ]);
   // 同じ繰り返しの別の回どうしでも、時間が重なれば別々の予定として重複する（動かした回）。
@@ -438,10 +438,49 @@ test('occurrences of a recurring event without an iCalUID are different events',
   const result = run([first, moved]);
   assert.equal(result.overlaps.length, 1);
   assert.deepEqual(result.overlaps[0].refs, [
-    'id:cal-a/series#2030-10-09T01:00:00Z',
-    'id:cal-a/series#2030-10-10T01:00:00Z',
+    'id:cal-a/series#2030-10-09T01%3A00%3A00Z',
+    'id:cal-a/series#2030-10-10T01%3A00%3A00Z',
   ]);
   assert.equal(result.overlaps[0].identity, 'unconfirmed');
   // 同じ回の写し（同じ参照・同じ時間帯）は 1 つに畳まれ、重複にならない。
   assert.deepEqual(run([first, { ...first }]).overlaps, []);
+});
+
+test('identifiers that contain the separators never collapse into the same reference', () => {
+  // 連結だけなら、どちらも "ical:a#b#c" になる組。符号化して別の参照にする。
+  const first = ev('e1', '2030-10-09T01:00:00Z', '2030-10-09T02:00:00Z', {
+    ical_uid: 'a#b',
+    recurrence_id: 'c',
+  });
+  const second = ev('e2', '2030-10-09T01:30:00Z', '2030-10-09T02:30:00Z', {
+    ical_uid: 'a',
+    recurrence_id: 'b#c',
+  });
+  const result = run([first, second]);
+  assert.equal(result.overlaps.length, 1);
+  assert.deepEqual(result.overlaps[0].refs, ['ical:a#b%23c', 'ical:a%23b#c']);
+  // 区切りの / を含むカレンダー ID と予定 ID の組も混ざらない。
+  const x = ev('y', '2030-10-09T01:00:00Z', '2030-10-09T02:00:00Z', {
+    calendar_id: 'c/d',
+    ical_uid: null,
+  });
+  const y = ev('z', '2030-10-09T01:30:00Z', '2030-10-09T02:30:00Z', {
+    calendar_id: 'c',
+    event_id: 'd/z',
+    ical_uid: null,
+  });
+  assert.equal(run([x, y]).overlaps.length, 1);
+  // '@' は %40 になり、参照に生のメールアドレスの形は残らない。
+  const google = ev('g', '2030-10-09T01:00:00Z', '2030-10-09T02:00:00Z', {
+    ical_uid: 'abc123@example.com',
+  });
+  assert.ok(
+    !run([google, first]).overlaps.some((o) =>
+      o.refs.some((r) => r.includes('@')),
+    ),
+  );
+  assert.equal(
+    run([google, first]).overlaps[0]?.refs.find((r) => r.includes('example')),
+    'ical:abc123%40example.com#',
+  );
 });

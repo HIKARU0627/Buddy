@@ -89,11 +89,14 @@ export type ScheduleOverlapResult =
     };
 
 // 予定の参照。iCalUID があればカレンダーをまたいで同じ予定を 1 つに、無ければカレンダーと予定の ID。どちらも繰り返しの回の識別を
-// 含める（同じ予定の別の回を同じ参照にして、重複を見落とさない）。
+// 含める（同じ予定の別の回を同じ参照にして、重複を見落とさない）。各部分は URI 成分として符号化するので、`#`・`/` を含む
+// 識別子が別の組と同じ参照にならず、`@` も `%40` になる（参照に生のメールアドレスの形が残らない）。
 export function calendarOccurrenceRef(event: CalendarOccurrence): string {
+  const part = encodeURIComponent;
+  const occurrence = part(event.recurrence_id ?? '');
   return event.ical_uid !== null
-    ? `ical:${event.ical_uid}#${event.recurrence_id ?? ''}`
-    : `id:${event.calendar_id}/${event.event_id}#${event.recurrence_id ?? ''}`;
+    ? `ical:${part(event.ical_uid)}#${occurrence}`
+    : `id:${part(event.calendar_id)}/${part(event.event_id)}#${occurrence}`;
 }
 
 interface Resolved {

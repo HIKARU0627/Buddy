@@ -24,7 +24,7 @@ const mail = (over = {}) => ({
 });
 const overlap = (over = {}) => ({
   kind: 'schedule_overlap',
-  event_refs: ['id:cal-b/ev-2', 'id:cal-a/ev-1'],
+  event_refs: ['id:cal-b/ev-2#', 'id:cal-a/ev-1#'],
   period: {
     kind: 'timed',
     start: '2030-10-09T01:30:00Z',
@@ -61,13 +61,13 @@ test('the key material is fixed for each kind and the hash is the 64 digit SHA-2
     [
       HEADER,
       'kind=schedule_overlap',
-      'event_refs=["id:cal-a/ev-1","id:cal-b/ev-2"]',
+      'event_refs=["id:cal-a/ev-1#","id:cal-b/ev-2#"]',
       'period=timed:2030-10-09T01:30:00Z/2030-10-09T02:00:00Z',
     ].join('\n'),
   );
   assert.equal(
     notificationKey(overlap(), sha256),
-    '9326a725708b047cb7041128ca462bd14668440ff51e4c7919938a30cd79a8fb',
+    '2a4f6bdadcecf106d4e98e0668d7e68dff18c834f22c91b6d9465653ec466784',
   );
   assert.equal(
     notificationKeyMaterial(research()),
@@ -115,7 +115,7 @@ test('the same meaning gives the same key, whatever order or wording it arrives 
   // 参照の並びや重複の入力順で変わらない。
   assert.equal(
     notificationKey(
-      overlap({ event_refs: ['id:cal-a/ev-1', 'id:cal-b/ev-2'] }),
+      overlap({ event_refs: ['id:cal-a/ev-1#', 'id:cal-b/ev-2#'] }),
       sha256,
     ),
     notificationKey(overlap(), sha256),
@@ -162,12 +162,12 @@ test('a meaningful change gives another key', () => {
   const overlapKeys = new Set([
     notificationKey(overlap(), sha256),
     notificationKey(
-      overlap({ event_refs: ['id:cal-a/ev-1', 'id:cal-b/ev-3'] }),
+      overlap({ event_refs: ['id:cal-a/ev-1#', 'id:cal-b/ev-3#'] }),
       sha256,
     ),
     notificationKey(
       overlap({
-        event_refs: ['id:cal-a/ev-1', 'id:cal-b/ev-2', 'id:cal-c/ev-9'],
+        event_refs: ['id:cal-a/ev-1#', 'id:cal-b/ev-2#', 'id:cal-c/ev-9#'],
       }),
       sha256,
     ),
@@ -230,11 +230,15 @@ test('material that could carry body text, an address or a malformed value is re
         original_text: 'x',
       },
     }),
-    overlap({ event_refs: ['id:cal-a/ev-1'] }), // 2 つ未満
+    overlap({ event_refs: ['id:cal-a/ev-1#'] }), // 2 つ未満
     overlap({ event_refs: [] }),
-    overlap({ event_refs: ['id:cal-a/ev-1', 'id:cal-a/ev-1'] }), // 同じ予定どうし
-    overlap({ event_refs: ['id:cal-a/ev-1', ''] }),
-    overlap({ event_refs: ['id:cal-a/ev-1', 'id:cal-b/ev-2\n'] }),
+    overlap({ event_refs: ['id:cal-a/ev-1#', 'id:cal-a/ev-1#'] }), // 同じ予定どうし
+    overlap({ event_refs: ['id:cal-a/ev-1#', ''] }),
+    overlap({ event_refs: ['id:cal-a/ev-1#', 'taro@example.com'] }), // メールアドレスの形は材料にしない
+    overlap({ event_refs: ['id:cal-a/ev-1#', 'ical:abc@example.com#'] }), // 符号化していない '@'
+    overlap({ event_refs: ['id:cal-a/ev-1#', 'ical:a#b#c'] }), // 区切りが多い（符号化していない）
+    overlap({ event_refs: ['id:cal-a/ev-1#', 'cal-b/ev-2#'] }), // 参照の形でない
+    overlap({ event_refs: ['id:cal-a/ev-1#', 'id:cal-b/ev-2\n'] }),
     overlap({
       period: {
         kind: 'timed',
@@ -438,7 +442,7 @@ test('the same instant written with or without milliseconds gives the same key',
   );
   assert.equal(
     key('2030-10-09T01:30:00Z', '2030-10-09T02:00:00Z'),
-    '9326a725708b047cb7041128ca462bd14668440ff51e4c7919938a30cd79a8fb',
+    '2a4f6bdadcecf106d4e98e0668d7e68dff18c834f22c91b6d9465653ec466784',
   );
   // ミリ秒が 0 でなければ、別の時刻なので別の識別子。
   assert.notEqual(
@@ -458,5 +462,18 @@ test('the same instant written with or without milliseconds gives the same key',
       ?.split('\n')
       .at(-1),
     'period=timed:2030-10-09T01:30:00.500Z/2030-10-09T02:00:00Z',
+  );
+});
+
+test('a provider identifier with an at sign is accepted only in its encoded form', () => {
+  // Google の iCalUID は `<id>@<ドメイン>` の形。calendarOccurrenceRef が符号化した参照（@ は %40）は受け、生の形は拒む。
+  const parts = (ref) => overlap({ event_refs: ['id:cal-a/ev-1#', ref] });
+  assert.notEqual(
+    notificationKey(parts('ical:abc123%40example.com#'), sha256),
+    null,
+  );
+  assert.equal(
+    notificationKey(parts('ical:abc123@example.com#'), sha256),
+    null,
   );
 });

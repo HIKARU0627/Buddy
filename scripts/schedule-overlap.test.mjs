@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  calendarOccurrenceRef,
   candidateDueEvent,
   findScheduleOverlaps,
   orderCandidates,
@@ -548,4 +549,63 @@ test('an overlap that starts in the hour that happens twice becomes the later on
   assert.equal(candidate('2030-11-03T05:45:00Z'), null);
   assert.equal(candidate('2030-11-03T06:15:00Z'), null);
   assert.equal(candidate('2030-11-03T06:30:01Z'), 'deadline_passed');
+});
+
+test('the same recurring occurrence written with or without milliseconds is one event', () => {
+  const series = (id, calendar, recurrence, start, end, uid = 'uid-series') =>
+    ev(id, start, end, {
+      calendar_id: calendar,
+      ical_uid: uid,
+      recurrence_id: recurrence,
+    });
+  const a = series(
+    'p',
+    'cal-a',
+    '2030-10-09T01:00:00Z',
+    '2030-10-09T01:00:00Z',
+    '2030-10-09T02:00:00Z',
+  );
+  const b = series(
+    'p2',
+    'cal-b',
+    '2030-10-09T01:00:00.000Z',
+    '2030-10-09T01:00:00Z',
+    '2030-10-09T02:00:00Z',
+  );
+  // 同じ回の写しは自分自身と重複しない。
+  assert.deepEqual(run([a, b]).overlaps, []);
+  // 第三の予定との組も 1 件で、参照は書き方に依らず同じ。
+  const third = ev('q', '2030-10-09T01:30:00Z', '2030-10-09T02:30:00Z');
+  const result = run([a, b, third]);
+  assert.equal(result.overlaps.length, 1);
+  assert.deepEqual(result.overlaps[0].refs, [
+    'ical:uid-q#',
+    'ical:uid-series#2030-10-09T01%3A00%3A00Z',
+  ]);
+  assert.deepEqual(run([b, third, a]), result);
+  // 終日の回の日付は、時刻の回と区別する。読めない識別はそのまま。
+  assert.equal(
+    calendarOccurrenceRef(
+      series(
+        'd',
+        'cal-a',
+        '2030-10-09',
+        '2030-10-09T01:00:00Z',
+        '2030-10-09T02:00:00Z',
+      ),
+    ),
+    'ical:uid-series#2030-10-09',
+  );
+  assert.equal(
+    calendarOccurrenceRef(
+      series(
+        'd',
+        'cal-a',
+        'weekly-3',
+        '2030-10-09T01:00:00Z',
+        '2030-10-09T02:00:00Z',
+      ),
+    ),
+    'ical:uid-series#weekly-3',
+  );
 });

@@ -91,9 +91,19 @@ export type ScheduleOverlapResult =
 // 予定の参照。iCalUID があればカレンダーをまたいで同じ予定を 1 つに、無ければカレンダーと予定の ID。どちらも繰り返しの回の識別を
 // 含める（同じ予定の別の回を同じ参照にして、重複を見落とさない）。各部分は URI 成分として符号化するので、`#`・`/` を含む
 // 識別子が別の組と同じ参照にならず、`@` も `%40` になる（参照に生のメールアドレスの形が残らない）。
+// 繰り返しの回の識別（元の開始）。UTC の時刻は同じ時点の正規の形（ミリ秒が 0 なら省く）にそろえ、Z と .000Z の書き方の違いで
+// 別の回にならないようにする。終日の回は日付（YYYY-MM-DD）のまま時刻と区別する。読めない値はそのまま使う。
+function occurrenceKey(recurrenceId: string | null): string {
+  if (recurrenceId === null) return '';
+  const at = parseCandidateUtc(recurrenceId);
+  return at === null
+    ? recurrenceId
+    : new Date(at).toISOString().replace('.000Z', 'Z');
+}
+
 export function calendarOccurrenceRef(event: CalendarOccurrence): string {
   const part = encodeURIComponent;
-  const occurrence = part(event.recurrence_id ?? '');
+  const occurrence = part(occurrenceKey(event.recurrence_id));
   return event.ical_uid !== null
     ? `ical:${part(event.ical_uid)}#${occurrence}`
     : `id:${part(event.calendar_id)}/${part(event.event_id)}#${occurrence}`;

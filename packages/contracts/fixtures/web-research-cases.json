@@ -1,0 +1,800 @@
+{
+  "schema_version": 1,
+  "description": "B12-01 の公開 Web 調査（検索・取得・出典・上限・利用条件）。Brave 採用・検索結果を永続保存しない決定に沿う（ADR 0077、設計 05）。模擬だけ。 X18・T08 の予算と検索の上限に関わる。",
+  "cases": [
+    {
+      "id": "search-request",
+      "schema": "WebSearchRequest",
+      "valid": true,
+      "value": {
+        "schema": "buddy.web-search.v1",
+        "query_id": "00000000-0000-4000-8000-000000000901",
+        "query": "synthetic public question",
+        "language": "ja",
+        "country": "JP",
+        "max_results": 5,
+        "safesearch": "strict"
+      }
+    },
+    {
+      "id": "search-request-missing-query",
+      "schema": "WebSearchRequest",
+      "valid": false,
+      "value": {
+        "schema": "buddy.web-search.v1",
+        "query_id": "00000000-0000-4000-8000-000000000901",
+        "language": "ja",
+        "country": "JP",
+        "max_results": 5,
+        "safesearch": "strict"
+      }
+    },
+    {
+      "id": "search-response",
+      "schema": "WebSearchResponse",
+      "valid": true,
+      "value": {
+        "schema": "buddy.web-search-result.v1",
+        "provider": "brave",
+        "search_index": 1,
+        "query": "synthetic public question",
+        "searched_at": "2030-01-01T00:00:00Z",
+        "hits": [
+          {
+            "title": "Synthetic page",
+            "url": "https://example.com/synthetic-1",
+            "snippet": "Synthetic search summary.",
+            "page_age": "2029-12-31T00:00:00Z"
+          },
+          {
+            "title": null,
+            "url": "https://example.com/synthetic-2",
+            "snippet": null,
+            "page_age": null
+          }
+        ],
+        "retention": "transient_only",
+        "model_use": "grounding_only"
+      }
+    },
+    {
+      "id": "search-response-index-4",
+      "schema": "WebSearchResponse",
+      "valid": false,
+      "value": {
+        "schema": "buddy.web-search-result.v1",
+        "provider": "brave",
+        "search_index": 4,
+        "query": "synthetic public question",
+        "searched_at": "2030-01-01T00:00:00Z",
+        "hits": [],
+        "retention": "transient_only",
+        "model_use": "grounding_only"
+      }
+    },
+    {
+      "id": "fetch-request",
+      "schema": "WebFetchRequest",
+      "valid": true,
+      "value": {
+        "schema": "buddy.web-fetch.v1",
+        "url": "https://example.com/synthetic-1",
+        "max_bytes": 2000000,
+        "timeout_ms": 15000,
+        "max_redirects": 3,
+        "content_types": ["text/html", "text/plain"],
+        "send_cookies": false
+      }
+    },
+    {
+      "id": "fetch-request-http",
+      "schema": "WebFetchRequest",
+      "valid": false,
+      "value": {
+        "schema": "buddy.web-fetch.v1",
+        "url": "http://example.com/synthetic-1",
+        "max_bytes": 2000000,
+        "timeout_ms": 15000,
+        "max_redirects": 3,
+        "content_types": ["text/html"],
+        "send_cookies": false
+      }
+    },
+    {
+      "id": "fetch-request-too-large",
+      "schema": "WebFetchRequest",
+      "valid": false,
+      "value": {
+        "schema": "buddy.web-fetch.v1",
+        "url": "https://example.com/synthetic-1",
+        "max_bytes": 2000001,
+        "timeout_ms": 15000,
+        "max_redirects": 3,
+        "content_types": ["text/html"],
+        "send_cookies": false
+      }
+    },
+    {
+      "id": "fetch-request-cookie",
+      "schema": "WebFetchRequest",
+      "valid": false,
+      "value": {
+        "schema": "buddy.web-fetch.v1",
+        "url": "https://example.com/synthetic-1",
+        "max_bytes": 2000000,
+        "timeout_ms": 15000,
+        "max_redirects": 3,
+        "content_types": ["text/html"],
+        "send_cookies": true
+      }
+    },
+    {
+      "id": "fetch-result-read",
+      "schema": "WebFetchResult",
+      "valid": true,
+      "value": {
+        "schema": "buddy.web-fetch-result.v1",
+        "requested_url": "https://example.com/synthetic-1",
+        "final_url": "https://example.com/synthetic-1",
+        "status": 200,
+        "content_type": "text/html",
+        "fetched_at": "2030-01-01T00:00:01Z",
+        "bytes": 12000,
+        "redirects": 0,
+        "readable": true,
+        "text": "Synthetic page body."
+      }
+    },
+    {
+      "id": "fetch-result-unreadable",
+      "schema": "WebFetchResult",
+      "valid": true,
+      "value": {
+        "schema": "buddy.web-fetch-result.v1",
+        "requested_url": "https://example.com/synthetic-2",
+        "final_url": "https://example.com/synthetic-2",
+        "status": 200,
+        "content_type": "application/pdf",
+        "fetched_at": "2030-01-01T00:00:02Z",
+        "bytes": 500000,
+        "redirects": 1,
+        "readable": false,
+        "text": null
+      }
+    },
+    {
+      "id": "fetch-result-too-large",
+      "schema": "WebFetchResult",
+      "valid": false,
+      "value": {
+        "schema": "buddy.web-fetch-result.v1",
+        "requested_url": "https://example.com/synthetic-1",
+        "final_url": "https://example.com/synthetic-1",
+        "status": 200,
+        "content_type": "text/html",
+        "fetched_at": "2030-01-01T00:00:01Z",
+        "bytes": 2000001,
+        "redirects": 0,
+        "readable": true,
+        "text": "Synthetic page body."
+      }
+    },
+    {
+      "id": "source-page-read",
+      "schema": "WebResearchSource",
+      "valid": true,
+      "value": {
+        "schema": "buddy.web-source.v1",
+        "source_id": "web-001",
+        "url": null,
+        "title": "Synthetic page",
+        "fetched_at": "2030-01-01T00:00:01Z",
+        "basis": "page_read",
+        "excerpt": "Synthetic page body.",
+        "summary": "Synthetic summary."
+      }
+    },
+    {
+      "id": "source-search-summary-only",
+      "schema": "WebResearchSource",
+      "valid": true,
+      "value": {
+        "schema": "buddy.web-source.v1",
+        "source_id": "web-002",
+        "url": null,
+        "title": "Synthetic page",
+        "fetched_at": null,
+        "basis": "search_summary_only",
+        "excerpt": null,
+        "summary": null
+      }
+    },
+    {
+      "id": "source-page-read-missing-evidence",
+      "schema": "WebResearchSource",
+      "valid": true,
+      "semantic_errors": ["missing_page_evidence"],
+      "value": {
+        "schema": "buddy.web-source.v1",
+        "source_id": "web-003",
+        "url": null,
+        "title": "Synthetic page",
+        "fetched_at": "2030-01-01T00:00:01Z",
+        "basis": "page_read",
+        "excerpt": null,
+        "summary": null
+      }
+    },
+    {
+      "id": "source-summary-with-excerpt",
+      "schema": "WebResearchSource",
+      "valid": true,
+      "semantic_errors": ["summary_source_excerpt_stored"],
+      "value": {
+        "schema": "buddy.web-source.v1",
+        "source_id": "web-004",
+        "url": null,
+        "title": "Synthetic page",
+        "fetched_at": null,
+        "basis": "search_summary_only",
+        "excerpt": "Synthetic search summary.",
+        "summary": null
+      }
+    },
+    {
+      "id": "limits",
+      "schema": "WebResearchLimits",
+      "valid": true,
+      "value": {
+        "schema": "buddy.web-research-limits.v1",
+        "max_searches": 3,
+        "max_pages": 5,
+        "max_bytes_per_page": 2000000,
+        "timeout_ms": 15000,
+        "max_redirects": 3
+      }
+    },
+    {
+      "id": "limits-over-searches",
+      "schema": "WebResearchLimits",
+      "valid": false,
+      "value": {
+        "schema": "buddy.web-research-limits.v1",
+        "max_searches": 4,
+        "max_pages": 5,
+        "max_bytes_per_page": 2000000,
+        "timeout_ms": 15000,
+        "max_redirects": 3
+      }
+    },
+    {
+      "id": "policy",
+      "schema": "WebUsagePolicy",
+      "valid": true,
+      "value": {
+        "schema": "buddy.web-usage.v1",
+        "provider": "brave",
+        "retention": "transient_only",
+        "model_use": "grounding_only",
+        "url_storage": "undecided"
+      }
+    },
+    {
+      "id": "policy-persistent",
+      "schema": "WebUsagePolicy",
+      "valid": false,
+      "value": {
+        "schema": "buddy.web-usage.v1",
+        "provider": "brave",
+        "retention": "persistent",
+        "model_use": "grounding_only",
+        "url_storage": "undecided"
+      }
+    },
+    {
+      "id": "policy-google",
+      "schema": "WebUsagePolicy",
+      "valid": false,
+      "value": {
+        "schema": "buddy.web-usage.v1",
+        "provider": "google",
+        "retention": "transient_only",
+        "model_use": "grounding_only",
+        "url_storage": "undecided"
+      }
+    },
+    {
+      "id": "fetch-request-private",
+      "schema": "WebFetchRequest",
+      "valid": true,
+      "semantic_errors": ["private_target"],
+      "value": {
+        "schema": "buddy.web-fetch.v1",
+        "url": "https://127.0.0.1/synthetic",
+        "max_bytes": 2000000,
+        "timeout_ms": 15000,
+        "max_redirects": 3,
+        "content_types": ["text/html"],
+        "send_cookies": false
+      }
+    },
+    {
+      "id": "fetch-result-missing-text",
+      "schema": "WebFetchResult",
+      "valid": true,
+      "semantic_errors": ["missing_text"],
+      "value": {
+        "schema": "buddy.web-fetch-result.v1",
+        "requested_url": "https://example.com/synthetic-1",
+        "final_url": "https://example.com/synthetic-1",
+        "status": 200,
+        "content_type": "text/html",
+        "fetched_at": "2030-01-01T00:00:01Z",
+        "bytes": 12000,
+        "redirects": 0,
+        "readable": true,
+        "text": null
+      }
+    },
+    {
+      "id": "fetch-request-ipv6-ula",
+      "schema": "WebFetchRequest",
+      "valid": true,
+      "semantic_errors": ["private_target"],
+      "value": {
+        "schema": "buddy.web-fetch.v1",
+        "url": "https://[fc00::1]/synthetic",
+        "max_bytes": 2000000,
+        "timeout_ms": 15000,
+        "max_redirects": 3,
+        "content_types": ["text/html"],
+        "send_cookies": false
+      }
+    },
+    {
+      "id": "fetch-request-ipv6-link-local",
+      "schema": "WebFetchRequest",
+      "valid": true,
+      "semantic_errors": ["private_target"],
+      "value": {
+        "schema": "buddy.web-fetch.v1",
+        "url": "https://[fe80::1]/synthetic",
+        "max_bytes": 2000000,
+        "timeout_ms": 15000,
+        "max_redirects": 3,
+        "content_types": ["text/html"],
+        "send_cookies": false
+      }
+    },
+    {
+      "id": "fetch-request-ipv6-mapped-loopback",
+      "schema": "WebFetchRequest",
+      "valid": true,
+      "semantic_errors": ["private_target"],
+      "value": {
+        "schema": "buddy.web-fetch.v1",
+        "url": "https://[::ffff:127.0.0.1]/synthetic",
+        "max_bytes": 2000000,
+        "timeout_ms": 15000,
+        "max_redirects": 3,
+        "content_types": ["text/html"],
+        "send_cookies": false
+      }
+    },
+    {
+      "id": "fetch-request-ipv6-public",
+      "schema": "WebFetchRequest",
+      "valid": true,
+      "semantic_errors": [],
+      "value": {
+        "schema": "buddy.web-fetch.v1",
+        "url": "https://[2606:4700:4700::1111]/synthetic",
+        "max_bytes": 2000000,
+        "timeout_ms": 15000,
+        "max_redirects": 3,
+        "content_types": ["text/html"],
+        "send_cookies": false
+      }
+    },
+    {
+      "id": "fetch-request-cgnat",
+      "schema": "WebFetchRequest",
+      "valid": true,
+      "semantic_errors": ["private_target"],
+      "value": {
+        "schema": "buddy.web-fetch.v1",
+        "url": "https://100.64.0.1/synthetic",
+        "max_bytes": 2000000,
+        "timeout_ms": 15000,
+        "max_redirects": 3,
+        "content_types": ["text/html"],
+        "send_cookies": false
+      }
+    },
+    {
+      "id": "fetch-request-multicast",
+      "schema": "WebFetchRequest",
+      "valid": true,
+      "semantic_errors": ["private_target"],
+      "value": {
+        "schema": "buddy.web-fetch.v1",
+        "url": "https://224.0.0.1/synthetic",
+        "max_bytes": 2000000,
+        "timeout_ms": 15000,
+        "max_redirects": 3,
+        "content_types": ["text/html"],
+        "send_cookies": false
+      }
+    },
+    {
+      "id": "fetch-request-doc-ipv6",
+      "schema": "WebFetchRequest",
+      "valid": true,
+      "semantic_errors": ["private_target"],
+      "value": {
+        "schema": "buddy.web-fetch.v1",
+        "url": "https://[2001:db8::1]/synthetic",
+        "max_bytes": 2000000,
+        "timeout_ms": 15000,
+        "max_redirects": 3,
+        "content_types": ["text/html"],
+        "send_cookies": false
+      }
+    },
+    {
+      "id": "fetch-request-short-ipv4",
+      "schema": "WebFetchRequest",
+      "valid": true,
+      "semantic_errors": ["private_target"],
+      "value": {
+        "schema": "buddy.web-fetch.v1",
+        "url": "https://127.1/synthetic",
+        "max_bytes": 2000000,
+        "timeout_ms": 15000,
+        "max_redirects": 3,
+        "content_types": ["text/html"],
+        "send_cookies": false
+      }
+    },
+    {
+      "id": "fetch-request-integer-ipv4",
+      "schema": "WebFetchRequest",
+      "valid": true,
+      "semantic_errors": ["private_target"],
+      "value": {
+        "schema": "buddy.web-fetch.v1",
+        "url": "https://2130706433/synthetic",
+        "max_bytes": 2000000,
+        "timeout_ms": 15000,
+        "max_redirects": 3,
+        "content_types": ["text/html"],
+        "send_cookies": false
+      }
+    },
+    {
+      "id": "fetch-request-hex-ipv4",
+      "schema": "WebFetchRequest",
+      "valid": true,
+      "semantic_errors": ["private_target"],
+      "value": {
+        "schema": "buddy.web-fetch.v1",
+        "url": "https://0x7f000001/synthetic",
+        "max_bytes": 2000000,
+        "timeout_ms": 15000,
+        "max_redirects": 3,
+        "content_types": ["text/html"],
+        "send_cookies": false
+      }
+    },
+    {
+      "id": "fetch-request-expanded-ipv6-loopback",
+      "schema": "WebFetchRequest",
+      "valid": true,
+      "semantic_errors": ["private_target"],
+      "value": {
+        "schema": "buddy.web-fetch.v1",
+        "url": "https://[0:0:0:0:0:0:0:1]/synthetic",
+        "max_bytes": 2000000,
+        "timeout_ms": 15000,
+        "max_redirects": 3,
+        "content_types": ["text/html"],
+        "send_cookies": false
+      }
+    },
+    {
+      "id": "fetch-request-percent-encoded-loopback",
+      "schema": "WebFetchRequest",
+      "valid": true,
+      "semantic_errors": ["private_target"],
+      "value": {
+        "schema": "buddy.web-fetch.v1",
+        "url": "https://%31%32%37.0.0.1/synthetic",
+        "max_bytes": 2000000,
+        "timeout_ms": 15000,
+        "max_redirects": 3,
+        "content_types": ["text/html"],
+        "send_cookies": false
+      }
+    },
+    {
+      "id": "fetch-request-userinfo",
+      "schema": "WebFetchRequest",
+      "valid": true,
+      "semantic_errors": ["private_target"],
+      "value": {
+        "schema": "buddy.web-fetch.v1",
+        "url": "https://user@127.0.0.1/synthetic",
+        "max_bytes": 2000000,
+        "timeout_ms": 15000,
+        "max_redirects": 3,
+        "content_types": ["text/html"],
+        "send_cookies": false
+      }
+    },
+    {
+      "id": "fetch-request-trailing-dot-loopback",
+      "schema": "WebFetchRequest",
+      "valid": true,
+      "semantic_errors": ["private_target"],
+      "value": {
+        "schema": "buddy.web-fetch.v1",
+        "url": "https://127.0.0.1./synthetic",
+        "max_bytes": 2000000,
+        "timeout_ms": 15000,
+        "max_redirects": 3,
+        "content_types": ["text/html"],
+        "send_cookies": false
+      }
+    },
+    {
+      "id": "fetch-request-localhost-trailing-dot",
+      "schema": "WebFetchRequest",
+      "valid": true,
+      "semantic_errors": ["private_target"],
+      "value": {
+        "schema": "buddy.web-fetch.v1",
+        "url": "https://localhost./synthetic",
+        "max_bytes": 2000000,
+        "timeout_ms": 15000,
+        "max_redirects": 3,
+        "content_types": ["text/html"],
+        "send_cookies": false
+      }
+    },
+    {
+      "id": "fetch-request-subdomain-localhost",
+      "schema": "WebFetchRequest",
+      "valid": true,
+      "semantic_errors": ["private_target"],
+      "value": {
+        "schema": "buddy.web-fetch.v1",
+        "url": "https://foo.localhost/synthetic",
+        "max_bytes": 2000000,
+        "timeout_ms": 15000,
+        "max_redirects": 3,
+        "content_types": ["text/html"],
+        "send_cookies": false
+      }
+    },
+    {
+      "id": "fetch-request-backslash",
+      "schema": "WebFetchRequest",
+      "valid": true,
+      "semantic_errors": ["private_target"],
+      "value": {
+        "schema": "buddy.web-fetch.v1",
+        "url": "https://example.com\\@127.0.0.1/synthetic",
+        "max_bytes": 2000000,
+        "timeout_ms": 15000,
+        "max_redirects": 3,
+        "content_types": ["text/html"],
+        "send_cookies": false
+      }
+    },
+    {
+      "id": "fetch-request-fullwidth",
+      "schema": "WebFetchRequest",
+      "valid": true,
+      "semantic_errors": ["private_target"],
+      "value": {
+        "schema": "buddy.web-fetch.v1",
+        "url": "https://１２７.０.０.１/synthetic",
+        "max_bytes": 2000000,
+        "timeout_ms": 15000,
+        "max_redirects": 3,
+        "content_types": ["text/html"],
+        "send_cookies": false
+      }
+    },
+    {
+      "id": "fetch-request-hex-part-ipv4",
+      "schema": "WebFetchRequest",
+      "valid": true,
+      "semantic_errors": ["private_target"],
+      "value": {
+        "schema": "buddy.web-fetch.v1",
+        "url": "https://0x7f.0.0.1/synthetic",
+        "max_bytes": 2000000,
+        "timeout_ms": 15000,
+        "max_redirects": 3,
+        "content_types": ["text/html"],
+        "send_cookies": false
+      }
+    },
+    {
+      "id": "fetch-request-mixed-hex-ipv4",
+      "schema": "WebFetchRequest",
+      "valid": true,
+      "semantic_errors": ["private_target"],
+      "value": {
+        "schema": "buddy.web-fetch.v1",
+        "url": "https://127.0x0.0.1/synthetic",
+        "max_bytes": 2000000,
+        "timeout_ms": 15000,
+        "max_redirects": 3,
+        "content_types": ["text/html"],
+        "send_cookies": false
+      }
+    },
+    {
+      "id": "fetch-request-empty-hex-part",
+      "schema": "WebFetchRequest",
+      "valid": true,
+      "semantic_errors": ["private_target"],
+      "value": {
+        "schema": "buddy.web-fetch.v1",
+        "url": "https://0x7f.0x.0.1/synthetic",
+        "max_bytes": 2000000,
+        "timeout_ms": 15000,
+        "max_redirects": 3,
+        "content_types": ["text/html"],
+        "send_cookies": false
+      }
+    },
+    {
+      "id": "fetch-request-empty-hex-first",
+      "schema": "WebFetchRequest",
+      "valid": true,
+      "semantic_errors": ["private_target"],
+      "value": {
+        "schema": "buddy.web-fetch.v1",
+        "url": "https://0x.0.0.1/synthetic",
+        "max_bytes": 2000000,
+        "timeout_ms": 15000,
+        "max_redirects": 3,
+        "content_types": ["text/html"],
+        "send_cookies": false
+      }
+    }
+  ],
+  "domain_cases": {
+    "usage": [
+      {
+        "id": "usage-within",
+        "usage": {
+          "searches": 3,
+          "pages": 5
+        },
+        "expected": []
+      },
+      {
+        "id": "usage-over-searches",
+        "usage": {
+          "searches": 4,
+          "pages": 5
+        },
+        "expected": ["search_limit"]
+      },
+      {
+        "id": "usage-over-pages",
+        "usage": {
+          "searches": 3,
+          "pages": 6
+        },
+        "expected": ["page_limit"]
+      }
+    ],
+    "fetch": [
+      {
+        "id": "fetch-ok",
+        "usage": {
+          "bytes": 2000000,
+          "timeout_ms": 15000,
+          "redirects": 3
+        },
+        "expected": []
+      },
+      {
+        "id": "fetch-too-large",
+        "usage": {
+          "bytes": 2000001,
+          "timeout_ms": 15000,
+          "redirects": 0
+        },
+        "expected": ["bytes_limit"]
+      },
+      {
+        "id": "fetch-timeout",
+        "usage": {
+          "bytes": 1,
+          "timeout_ms": 15001,
+          "redirects": 0
+        },
+        "expected": ["timeout_limit"]
+      },
+      {
+        "id": "fetch-redirects",
+        "usage": {
+          "bytes": 1,
+          "timeout_ms": 1,
+          "redirects": 4
+        },
+        "expected": ["redirect_limit"]
+      }
+    ],
+    "sources": [
+      {
+        "id": "source-page-read",
+        "source": {
+          "basis": "page_read",
+          "fetched_at": "2030-01-01T00:00:01Z",
+          "excerpt": "Synthetic page body.",
+          "summary": null
+        },
+        "expected": []
+      },
+      {
+        "id": "source-summary-only",
+        "source": {
+          "basis": "search_summary_only",
+          "fetched_at": null,
+          "excerpt": null,
+          "summary": null
+        },
+        "expected": []
+      },
+      {
+        "id": "source-missing-evidence",
+        "source": {
+          "basis": "page_read",
+          "fetched_at": "2030-01-01T00:00:01Z",
+          "excerpt": null,
+          "summary": null
+        },
+        "expected": ["missing_page_evidence"]
+      }
+    ],
+    "policies": [
+      {
+        "id": "policy-brave",
+        "policy": {
+          "provider": "brave",
+          "retention": "transient_only",
+          "model_use": "grounding_only",
+          "url_storage": "undecided"
+        },
+        "expected": []
+      },
+      {
+        "id": "policy-training",
+        "policy": {
+          "provider": "brave",
+          "retention": "transient_only",
+          "model_use": "training",
+          "url_storage": "undecided"
+        },
+        "expected": ["model_training"]
+      },
+      {
+        "id": "policy-persistent-retention",
+        "policy": {
+          "provider": "brave",
+          "retention": "persistent",
+          "model_use": "grounding_only",
+          "url_storage": "undecided"
+        },
+        "expected": ["persistent_retention"]
+      }
+    ]
+  }
+}

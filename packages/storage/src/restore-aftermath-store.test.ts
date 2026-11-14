@@ -380,7 +380,7 @@ test('restore aftermath: every reset is written in one transaction (hand-written
     assert.deepEqual(after['meta'], [
       { key: 'restore_backup_created_at', value: String(BACKUP_AT) },
       { key: 'restore_restored_at', value: String(RESTORED_AT) },
-      { key: 'schema_version', value: '12' },
+      { key: 'schema_version', value: '13' },
       { key: 'store_generation', value: NEW_GENERATION },
     ]);
     // 隔離の印のある操作は、承認・準備へ進めない（DB の最後の保証）。

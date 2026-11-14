@@ -346,6 +346,27 @@ function storedDerivedDeadline(
   }
 }
 
+// 気づきの候補は、元情報（source_item）の本文キャッシュ（24 時間）の期限に縛られない。設計 11 §4 は、本文キャッシュの
+// 期限と気づき一覧を何日も表示することを両立するため、候補が表示に必要な最小の抄録を暗号化して持つとする。元情報への
+// 辺は忘却の閉包の対象にするために残し、期限の計算には使わない。候補の期限は閉じた時刻から（candidate.sweep）。
+const isLineageOnly = (kind: string, sourceKind: string): boolean =>
+  kind === 'notification_candidate' && sourceKind === 'source_item';
+
+// 期限に使える由来の辺が 1 つも無い候補は、この掃除の対象にしない（由来がないものを期限切れとして消さない）。
+function candidateGovernedElsewhere(
+  db: SqliteDatabase,
+  kind: string,
+  id: string,
+): boolean {
+  if (kind !== 'notification_candidate') return false;
+  const edges = db
+    .prepare(
+      'SELECT source_kind FROM derivations WHERE artifact_kind = ? AND artifact_id = ?',
+    )
+    .all(kind, id) as { source_kind: string }[];
+  return edges.every((edge) => isLineageOnly(kind, edge.source_kind));
+}
+
 function derivedOrigins(
   db: SqliteDatabase,
   kind: string,
@@ -357,10 +378,12 @@ function derivedOrigins(
       'SELECT source_kind, source_id FROM derivations WHERE artifact_kind = ? AND artifact_id = ? ORDER BY source_kind, source_id',
     )
     .all(kind, id) as { source_kind: string; source_id: string }[];
-  return edges.map((edge) => ({
-    origin_id: `${edge.source_kind}:${edge.source_id}`,
-    expires_at: originExpiry(db, edge.source_kind, edge.source_id, visiting),
-  }));
+  return edges
+    .filter((edge) => !isLineageOnly(kind, edge.source_kind))
+    .map((edge) => ({
+      origin_id: `${edge.source_kind}:${edge.source_id}`,
+      expires_at: originExpiry(db, edge.source_kind, edge.source_id, visiting),
+    }));
 }
 
 function derivedRow(db: SqliteDatabase, kind: string, id: string): DerivedRow {
@@ -386,6 +409,14 @@ function readDerived(db: SqliteDatabase): DerivedRow[] {
   for (const artifact of artifacts) {
     // 行が先に消えた派生物の辺は、系譜の整理（pruneDeadLineage）に任せる。
     if (!derivedExists(db, artifact.artifact_kind, artifact.artifact_id))
+      continue;
+    if (
+      candidateGovernedElsewhere(
+        db,
+        artifact.artifact_kind,
+        artifact.artifact_id,
+      )
+    )
       continue;
     rows.push(derivedRow(db, artifact.artifact_kind, artifact.artifact_id));
   }
@@ -441,6 +472,7 @@ function currentRow(
   const key = parseDerivedRowId(id);
   if (key === null || !DERIVED_KINDS.includes(key.kind)) return null;
   if (!derivedExists(db, key.kind, key.artifactId)) return null;
+  if (candidateGovernedElsewhere(db, key.kind, key.artifactId)) return null;
   const hasEdges = db
     .prepare(
       'SELECT 1 FROM derivations WHERE artifact_kind = ? AND artifact_id = ?',

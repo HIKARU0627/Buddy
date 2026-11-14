@@ -292,7 +292,7 @@ test('derived rows expire with the earliest origin; an origin that is gone expir
       'turn',
       'b1000000-0000-4000-8000-0000000000ee',
     );
-    // 元情報の由来は 24 時間で切れる（n-1 の期限は最も早い 24 時間）。1 ms 前は残る。
+    // 元情報の由来（24 時間）は候補の期限に数えない。1 ms 前も残る。
     assert.deepEqual(
       deleteExpired(
         db,
@@ -315,13 +315,17 @@ test('derived rows expire with the earliest origin; an origin that is gone expir
       ),
       0,
     );
+    // 気づきの候補は、元情報の本文キャッシュ（24 時間）では消えない（設計 11 §4。元情報への辺は忘却のためだけ）。
+    // 発言の期限（7 日）で消える。
+    for (const at of [B + 24 * HOUR, B + 7 * DAY - 1])
+      assert.deepEqual(
+        deleteExpired(db, 'derived', ['notification_candidate:n-1'], at)
+          .deleted,
+        [],
+      );
     assert.deepEqual(
-      deleteExpired(
-        db,
-        'derived',
-        ['notification_candidate:n-1'],
-        B + 24 * HOUR,
-      ).deleted,
+      deleteExpired(db, 'derived', ['notification_candidate:n-1'], B + 7 * DAY)
+        .deleted,
       ['notification_candidate:n-1'],
     );
     assert.equal(count(db, 'SELECT count(*) FROM notification_candidates'), 0);
@@ -333,8 +337,32 @@ test('derived rows expire with the earliest origin; an origin that is gone expir
       0,
     );
     assert.equal(count(db, 'SELECT count(*) FROM derivations'), 0);
-    // 発言は 7 日まで残る（派生物の期限切れで由来は消えない）。
+    // 発言は 7 日まで残る（派生物の期限切れで由来は消えない）。ちょうど 7 日で発言も期限になる。
     assert.equal(count(db, 'SELECT count(*) FROM turns'), 1);
+  });
+});
+
+test('a candidate whose only origins are source items is not planned by the origin expiry, however long after', async () => {
+  await withDb((db) => {
+    insertSourceItem(db, 'acct-a', 'msg-1', B);
+    insertCandidate(db, 'n-mail');
+    edge(db, 'notification_candidate', 'n-mail', 'source_item', 'msg-1');
+    // 計画に行を出さず、ID を直接渡されても消さない（元情報の本文は 24 時間で切れるが、候補は閉じてから 7 日・97 日で掃除する）。
+    for (const at of [B + 24 * HOUR, B + 400 * DAY]) {
+      const rows = run(db, { kind: 'retention.sweep_rows', now: at });
+      assert.equal(rows.ok, true);
+      assert.deepEqual(
+        JSON.stringify(rows.value).includes('notification_candidate:n-mail'),
+        false,
+      );
+      assert.deepEqual(
+        deleteExpired(db, 'derived', ['notification_candidate:n-mail'], at)
+          .deleted,
+        [],
+      );
+    }
+    assert.equal(count(db, 'SELECT count(*) FROM notification_candidates'), 1);
+    assert.equal(count(db, 'SELECT count(*) FROM derivations'), 1);
   });
 });
 

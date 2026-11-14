@@ -77,6 +77,13 @@ import { VOICE_WRITE_OPS } from './voice-store.js';
 import { RETENTION_WRITE_OPS } from './retention-store.js';
 import { MEMORY_WRITE_OPS } from './memory-store.js';
 import { INTENT_SHADOW_WRITE_OPS } from './intent-shadow-store.js';
+import { CANDIDATE_WRITE_OPS } from './candidate-store.js';
+import type {
+  CandidateOp,
+  CandidateOpKind,
+  CandidateOpResult,
+  CandidateOpValues,
+} from './candidate-store.js';
 import type {
   IntentShadowOp,
   IntentShadowOpKind,
@@ -291,6 +298,17 @@ interface PendingIntentShadow {
   readonly resolve: (result: IntentShadowOpResult) => void;
 }
 
+interface PendingCandidate {
+  readonly kind: 'candidate';
+  readonly op: CandidateOp;
+  readonly timer: NodeJS.Timeout;
+  readonly resolve: (result: CandidateOpResult) => void;
+}
+
+export type CandidateOpOutcome<K extends CandidateOpKind> =
+  | { readonly ok: true; readonly value: CandidateOpValues[K] }
+  | Extract<CandidateOpResult, { ok: false }>;
+
 export type MemoryOpOutcome<K extends MemoryOpKind> =
   | { readonly ok: true; readonly value: MemoryOpValues[K] }
   | Extract<MemoryOpResult, { ok: false }>;
@@ -356,6 +374,7 @@ export class DbWorkerClient {
     | PendingRetention
     | PendingMemory
     | PendingIntentShadow
+    | PendingCandidate
   >();
   #issued = new WeakSet<DispatchPermit>();
   #consumed = new WeakSet<DispatchPermit>();
@@ -880,6 +899,32 @@ export class DbWorkerClient {
     }) as Promise<IntentShadowOpOutcome<K>>;
   }
 
+  // 気づき（候補）の作成・状態の遷移・一覧（ADR 0118）。扱いは memory と同じ。
+  candidate<K extends CandidateOpKind>(
+    op: Extract<CandidateOp, { kind: K }>,
+  ): Promise<CandidateOpOutcome<K>> {
+    return new Promise<CandidateOpResult>((resolve) => {
+      if (this.#state !== 'running') {
+        resolve({
+          ok: false,
+          outcome: 'rejected',
+          reasons: [
+            this.#state === 'closed' ? 'worker_closed' : 'worker_unavailable',
+          ],
+        });
+        return;
+      }
+      const id = this.#nextId++;
+      const timer = setTimeout(
+        () => this.#break('worker_timeout'),
+        this.#responseTimeoutMs,
+      );
+      this.#pending.set(id, { kind: 'candidate', op, timer, resolve });
+      const message: MainToWorker = { type: 'candidate', id, op };
+      this.#worker.postMessage(message);
+    }) as Promise<CandidateOpOutcome<K>>;
+  }
+
   // 許可がこのクライアントの現在の世代で作られ、まだ使っておらず、worker が動いているか。
   isDispatchPermitCurrent(permit: DispatchPermit): boolean {
     return (
@@ -1017,6 +1062,16 @@ export class DbWorkerClient {
         pending.resolve({
           ok: false,
           outcome: INTENT_SHADOW_WRITE_OPS.has(pending.op.kind)
+            ? 'unknown'
+            : 'rejected',
+          reasons: [reason],
+        });
+        continue;
+      }
+      if (pending.kind === 'candidate') {
+        pending.resolve({
+          ok: false,
+          outcome: CANDIDATE_WRITE_OPS.has(pending.op.kind)
             ? 'unknown'
             : 'rejected',
           reasons: [reason],
@@ -1205,6 +1260,18 @@ export class DbWorkerClient {
     if (message.type === 'intent_shadow_result') {
       const pending = this.#pending.get(message.id);
       if (pending?.kind !== 'intent_shadow') return;
+      clearTimeout(pending.timer);
+      this.#pending.delete(message.id);
+      if (message.halted && this.#state === 'running') {
+        this.#state = 'broken';
+        this.#brokenReason = 'worker_halted';
+      }
+      pending.resolve(message.result);
+      return;
+    }
+    if (message.type === 'candidate_result') {
+      const pending = this.#pending.get(message.id);
+      if (pending?.kind !== 'candidate') return;
       clearTimeout(pending.timer);
       this.#pending.delete(message.id);
       if (message.halted && this.#state === 'running') {

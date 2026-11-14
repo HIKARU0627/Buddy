@@ -2,7 +2,7 @@
   "status": "recorded_by_hand",
   "description": "B05-07 の統合試験の期待値（手書き）。設計 10 §1・§1A・§2・§2A・§8、07 §2・§5、09 の X13・QA43 と、ADR 0005 の停止の表・ADR 0038・0046・0050 の規則から手で書いた値で、実装（VoiceController・VoiceControl・DB worker・予算の門・模擬のレンダラー）の処理から作っていない。時刻は手で進める時計の相対 ms（IPC の片道は 1 ms）。会話の予約は合成の 1 秒 1 単位（XTS、最低 15 秒）。実際の音声・実 API・実機・実請求は使わない。",
   "seeds": [7, 1007, 20261023],
-  "db_version": "12",
+  "db_version": "13",
   "voice_limit": "2000",
   "cases": [
     {

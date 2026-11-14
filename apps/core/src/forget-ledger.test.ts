@@ -270,7 +270,7 @@ test('a version-11 DB with ledger rows starts after 0012 by adopting a lineage w
   const dataDir = await legacyDataDir(t);
   const ledgerPath = join(dataDir, FORGET_LEDGER_FILE);
   const first = await start(t, dataDir);
-  assert.equal(first.store.schemaVersion, 12);
+  assert.equal(first.store.schemaVersion, 13);
   const exported = await first.store.memory({ kind: 'forget.ledger_export' });
   assert.equal(exported.ok, true, JSON.stringify(exported));
   const ledgerId = exported.ok ? exported.value.ledger_id : null;

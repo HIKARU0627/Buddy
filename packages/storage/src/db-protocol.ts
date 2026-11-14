@@ -51,6 +51,12 @@ import type {
   IntentShadowOpKind,
   IntentShadowOpResult,
 } from './intent-shadow-store.js';
+// B11-03: 気づき（候補）の作成・状態の遷移・一覧（ADR 0118）。
+import type {
+  CandidateOp,
+  CandidateOpKind,
+  CandidateOpResult,
+} from './candidate-store.js';
 
 // 故障注入の対象（操作の命令・予算の命令・音声の命令の種類）。
 export type DbFaultKind =
@@ -59,7 +65,8 @@ export type DbFaultKind =
   | VoiceOpKind
   | RetentionOpKind
   | MemoryOpKind
-  | IntentShadowOpKind;
+  | IntentShadowOpKind
+  | CandidateOpKind;
 
 // 故障注入の試験用。製品の起動では渡さない。指定した種類の命令で一度だけ起こす。
 export interface DbWorkerFaults {
@@ -159,6 +166,12 @@ export type MainToWorker =
       readonly type: 'intent_shadow';
       readonly id: number;
       readonly op: IntentShadowOp;
+    }
+  // 気づき（候補）の作成・状態の遷移・一覧（ADR 0118）。
+  | {
+      readonly type: 'candidate';
+      readonly id: number;
+      readonly op: CandidateOp;
     };
 
 export interface WorkerTimings extends StoreTimings {
@@ -258,6 +271,12 @@ export type WorkerToMain =
       readonly type: 'intent_shadow_result';
       readonly id: number;
       readonly result: IntentShadowOpResult;
+      readonly halted: boolean;
+    }
+  | {
+      readonly type: 'candidate_result';
+      readonly id: number;
+      readonly result: CandidateOpResult;
       readonly halted: boolean;
     };
 

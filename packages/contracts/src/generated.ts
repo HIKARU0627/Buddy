@@ -2427,13 +2427,21 @@ export interface DispatchGuard {
    */
   approval: ApprovalBinding | null;
   /**
-   * 送出の直前に読み直した対象の版。送信・予定変更・ごみ箱では必須、参加者のいる予定の作成では null。
+   * 送出の直前に読み直した対象の版。予定の変更とごみ箱では必須、送信は下書き・返信元があればその版、新規送信では null。参加者のいる予定の作成では null。
    */
   target: OperationTargetVersion | null;
   /**
-   * 承認の時点で確かめた対象の版。target と食い違えば宛先・対象の変更として拒否する。
+   * 承認の時点で確かめた対象の版。target と食い違えば対象の変更として拒否する。
    */
   expected_target: OperationTargetVersion | null;
+  /**
+   * 送出の直前に読み直した宛先（送信）または参加者（予定）。ごみ箱では null。
+   */
+  recipients: string[] | null;
+  /**
+   * 承認の時点で確かめた宛先・参加者。recipients と食い違えば宛先の変更として拒否する。
+   */
+  expected_recipients: string[] | null;
 }
 /**
  * 画面承認の記録の写し（設計 08 §1、ADR 0010・0075）。取消済みの承認を新しい内容へ流用しない。

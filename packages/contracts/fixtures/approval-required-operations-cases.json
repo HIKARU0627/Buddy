@@ -308,7 +308,9 @@
         "expected_target": {
           "content_version": "1",
           "content_hash": "2222222222222222222222222222222222222222222222222222222222222222"
-        }
+        },
+        "recipients": ["one@example.com"],
+        "expected_recipients": ["one@example.com"]
       }
     },
     {
@@ -331,7 +333,9 @@
         "expected_target": {
           "content_version": "1",
           "content_hash": "2222222222222222222222222222222222222222222222222222222222222222"
-        }
+        },
+        "recipients": ["one@example.com"],
+        "expected_recipients": ["one@example.com"]
       }
     },
     {
@@ -359,7 +363,9 @@
         "expected_target": {
           "content_version": "1",
           "content_hash": "2222222222222222222222222222222222222222222222222222222222222222"
-        }
+        },
+        "recipients": ["one@example.com"],
+        "expected_recipients": ["one@example.com"]
       }
     },
     {
@@ -387,7 +393,9 @@
         "expected_target": {
           "content_version": "1",
           "content_hash": "2222222222222222222222222222222222222222222222222222222222222222"
-        }
+        },
+        "recipients": ["one@example.com"],
+        "expected_recipients": ["one@example.com"]
       }
     },
     {
@@ -409,13 +417,15 @@
           "cancelled": false
         },
         "target": {
-          "content_version": "2",
-          "content_hash": "4444444444444444444444444444444444444444444444444444444444444444"
+          "content_version": "1",
+          "content_hash": "2222222222222222222222222222222222222222222222222222222222222222"
         },
         "expected_target": {
           "content_version": "1",
           "content_hash": "2222222222222222222222222222222222222222222222222222222222222222"
-        }
+        },
+        "recipients": ["one@example.com"],
+        "expected_recipients": ["other@example.com"]
       }
     },
     {
@@ -443,7 +453,9 @@
         "expected_target": {
           "content_version": "1",
           "content_hash": "7777777777777777777777777777777777777777777777777777777777777777"
-        }
+        },
+        "recipients": ["one@example.com"],
+        "expected_recipients": ["one@example.com"]
       }
     },
     {
@@ -471,7 +483,9 @@
         "expected_target": {
           "content_version": "1",
           "content_hash": "2222222222222222222222222222222222222222222222222222222222222222"
-        }
+        },
+        "recipients": null,
+        "expected_recipients": null
       }
     },
     {
@@ -493,14 +507,16 @@
           "cancelled": false
         },
         "target": null,
-        "expected_target": null
+        "expected_target": null,
+        "recipients": ["one@example.com"],
+        "expected_recipients": ["one@example.com"]
       }
     },
     {
-      "id": "guard-send-without-target",
+      "id": "guard-new-send-allowed",
       "schema": "DispatchGuard",
       "valid": true,
-      "expected_reasons": ["target_changed"],
+      "expected_reasons": [],
       "value": {
         "schema": "buddy.dispatch-guard.v1",
         "operation_id": "00000000-0000-4000-8000-000000000801",
@@ -515,7 +531,103 @@
           "cancelled": false
         },
         "target": null,
-        "expected_target": null
+        "expected_target": null,
+        "recipients": ["one@example.com"],
+        "expected_recipients": ["one@example.com"]
+      }
+    },
+    {
+      "id": "guard-calendar-recipient-changed",
+      "schema": "DispatchGuard",
+      "valid": true,
+      "expected_reasons": ["recipient_changed"],
+      "value": {
+        "schema": "buddy.dispatch-guard.v1",
+        "operation_id": "00000000-0000-4000-8000-000000000802",
+        "operation_kind": "calendar.event.update",
+        "content_version": "2",
+        "content_hash": "5555555555555555555555555555555555555555555555555555555555555555",
+        "state_revision": "4",
+        "approval": {
+          "content_version": "2",
+          "content_hash": "5555555555555555555555555555555555555555555555555555555555555555",
+          "state_revision": "4",
+          "cancelled": false
+        },
+        "target": {
+          "content_version": "1",
+          "content_hash": "7777777777777777777777777777777777777777777777777777777777777777"
+        },
+        "expected_target": {
+          "content_version": "1",
+          "content_hash": "7777777777777777777777777777777777777777777777777777777777777777"
+        },
+        "recipients": ["two@example.com"],
+        "expected_recipients": ["one@example.com"]
+      }
+    },
+    {
+      "id": "calendar-all-day-reversed",
+      "schema": "CalendarUpdateOperationIntent",
+      "valid": true,
+      "semantic_errors": ["event_time_order"],
+      "value": {
+        "schema": "buddy.operation.v1",
+        "operation_id": "00000000-0000-4000-8000-000000000802",
+        "content_version": "2",
+        "permission_revision": "1",
+        "provider": "mock",
+        "account_id": "00000000-0000-4000-8000-000000000002",
+        "target": {
+          "remote_id": "event-001",
+          "source_revision": "r2"
+        },
+        "action": {
+          "kind": "calendar.event.update",
+          "calendar_id": "calendar-001",
+          "summary": "Synthetic event",
+          "start": "2030-01-05",
+          "end": "2030-01-04",
+          "time_zone": "Asia/Tokyo",
+          "attendees": [],
+          "notify_attendees": false
+        },
+        "effects": {
+          "external_recipients": [],
+          "reconcile_scope": "exact_target"
+        }
+      }
+    },
+    {
+      "id": "calendar-mixed-time-order",
+      "schema": "CalendarUpdateOperationIntent",
+      "valid": true,
+      "semantic_errors": ["event_time_order"],
+      "value": {
+        "schema": "buddy.operation.v1",
+        "operation_id": "00000000-0000-4000-8000-000000000802",
+        "content_version": "2",
+        "permission_revision": "1",
+        "provider": "mock",
+        "account_id": "00000000-0000-4000-8000-000000000002",
+        "target": {
+          "remote_id": "event-001",
+          "source_revision": "r2"
+        },
+        "action": {
+          "kind": "calendar.event.update",
+          "calendar_id": "calendar-001",
+          "summary": "Synthetic event",
+          "start": "2030-01-06T09:00",
+          "end": "2030-01-06",
+          "time_zone": "Asia/Tokyo",
+          "attendees": [],
+          "notify_attendees": false
+        },
+        "effects": {
+          "external_recipients": [],
+          "reconcile_scope": "exact_target"
+        }
       }
     }
   ]

@@ -43,6 +43,8 @@ export interface DispatchGuard {
   readonly approval: ApprovalBinding | null;
   readonly target: OperationTargetVersion | null;
   readonly expected_target: OperationTargetVersion | null;
+  readonly recipients: readonly string[] | null;
+  readonly expected_recipients: readonly string[] | null;
 }
 
 function sameTarget(
@@ -56,8 +58,34 @@ function sameTarget(
   );
 }
 
+// 宛先はメールアドレスの大文字小文字を区別せず、重複を除いて比べる（ADR 0075）。
+function recipientKey(values: readonly string[] | null): string[] | null {
+  if (values === null) return null;
+  return [...new Set(values.map((value) => value.trim().toLowerCase()))].sort();
+}
+
+function sameRecipients(
+  left: readonly string[] | null,
+  right: readonly string[] | null,
+): boolean {
+  const a = recipientKey(left);
+  const b = recipientKey(right);
+  if (a === null || b === null) return a === b;
+  return a.length === b.length && a.every((value, index) => value === b[index]);
+}
+
+// 送信と予定の 2 種類は宛先・参加者を持つ。ごみ箱は持たない。
+function hasRecipients(kind: ApprovalRequiredOperationKind): boolean {
+  return kind !== 'mail.trash';
+}
+
+// 既存の対象を持つ種類。参加者のいる予定の作成と新規の送信は対象を持たない。
+function needsTarget(kind: ApprovalRequiredOperationKind): boolean {
+  return kind === 'calendar.event.update' || kind === 'mail.trash';
+}
+
 // 送出してよいか。理由をすべて返し、一つでもあれば送出しない。
-// 判定の順は、未承認 → 取消 → 内容 → 宛先・対象 → 版の順で安定させる。
+// 判定の順は、未承認 → 取消 → 内容 → 宛先 → 対象 → 版の順で安定させる。
 export function dispatchGuardReasons(
   guard: DispatchGuard,
 ): DispatchGuardRejection[] {
@@ -73,19 +101,17 @@ export function dispatchGuardReasons(
     approval.content_hash !== guard.content_hash
   )
     reasons.push('content_changed');
+  if (
+    hasRecipients(guard.operation_kind) &&
+    !sameRecipients(guard.recipients, guard.expected_recipients)
+  )
+    reasons.push('recipient_changed');
+  if (!sameTarget(guard.target, guard.expected_target))
+    reasons.push('target_changed');
   if (approval.state_revision !== guard.state_revision)
     reasons.push('stale_version');
-  if (!sameTarget(guard.target, guard.expected_target))
-    reasons.push(
-      guard.operation_kind === 'mail.send'
-        ? 'recipient_changed'
-        : 'target_changed',
-    );
-  // 参加者のいる予定の作成は既存の対象を持たない。他の 3 種類は対象の版が要る。
-  if (
-    guard.operation_kind !== 'calendar.event.create_with_attendees' &&
-    guard.target === null
-  ) {
+  // 予定の変更とごみ箱は既存の対象の版が要る。読めなければ対象の変更として扱う。
+  if (needsTarget(guard.operation_kind) && guard.target === null) {
     if (!reasons.includes('target_changed')) reasons.push('target_changed');
   }
   return reasons;

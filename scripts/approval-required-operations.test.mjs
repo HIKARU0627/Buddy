@@ -125,6 +125,13 @@ test('the fixture keeps the allowed and rejected shapes of the four operations',
     remote_id: 'mail-001',
     source_revision: 'r1',
   });
+  // 終日の逆順と、日付と日時の混在も拒否する。
+  for (const id of ['calendar-all-day-reversed', 'calendar-mixed-time-order'])
+    assert.deepEqual(
+      cases.cases.find((entry) => entry.id === id).semantic_errors,
+      ['event_time_order'],
+      id,
+    );
 });
 
 test('the dispatch guard turns every required rejection into a reason', () => {
@@ -182,6 +189,12 @@ test('the dispatch guard turns every required rejection into a reason', () => {
   assert.deepEqual(dispatchGuardReasons(byId('guard-stale-version').value), [
     'stale_version',
   ]);
+  // 新規の送信は既存の対象を持たない。宛先が同じなら送出できる。
+  assert(canDispatch(byId('guard-new-send-allowed').value));
+  assert.deepEqual(
+    dispatchGuardReasons(byId('guard-calendar-recipient-changed').value),
+    ['recipient_changed'],
+  );
   // 結果不明は拒否の語彙に入れず、保留として別に扱う。
   assert(!DISPATCH_GUARD_REJECTIONS.includes('unknown_result'));
 });

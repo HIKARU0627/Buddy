@@ -6557,7 +6557,7 @@
               "type": "null"
             }
           ],
-          "description": "送出の直前に読み直した対象の版。送信・予定変更・ごみ箱では必須、参加者のいる予定の作成では null。"
+          "description": "送出の直前に読み直した対象の版。予定の変更とごみ箱では必須、送信は下書き・返信元があればその版、新規送信では null。参加者のいる予定の作成では null。"
         },
         "expected_target": {
           "anyOf": [
@@ -6568,7 +6568,39 @@
               "type": "null"
             }
           ],
-          "description": "承認の時点で確かめた対象の版。target と食い違えば宛先・対象の変更として拒否する。"
+          "description": "承認の時点で確かめた対象の版。target と食い違えば対象の変更として拒否する。"
+        },
+        "recipients": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "uniqueItems": true
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "送出の直前に読み直した宛先（送信）または参加者（予定）。ごみ箱では null。"
+        },
+        "expected_recipients": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "uniqueItems": true
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "承認の時点で確かめた宛先・参加者。recipients と食い違えば宛先の変更として拒否する。"
         }
       },
       "required": [
@@ -6580,7 +6612,9 @@
         "state_revision",
         "approval",
         "target",
-        "expected_target"
+        "expected_target",
+        "recipients",
+        "expected_recipients"
       ],
       "additionalProperties": false,
       "description": "画面承認が必要な外部変更の送出直前の照合（設計 08 §2・§3、ADR 0075）。未承認・取消済み・内容変更・宛先変更・対象変更・旧版を形式として表し、結果不明の再送を許可しない。"

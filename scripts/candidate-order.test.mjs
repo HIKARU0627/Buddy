@@ -327,3 +327,51 @@ test('a title never says the reply is missing, and stays within 60 characters', 
   assert.deepEqual(candidateTitleErrors('😀'.repeat(60)), []);
   assert.deepEqual(candidateTitleErrors('😀'.repeat(61)), ['title_too_long']);
 });
+
+test('deadlines in different zones are ordered on one time line, not by their local text', () => {
+  // 基準 2030-10-09 12:00 JST。2030-10-20 のニューヨークは夏時間（UTC-4）。
+  // 日本 10:00 = 01:00Z、ニューヨーク 08:00 = 12:00Z、ニューヨーク 09:00 = 13:00Z、日本 09:00 = 00:00Z。
+  const tokyo10 = item({ deadline: at('2030-10-20T10:00') });
+  const newYork08 = item({
+    deadline: at('2030-10-20T08:00', 'America/New_York'),
+  });
+  const newYork09 = item({
+    deadline: at('2030-10-20T09:00', 'America/New_York'),
+  });
+  const tokyo09 = item({ deadline: at('2030-10-20T09:00') });
+  const result = orderCandidates(
+    [newYork09, newYork08, tokyo10, tokyo09],
+    context,
+  );
+  assert.deepEqual(idsOf(result, 'later'), [
+    tokyo09.candidate_id, // 00:00Z
+    tokyo10.candidate_id, // 01:00Z（文字では 10:00 が 08:00 より後でも先に出る）
+    newYork08.candidate_id, // 12:00Z
+    newYork09.candidate_id, // 13:00Z
+  ]);
+  // 日付だけの期限は、本人（日本）のその日が終わる 2030-10-20T15:00Z として比べる。
+  // ニューヨーク 20:00 = 2030-10-21T00:00Z は、それより後。
+  const dateOnly = item({ deadline: on('2030-10-20') });
+  const newYork20 = item({
+    deadline: at('2030-10-20T20:00', 'America/New_York'),
+  });
+  const lateNewYork = orderCandidates([newYork20, dateOnly], context);
+  assert.deepEqual(idsOf(lateNewYork, 'later'), [
+    dateOnly.candidate_id,
+    newYork20.candidate_id,
+  ]);
+});
+
+test('a time that does not exist in the zone is still ordered next to its neighbours', () => {
+  // ニューヨークは 2030-03-10 02:30 が存在しない（02:00 が 03:00 になる）。直後の 03:00 EDT = 07:00Z として比べる。
+  const nowSpring = { now: '2030-03-01T03:00:00Z', zone: 'America/New_York' };
+  const gap = item({ deadline: at('2030-03-10T02:30', 'America/New_York') });
+  const before = item({ deadline: at('2030-03-10T01:59', 'America/New_York') });
+  const after = item({ deadline: at('2030-03-10T03:01', 'America/New_York') });
+  const result = orderCandidates([after, gap, before], nowSpring);
+  assert.deepEqual(idsOf(result, 'later'), [
+    before.candidate_id,
+    gap.candidate_id,
+    after.candidate_id,
+  ]);
+});

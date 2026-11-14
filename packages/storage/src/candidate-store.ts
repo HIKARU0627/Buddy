@@ -162,6 +162,12 @@ export interface CandidateRow {
   readonly excerpt: CandidateBlobOutput | null;
 }
 
+// 一覧の続きの位置（受信時刻のミリ秒と候補 ID）。
+export interface CandidateListCursor {
+  readonly received_at: number;
+  readonly candidate_id: string;
+}
+
 export type CandidateOp =
   | { readonly kind: 'candidate.create'; readonly input: CandidateCreateInput }
   | {
@@ -173,6 +179,8 @@ export type CandidateOp =
       // 省略は全状態。
       readonly states?: readonly CandidateState[];
       readonly limit: number;
+      // 続きの読み取り位置（前の応答の next_after）。省略は先頭から。順は受信の新しい順、同じ受信は候補 ID の昇順。
+      readonly after?: CandidateListCursor;
     }
   | { readonly kind: 'candidate.get'; readonly candidate_id: string }
   | { readonly kind: 'candidate.counts' }
@@ -205,6 +213,8 @@ export interface CandidateOpValues {
     readonly candidates: readonly CandidateRow[];
     // limit で切ったときに true。
     readonly truncated: boolean;
+    // truncated のとき、続きを読む位置（次の命令の after に渡す）。切れなければ null。
+    readonly next_after: CandidateListCursor | null;
   };
   'candidate.get': { readonly candidate: CandidateRow | null };
   'candidate.counts': Readonly<Record<CandidateState, number>>;
@@ -415,6 +425,14 @@ export function candidateOpShapeReasons(op: CandidateOp): string[] {
           ))
       )
         reasons.push('states_invalid');
+      if (
+        op.after !== undefined &&
+        (op.after === null ||
+          typeof op.after !== 'object' ||
+          !Number.isSafeInteger(op.after.received_at) ||
+          !isUuid(op.after.candidate_id))
+      )
+        reasons.push('after_invalid');
       return reasons;
     }
     case 'candidate.get':
@@ -583,16 +601,33 @@ function listCandidates(
 ): CandidateOpValues['candidate.list'] {
   const states = op.states ?? CANDIDATE_STATES;
   const placeholders = states.map(() => '?').join(', ');
+  // 位置の指定は keyset（受信の新しい順・同じ受信は ID の昇順）。途中で状態が変わった行があっても、同じ行を 2 度読まず、
+  // 読み残さない。
+  const after = op.after;
+  const cursorSql =
+    after === undefined
+      ? ''
+      : ' AND (received_at < ? OR (received_at = ? AND candidate_id > ?))';
+  const cursorArgs =
+    after === undefined
+      ? []
+      : [after.received_at, after.received_at, after.candidate_id];
   const rows = db
     .prepare(
-      `SELECT ${COLUMNS} FROM notification_candidates WHERE state IN (${placeholders})
+      `SELECT ${COLUMNS} FROM notification_candidates WHERE state IN (${placeholders})${cursorSql}
         ORDER BY received_at DESC, candidate_id LIMIT ?`,
     )
-    .all(...states, op.limit + 1) as SqlRow[];
+    .all(...states, ...cursorArgs, op.limit + 1) as SqlRow[];
   const truncated = rows.length > op.limit;
+  const page = rows.slice(0, op.limit);
+  const last = page[page.length - 1];
   return {
-    candidates: rows.slice(0, op.limit).map((row) => toRow(db, row, false)),
+    candidates: page.map((row) => toRow(db, row, false)),
     truncated,
+    next_after:
+      truncated && last !== undefined
+        ? { received_at: last.received_at, candidate_id: last.candidate_id }
+        : null,
   };
 }
 

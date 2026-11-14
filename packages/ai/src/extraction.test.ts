@@ -1138,3 +1138,60 @@ test('checkQuote reports the exact reason for each mismatch', () => {
     reason: 'not_found',
   });
 });
+
+test('a cancel or completion is resolved only when the change evidence is verified too (review)', async () => {
+  const body = '先日の参加可否の件です。連絡は以上です。';
+  const resolver = (): readonly string[] => [
+    'b8c1e2d3-4a5f-4b6c-8d7e-9f0a1b2c3d4e',
+  ];
+  const change = (
+    relation: 'cancel' | 'complete' | 'correction',
+    changeEvidence: ExtractionWire['changes'][number]['change_evidence'],
+  ): ExtractionWire =>
+    wireOf(
+      [],
+      [
+        {
+          relation,
+          target_evidence: [quote('先日の参加可否の件')],
+          change_evidence: changeEvidence,
+          new_deadline: null,
+        },
+      ],
+    );
+  const cases: readonly [
+    string,
+    ExtractionWire['changes'][number]['change_evidence'],
+  ][] = [
+    // 変更の根拠が空。
+    ['empty', []],
+    // 本文にない引用（架空の「取り消します」）。
+    ['not_found', [quote('取り消します')]],
+    // 版違い。
+    ['revision', [quote('連絡は以上です', { source_revision: 'r0' })]],
+    // 一部だけ照合できる。
+    ['partial', [quote('連絡は以上です'), quote('取り消します')]],
+  ];
+  for (const relation of ['cancel', 'complete', 'correction'] as const) {
+    for (const [label, evidence] of cases) {
+      const result = extracted(
+        await run(wireOf([], change(relation, evidence).changes), mail(body), {
+          resolveTarget: resolver,
+        }),
+      );
+      assert.equal(
+        result.changes[0]?.resolution,
+        'unresolved',
+        `${relation} ${label}`,
+      );
+      assert.equal(result.changes[0]?.target_request_entity_id, null);
+    }
+  }
+  // 根拠が照合できれば解決する（対照）。
+  const ok = extracted(
+    await run(change('cancel', [quote('連絡は以上です')]), mail(body), {
+      resolveTarget: resolver,
+    }),
+  );
+  assert.equal(ok.changes[0]?.resolution, 'resolved');
+});

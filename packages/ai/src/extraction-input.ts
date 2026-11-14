@@ -16,6 +16,12 @@ export const EXTRACTION_PROMPT_VERSION = '1';
 // 入力全体と添付の上限（トークン）。設計 11 §3 の初期値で、実測（T08・B15）で調整する。
 export const EXTRACTION_INPUT_TOKEN_LIMIT = 6000;
 export const EXTRACTION_ATTACHMENT_TOKEN_LIMIT = 2000;
+// ソースの text 以外の付加部分（受信日時・名前・一覧・区切り・未読と切詰めの ID）の上限。これを超える入力は送らない。
+// 入力全体の枠（EXTRACTION_INPUT_TOKEN_LIMIT）には、この付加部分も含める（固定の指示文は含めない。版管理の定数）。
+export const EXTRACTION_OVERHEAD_TOKEN_LIMIT = 1500;
+// 添付の数と、ID・版の長さの上限（付加部分が入力の大きさで膨らまないように）。
+export const MAX_EXTRACTION_ATTACHMENTS = 10;
+export const MAX_SOURCE_LABEL_CODE_POINTS = 100;
 
 export const SUBJECT_SOURCE_ID = 'subject';
 export const BODY_SOURCE_ID = 'body';
@@ -68,6 +74,10 @@ export type ExtractionInputError =
   | 'attachment_id_reserved'
   | 'attachment_id_duplicate'
   | 'attachment_revision_empty'
+  | 'too_many_attachments'
+  | 'attachment_id_too_long'
+  | 'revision_too_long'
+  | 'overhead_too_large'
   | 'nothing_readable';
 
 export interface AssembledExtractionInput {
@@ -149,9 +159,20 @@ export function extractionInputErrors(
   )
     errors.push('owner_name_invalid');
   if (input.message_revision === '') errors.push('message_revision_empty');
+  if (codePointLength(input.message_revision) > MAX_SOURCE_LABEL_CODE_POINTS)
+    errors.push('revision_too_long');
+  if (input.attachments.length > MAX_EXTRACTION_ATTACHMENTS)
+    errors.push('too_many_attachments');
   const seen = new Set<string>();
   for (const attachment of input.attachments) {
     const id = attachment.attachment_id;
+    if (codePointLength(id) > MAX_SOURCE_LABEL_CODE_POINTS)
+      errors.push('attachment_id_too_long');
+    if (
+      attachment.source_revision !== null &&
+      codePointLength(attachment.source_revision) > MAX_SOURCE_LABEL_CODE_POINTS
+    )
+      errors.push('revision_too_long');
     if (id === '') errors.push('attachment_id_invalid');
     else if (id === SUBJECT_SOURCE_ID || id === BODY_SOURCE_ID)
       errors.push('attachment_id_reserved');
@@ -199,26 +220,100 @@ function sourceLine(source: ExtractionSource): string {
   return `part=${source.part} source_id=${JSON.stringify(source.source_id)} source_revision=${JSON.stringify(source.source_revision)}`;
 }
 
+// ユーザー側の message（固定の指示文を除く、モデルへ送る本体）を組み立てる。ソースの text 以外（受信日時・本人の名前・
+// 一覧・区切り・未読と切詰めの ID）も、この message に含まれるので、入力の枠に数える。
+function renderUserContent(
+  input: ExtractionMailInput,
+  marker: string,
+  sources: readonly ExtractionSource[],
+  unread: readonly string[],
+  truncated: readonly string[],
+): string {
+  const blocks = sources.map(
+    (source) =>
+      `${marker} ${sourceLine(source)}\n${source.text}\n${marker} END`,
+  );
+  const note = (label: string, ids: readonly string[]): string =>
+    ids.length === 0 ? '' : `\n${label}: ${ids.join('、')}`;
+  return [
+    `受信日時: ${input.received_at_local}（${input.zone}）`,
+    `本人の名前: ${JSON.stringify(input.owner_name)}`,
+    `ソース一覧（区切りは ${marker}）:\n${sources.map((source) => `- ${sourceLine(source)}`).join('\n')}${note('読めなかったソース', unread)}${note('途中で切れたソース', truncated)}`,
+    blocks.join('\n\n'),
+  ].join('\n\n');
+}
+
 export function assembleExtractionInput(
   input: ExtractionMailInput,
 ): ExtractionInputResult {
   const errors = extractionInputErrors(input);
   if (errors.length > 0) return { ok: false, errors };
 
-  const sources: ExtractionSource[] = [];
   const unread: string[] = [];
-  const truncated: string[] = [];
   const outOfScope: string[] = [];
-
-  // 件名: 入力全体の上限だけを見る（件名が上限を超えることは通常ない）。
-  const subject = fit(input.subject, EXTRACTION_INPUT_TOKEN_LIMIT);
-  const subjectTokens = estimateTokens(subject.text);
-
-  // 添付: 許可対象だけ。未取得・読取失敗は未読。添付の合計は 2,000 まで、かつ全体の残りまで。
   const attachments = input.attachments.filter((attachment) => {
     if (!attachment.permitted) outOfScope.push(attachment.attachment_id);
     return attachment.permitted;
   });
+  for (const attachment of attachments)
+    if (attachment.state !== 'extracted') unread.push(attachment.attachment_id);
+  if (input.body.state === 'unread') unread.unshift(BODY_SOURCE_ID);
+
+  // 送る候補（読める内容があるソース）。区切りは、候補の全文のどれにも現れない記号にする（切り詰めた後の text にも現れない）。
+  const candidates: ExtractionSource[] = [];
+  if (input.subject.trim() !== '')
+    candidates.push({
+      source_id: SUBJECT_SOURCE_ID,
+      part: 'subject',
+      source_revision: input.message_revision,
+      text: '',
+      quoted_ranges: [],
+    });
+  if (input.body.state === 'extracted' && input.body.text.trim() !== '')
+    candidates.push({
+      source_id: BODY_SOURCE_ID,
+      part: 'body',
+      source_revision: input.message_revision,
+      text: '',
+      quoted_ranges: [],
+    });
+  for (const attachment of attachments)
+    if (attachment.state === 'extracted' && attachment.text.trim() !== '')
+      candidates.push({
+        source_id: attachment.attachment_id,
+        part: 'attachment',
+        source_revision: attachment.source_revision,
+        text: '',
+        quoted_ranges: [],
+      });
+  const marker = chooseMarker([
+    input.subject,
+    ...(input.body.state === 'extracted' ? [input.body.text] : []),
+    ...attachments.flatMap((attachment) =>
+      attachment.state === 'extracted' ? [attachment.text] : [],
+    ),
+  ]);
+
+  // 付加部分の大きさ。本文を入れる前に、候補の全てが送られ、全てが切詰めの一覧に載る最悪の場合で見積もる。
+  const overhead = estimateTokens(
+    renderUserContent(
+      input,
+      marker,
+      candidates,
+      unread,
+      candidates.map((source) => source.source_id),
+    ),
+  );
+  if (overhead > EXTRACTION_OVERHEAD_TOKEN_LIMIT)
+    return { ok: false, errors: ['overhead_too_large'] };
+  const textBudget = EXTRACTION_INPUT_TOKEN_LIMIT - overhead;
+
+  const sources: ExtractionSource[] = [];
+  const truncated: string[] = [];
+
+  // 件名 → 添付（合計 2,000 まで、かつ全体の残りまで）→ 本文（残り）の順に枠を決める。
+  const subject = fit(input.subject, textBudget);
+  const subjectTokens = estimateTokens(subject.text);
   const attachmentDemand = attachments.reduce(
     (sum, attachment) =>
       attachment.state === 'extracted'
@@ -229,10 +324,9 @@ export function assembleExtractionInput(
   const attachmentBudget = Math.min(
     attachmentDemand,
     EXTRACTION_ATTACHMENT_TOKEN_LIMIT,
-    EXTRACTION_INPUT_TOKEN_LIMIT - subjectTokens,
+    textBudget - subjectTokens,
   );
-  const bodyBudget =
-    EXTRACTION_INPUT_TOKEN_LIMIT - subjectTokens - attachmentBudget;
+  const bodyBudget = textBudget - subjectTokens - attachmentBudget;
 
   if (subject.text.trim() !== '') {
     sources.push({
@@ -245,10 +339,9 @@ export function assembleExtractionInput(
     if (subject.truncated) truncated.push(SUBJECT_SOURCE_ID);
   }
 
-  if (input.body.state === 'unread') unread.push(BODY_SOURCE_ID);
-  else if (input.body.text.trim() !== '') {
+  if (input.body.state === 'extracted' && input.body.text.trim() !== '') {
     const body = fit(input.body.text, bodyBudget);
-    // 件名が全体の枠を使い切って 1 文字も送れないときは、送っていないので切詰めとして記録する。
+    // 枠を使い切って 1 文字も送れないときは、送っていないので切詰めとして記録する。
     if (body.text !== '')
       sources.push({
         source_id: BODY_SOURCE_ID,
@@ -262,11 +355,13 @@ export function assembleExtractionInput(
 
   let attachmentRemaining = attachmentBudget;
   for (const attachment of attachments) {
-    if (attachment.state !== 'extracted') {
-      unread.push(attachment.attachment_id);
+    if (attachment.state !== 'extracted') continue;
+    if (attachment.text.trim() === '') {
+      // 空のテキストでも、抽出が途中までだった添付は読めていない範囲が残る。切詰めとして記録する（読めたことにしない）。
+      if (attachment.extraction_truncated === true)
+        truncated.push(attachment.attachment_id);
       continue;
     }
-    if (attachment.text.trim() === '') continue;
     // 予算が尽きて 1 文字も送れない添付は、送っていないので切詰めとして記録する（読めたことにしない）。
     if (attachmentRemaining <= 0) {
       truncated.push(attachment.attachment_id);
@@ -285,20 +380,7 @@ export function assembleExtractionInput(
       truncated.push(attachment.attachment_id);
   }
 
-  const marker = chooseMarker(sources.map((source) => source.text));
-  const blocks = sources.map(
-    (source) =>
-      `${marker} ${sourceLine(source)}\n${source.text}\n${marker} END`,
-  );
-  const note = (label: string, ids: readonly string[]): string =>
-    ids.length === 0 ? '' : `\n${label}: ${ids.join('、')}`;
-  const content = [
-    `受信日時: ${input.received_at_local}（${input.zone}）`,
-    `本人の名前: ${JSON.stringify(input.owner_name)}`,
-    `ソース一覧（区切りは ${marker}）:\n${sources.map((source) => `- ${sourceLine(source)}`).join('\n')}${note('読めなかったソース', unread)}${note('途中で切れたソース', truncated)}`,
-    blocks.join('\n\n'),
-  ].join('\n\n');
-
+  const content = renderUserContent(input, marker, sources, unread, truncated);
   return {
     ok: true,
     assembled: {

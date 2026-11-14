@@ -82,3 +82,5 @@ export * from './voice-commentary.js';
 export * from './web-research.js';
 // B10-05: 抽出の入力として送ったソースの形とコードポイントの位置の数え方（ADR 0100）。
 export * from './extraction-source.js';
+// B10-05: 抽出前フィルターと判定の記録（ADR 0102）。
+export * from './extraction-filter.js';

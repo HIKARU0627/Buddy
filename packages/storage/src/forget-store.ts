@@ -12,9 +12,13 @@
 // - 台帳の別ファイルは DB の COMMIT の後に Core が書く（forget-ledger-file.ts。DB が正本で、ファイルは DB から作り直せる）。
 // 結果には ID・件数・hash だけを入れ、本文・検索語・SQL・パスを入れない。
 
+import { createHmac, hkdfSync } from 'node:crypto';
 import {
+  FORGET_DELETE_ORDER,
+  LEDGER_SUBKEY_INFO,
   buildLedgerEntry,
   computeForgetClosure,
+  operationContentPurgeable,
   planForget,
 } from '@buddy/domain';
 import type {
@@ -1067,7 +1071,7 @@ function deleteCandidates(
 }
 
 // 確定内容（暗号文）を消す。終端の操作だけ（planForget の purge）。hash・行・承認・試行は残す（J5 と同じ）。
-function purgeOperationContent(
+export function purgeOperationContent(
   db: SqliteDatabase,
   operationId: string,
   now: number,
@@ -1235,6 +1239,359 @@ export function applyForget(
     send_blocked_operations: blocked,
     notice: plan.notice,
   };
+}
+
+export interface RestoreLedgerApplyInput {
+  // 段階 1 で選んだ台帳の、作業用の DB より後の世代の連鎖（古い順）。
+  readonly entries: readonly LedgerChainEntry[];
+  // 封筒の ledger_hmac_key を開いた素材（32 バイト）。保存しない。
+  readonly ledger_hmac_key: Uint8Array;
+  // 台帳の系譜（封筒と段階 1 で選んだ台帳の ledger_id）。作業用の DB に系譜がなければ付ける。
+  readonly ledger_id: string;
+  readonly now: number;
+}
+
+export interface RestoreLedgerApplyValue {
+  readonly applied_generations: readonly string[];
+  readonly forgotten_applied: number;
+  readonly deleted: Readonly<Record<string, number>>;
+  readonly purged_operations: readonly string[];
+  readonly send_blocked_operations: readonly string[];
+}
+
+// 復元の段階 3。バックアップの後に進んだ忘却の台帳を、作業用の DB に当てる。
+// 台帳の 1 件は当時の閉包の対象（発言・記憶・元情報の HMAC）を記録しているが、派生物（要約・気づきなど）は
+// 記録していない。そのため、記録された対象から今の DB の系譜で閉包を計算し直し、台帳の entry_hash は与えられた
+// 値を保ったまま、対象・派生物・操作の確定内容を消す（台帳の連鎖は書き換えない。applyForget と同じ削除の順）。
+export function applyRestoreLedger(
+  db: SqliteDatabase,
+  input: RestoreLedgerApplyInput,
+): RestoreLedgerApplyValue {
+  return db.transaction((): RestoreLedgerApplyValue => {
+    const chain = readLedgerChain(db);
+    const existingLineage = readLedgerId(db);
+    if (existingLineage !== null && existingLineage !== input.ledger_id)
+      throw new ForgetRejection(['ledger_lineage_mismatch']);
+    if (existingLineage === null && input.entries.length > 0)
+      db.prepare(
+        "INSERT INTO schema_meta (key, value) VALUES ('ledger_id', ?)",
+      ).run(input.ledger_id);
+    let previousHash = chain.at(-1)?.entry_hash ?? LEDGER_ZERO_HASH;
+    let current = currentForgettingGeneration(db);
+    const applied: string[] = [];
+    const deleted: Record<string, number> = {};
+    const purged: string[] = [];
+    const blocked: string[] = [];
+    let forgotten = 0;
+    const sourceHmac = restoreSourceHmac(input.ledger_hmac_key);
+    for (const item of input.entries) {
+      const entry = normalizeLedgerEntry(item.entry);
+      const generation = current + 1;
+      if (Number(entry.forgetting_generation) !== generation)
+        throw new ForgetRejection(['forget_ledger_gap']);
+      const entryHash = ledgerEntryHash(entry, previousHash);
+      if (entryHash !== item.entry_hash)
+        throw new ForgetRejection(['forget_ledger_hash_mismatch']);
+      const items: { kind: string; id: string }[] = [
+        ...entry.forgotten.map((source) => ({
+          kind: source.source_kind,
+          id: ledgerSourceKey(source),
+        })),
+        ...entry.blocked_source_hmacs.map((id) => ({
+          kind: 'blocked_source',
+          id,
+        })),
+        ...entry.blocked_content_keys.map((id) => ({
+          kind: 'blocked_content',
+          id,
+        })),
+      ];
+      db.prepare(
+        'INSERT INTO forget_ledger (forgetting_generation, entry_id, recorded_at, entry_hash, item_count) VALUES (?, ?, ?, ?, ?)',
+      ).run(
+        generation,
+        entry.entry_id,
+        Date.parse(entry.recorded_at),
+        entryHash,
+        items.length,
+      );
+      const insertItem = db.prepare(
+        'INSERT INTO forget_ledger_items (forgetting_generation, item_kind, item_id) VALUES (?, ?, ?)',
+      );
+      for (const value of items)
+        insertItem.run(generation, value.kind, value.id);
+
+      // 台帳に残っている対象から、今の系譜で閉包を作り直す。
+      const graph = readForgetGraph(db);
+      const sourceIds = db
+        .prepare(
+          'SELECT DISTINCT remote_id FROM source_items ORDER BY remote_id',
+        )
+        .pluck()
+        .all() as string[];
+      const targets = restoreLedgerTargets(entry, graph, sourceHmac, sourceIds);
+      const nodes = new Map<string, ForgetNode>();
+      const purge = new Set<string>();
+      const retained = new Set<string>();
+      const states = new Map(
+        graph.operations.map((operation) => [
+          operation.operation_id,
+          operation.state,
+        ]),
+      );
+      // 台帳は「元の対象」と「そこから広がって消えたもの」を区別せず forgotten に持つ。全件を core にすると
+      // 通常の忘却が広げなかった由来まで規則 B が辿るため、forgotten を削除済み（非 core）、blocked_source_hmacs を
+      // 除外する由来として、規則 A・C・D をそのまま再適用する。
+      const blockedOrigins = restoreBlockedOrigins(
+        db,
+        graph,
+        entry.blocked_source_hmacs,
+        sourceHmac,
+        sourceIds,
+      );
+      const closure = restoreClosure(
+        graph,
+        targets.map((target) => ({
+          kind: target.source_kind,
+          id: target.source_id,
+        })),
+        blockedOrigins.map((origin) => ({
+          kind: origin.source_kind,
+          id: origin.source_id,
+        })),
+      );
+      for (const node of closure.doomed.values()) {
+        if (node.kind !== 'operation_content') {
+          nodes.set(nodeKey(node), node);
+          continue;
+        }
+        const state = states.get(node.id);
+        if (state !== undefined && operationContentPurgeable(state))
+          purge.add(node.id);
+        else retained.add(node.id);
+      }
+      const ordered = [...nodes.values()].sort(
+        (a, b) =>
+          FORGET_DELETE_ORDER.indexOf(a.kind) -
+            FORGET_DELETE_ORDER.indexOf(b.kind) || compare(a.id, b.id),
+      );
+      const removeEdges = db.prepare(
+        'DELETE FROM derivations WHERE artifact_kind = ? AND artifact_id = ?',
+      );
+      const lineageParents: LineageNode[] = [];
+      for (const node of ordered) {
+        lineageParents.push(...lineageSources(db, node));
+        const count = deleteNode(db, node);
+        deleted[node.kind] = (deleted[node.kind] ?? 0) + count;
+        removeEdges.run(node.kind, node.id);
+      }
+      for (const operationId of purge) {
+        const node: LineageNode = {
+          kind: 'operation_content',
+          id: operationId,
+        };
+        lineageParents.push(...lineageSources(db, node));
+        if (purgeOperationContent(db, operationId, input.now))
+          purged.push(operationId);
+        removeEdges.run('operation_content', operationId);
+      }
+      pruneDeadLineage(db, [
+        ...lineageParents,
+        ...[...retained].map((id) => ({
+          kind: 'operation_content' as const,
+          id,
+        })),
+      ]);
+      const mark = db.prepare(
+        'UPDATE operations SET send_blocked_generation = ? WHERE operation_id = ? AND send_blocked_generation IS NULL',
+      );
+      for (const operationId of retained)
+        if (mark.run(generation, operationId).changes === 1)
+          blocked.push(operationId);
+
+      forgotten += entry.forgotten.length;
+      applied.push(String(generation));
+      previousHash = entryHash;
+      current = generation;
+    }
+    const after = readLedgerChain(db).at(-1)?.entry_hash;
+    if (input.entries.length > 0 && after !== previousHash)
+      throw new ForgetRejection(['forget_ledger_hash_mismatch']);
+    return {
+      applied_generations: applied,
+      forgotten_applied: forgotten,
+      deleted,
+      purged_operations: purged,
+      send_blocked_operations: blocked,
+    };
+  })();
+}
+
+export function restoreSourceHmac(
+  ledgerKey: Uint8Array,
+): (source: MemorySource) => string {
+  const info = Buffer.from(LEDGER_SUBKEY_INFO.source_id, 'utf8');
+  const subkey = Buffer.from(
+    hkdfSync('sha256', ledgerKey, Buffer.alloc(0), info, 32),
+  );
+  return (source) =>
+    createHmac('sha256', subkey)
+      .update(info)
+      .update(Buffer.from([0]))
+      .update(Buffer.from(source.source_kind, 'utf8'))
+      .update(Buffer.from([0]))
+      .update(Buffer.from(source.source_id, 'utf8'))
+      .digest('hex');
+}
+
+// 台帳の forgotten（削除済み）と blocked_source_hmacs（除外する由来）から、規則 A・C・D を再適用する。
+// 台帳の forgotten を core にしない（通常の忘却が広げなかった由来まで規則 B で辿らない）。
+export function restoreClosure(
+  graph: ForgetGraph,
+  forgotten: readonly ForgetNode[],
+  origins: readonly ForgetNode[],
+): ForgetClosure {
+  const doomed = new Map<string, ForgetNode>();
+  for (const node of forgotten) doomed.set(nodeKey(node), node);
+  const originMap = new Map<string, ForgetNode>();
+  for (const node of origins) originMap.set(nodeKey(node), node);
+  const members = (scope: ForgetNode): ForgetNode[] =>
+    scope.kind === 'session'
+      ? graph.turn_sessions
+          .filter((row) => row.session_id === scope.id)
+          .map((row) => ({ kind: 'turn', id: row.turn_id }))
+      : [scope];
+  let changed = true;
+  while (changed) {
+    changed = false;
+    // A. 削除する物から作られた派生物は削除する。
+    for (const edge of graph.edges)
+      if (
+        doomed.has(nodeKey(edge.source)) &&
+        !doomed.has(nodeKey(edge.artifact))
+      ) {
+        doomed.set(nodeKey(edge.artifact), edge.artifact);
+        changed = true;
+      }
+    // C. 除外する由来から作られた派生物は削除する。
+    for (const edge of graph.edges)
+      if (
+        originMap.has(nodeKey(edge.source)) &&
+        !doomed.has(nodeKey(edge.artifact))
+      ) {
+        doomed.set(nodeKey(edge.artifact), edge.artifact);
+        changed = true;
+      }
+    // D. 由来を引けない派生物の範囲の展開。core に触れた範囲の全体を除外する処理は、台帳の blocked_source_hmacs が
+    // すでに持っている（元の閉包で origins に入った範囲の構成要素）。ここでは、範囲が削除する物・除外する由来に
+    // 触れるときだけ派生物を消す（新たな由来を足さない。通常の規則 D の非 core の分岐と同じ）。
+    for (const item of graph.unattributed) {
+      const list = members(item.scope);
+      if (
+        !doomed.has(nodeKey(item.artifact)) &&
+        list.some(
+          (member) =>
+            doomed.has(nodeKey(member)) || originMap.has(nodeKey(member)),
+        )
+      ) {
+        doomed.set(nodeKey(item.artifact), item.artifact);
+        changed = true;
+      }
+    }
+  }
+  for (const key of originMap.keys())
+    if (doomed.has(key)) originMap.delete(key);
+  return { doomed, core: new Set(), origins: originMap };
+}
+
+// 台帳の「除外する由来」の HMAC を、今の DB の発言・記憶・元情報の ID に戻す。由来そのものは消さない
+// （その由来を持つ派生物を消すために使う）。
+function restoreBlockedOrigins(
+  db: SqliteDatabase,
+  graph: ForgetGraph,
+  blocked: readonly string[],
+  sourceHmac: (source: MemorySource) => string,
+  storedSourceIds: readonly string[],
+): MemorySource[] {
+  if (blocked.length === 0) return [];
+  const wanted = new Set(blocked);
+  const origins = new Map<string, MemorySource>();
+  const add = (source_kind: MemorySource['source_kind'], source_id: string) =>
+    origins.set(`${source_kind}\u0000${source_id}`, { source_kind, source_id });
+  const turns = db
+    .prepare('SELECT turn_id FROM turns ORDER BY turn_id')
+    .pluck()
+    .all() as string[];
+  for (const id of turns) add('turn', id);
+  const memories = db
+    .prepare('SELECT memory_id FROM memories ORDER BY memory_id')
+    .pluck()
+    .all() as string[];
+  for (const id of memories) add('memory', id);
+  for (const edge of graph.edges) {
+    if (edge.source.kind === 'turn' || edge.source.kind === 'memory')
+      add(edge.source.kind, edge.source.id);
+    if (edge.artifact.kind === 'turn' || edge.artifact.kind === 'memory')
+      add(edge.artifact.kind, edge.artifact.id);
+  }
+  for (const item of graph.unattributed) {
+    if (item.scope.kind === 'turn' || item.scope.kind === 'memory')
+      add(item.scope.kind, item.scope.id);
+    if (item.artifact.kind === 'turn' || item.artifact.kind === 'memory')
+      add(item.artifact.kind, item.artifact.id);
+  }
+  for (const id of collectSourceItemIds(graph, storedSourceIds))
+    add('source_item', id);
+  return [...origins.values()].filter((source) =>
+    wanted.has(sourceHmac(source)),
+  );
+}
+
+function collectSourceItemIds(
+  graph: ForgetGraph,
+  storedSourceIds: readonly string[],
+): Set<string> {
+  const sourceItems = new Set<string>(storedSourceIds);
+  for (const edge of graph.edges) {
+    if (edge.source.kind === 'source_item') sourceItems.add(edge.source.id);
+    if (edge.artifact.kind === 'source_item') sourceItems.add(edge.artifact.id);
+  }
+  for (const scope of graph.unattributed) {
+    if (scope.scope.kind === 'source_item') sourceItems.add(scope.scope.id);
+    if (scope.artifact.kind === 'source_item')
+      sourceItems.add(scope.artifact.id);
+  }
+  return sourceItems;
+}
+
+// 台帳の忘却の対象のうち、今の DB に実体があるもの。元情報は HMAC しか台帳にないので、今の系譜の
+// 元情報の ID を同じ鍵で HMAC にして照合する（見つからないものは既に消えている）。
+function restoreLedgerTargets(
+  entry: ForgetLedgerEntryDraft,
+  graph: ForgetGraph,
+  sourceHmac: (source: MemorySource) => string,
+  storedSourceIds: readonly string[],
+): MemorySource[] {
+  const targets = new Map<string, MemorySource>();
+  const sourceItems = collectSourceItemIds(graph, storedSourceIds);
+  const byHmac = new Map<string, string>();
+  for (const id of sourceItems)
+    byHmac.set(sourceHmac({ source_kind: 'source_item', source_id: id }), id);
+  for (const source of entry.forgotten) {
+    if (source.source_kind === 'source_item') {
+      const id = byHmac.get(source.source_id_hmac);
+      if (id !== undefined)
+        targets.set(`source_item\u0000${id}`, {
+          source_kind: 'source_item',
+          source_id: id,
+        });
+    } else
+      targets.set(`${source.source_kind}\u0000${source.source_id}`, {
+        source_kind: source.source_kind,
+        source_id: source.source_id,
+      });
+  }
+  return [...targets.values()];
 }
 
 export function isUuid(value: unknown): value is string {

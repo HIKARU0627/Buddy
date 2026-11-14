@@ -260,6 +260,13 @@ export interface CoreTurnOptions {
   readonly writer?: ProviderWriter | null;
   // Core 側の故障点（試験用）。既定は何もしない。
   readonly faults?: FaultHook;
+  // 発言を保存したときに、保存した時点の生成の時刻と期限を受け取る（UI-05 の区切り。試験でも使う）。
+  readonly onTurnRecorded?: (event: {
+    readonly session_id: string;
+    readonly turn_id: string;
+    readonly created_at: string;
+    readonly expires_at: string;
+  }) => void;
   // 影モードの比較の入口（ADR 0092）。既定は無し（OFF。D4）。発言の解釈を保存した後に呼ばれる。
   readonly onInterpreted?: TurnRoutesOptions['onInterpreted'];
 }
@@ -1150,6 +1157,15 @@ async function startHttps(
     schema: { valid: () => false },
     now: () => now().getTime(),
   });
+  // 流れの区切り（UI-05）は、上の turns より後に作る。保存した発言の期限は、この口を通して区切りへ渡す。
+  let streamRecordTurn:
+    | ((event: {
+        readonly session_id: string;
+        readonly turn_id: string;
+        readonly created_at: string;
+        readonly expires_at: string;
+      }) => void)
+    | null = null;
   const turns = createTurnRoutes({
     store: watched,
     keyStore,
@@ -1179,6 +1195,11 @@ async function startHttps(
     // 会話の操作（照合表に当たった文字の発言）は、その端末の開いている Live へも行う（画面のボタンと同じ処理。B05-05）。
     onSessionControl: ({ device_id, action }) =>
       voice.applySessionControlForDevice(device_id, action),
+    // 保存した発言の生成の時刻と期限を、流れの区切りへ渡す（UI-05。再送では呼ばれない）。
+    onTurnRecorded: (event) => {
+      streamRecordTurn?.(event);
+      turnOptions.onTurnRecorded?.(event);
+    },
     // 検索・クラウドへの送信の前に、掃除のゲートを通す（ADR 0053）。今ある入口（予定の照会・下書き・ラベル）だけ。
     ...(retention === null
       ? {}
@@ -1201,7 +1222,11 @@ async function startHttps(
     createSession: turns.handlers['createSession'] as ApiRouteHandler,
     postTurn: turns.handlers['postTurn'] as ApiRouteHandler,
     now: () => now().getTime(),
+    // 自動の区切りの日付は、発言の解釈と同じ本人の時間帯で判定する（UI-05、ADR 0068）。
+    utcOffset: turnOptions.utcOffset ?? '+09:00',
   });
+  // 保存した発言の期限を、流れの区切りへ渡す口をつなぐ（UI-05）。
+  streamRecordTurn = stream.recordTurn;
   // 実行担当（ADR 0030）。承認の後・起動時の再開・本人の照合と再試行を受け持つ。
   const faults = turnOptions.faults ?? NO_FAULTS;
   const runner = createOperationRunner({

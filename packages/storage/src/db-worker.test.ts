@@ -5,11 +5,14 @@
 // 許可を返さないこと、送出意図の後の異常終了で dispatching のまま残り自動で送らないことを確かめる。
 
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import test from 'node:test';
 import {
   DbWorkerClient,
   DispatchPermit,
   StorageError,
+  applyMigrations,
+  openWriteConnection,
   readConnectionSql,
 } from './index.js';
 import type {
@@ -536,69 +539,106 @@ test('the worker refuses to start when the durability settings do not read back'
 
 // 影モードの比較記録の保存と件数が、クライアントと worker の間を通る（B06-06e、ADR 0110）。
 // 保存は 1 回だけ書かれ、同じ組の再送は duplicate、件数は campaign ごとに読める。
+// 書込みの前提（保存モード・発言に結び付いた入力の版・発言と同じ期限）を置いた DB で確かめる。
 test('the intent shadow save and count round-trip through the worker', async () => {
-  await withClient(async (_path, client) => {
-    const record = {
-      schema: 'buddy.intent-shadow.v1' as const,
-      record_id: 'c1000000-0000-4000-8000-000000000001',
-      campaign_id: 'a1000000-0000-4000-8000-000000000001',
-      input_id: 'b1000000-0000-4000-8000-000000000001',
-      request_revision: '1',
-      primary: {
-        deployment_id: 'd1000000-0000-4000-8000-000000000001',
-        outcome: 'ok',
-        intent: 'create_task',
-        args: { title: '牛乳を買う' },
-        probability: null,
-        latency_ms: 120,
-      },
-      shadows: [
-        {
-          deployment_id: 'd1000000-0000-4000-8000-000000000002',
-          outcome: 'timeout',
-          intent: null,
-          args: null,
+  await withTempDir(async (dir) => {
+    const path = databasePath(dir);
+    seed(path);
+    const db = openWriteConnection(path, { platform: 'macos' });
+    try {
+      applyMigrations(db);
+      db.prepare(
+        "INSERT INTO sessions (session_id, storage_mode, display_device_id, route_revision, summary_blob_id, created_at, ended_at) VALUES ('e1000000-0000-4000-8000-000000000001', 'normal', 'dev-1', 0, NULL, 1000, NULL)",
+      ).run();
+      db.prepare(
+        "INSERT INTO turns (turn_id, session_id, role, input_kind, text_blob_id, created_at, expires_at) VALUES ('f1000000-0000-4000-8000-000000000001', 'e1000000-0000-4000-8000-000000000001', 'user', 'text', NULL, 1924991999000, 1925596800000)",
+      ).run();
+      db.prepare(
+        "INSERT INTO input_snapshots (input_id, request_revision, workflow_id, turn_id, origin, state, seal_reason, input_evidence, policy_version, permission_revision, forgetting_generation, audio_epoch) VALUES ('b1000000-0000-4000-8000-000000000001', 1, NULL, 'f1000000-0000-4000-8000-000000000001', 'typed', 'sealed', 'submitted_text', 'submitted_text', NULL, 0, 0, NULL)",
+      ).run();
+    } finally {
+      db.close();
+    }
+    const client = await start(path);
+    try {
+      const record = {
+        schema: 'buddy.intent-shadow.v1' as const,
+        record_id: 'c1000000-0000-4000-8000-000000000001',
+        campaign_id: 'a1000000-0000-4000-8000-000000000001',
+        input_id: 'b1000000-0000-4000-8000-000000000001',
+        request_revision: '1',
+        primary: {
+          deployment_id: 'd1000000-0000-4000-8000-000000000001',
+          outcome: 'ok',
+          intent: 'create_task',
+          args: { title: '牛乳を買う' },
           probability: null,
-          latency_ms: null,
+          latency_ms: 120,
         },
-      ],
-      recorded_at: '2031-01-01T00:00:00Z',
-      expires_at: '2031-01-08T00:00:00Z',
-      used_for_execution: false,
-    };
-    const empty = await client.intentShadow({
-      kind: 'intent_shadow.count',
-      campaign_id: record.campaign_id,
-    });
-    assert.deepEqual(empty, {
-      ok: true,
-      value: { campaign_id: record.campaign_id, count: 0 },
-    });
-    const first = await client.intentShadow({
-      kind: 'intent_shadow.save',
-      record,
-      limit: 300,
-    });
-    assert.deepEqual(first, {
-      ok: true,
-      value: { record_id: record.record_id, result: 'saved' },
-    });
-    const again = await client.intentShadow({
-      kind: 'intent_shadow.save',
-      record,
-      limit: 300,
-    });
-    assert.deepEqual(again, {
-      ok: true,
-      value: { record_id: record.record_id, result: 'duplicate' },
-    });
-    const after = await client.intentShadow({
-      kind: 'intent_shadow.count',
-      campaign_id: record.campaign_id,
-    });
-    assert.deepEqual(after, {
-      ok: true,
-      value: { campaign_id: record.campaign_id, count: 1 },
-    });
+        shadows: [
+          {
+            deployment_id: 'd1000000-0000-4000-8000-000000000002',
+            outcome: 'timeout',
+            intent: null,
+            args: null,
+            probability: null,
+            latency_ms: null,
+          },
+        ],
+        recorded_at: '2031-01-01T00:00:00Z',
+        expires_at: '2031-01-08T00:00:00Z',
+        used_for_execution: false,
+      };
+      const empty = await client.intentShadow({
+        kind: 'intent_shadow.count',
+        campaign_id: record.campaign_id,
+      });
+      assert.deepEqual(empty, {
+        ok: true,
+        value: { campaign_id: record.campaign_id, count: 0 },
+      });
+      const first = await client.intentShadow({
+        kind: 'intent_shadow.save',
+        record,
+        limit: 300,
+        storage_mode: 'normal',
+      });
+      assert.deepEqual(first, {
+        ok: true,
+        value: { record_id: record.record_id, result: 'saved' },
+      });
+      const again = await client.intentShadow({
+        kind: 'intent_shadow.save',
+        record,
+        limit: 300,
+        storage_mode: 'normal',
+      });
+      assert.deepEqual(again, {
+        ok: true,
+        value: { record_id: record.record_id, result: 'duplicate' },
+      });
+      const after = await client.intentShadow({
+        kind: 'intent_shadow.count',
+        campaign_id: record.campaign_id,
+      });
+      assert.deepEqual(after, {
+        ok: true,
+        value: { campaign_id: record.campaign_id, count: 1 },
+      });
+      // 記録しない会話は worker でも受け付けない。
+      const denied = await client.intentShadow({
+        kind: 'intent_shadow.save',
+        record: { ...record, record_id: randomUUID() },
+        limit: 300,
+        storage_mode: 'private',
+      });
+      assert.deepEqual(denied, {
+        ok: false,
+        outcome: 'rejected',
+        reasons: ['shadow_not_permitted'],
+      });
+    } finally {
+      await client.close();
+    }
   });
 });

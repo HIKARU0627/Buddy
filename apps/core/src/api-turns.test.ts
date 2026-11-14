@@ -221,6 +221,7 @@ const postTurn = async (
       command_scope_id: scope,
       text,
       input_kind: 'text',
+      origin: { segment_id: session, segment_generation: '1' },
     },
   );
   if (response.status === 200)
@@ -745,6 +746,124 @@ test(
 );
 
 test(
+  'turns: the origin must name the session and the current segment generation, and a wrong origin saves nothing',
+  { timeout: 60_000 },
+  async (t) => {
+    const core = await startTurnCore(t, mockProvider());
+    const device = await insertDevice(core.handle.store);
+    const scope = await bootstrap(core, device);
+    const session = await createSession(core, device, scope);
+    const path = `/v1/sessions/${session}/turns`;
+    const send = (
+      requestId: string,
+      origin: unknown,
+      text = '明日の予定は？',
+    ) =>
+      postJson(core, device, path, {
+        request_id: requestId,
+        command_scope_id: scope,
+        text,
+        input_kind: 'text',
+        ...(origin === undefined ? {} : { origin }),
+      });
+    // 何も保存されていないことを、操作の一覧と、同じ request_id のやり直しで確かめる。
+    assert.deepEqual(await snapshotOperations(core, device), []);
+    // 形が違う由来は Schema で 422（発言を保存しない）。
+    for (const origin of [
+      undefined,
+      { segment_id: session },
+      { segment_id: session, segment_generation: '1', extra: true },
+    ]) {
+      const response = await send(randomUUID(), origin);
+      assert.equal(response.status, 422, response.text);
+    }
+    // 古い世代・別の会話の由来は 409（発言を保存しない）。
+    const rejectedId = randomUUID();
+    const stale = await send(rejectedId, {
+      segment_id: session,
+      segment_generation: '2',
+    });
+    assert.equal(stale.status, 409, stale.text);
+    const otherSession = await send(randomUUID(), {
+      segment_id: randomUUID(),
+      segment_generation: '1',
+    });
+    assert.equal(otherSession.status, 409, otherSession.text);
+    // 拒否した要求と同じ request_id を、今の由来と違う文で送り直す。保存されていれば内容違いの 409、
+    // 保存されていなければ新しい処理として 200 になる（拒否の後に発言・依頼・操作が 1 件も残っていない）。
+    const fresh = await send(
+      rejectedId,
+      { segment_id: session, segment_generation: '1' },
+      '別の用事',
+    );
+    assert.equal(fresh.status, 200, fresh.text);
+    assert.deepEqual(await snapshotOperations(core, device), []);
+    // 今の由来なら通る。
+    const ok = await postTurn(core, device, session, scope, '明日の予定は？');
+    assert.equal(ok.status, 200, ok.text);
+  },
+);
+
+test(
+  'sessions: a replayed create keeps the generation from the first receipt and does not re-tag an old conversation',
+  { timeout: 60_000 },
+  async (t) => {
+    const core = await startTurnCore(t, mockProvider());
+    const device = await insertDevice(core.handle.store);
+    const scope = await bootstrap(core, device);
+    const body = {
+      request_id: randomUUID(),
+      command_scope_id: scope,
+      storage_mode: 'normal',
+    };
+    const first = await postJson(core, device, '/v1/sessions', body);
+    assert.equal(first.status, 201, first.text);
+    const generation = String(first.json?.['segment_generation']);
+    assert.equal(generation, '1');
+    // 記録しない区切りに入って出る（世代が 1 → 2 → 3）。
+    assert.equal((await core.handle.storage.enterPrivate()).ok, true);
+    assert.equal((await core.handle.storage.exitPrivate('normal')).ok, true);
+    // 同じ作成要求の再送は、最初の受付の世代を返す（今の世代に付け替えない）。
+    const again = await postJson(core, device, '/v1/sessions', body);
+    assert.equal(again.status, 201, again.text);
+    assert.equal(again.json?.['session_id'], first.json?.['session_id']);
+    assert.equal(again.json?.['segment_generation'], generation);
+    // 古い世代のままの発言は 409（古い会話を新しい世代に付け替えない）。
+    const stale = await postTurn(
+      core,
+      device,
+      String(first.json?.['session_id']),
+      scope,
+      '明日の予定は？',
+    );
+    assert.equal(stale.status, 409, stale.text);
+  },
+);
+
+test(
+  'two conversations in the same Core can both post; creating a conversation does not rewrite the boundary segment',
+  { timeout: 60_000 },
+  async (t) => {
+    const core = await startTurnCore(t, mockProvider());
+    const device = await insertDevice(core.handle.store);
+    const scope = await bootstrap(core, device);
+    const first = await createSession(core, device, scope);
+    const second = await createSession(core, device, scope);
+    // 会話の作成は保存境界の保持者の区切りを書き換えない。両方の会話が発言できる。
+    for (const session of [first, second]) {
+      const response = await postTurn(
+        core,
+        device,
+        session,
+        scope,
+        '明日の予定は？',
+      );
+      assert.equal(response.status, 200, response.text);
+    }
+  },
+);
+
+test(
   'X03 / X04: a preview from an old command scope, after a content change, a lock, a permission change or a restart cannot approve (410 / 409)',
   { timeout: 90_000 },
   async (t) => {
@@ -988,6 +1107,10 @@ function pausedTurnRoutes() {
     candidates: { mailCandidates: () => Promise.resolve([]) },
     policy: TEST_TURN_POLICY,
     previews,
+    storage: {
+      mode: 'normal',
+      origin: () => ({ segment_id: 'gate', segment_generation: '1' }),
+    },
     utcOffset: '+09:00',
   });
   const view = {

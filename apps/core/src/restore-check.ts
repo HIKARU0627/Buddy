@@ -14,7 +14,7 @@
 //
 // 中枢の DB を直接開くので、CLI は Core の排他ロックを取ってから呼ぶ（Core が動いていれば拒否する）。
 
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { lstat, mkdir, open, readFile, readdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -36,6 +36,7 @@ import type { BackupKeyStore, KeyStore } from '@buddy/platform';
 import {
   DbWorkerClient,
   ForgetRejection,
+  canonicalIntentJson,
   decryptBackupPayload,
   exportForgetLedger,
   manifestPayloadKey,
@@ -101,6 +102,8 @@ export interface RestoreCheckReport {
   readonly expired_deleted_count: number;
   // 封筒を復号した直後（段階 2 の worker が移行する前）の DB の版。古いバックアップの検証に使う。
   readonly working_schema_version: number | null;
+  // 内容を認証した manifest の正準化 SHA-256（restore run が読み直した封筒と同じか確かめる）。
+  readonly manifest_digest: string;
 }
 
 export interface RestoreCheckOptions {
@@ -139,6 +142,11 @@ export interface RestoreCheckOptions {
 }
 
 const iso = (date: Date): string => date.toISOString().replace('.000Z', 'Z');
+
+// 封筒の manifest の正準化した SHA-256。確認（認証）と後段（restore run）が同じ manifest を指すことの照合に使う。
+export function manifestDigest(value: unknown): string {
+  return createHash('sha256').update(canonicalIntentJson(value)).digest('hex');
+}
 
 async function exists(path: string): Promise<boolean> {
   try {
@@ -423,6 +431,7 @@ export async function runRestoreCheck(
   } | null = null;
   let backupId = '';
   let backupCreatedAt: string | null = null;
+  let manifestDigestValue = '';
   // 封筒から開いた鍵。確認が終わったらメモリー上の値を消す（保存しない）。
   const unwrapped: Partial<Record<BackupKeyPurpose, Buffer>> = {};
 
@@ -440,6 +449,7 @@ export async function runRestoreCheck(
     raw_payload_decrypted: rawPayloadDecrypted,
     expired_deleted_count: expiredDeletedCount,
     working_schema_version: workingSchemaVersion,
+    manifest_digest: manifestDigestValue,
   });
 
   const execute = async (): Promise<RestoreCheckReport> => {
@@ -521,6 +531,7 @@ export async function runRestoreCheck(
       }
       backupId = manifest.backup_id;
       backupCreatedAt = manifest.created_at;
+      manifestDigestValue = manifestDigest(manifestRaw);
       const wraps = manifest.key_wraps as readonly BackupKeyWrapValue[];
 
       // 復旧キーの確認値（記録がなければ unavailable）と、3 つの包みを開く。

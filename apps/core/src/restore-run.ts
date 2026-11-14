@@ -61,7 +61,11 @@ import type { ApiContract } from './api-contract.js';
 import { prepareDataDir } from './data-dir.js';
 import { acquireLock, defaultIsPidAlive, releaseLock } from './lock.js';
 import { DB_FILE, FORGET_LEDGER_FILE, controlEndpoint } from './paths.js';
-import { RESTORE_WORK_DIR, runRestoreCheck } from './restore-check.js';
+import {
+  RESTORE_WORK_DIR,
+  manifestDigest,
+  runRestoreCheck,
+} from './restore-check.js';
 import type { RestoreCheckReport } from './restore-check.js';
 import {
   installRestoredDatabase,
@@ -85,6 +89,8 @@ export interface RestoreRunOptions {
   readonly probeTimeoutMs?: number;
   // 試験で差し替える差し替え（ファイルの操作）。
   readonly install?: typeof installRestoredDatabase;
+  // 試験で check の後・封筒の読み直しの前に差し込む（確認と後段の間の変更を再現する）。
+  readonly afterCheck?: (report: RestoreCheckReport) => Promise<void> | void;
 }
 
 export type RestoreRunReport =
@@ -418,6 +424,7 @@ export async function runRestoreRun(
     );
     workingPath = join(workDir, DB_FILE);
     if (check.outcome !== 'ready') return await refuse('check_refused');
+    if (options.afterCheck !== undefined) await options.afterCheck(check);
     const workingDbPath = join(workDir, DB_FILE);
     const livePath = join(options.dataDir, DB_FILE);
     if (await exists(livePath)) {
@@ -432,6 +439,8 @@ export async function runRestoreRun(
     }
     const header = await readBackupFileHeader(options.backupPath);
     if (!header.ok) return await refuse('manifest_invalid');
+    if (manifestDigest(header.manifest) !== check.manifest_digest)
+      return await refuse('manifest_changed');
     const manifest = asManifest(header.manifest);
     const buildOutcome = (
       decisions: readonly RestoreStageDecision[],

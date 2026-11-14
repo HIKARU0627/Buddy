@@ -24,6 +24,8 @@ import { decodeRecoveryCode, keyWrapFor } from '@buddy/domain';
 import {
   openWriteConnection,
   readBackupFileHeader,
+  readBackupPayload,
+  encodeBackupFile,
   readStoreGeneration,
   storagePlatform,
 } from '@buddy/storage';
@@ -408,6 +410,58 @@ test('復元の実行: 差し替えの記録が残った失敗では作業用の
   const work = join(r.dataDir, RESTORE_WORK_DIR, restores[0] as string);
   assert.equal((await readdir(work)).includes(DB_FILE), true);
   // 中枢の DB は差し替えていない（バックアップの世代のまま）。
+  const db = openWriteConnection(join(r.dataDir, DB_FILE), {
+    platform: storagePlatform(process.platform),
+  });
+  try {
+    assert.equal(
+      db
+        .prepare(
+          "SELECT count(*) FROM approvals WHERE operation_id = ? AND status = 'valid'",
+        )
+        .pluck()
+        .get(r.operationId),
+      1,
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test('復元の実行: check の後に封筒が変わったら、認証済みの manifest と違うので差し替えない', async (t) => {
+  const r = await rig(t);
+  const report = await runRestoreRun({
+    dataDir: r.dataDir,
+    contract,
+    backupPath: r.backupPath,
+    recoveryKey: Buffer.from(decodeRecoveryCode(r.recoveryCode) as Uint8Array),
+    dataKeys: r.dataKeys,
+    backupKeys: r.keys,
+    now: () => new Date(T0 + 2000),
+    lock: true,
+    log: () => undefined,
+    afterCheck: async () => {
+      const header = await readBackupFileHeader(r.backupPath);
+      assert.ok(header.ok);
+      const manifest = header.manifest as Record<string, unknown>;
+      const payload = manifest['payload'] as { bytes: number; sha256: string };
+      const encrypted = await readBackupPayload(
+        r.backupPath,
+        header.payload_offset,
+        payload.bytes,
+      );
+      assert.ok(encrypted !== null);
+      await writeFile(
+        r.backupPath,
+        encodeBackupFile({ ...manifest, backup_id: randomUUID() }, encrypted),
+      );
+    },
+  });
+  assert.equal(report.outcome, 'refused', JSON.stringify(report));
+  if (report.outcome !== 'refused') return;
+  assert.equal(report.reason, 'manifest_changed');
+  assert.equal(report.installed, false);
+  // 中枢の DB は差し替えていない（承認は有効のまま）。
   const db = openWriteConnection(join(r.dataDir, DB_FILE), {
     platform: storagePlatform(process.platform),
   });

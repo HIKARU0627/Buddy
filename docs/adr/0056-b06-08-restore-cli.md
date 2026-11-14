@@ -61,7 +61,7 @@
 - 平文を残さない: 作業用の DB の書き込みが途中で失敗しても、`restore-work/restore-<restore_id>/` に平文が残らない。削除（`rm`）が失敗したときは成功（終了コード 0）を返さず、`plaintext_delete_failed` で止める。
 - 復旧キーの入力: TTY でない（`not_a_tty`）、空（`input_empty`）、形が違う（`invalid_code`）、Ctrl-C（`interrupted`）。区切りと小文字を受け付け、値が案内の文に出ない。
 - 段階 3（`applyRestoreLedger` の単体）: 忘却の後の台帳を、忘却の前の DB に当てると、忘れた記憶・そこから作った記憶・気づき・指示の発言が消え、台帳の連鎖の世代と `entry_hash` は与えられた値のまま（`packages/storage/src/forget-store.test.ts`）。台帳の「除外する由来」の HMAC から、その由来を持つ派生物（バックアップの後に作られた記憶を忘れた場合の気づき）も消え、由来の発言自体は残る。派生して消えた記憶を新しい起点にしない（T1→M1、T1/T2→M2、T2→M3 で M1 を忘れたとき、復元後も M3 は残る）。
-- 段階 1〜6 と差し替え（`restore run`）: 本物の Core の設定とバックアップから、承認付きの操作を含む封筒を作り、復元した後に承認がすべて失効していること（`approvals_revoked_count` と DB の `revoked`）・`store_generation` が新しくなっていること・`restore_restored_at` が入っていること・台帳の別ファイルが復元した DB から作り直されること・作業用の平文が残らないこと・鍵が KeyStore にあることを確かめる（`apps/core/src/restore-run.test.ts`）。差し替えの記録が残った失敗では、作業用の DB を消さず、`installed: false`・`plaintext_deleted: false` を返し、中枢の DB が差し替わっていないことを確かめる。
+- 段階 1〜6 と差し替え（`restore run`）: 本物の Core の設定とバックアップから、承認付きの操作を含む封筒を作り、復元した後に承認がすべて失効していること（`approvals_revoked_count` と DB の `revoked`）・`store_generation` が新しくなっていること・`restore_restored_at` が入っていること・台帳の別ファイルが復元した DB から作り直されること・作業用の平文が残らないこと・鍵が KeyStore にあることを確かめる（`apps/core/src/restore-run.test.ts`）。差し替えの記録が残った失敗では、作業用の DB を消さず、`installed: false`・`plaintext_deleted: false` を返し、中枢の DB が差し替わっていないことを確かめる。check の後に封筒の `backup_id` を書き換えると、認証済み manifest の digest と違うため `manifest_changed` で差し替えない。
 
 **模擬の期待値だけ**。`tests/test-map.json` の X15〜X17 の `product_test` は `not_run` のまま（段階 1〜6 の模擬の統合試験 X15〜X17 は未実施）。実機のキーチェーン・実際のバックアップからの復元・Mac mini は B15 で未実施。
 
@@ -76,7 +76,7 @@
 5. **鍵の導入（U134）**: 封筒の `backup_file`・`ledger_hmac_key` を KeyStore に足し（同じ ID に同じ素材があれば何もしない。違えば止める）、データ鍵は KeyStore にないときだけ `data-key-v1` に置く。読み戻して素材を確かめる。
 6. **J3・`store_generation`**: 差し替える前の作業用の DB に `applyRestoreAftermath` を 1 つの transaction で書き、承認をすべて失効させ、操作を隔離し、`store_generation` を新しい UUID にし、使う台帳の鍵の ID を `schema_meta` に記録する。
 7. **結果**: `buildRestoreResult` で契約の `RestoreResult` を組み立てる（段階 6 は `pending` のまま `restored`）。
-8. **差し替え**: `installRestoredDatabase` で作業用の DB を今の DB と入れ替える（Core のロックは `restore check` の前から差し替えと台帳の別ファイルの作り直しまで連続して持ち、途中で Core が起動して忘却を進めないようにする）。差し替えた後、台帳の別ファイルを復元した DB から作り直す（Core の起動時の照合で止まらないように）。作業用の平文は、拒否・例外の経路でも DB を閉じてから消し、消せないときは `plaintext_delete_failed` として報告する。差し替えの記録（`restore-install.json`）が残った失敗では、次の起動・差し替えの復旧が参照する作業用の DB を消さない。差し替えの前に止まった拒否と、差し替えた後に台帳の別ファイルだけを作れなかった拒否を、`installed` で区別する。
+8. **差し替え**: `installRestoredDatabase` で作業用の DB を今の DB と入れ替える（Core のロックは `restore check` の前から差し替えと台帳の別ファイルの作り直しまで連続して持ち、途中で Core が起動して忘却を進めないようにする）。check は本体を認証した manifest の正準化 SHA-256 を返し、run は読み直した封筒の digest と照合する（確認と後段の間に封筒が変わったら `manifest_changed` で止める）。差し替えた後、台帳の別ファイルを復元した DB から作り直す（Core の起動時の照合で止まらないように）。作業用の平文は、拒否・例外の経路でも DB を閉じてから消し、消せないときは `plaintext_delete_failed` として報告する。差し替えの記録（`restore-install.json`）が残った失敗では、次の起動・差し替えの復旧が参照する作業用の DB を消さない。差し替えの前に止まった拒否と、差し替えた後に台帳の別ファイルだけを作れなかった拒否を、`installed` で区別する。
 
 設定だけを戻す `settings_only` の実行は、この PR では行わない（`restore check` が候補を報告するところまで。次の PR で扱う）。
 

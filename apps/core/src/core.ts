@@ -77,6 +77,7 @@ import {
   recoverRestoreInstall,
 } from './restore-install.js';
 import { createTurnRoutes } from './api-turns.js';
+import type { TurnRoutesOptions } from './api-turns.js';
 import { CanvasHub, createStreamRoutes } from './canvas-stream.js';
 import { PreviewRegistry } from './previews.js';
 import {
@@ -264,6 +265,8 @@ export interface CoreTurnOptions {
     readonly created_at: string;
     readonly expires_at: string;
   }) => void;
+  // 影モードの比較の入口（ADR 0092）。既定は無し（OFF。D4）。発言の解釈を保存した後に呼ばれる。
+  readonly onInterpreted?: TurnRoutesOptions['onInterpreted'];
 }
 
 export interface CoreHttpsInfo {
@@ -1151,6 +1154,9 @@ async function startHttps(
     utcOffset: turnOptions.utcOffset ?? '+09:00',
     now: () => now().getTime(),
     onOperationCreated: () => feed.notify(),
+    ...(turnOptions.onInterpreted === undefined
+      ? {}
+      : { onInterpreted: turnOptions.onInterpreted }),
     // 会話の操作（照合表に当たった文字の発言）は、その端末の開いている Live へも行う（画面のボタンと同じ処理。B05-05）。
     onSessionControl: ({ device_id, action }) =>
       voice.applySessionControlForDevice(device_id, action),

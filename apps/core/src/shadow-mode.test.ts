@@ -1305,12 +1305,14 @@ async function startWith(
   });
   assert.equal(created.status, 201, created.text);
   const session = String(created.json?.['session_id']);
+  const generation = String(created.json?.['segment_generation']);
   const say = (text: string, requestId: string = randomUUID()) =>
     postJson(core, device, `/v1/sessions/${session}/turns`, {
       request_id: requestId,
       command_scope_id: scope,
       text,
       input_kind: 'text',
+      origin: { segment_id: session, segment_generation: generation },
     });
   return { core, device, say, memory, shadow, adapter, events, primary };
 }

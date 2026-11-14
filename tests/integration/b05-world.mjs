@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 import {
   A,
+  B,
   CORE,
   DEV_A,
   SCOPE_A,
@@ -25,7 +26,7 @@ import {
   NO_FAULTS,
 } from '../../apps/desktop/dist/main/voice-mock-renderer.js';
 
-export { A, CORE, DEV_A, NO_FAULTS, SCOPE_A, SESSION, waitUntil };
+export { A, B, CORE, DEV_A, NO_FAULTS, SCOPE_A, SESSION, waitUntil };
 
 // 合成の PCM の 1 つの区間（フレームを 20 ms として数え、PCM_BATCH 個を 1 つの timer でまとめて進める）。
 const PCM_FRAME_MS = 20;
@@ -358,6 +359,13 @@ export async function withWorld(options, body) {
             );
             await world.advance(stepMs);
             elapsed += stepMs;
+            // 条件がまだなら、中枢の保存（DB worker）など実時間で進む処理に追いつく機会を与えてから、時計を進める。
+            // 実時間の待ちは短く区切り、条件が満たされたらすぐ抜ける（模擬の時間は進めない）。負荷の高い実行機でも、模擬の時間だけが
+            // 先に進んで上限に達しないようにする。
+            for (let turn = 0; turn < 20 && !done(); turn += 1) {
+              await rig.wait();
+              await new Promise((resolve) => setTimeout(resolve, 2));
+            }
           }
           return elapsed;
         },

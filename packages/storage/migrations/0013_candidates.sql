@@ -2,6 +2,8 @@
 -- notification_candidates を作り直し、一覧・表示順・状態の遷移・保持に要る列を足す。0001 の列と CHECK は引き継ぐ。
 -- 作り直す表を参照する外部キーはない（deliveries は notification_key を値として持つだけ）。0001〜0012 では
 -- 候補を書く経路がないので、実データの行は無い。試験用に入れた行が残っていても列の既定値で引き継ぐ。
+-- 旧形式の snoozed の行は再通知の時刻（snooze_until）を持たず、新しい CHECK（snoozed のときだけ snooze_until がある）に
+-- 反するので、new に戻して引き継ぐ（時刻の無いスヌーズは隠れたままにしない。domain の candidateDueEvent と同じ置き方。U276）。
 --
 -- - 期限（Deadline）は列に展開する。種類ごとの組み合わせを CHECK で固定する。期限の原文は本文の断片なので列に置かず、
 --   題の封筒（title_blob_id）の中に題と一緒に入れる（ADR 0118）。
@@ -69,7 +71,9 @@ INSERT INTO notification_candidates (
 )
 SELECT
   candidate_id, request_entity_id, request_revision, source_revision, kind, notification_key,
-  title_blob_id, excerpt_blob_id, state, closed_at, key_delete_at, coalesce(closed_at, 0),
+  title_blob_id, excerpt_blob_id,
+  CASE WHEN state = 'snoozed' THEN 'new' ELSE state END,
+  closed_at, key_delete_at, coalesce(closed_at, 0),
   coalesce(closed_at, 0), coalesce(closed_at, 0)
 FROM notification_candidates_before_0013;
 

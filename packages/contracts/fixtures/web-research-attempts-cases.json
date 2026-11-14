@@ -1642,6 +1642,74 @@
           "unread_count": 0,
           "scope_reduced": false
         }
+      },
+      {
+        "id": "zero-hits-then-more-search-denied-by-budget",
+        "attempts": {
+          "schema": "buddy.web-research-attempts.v1",
+          "workflow_id": "00000000-0000-4000-8000-000000000b01",
+          "request_revision": "1",
+          "searches": [
+            {
+              "search_index": 1,
+              "query_id": "00000000-0000-4000-8000-000000000b11",
+              "outcome": "zero_hits",
+              "hit_count": 0,
+              "failure_cause": null
+            }
+          ],
+          "search_denials": ["budget_denied"],
+          "pages": [],
+          "page_limit_denials": 0,
+          "summary": "not_attempted"
+        },
+        "expected": {
+          "state": "held",
+          "reason": "budget_held",
+          "unread_count": 0,
+          "scope_reduced": false
+        }
+      },
+      {
+        "id": "zero-hits-in-all-three-searches-with-old-budget-denial",
+        "attempts": {
+          "schema": "buddy.web-research-attempts.v1",
+          "workflow_id": "00000000-0000-4000-8000-000000000b01",
+          "request_revision": "1",
+          "searches": [
+            {
+              "search_index": 1,
+              "query_id": "00000000-0000-4000-8000-000000000b11",
+              "outcome": "zero_hits",
+              "hit_count": 0,
+              "failure_cause": null
+            },
+            {
+              "search_index": 2,
+              "query_id": "00000000-0000-4000-8000-000000000b11",
+              "outcome": "zero_hits",
+              "hit_count": 0,
+              "failure_cause": null
+            },
+            {
+              "search_index": 3,
+              "query_id": "00000000-0000-4000-8000-000000000b11",
+              "outcome": "zero_hits",
+              "hit_count": 0,
+              "failure_cause": null
+            }
+          ],
+          "search_denials": ["budget_denied"],
+          "pages": [],
+          "page_limit_denials": 0,
+          "summary": "not_attempted"
+        },
+        "expected": {
+          "state": "no_results",
+          "reason": "zero_hits",
+          "unread_count": 0,
+          "scope_reduced": false
+        }
       }
     ],
     "attempts_errors": [

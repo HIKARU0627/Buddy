@@ -235,7 +235,8 @@ function stopped(
 // 呼び出し側（B12-05）が呼ばない。結論が出せない（試行がまだ足りない）ときは null。
 // 表（ADR 0129。手で書いた期待値は fixture）:
 // - 検索が 1 つも成功せず: 検索語の拒否だけ → 保留（query_rejected）／予算の拒否 → 保留（budget_held）／失敗 → 失敗（search_failed）。
-// - 検索が成功: 件数 0 でも、別の検索が失敗していれば 0 件と言い切れず失敗（search_failed）。全部成功で 0 件 → no_results。
+// - 検索が成功: 件数 0 でも、別の検索が失敗していれば 0 件と言い切れず失敗（search_failed）。追加の検索を予算で断っていれば保留（budget_held）。
+//   全部成功し、断りも無く 0 件 → no_results。
 // - 件数あり: 読めたページが無ければ、予算で検索を断ったとき保留、それ以外は失敗（no_readable_page）。検索の件数があるだけで完了にしない。
 // - 読めたページあり: 要約が ok のときだけ完了（unread_count・scope_reduced を付ける）。予算で断れば保留、失敗は失敗（summary_failed）。
 export function webResearchFinalState(
@@ -264,9 +265,10 @@ export function webResearchFinalState(
   }
   const hits = hitTotal(attempts.searches);
   if (hits === 0) {
-    return failed.length > 0
-      ? stopped('failed', 'search_failed')
-      : stopped('no_results', 'zero_hits');
+    if (failed.length > 0) return stopped('failed', 'search_failed');
+    // 追加の検索を予算で断られたまま、0 件と確定しない（取りこぼしの可能性があるので保留）。
+    if (budgetDenied) return stopped('held', 'budget_held');
+    return stopped('no_results', 'zero_hits');
   }
   if (attempts.pages.length === 0) return null;
   const reads = attempts.pages.filter((page) => page.outcome === 'read').length;

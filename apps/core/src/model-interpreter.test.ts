@@ -375,6 +375,7 @@ async function startCore(
     device,
     scope,
     session: String(created.json?.['session_id']),
+    generation: String(created.json?.['segment_generation']),
     adapter: built.adapter,
     log,
   };
@@ -394,6 +395,10 @@ const say = (
       command_scope_id: ctx.scope,
       text,
       input_kind: 'text',
+      origin: {
+        segment_id: ctx.session,
+        segment_generation: ctx.generation,
+      },
     },
   );
 

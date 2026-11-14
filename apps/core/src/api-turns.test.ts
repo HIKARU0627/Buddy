@@ -155,6 +155,12 @@ async function startTurnCore(
   options: {
     readonly restartOf?: EventCore;
     readonly interpreter?: Interpreter;
+    readonly onTurnRecorded?: (event: {
+      readonly session_id: string;
+      readonly turn_id: string;
+      readonly created_at: string;
+      readonly expires_at: string;
+    }) => void;
   } = {},
 ): Promise<EventCore> {
   const previous = options.restartOf;
@@ -169,6 +175,9 @@ async function startTurnCore(
       ...(options.interpreter === undefined
         ? {}
         : { interpreter: options.interpreter }),
+      ...(options.onTurnRecorded === undefined
+        ? {}
+        : { onTurnRecorded: options.onTurnRecorded }),
       candidates: {
         mailCandidates: () =>
           Promise.resolve([
@@ -289,6 +298,57 @@ test(
       ['c', 'd'],
     );
     assert.equal(scheduleOverlaps([]).size, 0);
+  },
+);
+
+test(
+  'UI-05: the saved time and expiry of a turn are passed on, and a resend passes nothing new',
+  { timeout: 60_000 },
+  async (t) => {
+    const seen: {
+      readonly session_id: string;
+      readonly turn_id: string;
+      readonly created_at: string;
+      readonly expires_at: string;
+    }[] = [];
+    const core = await startTurnCore(t, mockProvider(), {
+      onTurnRecorded: (event) => {
+        seen.push(event);
+      },
+    });
+    const device = await insertDevice(core.handle.store);
+    const scope = await bootstrap(core, device);
+    const session = await createSession(core, device, scope);
+    const requestId = randomUUID();
+    const first = await postTurn(
+      core,
+      device,
+      session,
+      scope,
+      '今日の予定を見せて',
+      requestId,
+    );
+    assert.equal(first.status, 200, first.text);
+    // 保存の命令に渡した生成の時刻と期限（手で数えた値。CLOCK は 2026-10-05T00:00:00Z、normal は 7 日後）。
+    assert.deepEqual(seen, [
+      {
+        session_id: session,
+        turn_id: first.json?.['turn_id'],
+        created_at: '2026-10-05T00:00:00Z',
+        expires_at: '2026-10-12T00:00:00Z',
+      },
+    ]);
+    // 再送は保存済みの応答を返すだけで、新しい期限を渡さない。
+    const again = await postTurn(
+      core,
+      device,
+      session,
+      scope,
+      '今日の予定を見せて',
+      requestId,
+    );
+    assert.equal(again.status, 200, again.text);
+    assert.equal(seen.length, 1);
   },
 );
 

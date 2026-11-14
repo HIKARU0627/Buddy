@@ -121,6 +121,14 @@ export interface TurnRoutesOptions {
     readonly session_id: string;
     readonly action: SessionControlAction;
   }) => void;
+  // 発言を保存した後に、保存した時点で確定した生成の時刻と期限を渡す（UI-05 の流れの区切り・要約の期限。ADR 0068）。
+  // 応答を返す時点の時計ではなく、保存の命令に渡した値を使う（DB の待ちで期限が後ろへずれない）。再送では呼ばない。
+  readonly onTurnRecorded?: (event: {
+    readonly session_id: string;
+    readonly turn_id: string;
+    readonly created_at: string;
+    readonly expires_at: string;
+  }) => void;
   // 保存期限の掃除のゲート（ADR 0053）。Read・RemoteMutation の前に掃除が済むのを待ち、閉じていれば聞き返す。
   // 検索（予定の照会）とクラウドへの送信（下書き・ラベル）の入口は、今あるものだけをここにつなぐ。
   readonly retention?: {
@@ -150,6 +158,10 @@ function derivedId(...parts: readonly string[]): string {
 }
 
 const OFFSET = /^([+-])([01][0-9]|2[0-3]):([0-5][0-9])$/u;
+
+// 契約の UtcTime（UTC の RFC 3339。端数の 0 は付けない。domain の deleteAt と同じ表し方）。
+const utcTime = (ms: number): string =>
+  new Date(ms).toISOString().replace('.000Z', 'Z');
 
 function offsetMinutes(offset: string): number {
   const match = OFFSET.exec(offset);
@@ -1087,8 +1099,11 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
         readonly body: object;
         readonly replayed: boolean;
         readonly plan: TurnPlan;
-        // 発言を保存したときの期限（保存した場合だけ）。
-        readonly expires_at?: number;
+        // 保存した時点で確定した値（再送では null。保存していないものを新しい期限として扱わない）。
+        readonly created_at: string | null;
+        readonly expires_at: string | null;
+        // 発言を保存したときの期限（UTC のミリ秒。影モードの比較に使う。保存した場合だけ）。
+        readonly expires_at_ms?: number;
       }
     | { readonly kind: 'held' }
   > => {
@@ -1101,6 +1116,8 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
         body,
         replayed: false,
         plan,
+        created_at: null,
+        expires_at: null,
       }) as const;
     const key = await loadKey();
     if (key === null) {
@@ -1137,6 +1154,12 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
       );
       return fail(response.status, response.body);
     }
+    const expiresAt = createdAt + rule.ms;
+    // 保存した時点で確定した値（応答の時点の時計では作り直さない）。
+    const savedTimes = {
+      created_at: utcTime(createdAt),
+      expires_at: utcTime(expiresAt),
+    };
     const state = workflowState(plan);
     const workflowId =
       state === null ? null : (args.workflowId ?? randomUUID());
@@ -1249,6 +1272,8 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
         body: response.body,
         replayed: true,
         plan,
+        created_at: null,
+        expires_at: null,
       };
     }
     if (operation !== null) options.onOperationCreated?.();
@@ -1258,7 +1283,8 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
       body: responseBody,
       replayed: false,
       plan,
-      expires_at: createdAt + rule.ms,
+      ...savedTimes,
+      expires_at_ms: createdAt + rule.ms,
     };
   };
 
@@ -1330,6 +1356,14 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     });
     if (done.kind === 'held')
       return apiErrorResponse(503, 'dependency_unavailable', requestId);
+    // 保存した時点で確定した生成の時刻と期限を、流れの区切りへ渡す（UI-05。再送では渡さない）。
+    if (done.status === 200 && !done.replayed && done.expires_at !== null)
+      options.onTurnRecorded?.({
+        session_id: sessionId,
+        turn_id: (done.body as TurnResponse).turn_id,
+        created_at: done.created_at as string,
+        expires_at: done.expires_at,
+      });
     if (
       control !== null &&
       done.status === 200 &&
@@ -1348,7 +1382,7 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
       basis !== undefined &&
       done.status === 200 &&
       !done.replayed &&
-      done.expires_at !== undefined
+      done.expires_at_ms !== undefined
     ) {
       try {
         options.onInterpreted({
@@ -1356,7 +1390,7 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
           storage_mode: session.value.storage_mode,
           input_id: stringOf(done.body as JsonObject, 'input_id'),
           request_revision: '1',
-          turn_expires_at: done.expires_at,
+          turn_expires_at: done.expires_at_ms,
           context: basis.context,
           primary: basis.reply,
         });

@@ -15,6 +15,7 @@ import type {
 import { createApiContract } from './api-contract.js';
 import type { ApiHandlerRequest, ApiRouteHandler } from './api-server.js';
 import { API_ROUTES } from './api-routes.js';
+import type { DeviceRecord } from '@buddy/storage';
 import {
   CanvasHub,
   EMPTY_CANVAS,
@@ -124,10 +125,11 @@ function mockProvider(
 async function startCanvasCore(
   t: test.TestContext,
   events?: readonly ProviderEvent[],
+  clock?: () => Date,
 ): Promise<EventCore> {
   return startEventCore(t, {
     previewValid: false,
-    now: () => CLOCK,
+    now: clock ?? (() => CLOCK),
     turns: {
       provider: mockProvider(events),
       candidates: {
@@ -901,6 +903,780 @@ test('U120: the product screen sink reaches the canvas and the content route; th
 });
 
 test(
+  'UI-05: 30 minutes without a turn opens a new segment and carries only the previous summary origin and expiry',
+  { timeout: 60_000 },
+  async (t) => {
+    let at = new Date('2026-10-05T09:00:00+09:00');
+    const core = await startCanvasCore(t, undefined, () => at);
+    const device = await insertDevice(core.handle.store);
+    const scope = await bootstrap(core, device);
+    const first = await postStream(core, device, scope, '今日の用事を見せて');
+    assert.equal(first.status, 200, first.text);
+    const a = (first.json as unknown as StreamTurnResponse).segment;
+    assert.equal(a.open_reason, 'stream_started');
+    assert.equal(a.carried_summary, null);
+    // 29 分 59 秒 999 ミリ秒では区切らない（同じ区切りで答える）。
+    at = new Date('2026-10-05T09:29:59.999+09:00');
+    const near = await postStream(core, device, scope, '今日の用事を見せて');
+    assert.equal(near.status, 200, near.text);
+    assert.equal(
+      (near.json as unknown as StreamTurnResponse).segment.segment_id,
+      a.segment_id,
+    );
+    // 経過は最後のやりとりから測る（直前の発言からちょうど 30 分で切る）。
+    at = new Date('2026-10-05T09:59:59.999+09:00');
+    const next = await postStream(core, device, scope, '今日の用事を見せて');
+    assert.equal(next.status, 200, next.text);
+    const b = (next.json as unknown as StreamTurnResponse).segment;
+    assert.notEqual(b.segment_id, a.segment_id);
+    assert.equal(b.open_reason, 'idle_timeout');
+    assert.equal(b.storage_mode, 'normal');
+    assert.equal(b.opened_at, '2026-10-05T00:59:59.999Z');
+    // 1 回目の発言は 00:00:00Z。normal の期限は 7 日後（手で数えた値）。
+    assert.deepEqual(b.carried_summary, {
+      source_segment_ids: [a.segment_id],
+      expires_at: '2026-10-12T00:00:00Z',
+    });
+    // 区切りをまたいでも、応答は同じ流れ（会話は Core の中だけ）。
+    assert(contract.valid('StreamTurnResponse', next.json));
+  },
+);
+
+test(
+  'UI-05: a local date change opens a new segment before the 30 minutes are over',
+  { timeout: 60_000 },
+  async (t) => {
+    let at = new Date('2026-10-05T23:50:00+09:00');
+    const core = await startCanvasCore(t, undefined, () => at);
+    const device = await insertDevice(core.handle.store);
+    const scope = await bootstrap(core, device);
+    const first = await postStream(core, device, scope, '今日の用事を見せて');
+    assert.equal(first.status, 200, first.text);
+    const a = (first.json as unknown as StreamTurnResponse).segment;
+    // 23:59:59.999 は同じ日なので切らない。
+    at = new Date('2026-10-05T23:59:59.999+09:00');
+    const before = await postStream(core, device, scope, '今日の用事を見せて');
+    assert.equal(
+      (before.json as unknown as StreamTurnResponse).segment.segment_id,
+      a.segment_id,
+    );
+    // 0 時ちょうど（+09:00 では 15:00Z）で日付が変わる。
+    at = new Date('2026-10-06T00:00:00+09:00');
+    const next = await postStream(core, device, scope, '今日の用事を見せて');
+    assert.equal(next.status, 200, next.text);
+    const b = (next.json as unknown as StreamTurnResponse).segment;
+    assert.equal(b.open_reason, 'date_changed');
+    assert.notEqual(b.segment_id, a.segment_id);
+    // 1 回目の発言は 14:50Z。normal の期限は 7 日後。
+    assert.deepEqual(b.carried_summary, {
+      source_segment_ids: [a.segment_id],
+      expires_at: '2026-10-12T14:50:00Z',
+    });
+  },
+);
+
+test(
+  'UI-05: carried summaries keep the earliest origin across segments and are dropped once every source expired',
+  { timeout: 60_000 },
+  async (t) => {
+    let at = new Date('2026-10-05T09:00:00+09:00');
+    const core = await startCanvasCore(t, undefined, () => at);
+    const device = await insertDevice(core.handle.store);
+    const scope = await bootstrap(core, device);
+    const first = await postStream(core, device, scope, '今日の用事を見せて');
+    const a = (first.json as unknown as StreamTurnResponse).segment;
+    // 2 つ目の区切り（09:31）。由来は A だけ。
+    at = new Date('2026-10-05T09:31:00+09:00');
+    const second = await postStream(core, device, scope, '今日の用事を見せて');
+    const b = (second.json as unknown as StreamTurnResponse).segment;
+    assert.equal(b.open_reason, 'idle_timeout');
+    assert.deepEqual(b.carried_summary, {
+      source_segment_ids: [a.segment_id],
+      expires_at: '2026-10-12T00:00:00Z',
+    });
+    // 3 つ目の区切り（10:02）。A の由来と期限を引き継ぎ、B を足す。期限は A の早い方のまま。
+    at = new Date('2026-10-05T10:02:00+09:00');
+    const third = await postStream(core, device, scope, '今日の用事を見せて');
+    const c = (third.json as unknown as StreamTurnResponse).segment;
+    assert.equal(c.open_reason, 'idle_timeout');
+    assert.deepEqual(c.carried_summary, {
+      source_segment_ids: [a.segment_id, b.segment_id],
+      expires_at: '2026-10-12T00:00:00Z',
+    });
+    // A の発言の期限（2026-10-12T00:00:00Z）ちょうどでは、期限の切れた前の要約を材料にしない。
+    // C の期限内の発言だけから作り直す（期限は C の発言の 7 日後）。接続範囲の期限（1 日）をまたぐので取り直す。
+    at = new Date('2026-10-12T09:00:00+09:00');
+    const scopeLater = await bootstrap(core, device);
+    const fourth = await postStream(
+      core,
+      device,
+      scopeLater,
+      '今日の用事を見せて',
+    );
+    assert.equal(fourth.status, 200, fourth.text);
+    const d = (fourth.json as unknown as StreamTurnResponse).segment;
+    assert.equal(d.open_reason, 'idle_timeout');
+    assert.deepEqual(d.carried_summary, {
+      source_segment_ids: [c.segment_id],
+      expires_at: '2026-10-12T01:02:00Z',
+    });
+  },
+);
+
+test('UI-05: when the new segment cannot be opened, the turn is not answered in the old segment', async () => {
+  const canvas = new CanvasHub(contract);
+  let at = Date.parse('2026-10-05T09:00:00+09:00');
+  let sessions = 0;
+  let turns = 0;
+  const id = (n: number) =>
+    `00000000-0000-4000-8000-${n.toString(16).padStart(12, '0')}`;
+  const routes = createStreamRoutes({
+    canvas,
+    storage: { origin: () => ({ segment_generation: '1' }) },
+    now: () => at,
+    utcOffset: '+09:00',
+    createSession: () => {
+      sessions += 1;
+      return Promise.resolve(
+        sessions === 1
+          ? { status: 201, body: { session_id: id(1) } }
+          : {
+              status: 503,
+              body: { code: 'dependency_unavailable', retryable: true },
+            },
+      );
+    },
+    postTurn: (request) => {
+      turns += 1;
+      const body = request.body as Record<string, string>;
+      return Promise.resolve({
+        status: 200,
+        body: {
+          request_id: body['request_id'],
+          session_id: request.params['session_id'],
+          turn_id: id(100 + turns),
+          input_id: id(200 + turns),
+          workflow_id: null,
+          status: 'answered',
+          result_view: null,
+          reply_text: null,
+        },
+      });
+    },
+  });
+  const handler = routes.handlers['postStreamTurn'];
+  assert(handler !== undefined);
+  const route = API_ROUTES.find(
+    (entry) => entry.operationId === 'postStreamTurn',
+  );
+  assert(route !== undefined);
+  const device = { device_id: id(9) } as unknown as DeviceRecord;
+  const request = (text: string): ApiHandlerRequest => ({
+    route,
+    device,
+    body: {
+      request_id: randomUUID(),
+      command_scope_id: id(400),
+      text,
+      input_kind: 'text',
+      expected_canvas_revision: '0',
+    },
+    params: {},
+    remoteAddress: '127.0.0.1',
+    query: {},
+    declaredLockState: null,
+  });
+  const first = await handler(request('こんにちは'));
+  assert.equal(first.status, 200);
+  // 30 分後: 区切りを始めるが、会話を作れない（503）。古い区切りで答えず、発言の処理もしない。
+  at += 30 * 60_000;
+  const second = await handler(request('こんにちは'));
+  assert.equal(second.status, 503);
+  assert.equal(
+    (second.body as { code?: string }).code,
+    'dependency_unavailable',
+  );
+  assert.equal(sessions, 2);
+  assert.equal(turns, 1);
+});
+
+test(
+  'UI-05: a resent request is answered in its original segment before any boundary is applied',
+  { timeout: 60_000 },
+  async (t) => {
+    let at = new Date('2026-10-05T09:00:00+09:00');
+    const core = await startCanvasCore(t, undefined, () => at);
+    const device = await insertDevice(core.handle.store);
+    const scope = await bootstrap(core, device);
+    const requestId = randomUUID();
+    const first = await postStream(core, device, scope, '今日の用事を見せて', {
+      requestId,
+    });
+    assert.equal(first.status, 200, first.text);
+    const a = first.json as unknown as StreamTurnResponse;
+    // 30 分ちょうどで、同じ要求を再送する。元の区切りで保存済みの応答を返し、区切りは切り替えない。
+    at = new Date('2026-10-05T09:30:00+09:00');
+    const replay = await postStream(core, device, scope, '今日の用事を見せて', {
+      requestId,
+    });
+    assert.equal(replay.status, 200, replay.text);
+    const replayed = replay.json as unknown as StreamTurnResponse;
+    assert.equal(replayed.turn_id, a.turn_id);
+    assert.equal(replayed.segment.segment_id, a.segment.segment_id);
+    // 再送はやりとりに数えない。その後の新しい発言で、前の発言から 30 分の区切りが始まる。
+    const fresh = await postStream(core, device, scope, '今日の用事を見せて');
+    assert.equal(fresh.status, 200, fresh.text);
+    const b = (fresh.json as unknown as StreamTurnResponse).segment;
+    assert.notEqual(b.segment_id, a.segment.segment_id);
+    assert.equal(b.open_reason, 'idle_timeout');
+    // 前の区切りを再送したときも同じ（元の応答を返し、今の区切りを返す）。
+    at = new Date('2026-10-05T09:31:00+09:00');
+    const again = await postStream(core, device, scope, '今日の用事を見せて', {
+      requestId,
+    });
+    assert.equal(again.status, 200, again.text);
+    const againBody = again.json as unknown as StreamTurnResponse;
+    assert.equal(againBody.turn_id, a.turn_id);
+    assert.equal(againBody.segment.segment_id, b.segment_id);
+  },
+);
+
+test('UI-05: the expiry kept for a turn is the one saved with it, not the clock when the answer is built', async () => {
+  const canvas = new CanvasHub(contract);
+  let at = Date.parse('2026-10-05T09:00:00+09:00');
+  let sessions = 0;
+  let turns = 0;
+  const id = (n: number) =>
+    `00000000-0000-4000-8000-${n.toString(16).padStart(12, '0')}`;
+  const routes = createStreamRoutes({
+    canvas,
+    storage: { origin: () => ({ segment_generation: '1' }) },
+    now: () => at,
+    utcOffset: '+09:00',
+    createSession: () => {
+      sessions += 1;
+      return Promise.resolve({
+        status: 201,
+        body: { session_id: id(sessions) },
+      });
+    },
+    postTurn: (request) => {
+      turns += 1;
+      const body = request.body as Record<string, string>;
+      return Promise.resolve({
+        status: 200,
+        body: {
+          request_id: body['request_id'],
+          session_id: request.params['session_id'],
+          turn_id: id(100 + turns),
+          input_id: id(200 + turns),
+          workflow_id: null,
+          status: 'answered',
+          result_view: null,
+          reply_text: null,
+        },
+      });
+    },
+  });
+  const handler = routes.handlers['postStreamTurn'];
+  assert(handler !== undefined);
+  const route = API_ROUTES.find(
+    (entry) => entry.operationId === 'postStreamTurn',
+  );
+  assert(route !== undefined);
+  const device = { device_id: id(9) } as unknown as DeviceRecord;
+  const request = (): ApiHandlerRequest => ({
+    route,
+    device,
+    body: {
+      request_id: randomUUID(),
+      command_scope_id: id(400),
+      text: 'こんにちは',
+      input_kind: 'text',
+      expected_canvas_revision: '0',
+    },
+    params: {},
+    remoteAddress: '127.0.0.1',
+    query: {},
+    declaredLockState: null,
+  });
+  const first = await handler(request());
+  assert.equal(first.status, 200);
+  // 保存の時点で確定した期限（7 日後ではなく、保存の側が決めた値）。応答の後で時計が進んでも作り直さない。
+  routes.recordTurn({
+    session_id: id(1),
+    turn_id: id(101),
+    created_at: '2026-10-05T00:00:00Z',
+    expires_at: '2026-10-06T00:00:00Z',
+  });
+  at += 31 * 60_000;
+  const second = await handler(request());
+  assert.equal(second.status, 200);
+  const b = (second.body as unknown as StreamTurnResponse).segment;
+  assert.equal(b.open_reason, 'idle_timeout');
+  assert.deepEqual(b.carried_summary, {
+    source_segment_ids: [id(1)],
+    expires_at: '2026-10-06T00:00:00Z',
+  });
+});
+
+test('UI-05: the replay lookup is keyed by the connection scope as well as the request id', async (t) => {
+  const at = new Date('2026-10-05T09:00:00+09:00');
+  const core = await startCanvasCore(t, undefined, () => at);
+  const device = await insertDevice(core.handle.store);
+  const firstScope = await bootstrap(core, device);
+  const requestId = randomUUID();
+  const first = await postStream(
+    core,
+    device,
+    firstScope,
+    '今日の用事を見せて',
+    {
+      requestId,
+    },
+  );
+  assert.equal(first.status, 200, first.text);
+  const firstBody = first.json as unknown as StreamTurnResponse;
+  // 別の接続範囲で同じ要求 ID を使うのは、同じ要求の再送ではない（保存側の受付レシートは接続範囲と組で見る）。
+  const secondScope = await bootstrap(core, device);
+  const other = await postStream(core, device, secondScope, 'こんにちは', {
+    requestId,
+  });
+  assert.equal(other.status, 200, other.text);
+  const otherBody = other.json as unknown as StreamTurnResponse;
+  assert.notEqual(otherBody.turn_id, firstBody.turn_id);
+  assert.equal(otherBody.status, 'clarification');
+});
+
+test('UI-05: a new segment waits for a turn still being saved in the old segment', async () => {
+  const canvas = new CanvasHub(contract);
+  let at = Date.parse('2026-10-05T23:59:59+09:00');
+  let sessions = 0;
+  let turns = 0;
+  let release: (() => void) | null = null;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const id = (n: number) =>
+    `00000000-0000-4000-8000-${n.toString(16).padStart(12, '0')}`;
+  const routes = createStreamRoutes({
+    canvas,
+    storage: { origin: () => ({ segment_generation: '1' }) },
+    now: () => at,
+    utcOffset: '+09:00',
+    createSession: () => {
+      sessions += 1;
+      return Promise.resolve({
+        status: 201,
+        body: { session_id: id(sessions) },
+      });
+    },
+    postTurn: async (request) => {
+      turns += 1;
+      const turn = turns;
+      const sessionId = request.params['session_id'] as string;
+      if (turn === 1) {
+        // 保存が終わるまで待つ（日付をまたいだ後に区切りを切り替える側が、この発言の期限を待つ）。
+        await gate;
+        routes.recordTurn({
+          session_id: sessionId,
+          turn_id: id(100 + turn),
+          created_at: '2026-10-05T14:59:59Z',
+          expires_at: '2026-10-12T14:59:59Z',
+        });
+      } else
+        routes.recordTurn({
+          session_id: sessionId,
+          turn_id: id(100 + turn),
+          created_at: '2026-10-05T15:00:00Z',
+          expires_at: '2026-10-12T15:00:00Z',
+        });
+      const body = request.body as Record<string, string>;
+      return {
+        status: 200,
+        body: {
+          request_id: body['request_id'],
+          session_id: sessionId,
+          turn_id: id(100 + turn),
+          input_id: id(200 + turn),
+          workflow_id: null,
+          status: 'answered',
+          result_view: null,
+          reply_text: null,
+        },
+      };
+    },
+  });
+  const handler = routes.handlers['postStreamTurn'];
+  assert(handler !== undefined);
+  const route = API_ROUTES.find(
+    (entry) => entry.operationId === 'postStreamTurn',
+  );
+  assert(route !== undefined);
+  const device = { device_id: id(9) } as unknown as DeviceRecord;
+  const request = (): ApiHandlerRequest => ({
+    route,
+    device,
+    body: {
+      request_id: randomUUID(),
+      command_scope_id: id(400),
+      text: 'こんにちは',
+      input_kind: 'text',
+      expected_canvas_revision: '0',
+    },
+    params: {},
+    remoteAddress: '127.0.0.1',
+    query: {},
+    declaredLockState: null,
+  });
+  // 23:59:59 の発言の保存を保留したまま、0 時の発言で区切りをまたぐ。
+  const first = handler(request());
+  await new Promise((resolve) => setImmediate(resolve));
+  at = Date.parse('2026-10-06T00:00:00+09:00');
+  const second = handler(request());
+  await new Promise((resolve) => setImmediate(resolve));
+  assert(release !== null);
+  (release as () => void)();
+  const [firstDone, secondDone] = await Promise.all([first, second]);
+  assert.equal(firstDone.status, 200);
+  assert.equal(secondDone.status, 200);
+  const segment = (secondDone.body as unknown as StreamTurnResponse).segment;
+  assert.equal(segment.open_reason, 'date_changed');
+  // 保留していた旧区切りの発言の期限が、つないだ要約の期限になる（保存の完了を待ってから確定する）。
+  assert.deepEqual(segment.carried_summary, {
+    source_segment_ids: [id(1)],
+    expires_at: '2026-10-12T14:59:59Z',
+  });
+  assert.equal(sessions, 2);
+});
+
+test('UI-05: a resend that arrives while the first save is still running resolves in the old segment', async () => {
+  const canvas = new CanvasHub(contract);
+  let at = Date.parse('2026-10-05T23:59:59+09:00');
+  let sessions = 0;
+  let turns = 0;
+  let release: (() => void) | null = null;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const id = (n: number) =>
+    `00000000-0000-4000-8000-${n.toString(16).padStart(12, '0')}`;
+  // 保存側の受付レシートの再送（同じ会話・同じ要求 ID は保存済みの応答を返す）を模す。
+  const stored = new Map<string, object>();
+  let routes: ReturnType<typeof createStreamRoutes> | null = null;
+  routes = createStreamRoutes({
+    canvas,
+    storage: { origin: () => ({ segment_generation: '1' }) },
+    now: () => at,
+    utcOffset: '+09:00',
+    createSession: () => {
+      sessions += 1;
+      return Promise.resolve({
+        status: 201,
+        body: { session_id: id(sessions) },
+      });
+    },
+    postTurn: async (request) => {
+      const sessionId = request.params['session_id'] as string;
+      const body = request.body as Record<string, string>;
+      const key = `${sessionId}\u0000${body['request_id']}`;
+      const found = stored.get(key);
+      if (found !== undefined)
+        return { status: 200, body: { ...(found as object) } };
+      turns += 1;
+      const turn = turns;
+      if (turn === 1) {
+        // 保存を保留する（その間に 0 時をまたいで同じ要求が再送される）。
+        await gate;
+        routes?.recordTurn({
+          session_id: sessionId,
+          turn_id: id(100 + turn),
+          created_at: '2026-10-05T14:59:59Z',
+          expires_at: '2026-10-12T14:59:59Z',
+        });
+      }
+      const response = {
+        request_id: body['request_id'],
+        session_id: sessionId,
+        turn_id: id(100 + turn),
+        input_id: id(200 + turn),
+        workflow_id: null,
+        status: 'answered',
+        result_view: null,
+        reply_text: null,
+      };
+      stored.set(key, response);
+      return { status: 200, body: response };
+    },
+  });
+  const handler = routes.handlers['postStreamTurn'];
+  assert(handler !== undefined);
+  const route = API_ROUTES.find(
+    (entry) => entry.operationId === 'postStreamTurn',
+  );
+  assert(route !== undefined);
+  const device = { device_id: id(9) } as unknown as DeviceRecord;
+  const requestId = randomUUID();
+  const request = (): ApiHandlerRequest => ({
+    route,
+    device,
+    body: {
+      request_id: requestId,
+      command_scope_id: id(400),
+      text: 'こんにちは',
+      input_kind: 'text',
+      expected_canvas_revision: '0',
+    },
+    params: {},
+    remoteAddress: '127.0.0.1',
+    query: {},
+    declaredLockState: null,
+  });
+  const first = handler(request());
+  await new Promise((resolve) => setImmediate(resolve));
+  // 0 時をまたいで、保存中の同じ要求を再送する。
+  at = Date.parse('2026-10-06T00:00:00+09:00');
+  const second = handler(request());
+  await new Promise((resolve) => setImmediate(resolve));
+  assert(release !== null);
+  (release as () => void)();
+  const [firstDone, secondDone] = await Promise.all([first, second]);
+  assert.equal(firstDone.status, 200);
+  assert.equal(secondDone.status, 200);
+  const firstBody = firstDone.body as unknown as StreamTurnResponse;
+  const secondBody = secondDone.body as unknown as StreamTurnResponse;
+  // 同じ発言の応答を返し、区切りは増えない（新しい会話を作らない）。
+  assert.equal(secondBody.turn_id, firstBody.turn_id);
+  assert.equal(secondBody.segment.segment_id, firstBody.segment.segment_id);
+  assert.equal(secondBody.segment.open_reason, 'stream_started');
+  assert.equal(sessions, 1);
+  assert.equal(turns, 1);
+});
+
+test('UI-05: a new request that waits with a resend still opens its own segment', async () => {
+  const canvas = new CanvasHub(contract);
+  let at = Date.parse('2026-10-05T23:59:59+09:00');
+  let sessions = 0;
+  let turns = 0;
+  let release: (() => void) | null = null;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const id = (n: number) =>
+    `00000000-0000-4000-8000-${n.toString(16).padStart(12, '0')}`;
+  const stored = new Map<string, object>();
+  let routes: ReturnType<typeof createStreamRoutes> | null = null;
+  routes = createStreamRoutes({
+    canvas,
+    storage: { origin: () => ({ segment_generation: '1' }) },
+    now: () => at,
+    utcOffset: '+09:00',
+    createSession: () => {
+      sessions += 1;
+      return Promise.resolve({
+        status: 201,
+        body: { session_id: id(sessions) },
+      });
+    },
+    postTurn: async (request) => {
+      const sessionId = request.params['session_id'] as string;
+      const body = request.body as Record<string, string>;
+      const key = `${sessionId}\u0000${body['request_id']}`;
+      const found = stored.get(key);
+      if (found !== undefined)
+        return { status: 200, body: { ...(found as object) } };
+      turns += 1;
+      const turn = turns;
+      if (turn === 1) {
+        await gate;
+        routes?.recordTurn({
+          session_id: sessionId,
+          turn_id: id(100 + turn),
+          created_at: '2026-10-05T14:59:59Z',
+          expires_at: '2026-10-12T14:59:59Z',
+        });
+      } else
+        routes?.recordTurn({
+          session_id: sessionId,
+          turn_id: id(100 + turn),
+          created_at: '2026-10-05T15:00:00Z',
+          expires_at: '2026-10-12T15:00:00Z',
+        });
+      const response = {
+        request_id: body['request_id'],
+        session_id: sessionId,
+        turn_id: id(100 + turn),
+        input_id: id(200 + turn),
+        workflow_id: null,
+        status: 'answered',
+        result_view: null,
+        reply_text: null,
+      };
+      stored.set(key, response);
+      return { status: 200, body: response };
+    },
+  });
+  const handler = routes.handlers['postStreamTurn'];
+  assert(handler !== undefined);
+  const route = API_ROUTES.find(
+    (entry) => entry.operationId === 'postStreamTurn',
+  );
+  assert(route !== undefined);
+  const device = { device_id: id(9) } as unknown as DeviceRecord;
+  const requestId = randomUUID();
+  const request = (request: string, text: string): ApiHandlerRequest => ({
+    route,
+    device,
+    body: {
+      request_id: request,
+      command_scope_id: id(400),
+      text,
+      input_kind: 'text',
+      expected_canvas_revision: '0',
+    },
+    params: {},
+    remoteAddress: '127.0.0.1',
+    query: {},
+    declaredLockState: null,
+  });
+  const first = handler(request(requestId, 'こんにちは'));
+  await new Promise((resolve) => setImmediate(resolve));
+  at = Date.parse('2026-10-06T00:00:00+09:00');
+  // 保存中の A の再送と、別の新規要求 B が同時に来る。
+  const replay = handler(request(requestId, 'こんにちは'));
+  const fresh = handler(request(randomUUID(), 'おはよう'));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert(release !== null);
+  (release as () => void)();
+  const [firstDone, replayDone, freshDone] = await Promise.all([
+    first,
+    replay,
+    fresh,
+  ]);
+  assert.equal(firstDone.status, 200);
+  assert.equal(replayDone.status, 200);
+  assert.equal(freshDone.status, 200);
+  const firstBody = firstDone.body as unknown as StreamTurnResponse;
+  const replayBody = replayDone.body as unknown as StreamTurnResponse;
+  const freshBody = freshDone.body as unknown as StreamTurnResponse;
+  // 再送は同じ発言の応答で、元の区切りのまま（増えない）。
+  assert.equal(replayBody.turn_id, firstBody.turn_id);
+  assert.equal(replayBody.segment.segment_id, firstBody.segment.segment_id);
+  // 新規要求は自分の区切りを開く（再送の結果を配られて旧区切りに保存されない）。
+  assert.notEqual(freshBody.turn_id, firstBody.turn_id);
+  assert.notEqual(freshBody.segment.segment_id, firstBody.segment.segment_id);
+  assert.equal(freshBody.segment.open_reason, 'date_changed');
+  // 旧区切りの発言 A の期限は、待ってから確定した要約に引き継がれる。
+  assert.deepEqual(freshBody.segment.carried_summary, {
+    source_segment_ids: [id(1)],
+    expires_at: '2026-10-12T14:59:59Z',
+  });
+  assert.equal(sessions, 2);
+});
+
+test('UI-05: a save that finishes out of order does not move the segment start backwards', async () => {
+  const canvas = new CanvasHub(contract);
+  let at = Date.parse('2026-10-05T23:59:59+09:00');
+  let sessions = 0;
+  let turns = 0;
+  let releaseA: (() => void) | null = null;
+  const gateA = new Promise<void>((resolve) => {
+    releaseA = resolve;
+  });
+  const id = (n: number) =>
+    `00000000-0000-4000-8000-${n.toString(16).padStart(12, '0')}`;
+  let routes: ReturnType<typeof createStreamRoutes> | null = null;
+  routes = createStreamRoutes({
+    canvas,
+    storage: { origin: () => ({ segment_generation: '1' }) },
+    now: () => at,
+    utcOffset: '+09:00',
+    createSession: () => {
+      sessions += 1;
+      return Promise.resolve({
+        status: 201,
+        body: { session_id: id(sessions) },
+      });
+    },
+    postTurn: async (request) => {
+      turns += 1;
+      const turn = turns;
+      const sessionId = request.params['session_id'] as string;
+      const body = request.body as Record<string, string>;
+      if (turn === 1) {
+        // 23:59:59.900 の保存。完了は B より後になる（並行した保存の逆順の完了）。
+        await gateA;
+        routes?.recordTurn({
+          session_id: sessionId,
+          turn_id: id(100 + turn),
+          created_at: '2026-10-05T14:59:59.900Z',
+          expires_at: '2026-10-12T14:59:59.900Z',
+        });
+      } else if (turn === 2)
+        // 0 時をまたいだ 00:00:00.100 の保存。こちらが先に終わる。
+        routes?.recordTurn({
+          session_id: sessionId,
+          turn_id: id(100 + turn),
+          created_at: '2026-10-05T15:00:00.100Z',
+          expires_at: '2026-10-12T15:00:00.100Z',
+        });
+      return {
+        status: 200,
+        body: {
+          request_id: body['request_id'],
+          session_id: sessionId,
+          turn_id: id(100 + turn),
+          input_id: id(200 + turn),
+          workflow_id: null,
+          status: 'answered',
+          result_view: null,
+          reply_text: null,
+        },
+      };
+    },
+  });
+  const handler = routes.handlers['postStreamTurn'];
+  assert(handler !== undefined);
+  const route = API_ROUTES.find(
+    (entry) => entry.operationId === 'postStreamTurn',
+  );
+  assert(route !== undefined);
+  const device = { device_id: id(9) } as unknown as DeviceRecord;
+  const request = (): ApiHandlerRequest => ({
+    route,
+    device,
+    body: {
+      request_id: randomUUID(),
+      command_scope_id: id(400),
+      text: 'こんにちは',
+      input_kind: 'text',
+      expected_canvas_revision: '0',
+    },
+    params: {},
+    remoteAddress: '127.0.0.1',
+    query: {},
+    declaredLockState: null,
+  });
+  const first = handler(request());
+  await new Promise((resolve) => setImmediate(resolve));
+  // 同じ区切りのまま、0 時をまたいだ発言 B を先に完了させる（時計は 23:59:59 のまま）。
+  const second = handler(request());
+  const secondDone = await second;
+  assert.equal(secondDone.status, 200);
+  assert(releaseA !== null);
+  (releaseA as () => void)();
+  const firstDone = await first;
+  assert.equal(firstDone.status, 200);
+  const a = (firstDone.body as unknown as StreamTurnResponse).segment;
+  // 00:10 の次の発言: 起点は遅い方（00:00:00.100）なので、日付の理由では切らない（30 分もまだ）。
+  at = Date.parse('2026-10-06T00:10:00+09:00');
+  const third = await handler(request());
+  const b = (third.body as unknown as StreamTurnResponse).segment;
+  assert.equal(b.segment_id, a.segment_id);
+  assert.equal(sessions, 1);
+});
+
+test(
   'UI-03: clarifications and approval links place nothing on the canvas (approval is never put on it)',
   { timeout: 60_000 },
   async (t) => {
@@ -1070,7 +1846,8 @@ test(
   'UI-03: a request replayed after the response cache evicted it is answered but never placed again',
   { timeout: 120_000 },
   async (t) => {
-    const core = await startCanvasCore(t);
+    let at = new Date('2026-10-05T09:00:00+09:00');
+    const core = await startCanvasCore(t, undefined, () => at);
     const device = await insertDevice(core.handle.store);
     const scope = await bootstrap(core, device);
     const firstId = randomUUID();
@@ -1079,19 +1856,25 @@ test(
     });
     const firstBody = first.json as unknown as StreamTurnResponse;
     assert.equal(firstBody.canvas?.canvas_revision, '1');
+    // もう一度、現在の記述を版 2 にしておく（最初の束の参照へ戻されたことを見分けるため）。時計を進める前に置く。
+    const second = await postStream(core, device, scope, '今日の予定を見せて');
+    const secondBody = second.json as unknown as StreamTurnResponse;
+    assert.equal(secondBody.canvas?.canvas_revision, '2');
     // 応答のキャッシュの上限（256 件）を超えるまで、別の発言（聞き返し。配置なし）を送る。
     for (let index = 0; index < 260; index += 1) {
       const filler = await postStream(core, device, scope, 'こんにちは');
       assert.equal(filler.status, 200, filler.text);
     }
-    // もう一度、現在の記述を版 2 にしておく（最初の束の参照へ戻されたことを見分けるため）。
-    const second = await postStream(core, device, scope, '今日の予定を見せて');
-    assert.equal(
-      (second.json as unknown as StreamTurnResponse).canvas?.canvas_revision,
-      '2',
-    );
+    // 前の発言から 30 分を過ぎてから次を送り、区切りをまたぐ（受付の対応は応答のキャッシュと別に保つ）。
+    at = new Date('2026-10-05T09:31:00+09:00');
+    const boundary = await postStream(core, device, scope, 'こんにちは');
+    const boundaryBody = boundary.json as unknown as StreamTurnResponse;
+    assert.equal(boundaryBody.segment.open_reason, 'idle_timeout');
+    assert.equal(boundaryBody.canvas, null);
     const before = JSON.stringify(await canvasOf(core, device));
-    // 最初の要求の再送: 保存済みの発言の応答（文字の結果）は同じで、もう一度配置しない（版も参照も変わらない）。
+    // さらに 30 分後に最初の要求を再送する: 元の区切り（会話）で解決し、保存済みの発言の応答（文字の結果）を返す。
+    // 区切りは切り替えない（増えない）し、もう一度配置もしない（版も参照も変わらない）。
+    at = new Date('2026-10-05T10:02:00+09:00');
     const again = await postStream(core, device, scope, '今日の用事を見せて', {
       requestId: firstId,
     });
@@ -1099,6 +1882,11 @@ test(
     const againBody = again.json as unknown as StreamTurnResponse;
     assert.equal(againBody.turn_id, firstBody.turn_id);
     assert.deepEqual(againBody.result_view, firstBody.result_view);
+    assert.equal(
+      againBody.segment.segment_id,
+      boundaryBody.segment.segment_id,
+      'the replay must not open another segment',
+    );
     assert.equal(againBody.canvas, null);
     assert.equal(JSON.stringify(await canvasOf(core, device)), before);
     assert.equal((await canvasOf(core, device)).canvas_revision, '2');

@@ -80,3 +80,5 @@ export * from './voice-live-input.js';
 export * from './voice-commentary.js';
 // B12-01: 公開 Web 調査の上限と利用条件（ADR 0077）。
 export * from './web-research.js';
+// B10-05: 抽出の入力として送ったソースの形とコードポイントの位置の数え方（ADR 0100）。
+export * from './extraction-source.js';

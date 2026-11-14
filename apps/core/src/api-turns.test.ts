@@ -1108,6 +1108,7 @@ function pausedTurnRoutes() {
     policy: TEST_TURN_POLICY,
     previews,
     storage: {
+      mode: 'normal',
       origin: () => ({ segment_id: 'gate', segment_generation: '1' }),
     },
     utcOffset: '+09:00',

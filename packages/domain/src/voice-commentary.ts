@@ -20,7 +20,11 @@ export type CommentaryTemplateId =
   | 'input.say_again'
   | 'input.full_text'
   | 'input.hold_dropped'
-  | 'result.screen';
+  | 'result.screen'
+  | 'bridge.checking'
+  | 'background.moved'
+  | 'accepted.background'
+  | 'completion.done';
 
 export interface CommentaryFact {
   readonly kind: ResultViewKind;
@@ -57,6 +61,11 @@ const FULL_TEXT =
 const HOLD_DROPPED =
   '実行前の依頼は実行していません。必要なら、もう一度お願いします。';
 const SCREEN = '画面で確認してください。';
+// 設計 10 §5 の言い回し。つなぎ（1.5 秒で結果がないとき 1 回だけ）・背景化（8 秒を超えたとき）・調査と相談の受付・追記の上限を超えた分。
+const BRIDGE = '確認しますね。';
+const BACKGROUND = '少し時間がかかるので、できたら知らせます。';
+const ACCEPTED = '受け付けました。終わったら知らせます。';
+const OVERFLOW = 'ほかは画面で確認してください。';
 
 export interface ResultCommentaryInput {
   readonly kind: ResultViewKind;
@@ -151,4 +160,100 @@ export function inputCommentary(
     facts: [fact('approval_link', null)],
     commentary_parts: [FULL_TEXT],
   };
+}
+
+const simple = (
+  template_id: CommentaryTemplateId,
+  kind: ResultViewKind,
+  text: string,
+): Commentary => ({
+  template_id,
+  template_version: COMMENTARY_TEMPLATE_VERSION,
+  facts: [fact(kind, null)],
+  commentary_parts: [text],
+});
+
+// 委譲を受けて 1.5 秒以内に結果が出ないときの、1 回だけのつなぎ（設計 10 §5「つなぎ」）。結果ではないので事実を含まない。
+export function bridgeCommentary(): Commentary {
+  return simple('bridge.checking', 'status_line', BRIDGE);
+}
+
+// 8 秒を超えて裏のジョブへ移すときの 1 回だけの発話（設計 10 §5「即時ジョブの上限」）。完了は気づきと次回の文脈で伝える。
+export function backgroundCommentary(): Commentary {
+  return simple('background.moved', 'accepted_line', BACKGROUND);
+}
+
+// 調査（research）・思考レベル high の相談を最初から裏へ回すときの受付（設計 10 §5「裏のジョブ」）。受け付けた事実だけで、
+// 結果の内容は含めない。受け付けていない依頼には使わない（呼び出し側が、裏のジョブが受け付けたときだけ使う）。
+export function acceptedCommentary(): Commentary {
+  return simple('accepted.background', 'accepted_line', ACCEPTED);
+}
+
+export type CompletionKind =
+  | 'task_created'
+  | 'note_created'
+  | 'event_created'
+  | 'label_applied'
+  | 'draft_saved';
+
+const COMPLETION_TEXT: Readonly<Record<CompletionKind, string>> = {
+  task_created: '用事を登録しました。',
+  note_created: 'メモを残しました。',
+  event_created: '予定を登録しました。',
+  label_applied: 'ラベルを付けました。',
+  draft_saved: '下書きを保存しました。',
+};
+
+// 実行を確認できたときだけ「登録しました」と言う（設計 10 §5「変更を伴う依頼」）。executed が true でなければ、
+// 完了を告げず、承認待ちの案内（画面で確認してください）にする。音声の「はい」は承認にしない。今の経路には、実行の完了を
+// 確認して呼ぶ所はまだない（自動実行は B13）。ここは、完了を言ってよい条件をコードで固定するための規則。
+export function completionCommentary(input: {
+  readonly kind: CompletionKind;
+  readonly executed: boolean;
+}): Commentary {
+  if (input.executed !== true)
+    return resultCommentary({
+      kind: 'approval_link',
+      event_count: 0,
+      overlap: false,
+      more_count: 0,
+      clarification_text: null,
+    });
+  return simple(
+    'completion.done',
+    'completion_line',
+    COMPLETION_TEXT[input.kind],
+  );
+}
+
+export interface FittedCommentary {
+  // 1 回の追記に入れる部分（3 つ以内・各 200 文字以内・空でない）。超えた分を除いたもの（案内の文は含まない）。
+  readonly parts: readonly string[];
+  // 超えた分（3 つを超える部分・200 文字を超える部分）があった。あれば呼び出し側が結果を画面へも置き、
+  // withOverflowNotice で「画面で確認してください」の案内を足す（画面に出したとは言わない）。
+  readonly overflow: boolean;
+}
+
+// 追記の上限（1 回 400 トークン以内を 200 文字で近似・最大 3 部）を守る。切って意味を変えず、超えた部分は捨てて画面へ回す。
+export function fitCommentary(commentary: Commentary): FittedCommentary {
+  const parts: string[] = [];
+  let overflow = false;
+  for (const part of commentary.commentary_parts) {
+    if (part.length === 0) continue;
+    if ([...part].length > COMMENTARY_PART_MAX_CHARS) overflow = true;
+    else if (parts.length >= COMMENTARY_MAX_PARTS) overflow = true;
+    else parts.push(part);
+  }
+  return { parts, overflow };
+}
+
+// 超えた分の案内（画面で確認してください）を末尾に足す。案内は確認を頼む文で、画面に出したという事実は告げない
+// （画面が持つのは結果の種類ごとの表示で、声に載せなかった文がそのまま載るとは限らない）。3 部を超えないよう、満杯なら
+// 最後の部分を案内に置き換える。
+export function withOverflowNotice(parts: readonly string[]): string[] {
+  const kept = [...parts];
+  if (kept.length >= COMMENTARY_MAX_PARTS)
+    kept.splice(COMMENTARY_MAX_PARTS - 1, kept.length, OVERFLOW);
+  else kept.push(OVERFLOW);
+  return kept;
 }

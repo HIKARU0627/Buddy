@@ -126,6 +126,8 @@ export type BuddyContract =
   | DesktopCanvasView
   | StreamTurnRequest
   | StreamTurnResponse
+  | StorageModeChangeRequest
+  | StorageModeChangeResponse
   | CanvasUserOpRequest
   | CanvasUserOpResponse
   | CanvasContent
@@ -5917,6 +5919,21 @@ export interface CarriedSummary {
    */
   source_segment_ids: [Id, ...Id[]];
   expires_at: UtcTime;
+}
+/**
+ * 保存モードの切り替えの要求（U170、ADR 0060）。流れの経路（POST /v1/stream/storage-mode）が保存モードの唯一の入口・出口で、private の出入りもここへ寄せる。端末は会話・区切りの ID を送らない（UI-01。区切りは Core が選ぶ）。
+ */
+export interface StorageModeChangeRequest {
+  request_id: Id;
+  command_scope_id: Id;
+  storage_mode: StorageMode;
+}
+/**
+ * 保存モードの切り替えの結果（U170、ADR 0060）。切り替えた後の区切り（StreamSegment）を返す。private の出入りでは要約をつながず、normal ⇔ extended は nextCarriedSummary の規則の範囲でだけつなぐ。外部変更の完了ではない。
+ */
+export interface StorageModeChangeResponse {
+  request_id: Id;
+  segment: StreamSegment;
 }
 /**
  * ユーザーのキャンバスの操作の記録（UI-06、ADR 0032）。expected_canvas_revision は端末が描いている版。版が今と同じか、古くてもその物の置き場所・存在がその版より後に変わっていなければ当てる。それ以外は 409（conflict）で捨てる（自動では送り直さない）。

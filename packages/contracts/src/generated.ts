@@ -3520,7 +3520,7 @@ export interface DeviceIOState {
   audio_lease_valid: boolean;
 }
 /**
- * 音声の制御イベント（設計 10 §2・§3・§7）。本文・文字起こし・認証情報を含めない。読み上げ要求は候補 ID だけを最大 5 件。 silence_extension は本人の「ちょっと待って」を中枢が照合したときの、無音の猶予の延長（本文・文字起こしは載せない）。
+ * 音声の制御イベント（設計 10 §2・§3・§7）。本文・文字起こし・認証情報を含めない。読み上げ要求は候補 ID だけを最大 5 件。委譲の状態は 3 つのイベントで伝える: delegation_processing は前面で結果を待つ間（端末は無音で会話を終えない）、delegation_backgrounded は 8 秒を超えて裏へ移した（通常の無音の判定へ戻る）、delegation_finished は待つ委譲がなくなった（設計 10 §5A-7・§5、09 X29、ADR 0109）。同じ接続（live_session_id と audio_epoch）のものだけを使い、古い世代・別の接続のものは捨てる。 silence_extension は本人の「ちょっと待って」を中枢が照合したときの、無音の猶予の延長（本文・文字起こしは載せない）。
  */
 export interface VoiceEvent {
   schema: 'buddy.voice-event.v1';
@@ -3529,6 +3529,7 @@ export interface VoiceEvent {
     | 'sideband_connected'
     | 'delegation_processing'
     | 'delegation_backgrounded'
+    | 'delegation_finished'
     | 'read_aloud_requested'
     | 'audio_control'
     | 'silence_extension';

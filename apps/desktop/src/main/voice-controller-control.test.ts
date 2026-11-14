@@ -509,6 +509,68 @@ test('X58: "wait a moment" from the core extends the next silence by the given m
   assert.deepEqual(h.closed, []);
 });
 
+test('U253/X29: the delegation phase from the core is kept for the silence decision, reported only when it changes, and starts from none for each live', async () => {
+  const h = granted();
+  assert.equal(h.voice.delegationPhase, 'none');
+  await live(h);
+  const from = h.sent.length;
+  const event = (type: string) => ({
+    ...audioControlEvent(h),
+    event_type: type,
+    audio_control: null,
+  });
+  assert.equal(h.voice.delegationPhase, 'none');
+  // 前面で結果を待つ間（無音で会話を終えない）。
+  h.voice.onCoreVoiceEvent(event('delegation_processing'));
+  assert.equal(h.voice.delegationPhase, 'foreground');
+  // 同じ状態の再送は、変更として知らせない。
+  h.voice.onCoreVoiceEvent(event('delegation_processing'));
+  // 8 秒を超えて裏へ移した（通常の無音の判定へ戻る）。
+  h.voice.onCoreVoiceEvent(event('delegation_backgrounded'));
+  assert.equal(h.voice.delegationPhase, 'background');
+  h.voice.onCoreVoiceEvent(event('delegation_processing'));
+  h.voice.onCoreVoiceEvent(event('delegation_finished'));
+  assert.equal(h.voice.delegationPhase, 'none');
+  assert.deepEqual(h.phases, [
+    'foreground',
+    'background',
+    'foreground',
+    'none',
+  ]);
+  // 委譲の状態のイベントは、何も送らず、何も閉じない。
+  assert.deepEqual(sentAfter(h, from), []);
+  assert.deepEqual(h.closed, []);
+  assert.deepEqual(h.silence, []);
+});
+
+test('U253: a delegation phase event for another device, another live, a stale epoch or without a live changes nothing', async () => {
+  const h = granted();
+  await live(h);
+  const stale = (over: object) => ({
+    ...audioControlEvent(h),
+    event_type: 'delegation_processing',
+    audio_control: null,
+    ...over,
+  });
+  for (const event of [
+    stale({ device_id: '00000000-0000-4000-8000-0000000000ee' }),
+    stale({ live_session_id: '00000000-0000-4000-8000-0000000000ee' }),
+    stale({ audio_epoch: '0' }),
+    stale({ audio_epoch: '9' }),
+    stale({ audio_epoch: null }),
+    // 知らない項目を足した形。
+    { ...stale({}), delegation_phase: 'foreground' },
+  ])
+    h.voice.onCoreVoiceEvent(event);
+  assert.equal(h.voice.delegationPhase, 'none');
+  assert.deepEqual(h.phases, []);
+  // 接続がないときは、前面のイベントでも none のまま。
+  const idle = granted();
+  await ready(idle);
+  idle.voice.onCoreVoiceEvent(audioControlEvent(idle, { live: null }));
+  assert.equal(idle.voice.delegationPhase, 'none');
+});
+
 test('events from the core that do not match this device, this live or this epoch, or that are not core-issued or not valid, change nothing', async () => {
   const h = granted();
   await live(h);

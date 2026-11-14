@@ -18,6 +18,7 @@ B00 の初回契約です。`schemas/buddy.schema.json`（Draft 2020-12）がデ
 - 送信・予定の変更・参加者のいる予定の作成・ごみ箱の intent と、送出直前の照合（`MailSendOperationIntent`・`CalendarUpdateOperationIntent`・`CalendarCreateWithAttendeesOperationIntent`・`MailTrashOperationIntent`・`DispatchGuard`。ADR 0075）。完全削除の操作は持たず、結果不明は再送しない。
 - 公開 Web 調査の検索・取得・出典・上限・利用条件（`WebSearchRequest`・`WebSearchResponse`・`WebFetchRequest`・`WebFetchResult`・`WebResearchSource`・`WebResearchLimits`・`WebUsagePolicy`。ADR 0077）。Brave を採用し、検索結果は一時保持だけ・モデルの訓練に使わず、URL の永続保存は B12-02 で決める。
 - 公開 Web 調査の検索語の検査・永続の出典・受付/進捗/完了の応答（`WebQueryScreening`・`WebSourceRecord`・`WebTransientLinks`・`WebResearchStatus`。ADR 0125〜0127）。完了だけが結果を持ち、失敗・0 件・保留・取消は完了と表示できない。URL は保存しない既定で、保存の可否は本人の判断待ち（U183・U290）。
+- 公開 Web 調査の上限の数え方と失敗の区別（`WebSearchAttempt`・`WebPageAttempt`・`WebResearchAttempts`。ADR 0128・0129）。3 検索・5 ページ・2MB・15 秒・3 リダイレクトを試行で数え、失敗・0 件・読めないページ・保留を区別し、読めたページが無ければ完了にしない。
 - `model-evaluation.json` は評価候補。API 呼出し・モデルの有効化・利用料の承認を行う設定ではありません。
 
 `pnpm run contracts:generate` で型生成、`pnpm run contracts:check` と `pnpm test` で検査します。型はパターン・format・数値の大小・認可を保証しません。実行時には形式検査と最新状態の意味検査が別途必要です。

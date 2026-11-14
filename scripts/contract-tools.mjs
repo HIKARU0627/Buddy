@@ -1057,6 +1057,25 @@ export function semanticErrors(name, value) {
     (value.summary ?? '').trim() === ''
   )
     errors.push('missing_page_evidence');
+  // 公開 Web 調査の試行の記録（B12-02 P2、ADR 0128・0129）。上限・順序・検索との関係は domain の試験が確かめる。
+  if (name === 'WebSearchAttempt') {
+    if (value.outcome === 'hits' && value.hit_count < 1)
+      errors.push('hits_without_hit');
+    if (value.outcome === 'zero_hits' && value.hit_count !== 0)
+      errors.push('zero_hits_with_hit');
+    if (value.outcome === 'zero_hits' && value.failure_cause !== null)
+      errors.push('zero_hits_with_failure_cause');
+    if (value.outcome === 'failed' && value.hit_count !== 0)
+      errors.push('failed_with_hit');
+    if (value.outcome === 'failed' && value.failure_cause === null)
+      errors.push('failed_without_cause');
+  }
+  if (name === 'WebPageAttempt') {
+    if (value.outcome === 'read' && value.source_id === null)
+      errors.push('read_without_source');
+    if (value.outcome !== 'read' && value.source_id !== null)
+      errors.push('source_without_read');
+  }
   if (name === 'WebResearchStatus') {
     const terminal = ['completed', 'no_results', 'failed', 'canceled'];
     const stopped = [...terminal.filter((s) => s !== 'completed'), 'held'];

@@ -254,9 +254,14 @@ function classify(
   const unknown: Classified = { heading: 'unknown', sortKey: null };
   const parsed = parseDeadline(item.deadline, zone);
   if (parsed === null) return unknown;
-  const { date, sortKey } = parsed;
-  const clock = localClock(now, parsed.clockZone);
+  const { sortKey } = parsed;
+  // 見出し（今日・明日・今週）は、期限の zone ではなく本人の zone の暦で決める（U287）。時刻付きの期限は、確定した時点を
+  // 本人の zone の現地の日付に直す。日付だけの期限は本人の暦の日付そのもの。
+  const clock = localClock(now, zone);
   if (clock === null) return unknown;
+  const own = localClock(sortKey, zone);
+  const date = item.deadline.kind === 'instant' ? own?.date : parsed.date;
+  if (date === undefined) return unknown;
   if (parsed.ended(now, clock) && item.initial_import)
     return { heading: 'initial_import_past', sortKey };
   // 初回取り込みでない過去の期限は、期限切れの解消（deadline_passed）までの間、今日に置く（U271）。

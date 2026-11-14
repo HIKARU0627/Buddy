@@ -98,7 +98,7 @@ test('the day changes at the local midnight of the user, not at UTC midnight', (
   );
 });
 
-test('an instant deadline is classified in its own zone', () => {
+test('an instant deadline is classified in the calendar of the user, not of its own zone', () => {
   // NOW は New York では 2030-10-08 23:00（夏時間）。そこでの 10/09 は明日。
   const inNewYork = item({
     deadline: at('2030-10-09T20:00', 'America/New_York'),
@@ -455,4 +455,39 @@ test('a local time that happens twice when daylight saving time ends counts as t
     c.candidate_id,
     b.candidate_id,
   ]);
+});
+
+test('the heading follows the calendar of the user, even when the deadline is written in another zone', () => {
+  const NY = 'America/New_York';
+  // 本人は日本。基準 2030-10-09T03:00Z = 日本 10/9 12:00。
+  // ニューヨーク 10/9 09:00（EDT）= 13:00Z = 日本 10/9 22:00 は、本人にとって今日（ニューヨークの暦では今日が 10/8 でも）。
+  const nyMorning = item({ deadline: at('2030-10-09T09:00', NY) });
+  const tokyoLate = item({ deadline: at('2030-10-09T23:00') });
+  const result = orderCandidates([tokyoLate, nyMorning], context);
+  assert.deepEqual(headingsOf(result), ['today']);
+  assert.deepEqual(idsOf(result, 'today'), [
+    nyMorning.candidate_id,
+    tokyoLate.candidate_id,
+  ]);
+  // ニューヨーク 10/9 20:00 = 10/10 00:00Z = 日本 10/10 09:00 は、本人にとって明日。
+  const nyEvening = item({ deadline: at('2030-10-09T20:00', NY) });
+  assert.deepEqual(headingsOf(orderCandidates([nyEvening], context)), [
+    'tomorrow',
+  ]);
+  // 週の境目も本人の暦: 日本の日曜 10/13 00:30（= 10/12T15:30Z）に、ニューヨーク 10/13 11:00 = 15:00Z = 日本の月曜 10/14 00:00 は明日。
+  const sunday = { now: '2030-10-12T15:30:00Z', zone: ZONE };
+  const nyNoonish = item({ deadline: at('2030-10-13T11:00', NY) });
+  assert.deepEqual(headingsOf(orderCandidates([nyNoonish], sunday)), [
+    'tomorrow',
+  ]);
+  // 昨日の日本時間の夜にあたる、ニューヨークの今日の期限（初回取り込みなら過去、そうでなければ今日の見出し）。
+  const past = item({
+    deadline: at('2030-10-08T08:00', NY),
+    initial_import: true,
+  });
+  assert.deepEqual(headingsOf(orderCandidates([past], context)), [
+    'initial_import_past',
+  ]);
+  const overdue = item({ deadline: at('2030-10-08T08:00', NY) });
+  assert.deepEqual(headingsOf(orderCandidates([overdue], context)), ['today']);
 });

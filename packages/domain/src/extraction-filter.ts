@@ -89,6 +89,16 @@ const DATE_PATTERNS: readonly RegExp[] = [
   /[0-9０-９]{4}\s*[/／.\-－]\s*[0-9０-９]{1,2}\s*[/／.\-－]\s*[0-9０-９]{1,2}/u,
   /[月火水木金土日]曜/u,
   /明日|明後日|今週|来週|今月末|本日中/u,
+  // 設計の語の一覧より広く拾う（期限を黙って落とさない側。U246）。
+  // 年なしの「11/30」「11/20（金）」と、「20日」「11月」だけの表現。
+  /[0-9０-９]{1,2}\s*[/／]\s*[0-9０-９]{1,2}/u,
+  /[0-9０-９]{1,2}\s*[日月]/u,
+  // 英語: 月名と日（Nov 20・20 November）、曜日、相対語。
+  /\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+[0-9]{1,2}\b/iu,
+  /\b[0-9]{1,2}(?:st|nd|rd|th)?\s+(?:of\s+)?(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b/iu,
+  /\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/iu,
+  /\b(?:mon|tue|wed|thu|fri|sat|sun)[.,]/iu,
+  /\b(?:today|tomorrow|tonight|next\s+(?:week|month)|this\s+(?:week|month)|end\s+of\s+(?:the\s+)?(?:day|week|month)|eod|asap)\b/iu,
 ];
 const DEADLINE_WORDS: readonly string[] = [
   '締切',

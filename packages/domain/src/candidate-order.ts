@@ -130,8 +130,36 @@ const weekdayOfDay = (day: number): number => (((day + 3) % 7) + 7) % 7;
 
 interface Classified {
   readonly heading: CandidateHeading;
-  // 並べ替えの鍵。期限不明は null。日付だけの期限はその日の終わりとして並べる（時刻は補わない）。
-  readonly sortKey: string | null;
+  // 並べ替えの鍵（UTC のミリ秒）。期限不明は null。日付だけの期限は、その日が終わる時刻（翌日の 0 時）として
+  // 並べる（並べるためだけで、時刻には変換しない）。タイムゾーンの違う期限も、同じ時間軸で比べる。
+  readonly sortKey: number | null;
+}
+
+// 現地の日時（YYYY-MM-DDTHH:MM:SS）の UTC 時刻（ミリ秒）。存在しない時刻（夏時間の隙間）はその直後、
+// 2 回ある時刻は先の方のどちらかを返す。zone が読めない・形が違うときは null。
+function localToUtc(local: string, zone: string): number | null {
+  const match =
+    /^([0-9]{4})-([0-9]{2})-([0-9]{2})T([0-9]{2}):([0-9]{2}):([0-9]{2})$/u.exec(
+      local,
+    );
+  if (match === null || localClock(0, zone) === null) return null;
+  const [year, month, day, hour, minute, second] = match
+    .slice(1)
+    .map(Number) as [number, number, number, number, number, number];
+  const guess = Date.UTC(year, month - 1, day, hour, minute, second);
+  // 時差は ±14 時間以内なので、この範囲に境目がある。
+  let low = guess - 36 * 3_600_000;
+  let high = guess + 36 * 3_600_000;
+  const reaches = (at: number): boolean => {
+    const clock = localClock(at, zone);
+    return clock !== null && `${clock.date}T${clock.time}` >= local;
+  };
+  while (high - low > 1000) {
+    const mid = low + Math.floor((high - low) / 2 / 1000) * 1000;
+    if (reaches(mid)) high = mid;
+    else low = mid;
+  }
+  return reaches(low) ? low : high;
 }
 
 // 本人のタイムゾーンとして使える IANA の名前か。
@@ -140,7 +168,8 @@ export const isCandidateZone = (zone: string): boolean =>
 
 interface ParsedDeadline {
   readonly date: string;
-  readonly sortKey: string;
+  // 並べ替えの鍵（UTC のミリ秒）。
+  readonly sortKey: number;
   // 「いま」の現地時計を読むタイムゾーン。時刻付きの期限はその期限の zone、日付だけは本人の zone。
   readonly clockZone: string;
   readonly ended: (clock: { date: string; time: string }) => boolean;
@@ -155,20 +184,27 @@ function parseDeadline(
     if (!isRealLocalDateTime(deadline.local_datetime)) return null;
     const date = deadline.local_datetime.slice(0, 10);
     const time = deadline.local_datetime.slice(11);
-    const sortKey = `${date}T${time.length === 5 ? `${time}:00` : time}`;
+    const local = `${date}T${time.length === 5 ? `${time}:00` : time}`;
+    const sortKey = localToUtc(local, deadline.zone);
+    if (sortKey === null) return null;
     return {
       date,
       sortKey,
       clockZone: deadline.zone,
-      ended: (clock) => sortKey < `${clock.date}T${clock.time}`,
+      ended: (clock) => local < `${clock.date}T${clock.time}`,
     };
   }
   if (deadline.kind === 'date') {
     if (!isRealLocalDateTime(`${deadline.date}T00:00`)) return null;
     const day = deadline.date;
+    const next = new Date(dateToDay(day) * DAY_MS + DAY_MS)
+      .toISOString()
+      .slice(0, 10);
+    const sortKey = localToUtc(`${next}T00:00:00`, zone);
+    if (sortKey === null) return null;
     return {
       date: day,
-      sortKey: `${day}T24:00:00`,
+      sortKey,
       clockZone: zone,
       ended: (clock) => day < clock.date,
     };
@@ -260,7 +296,7 @@ export function orderCandidates<T extends CandidateOrderItem>(
       if (ka !== kb) {
         if (ka === null) return 1;
         if (kb === null) return -1;
-        return (ka < kb ? -1 : 1) * direction;
+        return (ka - kb < 0 ? -1 : 1) * direction;
       }
       const received =
         receivedMs(b.item.received_at) - receivedMs(a.item.received_at);

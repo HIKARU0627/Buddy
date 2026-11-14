@@ -43,6 +43,8 @@ export interface RestoreRepairOptions {
   readonly lock?: boolean;
   readonly isPidAlive?: (pid: number) => boolean;
   readonly probeTimeoutMs?: number;
+  // 試験で差し替える台帳ファイルの書き込み（退避の後の失敗を再現する）。
+  readonly writeLedgerFile?: typeof writeLedgerFileAtomic;
 }
 
 export interface RestoreRepairReport {
@@ -298,9 +300,13 @@ async function repair(
     }
   }
   try {
-    await writeLedgerFileAtomic(path, buildLedgerFile(exported, options.now()));
+    await (options.writeLedgerFile ?? writeLedgerFileAtomic)(
+      path,
+      buildLedgerFile(exported, options.now()),
+    );
   } catch {
-    return refuse('ledger_file_rebuild_failed');
+    // 退避した後に書き込めなかった。ファイルは退避名にあるので、その事実を返す（復旧作業者が状態を誤認しないように）。
+    return { ...refuse('ledger_file_rebuild_failed'), aside_kept: asideKept };
   }
   log('台帳の別ファイルを DB から作り直しました。');
   return {

@@ -423,3 +423,32 @@ test('台帳の復旧: 書きかけの一時ファイルが DB より進んで�
     false,
   );
 });
+
+test('台帳の復旧: 退避の後に書き込めなくても、退避した事実を返す', async (t) => {
+  const r = await rig(t);
+  const path = join(r.dataDir, FORGET_LEDGER_FILE);
+  const first = await repair(r.dataDir);
+  assert.equal(first.outcome, 'rebuilt', JSON.stringify(first));
+  await writeFile(path, '{broken');
+  const report = await runRestoreLedgerRepair({
+    dataDir: r.dataDir,
+    contract,
+    now: () => new Date(T0 + 1000),
+    lock: true,
+    log: () => undefined,
+    writeLedgerFile: async () => {
+      throw new Error('injected_write_failure');
+    },
+  });
+  assert.equal(report.outcome, 'refused', JSON.stringify(report));
+  assert.equal(report.reason, 'ledger_file_rebuild_failed');
+  // 本体は退避名に移っている（壊れたまま。消してはいない）。
+  assert.equal(report.aside_kept, true);
+  const names = await readdir(r.dataDir);
+  const aside = names.find((name) =>
+    name.startsWith(`${FORGET_LEDGER_FILE}.repair-`),
+  );
+  assert.ok(aside !== undefined);
+  assert.equal(await readFile(join(r.dataDir, aside), 'utf8'), '{broken');
+  assert.equal(names.includes(FORGET_LEDGER_FILE), false);
+});

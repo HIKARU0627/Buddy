@@ -40,6 +40,7 @@ DB の台帳（`forget_ledger`・`forget_ledger_items`）が正本で、`forget-
 - `ledger_id` が数値の壊れた封筒を置くと `backup_manifest_invalid` で拒否し、ファイルを変更しない。
 - 系譜のない DB（空の DB）に世代 1 の封筒を置くと `backup_newer_than_ledger` で拒否し、台帳のファイルを作らない。
 - 書きかけの一時ファイルだけが DB より進んでいるときは、本体が壊れていても退避せず `ledger_file_ahead` で拒否する。
+- 退避の後に書き込みが失敗すると `ledger_file_rebuild_failed` と `aside_kept: true` を返し、壊れた本体は退避名に残る。
 
 実機・実際の破損・Mac mini は B15 で未実施。`tests/test-map.json` の X15〜X17 は `not_run` のまま。
 

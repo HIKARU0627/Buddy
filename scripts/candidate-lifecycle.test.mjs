@@ -254,3 +254,48 @@ test('the retention phase follows live, seven days, ninety-seven days, then dele
   assert.equal(phase('resolved', NOW, 'unknown'), 'identifier_only');
   assert.equal(phase('resolved', 'now'), 'identifier_only');
 });
+
+test('a deadline on a local time that happens twice is passed only after the later one, and never un-passes', () => {
+  // ニューヨークの 2030-11-03 01:30 は 05:30Z（EDT）と 06:30Z（EST）の 2 回ある。後の回（06:30Z）で過ぎる。
+  const NY = 'America/New_York';
+  const target = candidate({
+    deadline: {
+      kind: 'instant',
+      local_datetime: '2030-11-03T01:30',
+      zone: NY,
+      original_text: 'x',
+    },
+  });
+  const eventAt = (now) => candidateDueEvent(target, now, NY).event;
+  assert.equal(eventAt('2030-11-03T05:45:00Z'), null); // 01:45 EDT。先の回の 01:30 の後でも、まだ過ぎていない
+  assert.equal(eventAt('2030-11-03T06:15:00Z'), null); // 01:15 EST
+  assert.equal(eventAt('2030-11-03T06:30:00Z'), null); // ちょうどは過ぎていない
+  assert.equal(eventAt('2030-11-03T06:30:01Z'), 'deadline_passed');
+  // 5 分ごとに見て、過ぎたあとは戻らない。
+  let passed = false;
+  for (let minute = 0; minute <= 300; minute += 5) {
+    const now = new Date(Date.parse('2030-11-03T03:00:00Z') + minute * 60_000)
+      .toISOString()
+      .replace('.000Z', 'Z');
+    const nowPassed = eventAt(now) === 'deadline_passed';
+    assert.ok(!(passed && !nowPassed), now);
+    passed = nowPassed;
+  }
+  assert.equal(passed, true);
+  // スヌーズの終わりも、期限が先に過ぎたかどうかの判断が揺れない（掃除の時刻で結果が変わらない）。
+  const snoozed = candidate({
+    state: 'snoozed',
+    snooze_until: '2030-11-03T05:00:00Z',
+    deadline: target.deadline,
+  });
+  for (const now of ['2030-11-03T05:45:00Z', '2030-11-03T06:15:00Z'])
+    assert.equal(
+      candidateDueEvent(snoozed, now, NY).event,
+      'snooze_elapsed',
+      now,
+    );
+  assert.equal(
+    candidateDueEvent(snoozed, '2030-11-03T06:30:01Z', NY).event,
+    'deadline_passed',
+  );
+});

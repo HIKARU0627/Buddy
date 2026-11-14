@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  candidateDueEvent,
   findScheduleOverlaps,
   orderCandidates,
   scheduleOverlapDeadline,
@@ -483,4 +484,46 @@ test('identifiers that contain the separators never collapse into the same refer
     run([google, first]).overlaps[0]?.refs.find((r) => r.includes('example')),
     'ical:abc123%40example.com#',
   );
+});
+
+test('an overlap that starts in the hour that happens twice becomes the later one, so it is never resolved early', () => {
+  // ニューヨークの 2030-11-03 01:30 は 05:30Z（EDT）と 06:30Z（EST）の 2 回ある。どちらの開始も現地時刻は同じ 01:30:00 で、
+  // 契約の期限は現地時刻とタイムゾーンだけなので区別できない（U285）。後の回として扱い、早く解決しない側へ倒す。
+  const NY = 'America/New_York';
+  const deadlineOf = (start, end) => {
+    const found = run(
+      [ev('a', start, end), ev('b', start, '2030-11-03T08:00:00Z')],
+      WINDOW,
+      NY,
+    );
+    return scheduleOverlapDeadline(found.overlaps[0], NY);
+  };
+  for (const start of ['2030-11-03T05:30:00Z', '2030-11-03T06:30:00Z'])
+    assert.deepEqual(
+      deadlineOf(start, '2030-11-03T09:00:00Z'),
+      {
+        kind: 'instant',
+        local_datetime: '2030-11-03T01:30:00',
+        zone: NY,
+        original_text: '予定の重複',
+      },
+      start,
+    );
+  const deadline = deadlineOf('2030-11-03T05:30:00Z', '2030-11-03T09:00:00Z');
+  // 先の回の 05:45Z（01:45 EDT）でも期限を過ぎたとは見なさない。2 回目の 01:30（06:30Z）の後だけ過ぎる。
+  const candidate = (now) =>
+    candidateDueEvent(
+      {
+        state: 'new',
+        deadline,
+        initial_import: false,
+        created_at: '2030-11-01T00:00:00Z',
+        snooze_until: null,
+      },
+      now,
+      NY,
+    ).event;
+  assert.equal(candidate('2030-11-03T05:45:00Z'), null);
+  assert.equal(candidate('2030-11-03T06:15:00Z'), null);
+  assert.equal(candidate('2030-11-03T06:30:01Z'), 'deadline_passed');
 });

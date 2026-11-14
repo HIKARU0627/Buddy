@@ -414,3 +414,45 @@ test('the clock must be a real UTC time; a time without a zone or on a day that 
     [readable.candidate_id, unreadable.candidate_id],
   );
 });
+
+test('a local time that happens twice when daylight saving time ends counts as the later one, and never goes back', () => {
+  // ニューヨークは 2030-11-03 の 02:00 EDT に 01:00 EST へ戻る。01:30 は 05:30Z（EDT）と 06:30Z（EST）の 2 回ある。
+  // 後の回（06:30Z）を期限として、先の回で期限を過ぎたと見なさない（候補を早く解決しない）。
+  const NY = 'America/New_York';
+  const pastAt = (nowIso) => {
+    const target = item({
+      deadline: at('2030-11-03T01:30', NY),
+      initial_import: true,
+    });
+    const result = orderCandidates([target], { now: nowIso, zone: NY });
+    return headingsOf(result)[0] === 'initial_import_past';
+  };
+  assert.equal(pastAt('2030-11-03T05:45:00Z'), false); // 01:45 EDT（1 回目の 01:30 の後）
+  assert.equal(pastAt('2030-11-03T06:15:00Z'), false); // 01:15 EST（2 回目の 01:30 の前。ここで逆戻りしてはいけない）
+  assert.equal(pastAt('2030-11-03T06:30:00Z'), false); // ちょうどは過ぎていない
+  assert.equal(pastAt('2030-11-03T06:30:01Z'), true);
+  // 5 分ごとに 4 時間見ても、いったん過ぎたら戻らない。
+  let wasPast = false;
+  for (let minute = 0; minute <= 240; minute += 5) {
+    const now = new Date(Date.parse('2030-11-03T04:00:00Z') + minute * 60_000)
+      .toISOString()
+      .replace('.000Z', 'Z');
+    const past = pastAt(now);
+    assert.ok(!(wasPast && !past), now);
+    wasPast = past;
+  }
+  assert.equal(wasPast, true);
+  // 並べるときも後の回の時点: 06:30Z・06:40Z・06:45Z の順。
+  const a = item({ deadline: at('2030-11-03T01:30', NY) });
+  const b = item({ deadline: at('2030-11-03T01:45', NY) });
+  const c = item({ deadline: at('2030-11-03T06:40', 'UTC') });
+  const ordered = orderCandidates([b, c, a], {
+    now: '2030-11-02T12:00:00Z',
+    zone: NY,
+  });
+  assert.deepEqual(idsOf(ordered, 'tomorrow'), [
+    a.candidate_id,
+    c.candidate_id,
+    b.candidate_id,
+  ]);
+});

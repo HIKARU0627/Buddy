@@ -41,6 +41,7 @@
 - `pnpm run contracts:check`: `web-research-cases.json` の許可例・拒否例、OpenAPI 3.1.2 を検査した。
 - `node --test scripts/web-research.test.mjs`: 3 検索・5 ページ・2MB・15 秒・3 リダイレクトの境界、private 宛先の拒否、page_read と search_summary_only の区別、policy の const を検査した。
 - `node --test scripts/contract-gate.test.mjs`: 写しの契約ゲートに新しい fixture を加えた。
+- `scripts/test-map.test.mjs`: X18 に B12 の契約 fixture（limits・policy・fetch の拒否・search の応答・出典の区別）を登録した。B12 は形式の検査だけで、検索アダプター・実 API・実請求は未実施のまま区別する。
 
 **模擬の期待値だけ**。実 API・実請求・実測（日本語品質・遅延・失敗率）・実機は未実施で、合格扱いにしない。
 

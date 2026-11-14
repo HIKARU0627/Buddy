@@ -360,12 +360,17 @@
     },
     {
       "id": "X18",
-      "phases": ["B07"],
+      "phases": ["B07", "B12"],
       "contract_fixtures": [
         "packages/contracts/fixtures/budget-scenarios.json#x18-boundary-concurrency-month-and-pools",
         "packages/contracts/fixtures/budget-rules.json#x18-route-auto-execution",
         "packages/contracts/fixtures/budget-rules.json#qa42-x18-usage-summary",
-        "packages/contracts/fixtures/schema-cases.json#x18-runtime-routing-owner-and-autonomous"
+        "packages/contracts/fixtures/schema-cases.json#x18-runtime-routing-owner-and-autonomous",
+        "packages/contracts/fixtures/web-research-cases.json#limits",
+        "packages/contracts/fixtures/web-research-cases.json#policy",
+        "packages/contracts/fixtures/web-research-cases.json#fetch-request-cgnat",
+        "packages/contracts/fixtures/web-research-cases.json#search-response",
+        "packages/contracts/fixtures/web-research-cases.json#source-search-summary-only"
       ],
       "status": "contract_fixture",
       "product_test": "simulated",
@@ -376,7 +381,7 @@
         "tests/integration/evidence-b07-simulated.json#X18-pools-concurrency",
         "tests/integration/evidence-b07-simulated.json#X18-topup-concurrency"
       ],
-      "product_scope": "B07-06 の固定 seed 3 回・合成の通貨 XTS と縮めた上限・同一プロセスの予算の門と DB worker と模擬の有料 provider（HTTP の経路・画面は通さない）。予約の行（SQL で直接読む）と provider の受信の記録・真の usage を突き合わせ、上限を超えた予約 0 件・精算は一度だけを確認。実 API・実請求・実機は未実施で、実請求の照合は B15。 同時の予約（境界・超過枠・LLM と検索と音声の 11 件）と同時の追加予約（版の CAS・音声の上限）で、M を含む受付の上限を超えない。"
+      "product_scope": "B07-06 の固定 seed 3 回・合成の通貨 XTS と縮めた上限・同一プロセスの予算の門と DB worker と模擬の有料 provider（HTTP の経路・画面は通さない）。予約の行（SQL で直接読む）と provider の受信の記録・真の usage を突き合わせ、上限を超えた予約 0 件・精算は一度だけを確認。実 API・実請求・実機は未実施で、実請求の照合は B15。 同時の予約（境界・超過枠・LLM と検索と音声の 11 件）と同時の追加予約（版の CAS・音声の上限）で、M を含む受付の上限を超えない。 B12 は契約 fixture の形式検査だけを追加し、検索アダプター・実 API・実請求は未実施。"
     },
     {
       "id": "X19",

@@ -1,0 +1,213 @@
+{
+  "schema_version": 1,
+  "description": "B13-01 の方針による自動承認・安全停止の件数・取り消しの対象版（ADR 0074、設計 08 §1・§9、11 §5A）。模擬だけ。",
+  "cases": [
+    {
+      "id": "policy-approval",
+      "schema": "PolicyApprovalRecord",
+      "valid": true,
+      "value": {
+        "schema": "buddy.policy-approval.v1",
+        "operation_id": "00000000-0000-4000-8000-000000000701",
+        "policy_version": "3",
+        "rule_id": "task.create.reply_required",
+        "content_version": "1",
+        "content_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+        "approved_at": "2030-01-01T00:00:00Z"
+      }
+    },
+    {
+      "id": "policy-approval-missing-rule",
+      "schema": "PolicyApprovalRecord",
+      "valid": false,
+      "value": {
+        "schema": "buddy.policy-approval.v1",
+        "operation_id": "00000000-0000-4000-8000-000000000701",
+        "policy_version": "3",
+        "content_version": "1",
+        "content_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+        "approved_at": "2030-01-01T00:00:00Z"
+      }
+    },
+    {
+      "id": "policy-approval-token",
+      "schema": "PolicyApprovalRecord",
+      "valid": false,
+      "value": {
+        "schema": "buddy.policy-approval.v1",
+        "operation_id": "00000000-0000-4000-8000-000000000701",
+        "policy_version": "3",
+        "rule_id": "task.create.reply_required",
+        "content_version": "1",
+        "content_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+        "approved_at": "2030-01-01T00:00:00Z",
+        "access_token": "synthetic-token"
+      }
+    },
+    {
+      "id": "safety-with-counters",
+      "schema": "SafetyState",
+      "valid": true,
+      "value": {
+        "state": "running",
+        "safety_revision": "1",
+        "stop_reason": null,
+        "stopped_at": null,
+        "auto_approvals": {
+          "window_started_at": "2030-01-01T00:00:00Z",
+          "auto_approvals": 19,
+          "limit": 20,
+          "window_minutes": 10
+        }
+      }
+    },
+    {
+      "id": "auto-action-with-undo-target",
+      "schema": "AutoActionItem",
+      "valid": true,
+      "value": {
+        "operation_id": "00000000-0000-4000-8000-000000000701",
+        "action_kind": "create_task",
+        "policy_version": "3",
+        "state_revision": "1",
+        "completed_at": "2030-01-01T00:00:00Z",
+        "undo_state": "available",
+        "undo_deadline": "2030-01-31T00:00:00Z",
+        "undo_target": {
+          "content_version": "1",
+          "content_hash": "1111111111111111111111111111111111111111111111111111111111111111"
+        }
+      }
+    },
+    {
+      "id": "auto-action-bad-undo-target",
+      "schema": "AutoActionItem",
+      "valid": false,
+      "value": {
+        "operation_id": "00000000-0000-4000-8000-000000000701",
+        "action_kind": "create_task",
+        "policy_version": "3",
+        "state_revision": "1",
+        "completed_at": "2030-01-01T00:00:00Z",
+        "undo_state": "available",
+        "undo_deadline": "2030-01-31T00:00:00Z",
+        "undo_target": {
+          "content_version": "1"
+        }
+      }
+    },
+    {
+      "id": "auto-execution-default",
+      "schema": "AutoExecutionPolicy",
+      "valid": true,
+      "value": {
+        "schema": "buddy.auto-execution.v1",
+        "policy_version": "0",
+        "rules": {
+          "task.register": false,
+          "event.create_own": false,
+          "mail.apply_existing_label": false,
+          "mail.save_draft": false
+        }
+      }
+    },
+    {
+      "id": "auto-execution-enabled",
+      "schema": "AutoExecutionPolicy",
+      "valid": true,
+      "value": {
+        "schema": "buddy.auto-execution.v1",
+        "policy_version": "1",
+        "rules": {
+          "task.register": true,
+          "event.create_own": false,
+          "mail.apply_existing_label": false,
+          "mail.save_draft": false
+        }
+      }
+    },
+    {
+      "id": "auto-execution-missing-rule",
+      "schema": "AutoExecutionPolicy",
+      "valid": false,
+      "value": {
+        "schema": "buddy.auto-execution.v1",
+        "policy_version": "1",
+        "rules": {
+          "task.register": false,
+          "event.create_own": false,
+          "mail.apply_existing_label": false
+        }
+      }
+    },
+    {
+      "id": "auto-execution-unknown-rule",
+      "schema": "AutoExecutionPolicy",
+      "valid": false,
+      "value": {
+        "schema": "buddy.auto-execution.v1",
+        "policy_version": "1",
+        "rules": {
+          "task.register": false,
+          "event.create_own": false,
+          "mail.apply_existing_label": false,
+          "mail.save_draft": false,
+          "mail.send": true
+        }
+      }
+    }
+  ],
+  "domain_cases": [
+    {
+      "id": "no-counter",
+      "counter": null,
+      "now": "2030-01-01T00:00:00Z",
+      "expected": true
+    },
+    {
+      "id": "below-limit",
+      "counter": {
+        "window_started_at": "2030-01-01T00:00:00Z",
+        "auto_approvals": 19,
+        "limit": 20,
+        "window_minutes": 10
+      },
+      "now": "2030-01-01T00:05:00Z",
+      "expected": true
+    },
+    {
+      "id": "at-limit",
+      "counter": {
+        "window_started_at": "2030-01-01T00:00:00Z",
+        "auto_approvals": 20,
+        "limit": 20,
+        "window_minutes": 10
+      },
+      "now": "2030-01-01T00:05:00Z",
+      "expected": false
+    },
+    {
+      "id": "window-elapsed",
+      "counter": {
+        "window_started_at": "2030-01-01T00:00:00Z",
+        "auto_approvals": 20,
+        "limit": 20,
+        "window_minutes": 10
+      },
+      "now": "2030-01-01T00:10:00Z",
+      "expected": true
+    }
+  ],
+  "auto_execution": {
+    "default_policy": {
+      "schema": "buddy.auto-execution.v1",
+      "policy_version": "0",
+      "rules": {
+        "task.register": false,
+        "event.create_own": false,
+        "mail.apply_existing_label": false,
+        "mail.save_draft": false
+      }
+    }
+  }
+}

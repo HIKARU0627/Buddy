@@ -46,6 +46,7 @@ export * from './operation-steps.js';
 export * from './operations.js';
 export * from './readiness.js';
 export * from './response-plan.js';
+export * from './reply-text.js';
 export * from './retention.js';
 export * from './retention-sweep.js';
 // B06-04: 記録しない会話の保存の境界（許可表・入る／出るの遷移・独立した確認の中身。ADR 0045）。

@@ -78,3 +78,5 @@ export * from './voice-interaction.js';
 // B05-05: Live の文字起こしのターンへの整理・委譲の対象の決定・入力の受付と方式 C の限定・声で返す定型文（ADR 0052）。
 export * from './voice-live-input.js';
 export * from './voice-commentary.js';
+// B10-05: 抽出の入力として送ったソースの形とコードポイントの位置の数え方（ADR 0100）。
+export * from './extraction-source.js';

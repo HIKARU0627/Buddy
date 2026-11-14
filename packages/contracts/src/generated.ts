@@ -59,6 +59,8 @@ export type BuddyContract =
   | RequestEntity
   | RelatedAnalysis
   | CandidateSnapshot
+  | CandidateListResponse
+  | CandidateEvidence
   | SyncBatch
   | SyncScopeState
   | SyncStateResponse
@@ -84,6 +86,8 @@ export type BuddyContract =
   | HandoffRequest
   | HandoffState
   | AutoActionList
+  | PolicyApprovalRecord
+  | AutoExecutionPolicy
   | SafetyResumeRequest
   | SafetyState
   | IoStopRequest
@@ -3753,6 +3757,39 @@ export interface CandidateSnapshot {
   operation_ids: Id[];
 }
 /**
+ * 気づきの一覧（設計 11 §4、ADR 0073）。表示順は domain が決める。本文・添付の内容は含めない。
+ */
+export interface CandidateListResponse {
+  candidates: CandidateSnapshot[];
+  counts: CandidateStateCounts;
+  next_cursor: EventCursor | null;
+}
+/**
+ * 気づきの状態ごとの件数（設計 11 §4、ADR 0073）。一覧の見出しと端末のバッジに使う。
+ */
+export interface CandidateStateCounts {
+  new: number;
+  seen: number;
+  acted: number;
+  dismissed: number;
+  snoozed: number;
+  resolved: number;
+}
+/**
+ * 気づきの根拠（設計 11 §4、ADR 0073）。許可範囲から取り直した根拠の版と引用だけを返し、本文を無期限に複製しない。
+ */
+export interface CandidateEvidence {
+  candidate_id: Id;
+  request_entity_id: Id | null;
+  request_revision: RequestEntityRevision | null;
+  source: SourceRef;
+  unread: boolean;
+  /**
+   * 表示用の抄録（200 文字以内）。本文全体ではない。
+   */
+  excerpt: string | null;
+}
+/**
  * 同期の 1 回の走査（設計 11 §1・§1A F04、03 データ表）。最初のページ取得から公開または abandoned まで、同じ取得集合で有効な走査は 1 件だけ。開始時の世代・watermark・cursor・担当世代を公開時に照合する。
  */
 export interface SyncBatch {
@@ -4340,6 +4377,19 @@ export interface SafetyState {
       )
     | null;
   stopped_at: UtcTime | null;
+  /**
+   * 自動承認の時間窓の件数。停止の判定と同じ transaction で更新する。
+   */
+  auto_approvals?: SafetyStopCounters | null;
+}
+/**
+ * 自動承認の時間窓の件数（設計 08 §9、ADR 0074）。初期値は 10 分間に 20 件で、T10 で調整する。
+ */
+export interface SafetyStopCounters {
+  window_started_at: UtcTime;
+  auto_approvals: number;
+  limit: number;
+  window_minutes: number;
 }
 /**
  * 自動実行した操作（設計 03 auto_actions / undo_records、J12）。本文を含めない。取り消しは完了から 30 日まで。
@@ -4363,6 +4413,42 @@ export interface AutoActionItem {
     | 'undone'
     | 'unavailable';
   undo_deadline: UtcTime;
+  /**
+   * 取り消す対象の内容版。対象が変わっていたら自動で補償しない。
+   */
+  undo_target?: UndoTarget | null;
+}
+/**
+ * 取り消す対象の内容版（設計 08 §9、ADR 0074）。取り消しの直前に現在値と照合し、変わっていれば補償を行わず差分を表示する。
+ */
+export interface UndoTarget {
+  content_version: ContentVersion;
+  content_hash: Hash;
+}
+/**
+ * 方針による自動承認の記録（設計 08 §1・§9、ADR 0074）。古い方針の版で判定した承認を使わない。承認の正本は Core の記録で、connector やモデルの申告から作らない。
+ */
+export interface PolicyApprovalRecord {
+  schema: 'buddy.policy-approval.v1';
+  operation_id: Id;
+  policy_version: PolicyVersion;
+  rule_id: string;
+  content_version: ContentVersion;
+  content_hash: Hash;
+  approved_at: UtcTime;
+}
+/**
+ * 自動実行の有効・無効の方針（設計 08 §9、D6、ADR 0074）。4 種類すべてを明示し、未設定・初期状態はすべて無効（false）。T10 の合格後に本人が有効化する。
+ */
+export interface AutoExecutionPolicy {
+  schema: 'buddy.auto-execution.v1';
+  policy_version: PolicyVersion;
+  rules: {
+    'task.register': boolean;
+    'event.create_own': boolean;
+    'mail.apply_existing_label': boolean;
+    'mail.save_draft': boolean;
+  };
 }
 export interface SafetyResumeRequest {
   request_id: Id;

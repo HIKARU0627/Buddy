@@ -13,6 +13,8 @@ B00 の初回契約です。`schemas/buddy.schema.json`（Draft 2020-12）がデ
 - 表示と読み上げの計画（`ResponsePlan`・`ResponseSpeech`）と、モデル呼出しの成功・失敗の区別（`ModelOutcome`・`ModelUsage`。ADR 0070）。計画は応答文の本文・宛先・承認・実行経路を持たず、失敗を `unclear` と混ぜない。
 - connector の能力（`ConnectorCapability`・書込みの再送 0 回）と参照の再試行の初期値、同期の状態（`SyncStateResponse`。ADR 0071）。`GET /v1/connections/{connection_id}/sync` と `/targets` の GET はトークン・本文を返さない。
 - Outlook のアカウント種別・委任・組織拒否・カテゴリの扱い（`GraphAccountState`・`ConnectionSummary.graph_account`。ADR 0072）。拒否を `active` にせず、カテゴリは案の表示だけ（`display_only`）にする。
+- 気づき（候補）の一覧・根拠・状態ごとの件数（`CandidateListResponse`・`CandidateEvidence`。ADR 0073）。本文を持たず、保持は活動中＋7 日・識別子 97 日。
+- 方針による自動承認の記録、自動実行の既定（`AutoExecutionPolicy`。4 種類すべて既定 OFF）、安全停止の時間窓の件数、取り消しの対象版（`PolicyApprovalRecord`・`SafetyStopCounters`・`UndoTarget`。ADR 0074）。自動承認の初期値は 10 分・20 件、取り消しは 30 日。
 - `model-evaluation.json` は評価候補。API 呼出し・モデルの有効化・利用料の承認を行う設定ではありません。
 
 `pnpm run contracts:generate` で型生成、`pnpm run contracts:check` と `pnpm test` で検査します。型はパターン・format・数値の大小・認可を保証しません。実行時には形式検査と最新状態の意味検査が別途必要です。

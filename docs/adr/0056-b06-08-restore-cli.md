@@ -60,7 +60,7 @@
 - 平文の後始末: 成功の経路だけでなく、台帳の確認などで拒否した経路でも、作業用のディレクトリを消せなければ `plaintext_delete_failed` を最後の段階に付けて拒否を返す（消えたことを確かめずに拒否だけを返さない）。
 - 平文を残さない: 作業用の DB の書き込みが途中で失敗しても、`restore-work/restore-<restore_id>/` に平文が残らない。削除（`rm`）が失敗したときは成功（終了コード 0）を返さず、`plaintext_delete_failed` で止める。
 - 復旧キーの入力: TTY でない（`not_a_tty`）、空（`input_empty`）、形が違う（`invalid_code`）、Ctrl-C（`interrupted`）。区切りと小文字を受け付け、値が案内の文に出ない。
-- 段階 3（`applyRestoreLedger` の単体）: 忘却の後の台帳を、忘却の前の DB に当てると、忘れた記憶・そこから作った記憶・気づき・指示の発言が消え、台帳の連鎖の世代と `entry_hash` は与えられた値のまま（`packages/storage/src/forget-store.test.ts`）。
+- 段階 3（`applyRestoreLedger` の単体）: 忘却の後の台帳を、忘却の前の DB に当てると、忘れた記憶・そこから作った記憶・気づき・指示の発言が消え、台帳の連鎖の世代と `entry_hash` は与えられた値のまま（`packages/storage/src/forget-store.test.ts`）。台帳の「除外する由来」の HMAC から、その由来を持つ派生物（バックアップの後に作られた記憶を忘れた場合の気づき）も消え、由来の発言自体は残る。
 - 段階 1〜6 と差し替え（`restore run`）: 本物の Core の設定とバックアップから、承認付きの操作を含む封筒を作り、復元した後に承認がすべて失効していること（`approvals_revoked_count` と DB の `revoked`）・`store_generation` が新しくなっていること・`restore_restored_at` が入っていること・台帳の別ファイルが復元した DB から作り直されること・作業用の平文が残らないこと・鍵が KeyStore にあることを確かめる（`apps/core/src/restore-run.test.ts`）。差し替えの記録が残った失敗では、作業用の DB を消さず、`installed: false`・`plaintext_deleted: false` を返し、中枢の DB が差し替わっていないことを確かめる。
 
 **模擬の期待値だけ**。`tests/test-map.json` の X15〜X17 の `product_test` は `not_run` のまま（段階 1〜6 の模擬の統合試験 X15〜X17 は未実施）。実機のキーチェーン・実際のバックアップからの復元・Mac mini は B15 で未実施。
@@ -69,7 +69,7 @@
 
 `restore check` が ready を返した後、作業用の DB に対して次を行う（`apps/core/src/restore-run.ts`）。
 
-1. **段階 3（忘却の適用）**: 段階 1 で選んだ台帳（中枢の DB か台帳の別ファイル）の連鎖のうち、バックアップの世代より後のものを `applyRestoreLedger` で当てる。台帳の 1 件は当時の閉包の対象（発言・記憶・元情報の HMAC）だけを持ち、派生物は持たない。そこで記録された対象から今の DB の系譜で閉包を計算し直し、対象・派生物・操作の確定内容を消す。台帳の `entry_hash` は与えられた値を保ち、連鎖を書き換えない。系譜がなければ封筒の `ledger_id` を付ける。当てた後の世代が段階 1 の head 以上であることを `restoreForgetCheck` で確かめる。
+1. **段階 3（忘却の適用）**: 段階 1 で選んだ台帳（中枢の DB か台帳の別ファイル）の連鎖のうち、バックアップの世代より後のものを `applyRestoreLedger` で当てる。台帳の 1 件は当時の閉包の対象（発言・記憶・元情報の HMAC）だけを持ち、派生物は持たない。そこで記録された対象から今の DB の系譜で閉包を計算し直し、対象・派生物・操作の確定内容を消す。台帳の「除外する由来」の HMAC（`blocked_source_hmacs`）も、今の DB の発言・記憶・元情報の ID に戻し、その由来を持つ派生物を消す（由来そのものは残す。バックアップの後に作られた記憶を忘れた場合、記憶から由来へ遡れないため）。台帳の `entry_hash` は与えられた値を保ち、連鎖を書き換えない。系譜がなければ封筒の `ledger_id` を付ける。当てた後の世代が段階 1 の head 以上であることを `restoreForgetCheck` で確かめる。
 2. **段階 4（DB の検証）**: 整合性・外部キー・版・表の一覧・`store_generation`・`ledger_id`・忘却の世代を読み、`restoreDbVerifyCheck` に渡す。操作の隔離の計画が立つことも確かめる（読めない状態・経路があれば `db_integrity_failed`）。
 3. **段階 5（作り直し）**: `VACUUM` と WAL の checkpoint で空き領域を戻し、索引を作り直す（失敗は `rebuild_failed`）。
 4. **段階 6（外部の照合）**: OAuth トークンは封筒にないので、再認証が済むまで `pending`（`restoreReconcileCheck`）。

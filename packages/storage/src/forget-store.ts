@@ -1340,22 +1340,44 @@ export function applyRestoreLedger(
         ]),
       );
       // 台帳に残る対象が既に消えていても、系譜の辺から閉包を作れる（memory の存在確認に依存しない）。
-      const closure = computeForgetClosure(
-        graph,
-        targets.map((target) => ({
-          kind: target.source_kind,
-          id: target.source_id,
-        })),
-      );
-      for (const node of closure.doomed.values()) {
-        if (node.kind !== 'operation_content') {
-          nodes.set(nodeKey(node), node);
-          continue;
+      const addClosure = (
+        value: ForgetClosure,
+        exclude: string | null,
+      ): void => {
+        for (const node of value.doomed.values()) {
+          if (exclude !== null && nodeKey(node) === exclude) continue;
+          if (node.kind !== 'operation_content') {
+            nodes.set(nodeKey(node), node);
+            continue;
+          }
+          const state = states.get(node.id);
+          if (state !== undefined && operationContentPurgeable(state))
+            purge.add(node.id);
+          else retained.add(node.id);
         }
-        const state = states.get(node.id);
-        if (state !== undefined && operationContentPurgeable(state))
-          purge.add(node.id);
-        else retained.add(node.id);
+      };
+      addClosure(
+        computeForgetClosure(
+          graph,
+          targets.map((target) => ({
+            kind: target.source_kind,
+            id: target.source_id,
+          })),
+        ),
+        null,
+      );
+      // 台帳の「除外する由来」の HMAC から、今の DB でその由来を持つ派生物も消す（由来そのものは残す）。
+      // バックアップの後に作られた記憶を忘れた場合、記憶から由来へ遡れないので、この経路が要る。
+      const blockedOrigins = restoreBlockedOrigins(
+        db,
+        graph,
+        entry.blocked_source_hmacs,
+        sourceHmac,
+        sourceIds,
+      );
+      for (const origin of blockedOrigins) {
+        const root = { kind: origin.source_kind, id: origin.source_id };
+        addClosure(computeForgetClosure(graph, [root]), nodeKey(root));
       }
       const ordered = [...nodes.values()].sort(
         (a, b) =>
@@ -1414,7 +1436,7 @@ export function applyRestoreLedger(
   })();
 }
 
-function restoreSourceHmac(
+export function restoreSourceHmac(
   ledgerKey: Uint8Array,
 ): (source: MemorySource) => string {
   const info = Buffer.from(LEDGER_SUBKEY_INFO.source_id, 'utf8');
@@ -1431,15 +1453,41 @@ function restoreSourceHmac(
       .digest('hex');
 }
 
-// 台帳の忘却の対象のうち、今の DB に実体があるもの。元情報は HMAC しか台帳にないので、今の系譜の
-// 元情報の ID を同じ鍵で HMAC にして照合する（見つからないものは既に消えている）。
-function restoreLedgerTargets(
-  entry: ForgetLedgerEntryDraft,
+// 台帳の「除外する由来」の HMAC を、今の DB の発言・記憶・元情報の ID に戻す。由来そのものは消さない
+// （その由来を持つ派生物を消すために使う）。
+function restoreBlockedOrigins(
+  db: SqliteDatabase,
   graph: ForgetGraph,
+  blocked: readonly string[],
   sourceHmac: (source: MemorySource) => string,
   storedSourceIds: readonly string[],
 ): MemorySource[] {
-  const targets = new Map<string, MemorySource>();
+  if (blocked.length === 0) return [];
+  const wanted = new Set(blocked);
+  const origins = new Map<string, MemorySource>();
+  const add = (source_kind: MemorySource['source_kind'], source_id: string) =>
+    origins.set(`${source_kind}\u0000${source_id}`, { source_kind, source_id });
+  const turns = db
+    .prepare('SELECT turn_id FROM turns ORDER BY turn_id')
+    .pluck()
+    .all() as string[];
+  for (const id of turns) add('turn', id);
+  const memories = db
+    .prepare('SELECT memory_id FROM memories ORDER BY memory_id')
+    .pluck()
+    .all() as string[];
+  for (const id of memories) add('memory', id);
+  for (const id of collectSourceItemIds(graph, storedSourceIds))
+    add('source_item', id);
+  return [...origins.values()].filter((source) =>
+    wanted.has(sourceHmac(source)),
+  );
+}
+
+function collectSourceItemIds(
+  graph: ForgetGraph,
+  storedSourceIds: readonly string[],
+): Set<string> {
   const sourceItems = new Set<string>(storedSourceIds);
   for (const edge of graph.edges) {
     if (edge.source.kind === 'source_item') sourceItems.add(edge.source.id);
@@ -1450,6 +1498,19 @@ function restoreLedgerTargets(
     if (scope.artifact.kind === 'source_item')
       sourceItems.add(scope.artifact.id);
   }
+  return sourceItems;
+}
+
+// 台帳の忘却の対象のうち、今の DB に実体があるもの。元情報は HMAC しか台帳にないので、今の系譜の
+// 元情報の ID を同じ鍵で HMAC にして照合する（見つからないものは既に消えている）。
+function restoreLedgerTargets(
+  entry: ForgetLedgerEntryDraft,
+  graph: ForgetGraph,
+  sourceHmac: (source: MemorySource) => string,
+  storedSourceIds: readonly string[],
+): MemorySource[] {
+  const targets = new Map<string, MemorySource>();
+  const sourceItems = collectSourceItemIds(graph, storedSourceIds);
   const byHmac = new Map<string, string>();
   for (const id of sourceItems)
     byHmac.set(sourceHmac({ source_kind: 'source_item', source_id: id }), id);

@@ -13,13 +13,17 @@ import type {
   DbCommand,
   ForgetApplyValue,
   ForgetLedgerExport,
+  LedgerChainEntry,
   MemoryOp,
 } from './index.js';
 import {
+  LEDGER_ZERO_HASH,
   applyRestoreLedger,
   exportForgetLedger,
+  ledgerEntryHash,
   openWriteConnection,
   readLedgerId,
+  restoreSourceHmac,
 } from './index.js';
 import {
   DIRECTIVE,
@@ -732,11 +736,35 @@ test('restore ledger: a newer ledger entry applied to an older DB deletes the cl
   await withWorld((db) => {
     const dir = mkdtempSync(join(tmpdir(), 'buddy-restore-ledger-'));
     const copyPath = join(dir, 'copy.sqlite');
+    // 気づき N2 を、忘れる記憶 M ではなく、台帳で「除外する由来」になる発言 T_SRC から作る（規則 B/C）。
+    db.prepare(
+      "INSERT INTO notification_candidates (candidate_id, request_entity_id, request_revision, source_revision, kind, notification_key, title_blob_id, excerpt_blob_id, state, closed_at, key_delete_at) VALUES ('n-2', NULL, NULL, NULL, 'mail_reply', 'nk-2', NULL, NULL, 'new', NULL, NULL)",
+    ).run();
+    edge(db, 'notification_candidate', 'n-2', 'turn', T_SRC);
     db.exec(`VACUUM INTO '${copyPath.replace(/'/gu, "''")}'`);
     try {
       value<ForgetApplyValue>(forgetM(db));
       const exported = exportForgetLedger(db);
       assert.equal(exported.entries.length, 1);
+      const ledgerKey = Buffer.alloc(32, 0x42);
+      const base = exported.entries[0]?.entry;
+      assert.ok(base !== undefined);
+      // 除外する由来 T_SRC の HMAC を、実際に使う鍵で作り直した台帳 1 件（通常の忘却の台帳と同じ形）。
+      const entry = {
+        ...base,
+        blocked_source_hmacs: [
+          restoreSourceHmac(ledgerKey)({
+            source_kind: 'turn',
+            source_id: T_SRC,
+          }),
+        ],
+        blocked_content_keys: [],
+      };
+      const custom: LedgerChainEntry = {
+        entry,
+        previous_hash: LEDGER_ZERO_HASH,
+        entry_hash: ledgerEntryHash(entry, LEDGER_ZERO_HASH),
+      };
       const copy = openWriteConnection(copyPath, { platform: 'macos' });
       try {
         assert.equal(readLedgerId(copy), null);
@@ -744,16 +772,13 @@ test('restore ledger: a newer ledger entry applied to an older DB deletes the cl
         copy.prepare('DELETE FROM memory_sources WHERE memory_id = ?').run(M);
         copy.prepare('DELETE FROM memories WHERE memory_id = ?').run(M);
         const applied = applyRestoreLedger(copy, {
-          entries: exported.entries,
-          ledger_hmac_key: Buffer.alloc(32, 0x42),
+          entries: [custom],
+          ledger_hmac_key: ledgerKey,
           ledger_id: LEDGER_ID,
           now: NOW_1 + 1000,
         });
         assert.equal(applied.applied_generations.length, 1);
-        assert.equal(
-          applied.forgotten_applied,
-          exported.entries[0]?.entry.forgotten.length,
-        );
+        assert.equal(applied.forgotten_applied, entry.forgotten.length);
         // 忘れた記憶・そこから作った記憶・気づき・指示の発言は戻らない。
         assert.equal(
           count(copy, 'SELECT count(*) FROM memories WHERE memory_id = ?', M),
@@ -774,14 +799,23 @@ test('restore ledger: a newer ledger entry applied to an older DB deletes the cl
           count(copy, 'SELECT count(*) FROM turns WHERE turn_id = ?', T_INST),
           0,
         );
+        // 除外する由来の発言そのものは残す（その由来を持つ気づき N2 は消えている）。
+        assert.equal(
+          count(copy, 'SELECT count(*) FROM turns WHERE turn_id = ?', T_SRC),
+          1,
+        );
+        assert.equal(
+          count(
+            copy,
+            "SELECT count(*) FROM notification_candidates WHERE candidate_id = 'n-2'",
+          ),
+          0,
+        );
         // 台帳は与えられた連鎖のまま（hash を書き換えない）。
         assert.equal(readLedgerId(copy), LEDGER_ID);
         const after = exportForgetLedger(copy);
-        assert.equal(
-          after.head.forgetting_generation,
-          exported.head.forgetting_generation,
-        );
-        assert.equal(after.head.entry_hash, exported.head.entry_hash);
+        assert.equal(after.head.forgetting_generation, '1');
+        assert.equal(after.head.entry_hash, custom.entry_hash);
       } finally {
         copy.close();
       }

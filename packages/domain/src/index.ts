@@ -84,3 +84,8 @@ export * from './web-research.js';
 export * from './extraction-source.js';
 // B10-05: 抽出前フィルターと判定の記録（ADR 0102）。
 export * from './extraction-filter.js';
+// B12-02 P1: 公開 Web 調査の検索語の検査（ADR 0127）と、状態・出典・完了の知らせ（ADR 0125・0126）。
+export * from './web-query-screening.js';
+export * from './web-research-status.js';
+// B12-02 P2: 公開 Web 調査の上限の数え方と、失敗・0 件・完了の最終状態の決め方（ADR 0128・0129）。
+export * from './web-research-limits.js';

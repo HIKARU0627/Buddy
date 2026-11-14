@@ -383,6 +383,61 @@ for (const entry of webResearchCases.cases) {
   else assert.equal(entry.semantic_errors, undefined, entry.id);
 }
 
+// 公開 Web 調査の検索語の検査・永続の出典・受付/進捗/完了の応答（B12-02 P1、ADR 0125〜0127）。
+const webResearchStatusCases = parseStrictJson(
+  await readFile(
+    new URL('packages/contracts/fixtures/web-research-status-cases.json', root),
+    'utf8',
+  ),
+);
+for (const entry of webResearchStatusCases.cases) {
+  assert(!ids.has(entry.id), `Duplicate fixture id: ${entry.id}`);
+  ids.add(entry.id);
+  const validate = validators[entry.schema];
+  assert(validate, `Unknown schema: ${entry.schema}`);
+  assert.equal(
+    validate(entry.value),
+    entry.valid,
+    `${entry.id}: ${JSON.stringify(validate.errors)}`,
+  );
+  if (entry.valid)
+    assert.deepEqual(
+      semanticErrors(entry.schema, entry.value),
+      entry.semantic_errors ?? [],
+      entry.id,
+    );
+  else assert.equal(entry.semantic_errors, undefined, entry.id);
+}
+
+// 公開 Web 調査の上限の数え方と失敗の区別（B12-02 P2、ADR 0128・0129）。
+const webResearchAttemptsCases = parseStrictJson(
+  await readFile(
+    new URL(
+      'packages/contracts/fixtures/web-research-attempts-cases.json',
+      root,
+    ),
+    'utf8',
+  ),
+);
+for (const entry of webResearchAttemptsCases.cases) {
+  assert(!ids.has(entry.id), `Duplicate fixture id: ${entry.id}`);
+  ids.add(entry.id);
+  const validate = validators[entry.schema];
+  assert(validate, `Unknown schema: ${entry.schema}`);
+  assert.equal(
+    validate(entry.value),
+    entry.valid,
+    `${entry.id}: ${JSON.stringify(validate.errors)}`,
+  );
+  if (entry.valid)
+    assert.deepEqual(
+      semanticErrors(entry.schema, entry.value),
+      entry.semantic_errors ?? [],
+      entry.id,
+    );
+  else assert.equal(entry.semantic_errors, undefined, entry.id);
+}
+
 const plan = parseStrictJson(
   await readFile(
     new URL('packages/contracts/model-evaluation.json', root),
@@ -400,5 +455,5 @@ await SwaggerParser.validate(
   },
 );
 console.log(
-  `${cases.length + canvasCases.length + voiceCases.cases.length + storageCases.cases.length + storageCases.scenarios.length + responsePlanEntries.length + responsePlanCases.intent_views.length + connectorCases.cases.length + graphCases.cases.length + candidateCases.cases.length + policyCases.cases.length + approvalOperationCases.cases.length + webResearchCases.cases.length} schema fixtures and OpenAPI 3.1.2 validated. No product or provider test was run.`,
+  `${cases.length + canvasCases.length + voiceCases.cases.length + storageCases.cases.length + storageCases.scenarios.length + responsePlanEntries.length + responsePlanCases.intent_views.length + connectorCases.cases.length + graphCases.cases.length + candidateCases.cases.length + policyCases.cases.length + approvalOperationCases.cases.length + webResearchCases.cases.length + webResearchStatusCases.cases.length + webResearchAttemptsCases.cases.length} schema fixtures and OpenAPI 3.1.2 validated. No product or provider test was run.`,
 );

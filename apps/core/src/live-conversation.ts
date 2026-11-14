@@ -1268,13 +1268,11 @@ export class LiveConversation implements LiveConversationPort {
       this.#armNotice(context, pending, LIVE_INPUT_POLL_MS);
       return;
     }
-    // 入力がまだ確定していない間（本人が話し終えていない・対象の発話の終了候補がまだ見えない）は、結果を待つ処理ではないので
-    // 言わない（本人の発話にかぶせない）。時間は受付時刻から数え続け、見直しも続ける。終了候補が見えた後の判定で、
+    // 本人が話している間（今の発話の終了候補がまだ見えない）は、結果を待つ処理ではないので言わない（本人の発話にかぶせない）。
+    // 処理の段階（入力の確定待ち・解釈中・保存の準備中）とは独立に見る: 確定待ちが上限（5 秒）で解釈へ進んでも、本人が
+    // まだ話していれば言わない。時間は受付時刻から数え続け、見直しも続ける。話し終えた（終了候補が見えた）後の判定で、
     // 1.5 秒を過ぎていればつなぎを 1 回、8 秒を過ぎていれば背景化だけを言う。
-    if (
-      pending.phase === 'waiting_input' &&
-      !this.#inputEnded(context, pending)
-    ) {
+    if (this.#userSpeaking(context, pending)) {
       this.#armNotice(context, pending, LIVE_INPUT_POLL_MS);
       return;
     }
@@ -1298,14 +1296,23 @@ export class LiveConversation implements LiveConversationPort {
     this.#armNotice(context, pending, due - elapsed);
   }
 
-  // 委譲の対象の発話について、本人が話し終えた（端末の終了候補を観測した）か。対象を決められない（offset 不明・
-  // 対象が複数・まだ断片がない）ときは、話し終えたと言えないので false。
-  #inputEnded(context: Context, pending: Pending): boolean {
-    if (pending.target_ordinal === null) return false;
+  // 本人が話している最中か。次のどちらかなら true（話し終えたと言えない側へ倒す）。
+  // - 一番新しい発話が開いている（発話の開始か断片を観測したが、終了候補がまだない）。
+  // - 入力の確定待ちの間は、対象の発話を決められない・対象の発話の終了候補がまだ見えない。
+  #userSpeaking(context: Context, pending: Pending): boolean {
+    const latest = context.transcript.turns.at(-1);
+    if (
+      latest !== undefined &&
+      !latest.end_candidate &&
+      (latest.speech_observed || latest.fragments.length > 0)
+    )
+      return true;
+    if (pending.phase !== 'waiting_input') return false;
+    if (pending.target_ordinal === null) return true;
     return (
       context.transcript.turns.find(
         (turn) => turn.ordinal === pending.target_ordinal,
-      )?.end_candidate === true
+      )?.end_candidate !== true
     );
   }
 

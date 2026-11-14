@@ -120,15 +120,15 @@ async function x51Confirmation() {
     await conv.delegate('d1', 800);
     // 終了候補がなければ、時間が経っても解釈に進まない（上限の 5 秒より前）。
     await w.advance(1500);
-    // 委譲を受けて 1.5 秒で結果がないので、つなぎを 1 回だけ言う（B10-04 P3。解釈には進まない）。
     const beforeEnd = {
       model_calls: conv.script.calls.length,
       pending: conv.conversation.pendingCount,
-      commentary: conv.sb().commentary.map((parts) => [...parts]),
     };
     conv.sb().endCandidate();
     await w.advance(100);
-    await w.advanceUntil('応答', () => conv.sb().commentary.length === 2, 100);
+    // 答え（操作の作成）を待つ。委譲を受けて 1.5 秒で結果がなければ、つなぎ（確認しますね）が先に 1 回入るので、
+    // 声の追記の数ではなく、操作ができたことで待つ（観測する値は変えない。つなぎは Core の試験で確かめる）。
+    await w.advanceUntil('応答', () => conv.operations().length === 1, 100);
     settle(w);
     waits = {
       before_end_candidate: beforeEnd,
@@ -167,7 +167,9 @@ async function x51Confirmation() {
     // 長くなっても advanceUntil が上限まで待つだけで合格してしまう（上限側を確かめる）。
     await w.rig.wait();
     const at400 = conv.script.calls.length;
-    await w.advanceUntil('応答', () => conv.sb().commentary.length === 1, 100);
+    // 答え（操作の作成）を待つ。委譲を受けて 1.5 秒で結果がなければ、つなぎ（確認しますね）が先に 1 回入るので、
+    // 声の追記の数ではなく、操作ができたことで待つ（観測する値は変えない。つなぎは Core の試験で確かめる）。
+    await w.advanceUntil('応答', () => conv.operations().length === 1, 100);
     settle(w);
     late = {
       model_calls_at_299ms: at299,

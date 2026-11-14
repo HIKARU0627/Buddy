@@ -184,6 +184,9 @@ async function withConversation(
     readonly conditionsGate?: Promise<void>;
     // 差し替える解釈（実際のモデルを使う解釈の回帰試験用）。省略は台本の解釈。
     readonly interpreter?: Interpreter;
+    // つなぎの期限のタイマー（1500 ms）の登録を、この時間だけ遅らせる（イベントループの混雑・サスペンドで通知のタイマーが
+    // 遅れて動く状況の模擬）。他のタイマーは変えない。
+    readonly firstNoticeDelayMs?: number;
   } = {},
 ): Promise<void> {
   await withRig(async (rig) => {
@@ -266,7 +269,23 @@ async function withConversation(
         heldDropped: (info) => dropped.push({ ...info }),
       },
       monoNow: rig.clock.mono,
-      timers: rig.clock,
+      timers:
+        options.firstNoticeDelayMs === undefined
+          ? rig.clock
+          : (() => {
+              let delayed = false;
+              const delay = options.firstNoticeDelayMs;
+              return {
+                set: (ms: number, fn: () => void) => {
+                  if (!delayed && ms === 1500) {
+                    delayed = true;
+                    return rig.clock.set(ms + delay, fn);
+                  }
+                  return rig.clock.set(ms, fn);
+                },
+                clear: (handle: unknown) => rig.clock.clear(handle),
+              };
+            })(),
       newId: () => uuid(0x8000 + ++counter),
     });
     rig.voice.setConversation(conversation);
@@ -3123,3 +3142,164 @@ test('B10-04 P2b: over the limits the rest is placed on the screen exactly once,
     shown: ['commentary_overflow'],
   });
 });
+
+test(
+  'X33/P3: when the notice timer runs late, the background deadline stays at 8 seconds from the request (not from the late timer), and the bridge is still said once',
+  TIMEOUT,
+  async () => {
+    const slow = gate();
+    await withConversation(
+      async (c) => {
+        await speak(c, { text: SCHEDULE_TEXT });
+        await delegate(c, 'd1', 800);
+        await c.rig.clock.advance(400);
+        await waitUntil(
+          c.rig,
+          'the interpretation',
+          () => c.script.calls.length === 1,
+        );
+        // つなぎのタイマーは 2 秒遅れて、受付の 3500 ms 後に動く。それまでは何も言わない。
+        await beat(c, 3099);
+        await c.rig.wait();
+        assert.deepEqual(c.sb.commentary, []);
+        await beat(c, 1);
+        await waitUntil(
+          c.rig,
+          'the late bridge',
+          () => c.sb.commentary.length === 1,
+        );
+        assert.deepEqual(c.sb.commentary, [[BRIDGE_SENTENCE]]);
+        // 背景化は、つなぎが遅れた分だけ遅らせず、受付の 8000 ms ちょうど（7999 ms ではまだ言わない）。
+        await beat(c, 4499);
+        await c.rig.wait();
+        assert.deepEqual(c.sb.commentary, [[BRIDGE_SENTENCE]]);
+        await beat(c, 1);
+        await waitUntil(
+          c.rig,
+          'the background notice',
+          () => c.sb.commentary.length === 2,
+        );
+        assert.deepEqual(c.sb.commentary, [
+          [BRIDGE_SENTENCE],
+          [BACKGROUND_SENTENCE],
+        ]);
+        slow.release();
+        await waitUntil(c.rig, 'the late result', () => c.shown.length === 1);
+        assert.equal(c.shown[0]?.reason, 'backgrounded');
+        assert.equal(c.sb.commentary.length, 2);
+      },
+      {
+        firstNoticeDelayMs: 2000,
+        prepare: (script) => {
+          script.gates.set(SCHEDULE_TEXT, slow.promise);
+        },
+      },
+    );
+  },
+);
+
+test(
+  'X33/P3: when the notice timer first runs after the 8 second deadline, only the background notice is said (no late bridge), and the result goes to the screen',
+  TIMEOUT,
+  async () => {
+    const slow = gate();
+    await withConversation(
+      async (c) => {
+        await speak(c, { text: SCHEDULE_TEXT });
+        await delegate(c, 'd1', 800);
+        await c.rig.clock.advance(400);
+        await waitUntil(
+          c.rig,
+          'the interpretation',
+          () => c.script.calls.length === 1,
+        );
+        await beat(c, 8600);
+        await waitUntil(
+          c.rig,
+          'the background notice',
+          () => c.sb.commentary.length === 1,
+        );
+        assert.deepEqual(c.sb.commentary, [[BACKGROUND_SENTENCE]]);
+        slow.release();
+        await waitUntil(c.rig, 'the late result', () => c.shown.length === 1);
+        assert.equal(c.shown[0]?.reason, 'backgrounded');
+        assert.equal(c.sb.commentary.length, 1);
+      },
+      {
+        firstNoticeDelayMs: 7500,
+        prepare: (script) => {
+          script.gates.set(SCHEDULE_TEXT, slow.promise);
+        },
+      },
+    );
+  },
+);
+
+test(
+  'X33/X27/P3: a request held past 1.5 seconds and then resumed by a separate request is bridged when it resumes, and moved to the background at 8 seconds from its own start',
+  TIMEOUT,
+  async () => {
+    const first = gate();
+    const commit = gate();
+    await withConversation(
+      async (c) => {
+        await firstRequestHeldBySecondUtterance(c, first.release);
+        // 保留のまま 1.5 秒をまたぐ。保留中は何も言わない。
+        await beat(c, 2500);
+        assert.equal(c.conversation.heldCount(c.liveId), 1);
+        assert.deepEqual(c.sb.commentary, []);
+        // 別件（new）が確定して、保留中の変更が再開する。保存の準備を保留して、結果が出ないままにする。
+        c.hooks.beforeCommit = () => commit.promise;
+        await secondUtterance(c);
+        await waitUntil(
+          c.rig,
+          'the resumed request waits for its record',
+          () => c.hooks.entered >= 1,
+        );
+        // 再開した後の見直しで、受付から 1.5 秒を過ぎているので、つなぎを 1 回言う（保留で言えなかった分）。
+        await waitUntil(c.rig, 'the bridge', () =>
+          c.sb.commentary.some((parts) => parts[0] === BRIDGE_SENTENCE),
+        );
+        // 8 秒は、再開した時点からではなく、依頼を受けた時点から数える。
+        await beat(c, 6000);
+        await waitUntil(c.rig, 'the background notice', () =>
+          c.sb.commentary.some((parts) => parts[0] === BACKGROUND_SENTENCE),
+        );
+        // 背景化したのは再開した依頼だけで、ちょうど 1 回（別件の依頼は 8 秒に届かず答えた）。つなぎは依頼ごとに 1 回なので、
+        // 2 つの依頼で多くても 2 回。
+        assert.equal(
+          c.sb.commentary.filter((parts) => parts[0] === BACKGROUND_SENTENCE)
+            .length,
+          1,
+        );
+        const bridges = c.sb.commentary.filter(
+          (parts) => parts[0] === BRIDGE_SENTENCE,
+        ).length;
+        assert.ok(bridges >= 1 && bridges <= 2, String(bridges));
+        // 結果は声ではなく画面へ（背景化した）。
+        commit.release();
+        await waitUntil(c.rig, 'the late result', () =>
+          c.shown.some((entry) => entry.reason === 'backgrounded'),
+        );
+        assert.equal(
+          c.shown.filter((entry) => entry.reason === 'backgrounded').length,
+          1,
+        );
+      },
+      {
+        policy: AUTO_TASK,
+        prepare: (script) => {
+          script.gates.set(TASK_TEXT, first.promise);
+          script.replies.set(
+            EGG_TEXT,
+            intentReply(
+              'create_task',
+              { title: '卵を買う' },
+              { relation: 'new' },
+            ),
+          );
+        },
+      },
+    );
+  },
+);

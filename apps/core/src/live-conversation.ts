@@ -245,7 +245,7 @@ interface Pending {
   terminal: Terminal | null;
   // 時間の制御（10 §5）。つなぎ（1.5 秒）と背景化（8 秒）を、それぞれ 1 回だけ。
   notice_timer: unknown;
-  bridge_sent: boolean;
+  bridge_done: boolean;
   // 8 秒を超えて裏のジョブへ移した。結果は声でなく画面へ回す（完了は気づきと次回の文脈で伝える。B11・B10-06）。
   backgrounded: boolean;
 }
@@ -575,12 +575,12 @@ export class LiveConversation implements LiveConversationPort {
       revision_current: true,
       terminal: null,
       notice_timer: null,
-      bridge_sent: false,
+      bridge_done: false,
       backgrounded: false,
     };
     context.pending.set(pending.workflow_id, pending);
     // 委譲を受けた時点から、つなぎ（1.5 秒）と背景化（8 秒）を数える。
-    this.#armNotice(context, pending, DELEGATION_BRIDGE_MS, 'bridge');
+    this.#armNotice(context, pending, DELEGATION_BRIDGE_MS);
     let conditions: Readonly<Partial<Record<InputCondition, boolean>>>;
     try {
       conditions = await this.#options.host.conditions(
@@ -1204,46 +1204,43 @@ export class LiveConversation implements LiveConversationPort {
 
   // ---- 時間の制御（10 §5。X33） -------------------------------------------------------------------------------
 
-  #armNotice(
-    context: Context,
-    pending: Pending,
-    ms: number,
-    which: 'bridge' | 'background',
-  ): void {
-    pending.notice_timer = this.#options.timers.set(ms, () => {
-      pending.notice_timer = null;
-      if (!this.#awaitingResult(context, pending)) return;
-      if (which === 'bridge') {
-        if (
-          !pending.bridge_sent &&
-          this.#speak(context, pending, bridgeCommentary())
-        )
-          pending.bridge_sent = true;
-        this.#armNotice(
-          context,
-          pending,
-          DELEGATION_BACKGROUND_MS - DELEGATION_BRIDGE_MS,
-          'background',
-        );
-        return;
-      }
-      // 8 秒を超えた: 声で 1 回だけ伝え、裏のジョブへ移す。結果は画面へ回る（routeResultDelivery の backgrounded）。
+  // つなぎ（1.5 秒）と背景化（8 秒）の期限を、依頼を受けた時刻（accepted_at）からの絶対の経過時間で判定する。
+  // タイマーが遅れて動いても期限をずらさず（遅れた分だけ背景化が遅れない）、保留で言えなかった分も、保留が解けた後の
+  // 判定で受付時刻から数え直す。
+  #armNotice(context: Context, pending: Pending, ms: number): void {
+    pending.notice_timer = this.#options.timers.set(Math.max(0, ms), () =>
+      this.#noticeDue(context, pending),
+    );
+  }
+
+  #noticeDue(context: Context, pending: Pending): void {
+    pending.notice_timer = null;
+    // 閉じた接続・失効した依頼・終わった依頼には、何も言わず、見直しもしない。
+    if (context.closed || pending.terminal !== null || pending.phase === 'done')
+      return;
+    // 保留中の変更（新しい発話の確定待ち）は、結果を待つ処理ではないので言わない。ただし見直しは続け、保留が解けた
+    // 時点で受付時刻からの経過を判定し直す（解けた後に 8 秒を過ぎていれば、その時点で背景化する）。
+    if (pending.phase === 'held' || isHeld(context.hold, pending.workflow_id)) {
+      this.#armNotice(context, pending, LIVE_INPUT_POLL_MS);
+      return;
+    }
+    // 時計が戻ったときは 0（経過を数えられないので、期限を早めない）。
+    const elapsed = Math.max(0, this.#options.monoNow() - pending.accepted_at);
+    if (elapsed >= DELEGATION_BACKGROUND_MS) {
+      // 8 秒を超えた: 声で 1 回だけ伝え、裏のジョブへ移す。つなぎを言えていなくても、つなぎは言わずに背景化だけを言う。
       // 声へ言ってから裏へ移す（移した後は結果の届け先が画面になり、声で言えなくなる）。
       this.#speak(context, pending, backgroundCommentary());
       pending.backgrounded = true;
-    });
-  }
-
-  // 結果をまだ待っている依頼か。閉じた接続・失効した依頼・保留中の変更（新しい発話の確定待ち）・終わった依頼は、
-  // つなぎも背景化もしない（保留は本人の発話を待つ状態で、結果を待つ処理ではない）。
-  #awaitingResult(context: Context, pending: Pending): boolean {
-    return (
-      !context.closed &&
-      pending.terminal === null &&
-      pending.phase !== 'done' &&
-      pending.phase !== 'held' &&
-      !isHeld(context.hold, pending.workflow_id)
-    );
+      return;
+    }
+    if (!pending.bridge_done && elapsed >= DELEGATION_BRIDGE_MS) {
+      pending.bridge_done = true;
+      this.#speak(context, pending, bridgeCommentary());
+    }
+    const due = pending.bridge_done
+      ? DELEGATION_BACKGROUND_MS
+      : DELEGATION_BRIDGE_MS;
+    this.#armNotice(context, pending, due - elapsed);
   }
 
   // 声で 1 文だけ伝える。声で返せる依頼（声で依頼され、接続・世代・端末が今も有効）のときだけ。送れたら true。

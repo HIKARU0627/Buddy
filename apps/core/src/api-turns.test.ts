@@ -1288,3 +1288,199 @@ test(
     assert.deepEqual(await snapshotOperations(core, device), []);
   },
 );
+
+// ---- B10-04 P2a: 返答文 reply_text の表示（U217 の本人決定 (b)。ADR 0106） ----------------------------------------------
+
+const NO_ARGS = {
+  target_candidate_id: null,
+  start: null,
+  end: null,
+  due: null,
+  title: null,
+  body: null,
+  subject: null,
+  add_labels: null,
+  remove_labels: null,
+  task_change: null,
+  memory_kind: null,
+  query: null,
+  device_name: null,
+} as const;
+
+const UNSUPPORTED_SENTENCE = 'その依頼にはまだ対応していません。';
+
+// 返す意図と返答文を、試験の中で差し替えられる解釈。
+function replyingInterpreter(state: {
+  intent: string;
+  reply_text: string | null | undefined;
+  args?: Record<string, unknown>;
+}): Interpreter {
+  return {
+    interpret: () =>
+      Promise.resolve({
+        kind: 'intent',
+        intent: state.intent,
+        args: { ...NO_ARGS, ...state.args },
+        ...(state.reply_text === undefined
+          ? {}
+          : { reply_text: state.reply_text }),
+      }),
+  };
+}
+
+test(
+  'U217/X49: a reply to smalltalk or a general question is answered as a speech bubble with the plain text, makes no workflow work or operation, and is not kept in the stored response',
+  { timeout: 60_000 },
+  async (t) => {
+    const state = {
+      intent: 'smalltalk',
+      reply_text: 'こんにちは。今日もゆっくり進めましょう。' as
+        string | null | undefined,
+    };
+    const core = await startTurnCore(t, mockProvider(), {
+      interpreter: replyingInterpreter(state),
+    });
+    const device = await insertDevice(core.handle.store);
+    const scope = await bootstrap(core, device);
+    const session = await createSession(core, device, scope);
+    for (const intent of ['smalltalk', 'general_question']) {
+      state.intent = intent;
+      const requestId = randomUUID();
+      const first = await postTurn(
+        core,
+        device,
+        session,
+        scope,
+        '合成の発言',
+        requestId,
+      );
+      assert.equal(first.status, 200, first.text);
+      assert.equal(first.json?.['status'], 'answered', intent);
+      assert.equal(
+        first.json?.['reply_text'],
+        'こんにちは。今日もゆっくり進めましょう。',
+        intent,
+      );
+      const view = first.json?.['result_view'] as Record<string, unknown>;
+      assert.equal(view['kind'], 'speech_bubble', intent);
+      assert.equal(view['intent'], intent);
+      assert.equal(view['status'], 'ready', intent);
+      assert.deepEqual(view['item_refs'], [], intent);
+      // 同じ request_id の再送は、保存した応答をそのまま返す。モデルの文は平文の列に残さないので、返答文だけがない。
+      const replay = await postTurn(
+        core,
+        device,
+        session,
+        scope,
+        '合成の発言',
+        requestId,
+      );
+      assert.equal(replay.status, 200, replay.text);
+      assert.equal(replay.json?.['turn_id'], first.json?.['turn_id'], intent);
+      assert.equal(replay.json?.['status'], 'answered', intent);
+      assert.equal(replay.json?.['reply_text'], null, intent);
+      assert(!replay.text.includes('こんにちは'), intent);
+    }
+    // 返答文は実行でも承認の対象でもない。
+    assert.deepEqual(await snapshotOperations(core, device), []);
+  },
+);
+
+test(
+  'U217: a reply that is empty, too long, a link, from a control-only text, or missing is never shown: the user gets the fixed "not supported" sentence, and nothing of the model text',
+  { timeout: 60_000 },
+  async (t) => {
+    const NUL = String.fromCharCode(0);
+    const ZWSP = String.fromCharCode(0x200b);
+    const state = {
+      intent: 'smalltalk',
+      reply_text: null as string | null | undefined,
+    };
+    const core = await startTurnCore(t, mockProvider(), {
+      interpreter: replyingInterpreter(state),
+    });
+    const device = await insertDevice(core.handle.store);
+    const scope = await bootstrap(core, device);
+    const session = await createSession(core, device, scope);
+    const rejected: (string | null | undefined)[] = [
+      null,
+      undefined,
+      '',
+      '   ',
+      NUL + ZWSP,
+      'あ'.repeat(401),
+      'こちらをどうぞ https://example.com/a',
+      'www.example.com を見てください',
+      'javascript:alert(1)',
+      '[詳細](example)',
+      '<a href="x">こちら</a>',
+      `ht${ZWSP}tp://example.com`,
+    ];
+    for (const intent of ['smalltalk', 'general_question'])
+      for (const value of rejected) {
+        state.intent = intent;
+        state.reply_text = value;
+        const response = await postTurn(
+          core,
+          device,
+          session,
+          scope,
+          '合成の発言',
+        );
+        assert.equal(response.status, 200, response.text);
+        assert.equal(
+          response.json?.['status'],
+          'clarification',
+          `${intent}/${String(value)}`,
+        );
+        assert.equal(response.json?.['reply_text'], UNSUPPORTED_SENTENCE);
+      }
+    // 検査を通る文は、取り除く文字を除いて表示される（401 文字でなく 400 文字ちょうどは通る）。
+    state.intent = 'smalltalk';
+    state.reply_text = `こん${NUL}にちは${ZWSP}`;
+    const shown = await postTurn(core, device, session, scope, '合成の発言');
+    assert.equal(shown.json?.['reply_text'], 'こんにちは');
+    state.reply_text = 'あ'.repeat(400);
+    const limit = await postTurn(core, device, session, scope, '合成の発言');
+    assert.equal(limit.json?.['reply_text'], 'あ'.repeat(400));
+    assert.deepEqual(await snapshotOperations(core, device), []);
+  },
+);
+
+test(
+  'U217: the model reply text is never carried by any intent other than smalltalk and general_question, whatever the model returns',
+  { timeout: 60_000 },
+  async (t) => {
+    const state = {
+      intent: 'query_schedule',
+      reply_text: '予定を作りました。' as string | null | undefined,
+      args: {} as Record<string, unknown>,
+    };
+    const core = await startTurnCore(t, mockProvider(), {
+      interpreter: replyingInterpreter(state),
+    });
+    const device = await insertDevice(core.handle.store);
+    const scope = await bootstrap(core, device);
+    const session = await createSession(core, device, scope);
+    const cases: readonly [string, Record<string, unknown>][] = [
+      ['query_schedule', {}],
+      ['create_task', { title: '合成の用事' }],
+      ['consult', { query: '合成の相談' }],
+      ['send_mail', {}],
+      ['memory_save', {}],
+    ];
+    for (const [intent, args] of cases) {
+      state.intent = intent;
+      state.args = args;
+      const response = await postTurn(
+        core,
+        device,
+        session,
+        scope,
+        '合成の発言',
+      );
+      assert.equal(response.status, 200, `${intent}: ${response.text}`);
+      assert(!response.text.includes('予定を作りました'), intent);
+    }
+  },
+);

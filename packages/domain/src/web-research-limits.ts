@@ -188,6 +188,19 @@ export function webResearchAttemptsErrors(
     errors.push('pages_exceed_hits');
   if (attempts.pages.some((page) => !hitQueryIds.has(page.query_id)))
     errors.push('page_query_unknown');
+  // 検索ごとの件数を超えて、その検索のページを取得しない（別の検索の未使用の件数で正当化しない）。
+  for (const queryId of hitQueryIds) {
+    const available = attempts.searches
+      .filter(
+        (search) => search.outcome === 'hits' && search.query_id === queryId,
+      )
+      .reduce((sum, search) => sum + search.hit_count, 0);
+    const tried = attempts.pages.filter((page) => page.query_id === queryId);
+    if (tried.length > available) {
+      errors.push('pages_exceed_hits_for_query');
+      break;
+    }
+  }
   const sourceIds = attempts.pages
     .filter((page) => page.source_id !== null)
     .map((page) => page.source_id);

@@ -1883,7 +1883,7 @@
           "page_limit_denials": 0,
           "summary": "ok"
         },
-        "expected": ["pages_exceed_hits"]
+        "expected": ["pages_exceed_hits", "pages_exceed_hits_for_query"]
       },
       {
         "id": "page-from-unknown-query",
@@ -2455,6 +2455,106 @@
           "summary": "not_attempted"
         },
         "expected": ["search_hits_without_hit"]
+      },
+      {
+        "id": "pages-exceed-the-hits-of-their-own-search",
+        "attempts": {
+          "schema": "buddy.web-research-attempts.v1",
+          "workflow_id": "00000000-0000-4000-8000-000000000b01",
+          "request_revision": "1",
+          "searches": [
+            {
+              "search_index": 1,
+              "query_id": "00000000-0000-4000-8000-000000000b11",
+              "outcome": "hits",
+              "hit_count": 1,
+              "failure_cause": null
+            },
+            {
+              "search_index": 2,
+              "query_id": "00000000-0000-4000-8000-000000000b12",
+              "outcome": "hits",
+              "hit_count": 4,
+              "failure_cause": null
+            }
+          ],
+          "search_denials": [],
+          "pages": [
+            {
+              "page_index": 1,
+              "query_id": "00000000-0000-4000-8000-000000000b11",
+              "outcome": "read",
+              "source_id": "00000000-0000-4000-8000-000000000b21",
+              "http_status": 200,
+              "redirects": 0,
+              "bytes": 1200,
+              "elapsed_ms": 400
+            },
+            {
+              "page_index": 2,
+              "query_id": "00000000-0000-4000-8000-000000000b11",
+              "outcome": "read",
+              "source_id": "00000000-0000-4000-8000-000000000b22",
+              "http_status": 200,
+              "redirects": 0,
+              "bytes": 1200,
+              "elapsed_ms": 400
+            }
+          ],
+          "page_limit_denials": 0,
+          "summary": "ok"
+        },
+        "expected": ["pages_exceed_hits_for_query"]
+      },
+      {
+        "id": "pages-within-the-hits-of-each-search",
+        "attempts": {
+          "schema": "buddy.web-research-attempts.v1",
+          "workflow_id": "00000000-0000-4000-8000-000000000b01",
+          "request_revision": "1",
+          "searches": [
+            {
+              "search_index": 1,
+              "query_id": "00000000-0000-4000-8000-000000000b11",
+              "outcome": "hits",
+              "hit_count": 1,
+              "failure_cause": null
+            },
+            {
+              "search_index": 2,
+              "query_id": "00000000-0000-4000-8000-000000000b12",
+              "outcome": "hits",
+              "hit_count": 4,
+              "failure_cause": null
+            }
+          ],
+          "search_denials": [],
+          "pages": [
+            {
+              "page_index": 1,
+              "query_id": "00000000-0000-4000-8000-000000000b11",
+              "outcome": "read",
+              "source_id": "00000000-0000-4000-8000-000000000b21",
+              "http_status": 200,
+              "redirects": 0,
+              "bytes": 1200,
+              "elapsed_ms": 400
+            },
+            {
+              "page_index": 2,
+              "query_id": "00000000-0000-4000-8000-000000000b12",
+              "outcome": "read",
+              "source_id": "00000000-0000-4000-8000-000000000b22",
+              "http_status": 200,
+              "redirects": 0,
+              "bytes": 1200,
+              "elapsed_ms": 400
+            }
+          ],
+          "page_limit_denials": 0,
+          "summary": "ok"
+        },
+        "expected": []
       }
     ],
     "admission": {

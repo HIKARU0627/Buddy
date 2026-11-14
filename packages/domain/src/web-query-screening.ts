@@ -97,7 +97,7 @@ export interface WebSearchRequestLike {
   readonly query: string;
 }
 
-// 検索を受け付けてよいか。検査を通った記録が無い・別の検索語・古い規則の版なら拒否する（B12-03 が毎回の呼出しの前に使う）。
+// 検索を受け付けてよいか。検査を通った記録が無い・別の検索語・整合しない記録・古い規則の版なら拒否する（B12-03 が毎回の呼出しの前に使う）。
 // 記録を信用せず、検索語そのものも検査し直す（記録の改ざん・取り違えで私的情報を送らない）。
 export function webSearchAdmissionErrors(
   request: WebSearchRequestLike,
@@ -111,13 +111,9 @@ export function webSearchAdmissionErrors(
     if (screening.outcome !== 'passed') errors.push('screening_not_passed');
     if (screening.screened_query !== request.query)
       errors.push('screening_query_mismatch');
-    if (
-      screening.input_sources.length !== 1 ||
-      screening.input_sources[0] !== 'user_question'
-    )
-      errors.push('screening_input_source');
-    if (screening.rules_version !== WEB_QUERY_SCREENING_VERSION)
-      errors.push('screening_rules_version');
+    // 記録そのものの整合（拒否理由を持つ passed・検索語の無い passed・入力元・規則の版）も、受付の拒否に反映する。
+    for (const error of webQueryScreeningErrors(screening))
+      errors.push(`screening_${error}`);
   }
   for (const reason of webQueryRejectReasons(request.query))
     errors.push(`query_${reason}`);

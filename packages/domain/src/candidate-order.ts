@@ -185,10 +185,9 @@ function classify(
 ): Classified {
   const unknown: Classified = { heading: 'unknown', sortKey: null };
   const { deadline } = item;
-  let date: string;
+  let date = '';
   let sortKey: number | null;
   let instantDeadline: boolean;
-  let clockZone = zone;
   // 過ぎたか。時刻付きは確定した UTC の時点との比較（現地の文字列の比較は夏時間の終わりで逆戻りする）。
   if (deadline.kind === 'instant') {
     if (!isRealLocalDateTime(deadline.local_datetime)) return unknown;
@@ -196,7 +195,6 @@ function classify(
     const time = deadline.local_datetime.slice(11);
     const local = `${date}T${time.length === 5 ? `${time}:00` : time}`;
     sortKey = localToUtc(local, deadline.zone);
-    clockZone = deadline.zone;
     instantDeadline = true;
   } else if (deadline.kind === 'date') {
     if (!isRealLocalDateTime(`${deadline.date}T00:00`)) return unknown;
@@ -209,8 +207,15 @@ function classify(
   } else {
     return unknown;
   }
-  const clock = localClock(now, clockZone);
+  // 見出し（今日・明日・今週）は、期限の zone ではなく本人の zone の暦で決める（U287）。時刻付きの期限は、確定した時点を
+  // 本人の zone の現地の日付に直す。日付だけの期限は本人の暦の日付そのもの。
+  const clock = localClock(now, zone);
   if (clock === null || sortKey === null) return unknown;
+  if (instantDeadline) {
+    const own = localClock(sortKey, zone);
+    if (own === null) return unknown;
+    date = own.date;
+  }
   const ended = instantDeadline ? now > sortKey : date < clock.date;
   if (ended && item.initial_import)
     return { heading: 'initial_import_past', sortKey };

@@ -94,6 +94,8 @@ import type {
   TurnPolicy,
 } from './turn-ports.js';
 import { createApiContract } from './api-contract.js';
+import { createShadowRecorder } from './shadow-mode.js';
+import { createDbShadowRecordStore } from './shadow-store.js';
 import { backupControl, isBackupControlRequest } from './backup-control.js';
 import type { BackupControlContext } from './backup-control.js';
 import { createBackupService, startBackupScheduler } from './backup-service.js';
@@ -1125,6 +1127,29 @@ async function startHttps(
             : base.revisionMatches(input),
   };
   const turnOptions = https.turns ?? {};
+  // 影モード（B10-03 P3、ADR 0092・0110、B06-06e）。比較の記録の入口（onInterpreted）を SQLite の保存先につなぐ。
+  // 設定（campaign・比較モデルの配備・endpoint・認証）と、予算・余力・出力の検証の口は B15 と本人の承認まで
+  // 読まない・作らない。設定が無い間は observe が何もしない（既定 OFF・D4）ので、比較の呼出しも保存も 0 件。
+  const shadow = createShadowRecorder({
+    settings: () => null,
+    store: createDbShadowRecordStore(watched),
+    // 余力（ai の planModelCalls の判定）は B15 の配線。設定が無い間は届かない。届いたときに走らせない側に倒す。
+    slotAvailable: () => false,
+    // 音声の接続（Live）が開いている間は走らせない（設計 10 §5）。Core がメモリーに置いている接続の数で見る。
+    liveSessionOpen: () => voice.liveCount > 0,
+    // 記録しない会話（StorageModeGate の今の値）。受付の前後・保存の直前にも読み直される。
+    privateConversation: () => storage.privateConversation(),
+    // 比較の費用（B07 の門）・実費の合計・出力の検証は B15。設定が無い間は呼ばれない。呼ばれても始めない側にする。
+    guard: {
+      admit: () =>
+        Promise.resolve({ ok: false, reasons: ['shadow_not_wired'] }),
+    },
+    spent: () => Promise.resolve(''),
+    contract: createApiContract(),
+    output_schema: null,
+    schema: { valid: () => false },
+    now: () => now().getTime(),
+  });
   const turns = createTurnRoutes({
     store: watched,
     keyStore,
@@ -1138,9 +1163,19 @@ async function startHttps(
     utcOffset: turnOptions.utcOffset ?? '+09:00',
     now: () => now().getTime(),
     onOperationCreated: () => feed.notify(),
-    ...(turnOptions.onInterpreted === undefined
-      ? {}
-      : { onInterpreted: turnOptions.onInterpreted }),
+    // 比較の入口。同期で戻り、失敗しても発言の結果を変えない（ADR 0092）。呼び出し側の口（試験・診断）にも渡す。
+    onInterpreted: (event) => {
+      shadow.observe({
+        storage_mode: event.storage_mode,
+        live_session_open: voice.liveCount > 0,
+        input_id: event.input_id,
+        request_revision: event.request_revision,
+        turn_expires_at: event.turn_expires_at,
+        context: event.context,
+        primary: event.primary,
+      });
+      turnOptions.onInterpreted?.(event);
+    },
     // 会話の操作（照合表に当たった文字の発言）は、その端末の開いている Live へも行う（画面のボタンと同じ処理。B05-05）。
     onSessionControl: ({ device_id, action }) =>
       voice.applySessionControlForDevice(device_id, action),

@@ -69,7 +69,12 @@ export interface ShadowRecordStore {
   // この campaign の記録の件数（確定した入力の数）。
   count(campaign_id: string): Promise<number>;
   // 同じ (campaign, input, revision) は 1 件だけ。件数が limit に達していれば保存しない（原子的に判定する）。
-  save(record: IntentShadowRecord, limit: number): Promise<SaveShadowResult>;
+  // storage_mode は観測した会話の保存モード（保存側でも record_shadow の許可を確かめる。ADR 0110）。
+  save(
+    record: IntentShadowRecord,
+    limit: number,
+    storage_mode: string,
+  ): Promise<SaveShadowResult>;
 }
 
 export interface ShadowObservation {
@@ -444,7 +449,7 @@ export function createShadowRecorder(
     }
     emit({
       kind: 'recorded',
-      result: await options.store.save(record, limit),
+      result: await options.store.save(record, limit, observation.storage_mode),
     });
   };
 

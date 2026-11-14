@@ -346,3 +346,18 @@ test('token estimate counts code points, including astral characters and lone su
   // 結合文字は 2 コードポイント（書記素ではなくコードポイントで数える）。
   assert.equal(estimateTokens('é'), 2);
 });
+
+test('an attachment whose extraction itself was cut is recorded as truncated even when it fits', () => {
+  const assembled = assemble({
+    ...base,
+    attachments: [
+      attachment('att-1', '短い添付', { extraction_truncated: true }),
+      attachment('att-2', '短い添付', { extraction_truncated: false }),
+    ],
+  });
+  assert.deepEqual(assembled.completeness.truncated_source_ids, ['att-1']);
+  assert.deepEqual(
+    assembled.sources.map((source) => source.source_id),
+    ['subject', 'body', 'att-1', 'att-2'],
+  );
+});

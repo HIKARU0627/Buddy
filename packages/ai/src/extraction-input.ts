@@ -34,6 +34,8 @@ export type MailAttachmentInput =
       readonly state: 'extracted';
       readonly source_revision: string;
       readonly text: string;
+      // 抽出テキスト自体が途中までしかない（取得・抽出の段で上限を超えて切った）。送った分に収まっても切詰めとして記録する。
+      readonly extraction_truncated?: boolean;
     }
   | {
       readonly attachment_id: string;
@@ -279,7 +281,8 @@ export function assembleExtractionInput(
       text: sent.text,
       quoted_ranges: [],
     });
-    if (sent.truncated) truncated.push(attachment.attachment_id);
+    if (sent.truncated || attachment.extraction_truncated === true)
+      truncated.push(attachment.attachment_id);
   }
 
   const marker = chooseMarker(sources.map((source) => source.text));

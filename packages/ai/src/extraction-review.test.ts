@@ -4,11 +4,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import type { ExtractionWire, ModelUsage } from '@buddy/contracts';
-import { candidateCommonReasons } from '@buddy/domain';
+import { autoOperationReasons, candidateCommonReasons } from '@buddy/domain';
 import ajvModule from 'ajv/dist/2020.js';
 import formatsModule from 'ajv-formats';
 import { extractMail } from './extraction.js';
-import { extractionWireErrors } from './extraction-evidence.js';
+import { extractionWireErrors, timeExpressed } from './extraction-evidence.js';
 import type { ExtractionMailInput } from './extraction-input.js';
 import { createFakeAdapter, syntheticProfile } from './testing.js';
 
@@ -237,4 +237,180 @@ test('every resolution rejects values in fields it does not use, for requests an
       extractionWireErrors(wireOf([request({ deadline: item })])),
       [],
     );
+});
+
+test('a time the model adds to a date-only original is not made a confirmed instant (review)', async () => {
+  // 原文は日付だけ。モデルが 23:59 を補って exact_datetime にした。
+  const body = '2030年10月9日までに参加可否を返信してください';
+  const original = '2030年10月9日までに';
+  const outcome = await run(
+    wireOf([
+      request({
+        deadline: deadline('exact_datetime', {
+          local_datetime: '2030-10-09T23:59',
+          original_text: original,
+        }),
+        evidence: [
+          {
+            part: 'body',
+            source_id: 'body',
+            source_revision: 'r1',
+            quote: body,
+          },
+        ],
+      }),
+    ]),
+    mail(body),
+  );
+  assert.equal(outcome.status, 'extracted');
+  if (outcome.status !== 'extracted') return;
+  const first = outcome.result.requests[0];
+  // 日付だけの期限へ下げる（時刻を補わない）。予定の自動作成に必要な instant にならない。
+  assert.deepEqual(first?.deadline, {
+    kind: 'date',
+    date: '2030-10-09',
+    original_text: original,
+  });
+  assert.equal(outcome.diagnostics.time_downgrades, 1);
+  const reasons = autoOperationReasons('create_event', first as never, {
+    ownCalendarSelected: true,
+    labelAssigned: true,
+    draftExists: false,
+    budgetAvailable: true,
+  });
+  assert.equal(reasons.includes('deadline_not_instant'), true);
+  // 用事は日付だけの期限で作れる（時刻なし）。
+  assert.equal(
+    autoOperationReasons('create_task', first as never, {
+      ownCalendarSelected: true,
+      labelAssigned: true,
+      draftExists: false,
+      budgetAvailable: true,
+    }).includes('deadline_not_fixed'),
+    false,
+  );
+  // 日付だけの期限にも年の規則が働く（年の記載がなければ確定しない）。
+  const noYear = await run(
+    wireOf([
+      request({
+        deadline: deadline('exact_datetime', {
+          local_datetime: '2030-10-09T23:59',
+          original_text: '10月9日までに',
+        }),
+        evidence: [
+          {
+            part: 'body',
+            source_id: 'body',
+            source_revision: 'r1',
+            quote: '10月9日までに参加可否を返信してください',
+          },
+        ],
+      }),
+    ]),
+    mail('10月9日までに参加可否を返信してください'),
+  );
+  assert.equal(noYear.status, 'extracted');
+  if (noYear.status === 'extracted')
+    assert.equal(noYear.result.requests[0]?.deadline.kind, 'unresolved');
+});
+
+test('a time stated in the original text keeps the confirmed instant, for requests and change deadlines (review)', async () => {
+  for (const text of [
+    '2030年10月9日17時までに',
+    '2030年10月9日 17:00 までに',
+    '2030年10月9日午後5時までに',
+    '2030年10月9日正午までに',
+    'by 5pm on 2030-10-09',
+  ]) {
+    const body = `${text}${ASK}`;
+    const outcome = await run(
+      wireOf([
+        request({
+          deadline: deadline('exact_datetime', {
+            local_datetime: '2030-10-09T17:00',
+            original_text: text,
+          }),
+          evidence: [
+            {
+              part: 'body',
+              source_id: 'body',
+              source_revision: 'r1',
+              quote: body,
+            },
+          ],
+        }),
+      ]),
+      mail(body),
+    );
+    assert.equal(outcome.status, 'extracted', text);
+    if (outcome.status === 'extracted')
+      assert.equal(outcome.result.requests[0]?.deadline.kind, 'instant', text);
+  }
+  // 訂正の新しい期限にも同じ規則を当てる。
+  const body = '参加可否の期限は2030年10月9日に変更します';
+  const change = await run(
+    wireOf(
+      [],
+      [
+        {
+          relation: 'correction',
+          target_evidence: [
+            {
+              part: 'body',
+              source_id: 'body',
+              source_revision: 'r1',
+              quote: '参加可否の期限',
+            },
+          ],
+          change_evidence: [
+            {
+              part: 'body',
+              source_id: 'body',
+              source_revision: 'r1',
+              quote: '2030年10月9日に変更します',
+            },
+          ],
+          new_deadline: deadline('exact_datetime', {
+            local_datetime: '2030-10-09T23:59',
+            original_text: '2030年10月9日',
+          }),
+        },
+      ],
+    ),
+    mail(body),
+  );
+  assert.equal(change.status, 'extracted');
+  if (change.status === 'extracted')
+    assert.deepEqual(change.result.changes[0]?.new_deadline, {
+      kind: 'date',
+      date: '2030-10-09',
+      original_text: '2030年10月9日',
+    });
+});
+
+test('timeExpressed recognises time words and rejects dates alone', () => {
+  for (const yes of [
+    '17時',
+    '5:30',
+    '１７：００',
+    '午後',
+    '午前中',
+    '正午',
+    '5pm',
+    '5 P.M.',
+    'noon',
+    'midnight',
+  ])
+    assert.equal(timeExpressed(yes), true, yes);
+  for (const no of [
+    '2030年10月9日までに',
+    '10月9日',
+    '来週の金曜',
+    'Oct 9, 2030',
+    '2030-10-09',
+    '時間をください',
+    'cannon',
+    'spam',
+  ])
+    assert.equal(timeExpressed(no), false, no);
 });

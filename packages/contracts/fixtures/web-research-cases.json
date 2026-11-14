@@ -335,6 +335,66 @@
         "readable": true,
         "text": null
       }
+    },
+    {
+      "id": "fetch-request-ipv6-ula",
+      "schema": "WebFetchRequest",
+      "valid": true,
+      "semantic_errors": ["private_target"],
+      "value": {
+        "schema": "buddy.web-fetch.v1",
+        "url": "https://[fc00::1]/synthetic",
+        "max_bytes": 2000000,
+        "timeout_ms": 15000,
+        "max_redirects": 3,
+        "content_types": ["text/html"],
+        "send_cookies": false
+      }
+    },
+    {
+      "id": "fetch-request-ipv6-link-local",
+      "schema": "WebFetchRequest",
+      "valid": true,
+      "semantic_errors": ["private_target"],
+      "value": {
+        "schema": "buddy.web-fetch.v1",
+        "url": "https://[fe80::1]/synthetic",
+        "max_bytes": 2000000,
+        "timeout_ms": 15000,
+        "max_redirects": 3,
+        "content_types": ["text/html"],
+        "send_cookies": false
+      }
+    },
+    {
+      "id": "fetch-request-ipv6-mapped-loopback",
+      "schema": "WebFetchRequest",
+      "valid": true,
+      "semantic_errors": ["private_target"],
+      "value": {
+        "schema": "buddy.web-fetch.v1",
+        "url": "https://[::ffff:127.0.0.1]/synthetic",
+        "max_bytes": 2000000,
+        "timeout_ms": 15000,
+        "max_redirects": 3,
+        "content_types": ["text/html"],
+        "send_cookies": false
+      }
+    },
+    {
+      "id": "fetch-request-ipv6-public",
+      "schema": "WebFetchRequest",
+      "valid": true,
+      "semantic_errors": [],
+      "value": {
+        "schema": "buddy.web-fetch.v1",
+        "url": "https://[2606:4700:4700::1111]/synthetic",
+        "max_bytes": 2000000,
+        "timeout_ms": 15000,
+        "max_redirects": 3,
+        "content_types": ["text/html"],
+        "send_cookies": false
+      }
     }
   ],
   "domain_cases": {

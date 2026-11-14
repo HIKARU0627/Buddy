@@ -133,4 +133,21 @@ test('B12-01: the fixture keeps the allowed and rejected shapes', () => {
   assert.deepEqual(semanticErrors(privateTarget.schema, privateTarget.value), [
     'private_target',
   ]);
+  // 非公開 IPv6（ULA・リンクローカル・IPv4 mapped loopback）も拒否し、公開 IPv6 は通す。
+  for (const id of [
+    'fetch-request-ipv6-ula',
+    'fetch-request-ipv6-link-local',
+    'fetch-request-ipv6-mapped-loopback',
+  ]) {
+    const entry = cases.cases.find((candidate) => candidate.id === id);
+    assert.deepEqual(
+      semanticErrors(entry.schema, entry.value),
+      ['private_target'],
+      id,
+    );
+  }
+  const publicIpv6 = cases.cases.find(
+    (entry) => entry.id === 'fetch-request-ipv6-public',
+  );
+  assert.deepEqual(semanticErrors(publicIpv6.schema, publicIpv6.value), []);
 });

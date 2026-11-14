@@ -408,18 +408,10 @@ function localTimeKey(value) {
 }
 
 // 取得先がローカル・プライベート・リンクローカルでないか（設計 05、ADR 0077）。
-function isPrivateWebTarget(value) {
-  let host;
-  try {
-    host = new URL(value).hostname.toLowerCase();
-  } catch {
-    return true;
-  }
-  if (host === 'localhost' || host === '::1' || host === '[::1]') return true;
-  if (host.endsWith('.local') || host.endsWith('.internal')) return true;
-  const parts = host.split('.').map(Number);
+// IPv4・IPv6（ULA・リンクローカル・サイトローカル・IPv4 mapped）を分類する。
+function ipv4Private(parts) {
   if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part)))
-    return false;
+    return true;
   const [a, b] = parts;
   return (
     a === 10 ||
@@ -429,6 +421,47 @@ function isPrivateWebTarget(value) {
     (a === 172 && b >= 16 && b <= 31) ||
     a === 0
   );
+}
+
+function ipv6Private(host) {
+  if (host === '::' || host === '::1') return true;
+  const mapped = /^::ffff:(.+)$/u.exec(host);
+  if (mapped) {
+    const tail = mapped[1];
+    if (tail.includes('.'))
+      return ipv4Private(tail.split('.').map((part) => Number(part)));
+    const hex = /^([0-9a-f]{1,4}):([0-9a-f]{1,4})$/u.exec(tail);
+    if (hex) {
+      const high = Number.parseInt(hex[1], 16);
+      const low = Number.parseInt(hex[2], 16);
+      return ipv4Private([high >> 8, high & 255, low >> 8, low & 255]);
+    }
+    return true;
+  }
+  const first = Number.parseInt(host.split(':')[0], 16);
+  if (Number.isNaN(first)) return false;
+  // fc00::/7（ULA）・fe80::/10（リンクローカル）・fec0::/10（サイトローカル）。
+  return (
+    (first >= 0xfc00 && first <= 0xfdff) || (first >= 0xfe80 && first <= 0xfeff)
+  );
+}
+
+function isPrivateWebTarget(value) {
+  let host;
+  try {
+    host = new URL(value).hostname.toLowerCase();
+  } catch {
+    return true;
+  }
+  if (host.startsWith('[') && host.endsWith(']')) {
+    const address = host.slice(1, -1);
+    if (address.includes(':')) return ipv6Private(address);
+  }
+  if (host === 'localhost') return true;
+  if (host.endsWith('.local') || host.endsWith('.internal')) return true;
+  if (host.includes(':')) return ipv6Private(host);
+  if (!/^\d{1,3}(?:\.\d{1,3}){3}$/u.test(host)) return false;
+  return ipv4Private(host.split('.').map((part) => Number(part)));
 }
 
 export function semanticErrors(name, value) {

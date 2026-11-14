@@ -407,6 +407,30 @@ function localTimeKey(value) {
   return `${date}T${time.split(':').slice(0, 2).join(':')}:${second}`;
 }
 
+// 取得先がローカル・プライベート・リンクローカルでないか（設計 05、ADR 0077）。
+function isPrivateWebTarget(value) {
+  let host;
+  try {
+    host = new URL(value).hostname.toLowerCase();
+  } catch {
+    return true;
+  }
+  if (host === 'localhost' || host === '::1' || host === '[::1]') return true;
+  if (host.endsWith('.local') || host.endsWith('.internal')) return true;
+  const parts = host.split('.').map(Number);
+  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part)))
+    return false;
+  const [a, b] = parts;
+  return (
+    a === 10 ||
+    a === 127 ||
+    (a === 169 && b === 254) ||
+    (a === 192 && b === 168) ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    a === 0
+  );
+}
+
 export function semanticErrors(name, value) {
   const errors = [];
   if (name === 'CreditObservation') {
@@ -948,6 +972,25 @@ export function semanticErrors(name, value) {
     if (!add.length && !remove.length) errors.push('empty_change');
     if (add.some((label) => remove.includes(label)))
       errors.push('conflicting_labels');
+  }
+  // 公開 Web 調査の取得先と出典（B12-01、ADR 0077）。
+  // ローカル・プライベート・リンクローカルへの取得を拒否する（設計 05）。
+  if (name === 'WebFetchRequest' && isPrivateWebTarget(value.url))
+    errors.push('private_target');
+  if (name === 'WebFetchResult') {
+    if (value.readable && value.text === null) errors.push('missing_text');
+    if (!value.readable && value.text !== null) errors.push('unreadable_text');
+  }
+  if (name === 'WebResearchSource') {
+    if (value.basis === 'page_read') {
+      if (value.fetched_at === null) errors.push('missing_fetched_at');
+      if (value.excerpt === null && value.summary === null)
+        errors.push('missing_page_evidence');
+    } else {
+      if (value.fetched_at !== null) errors.push('summary_source_fetched');
+      if (value.excerpt !== null) errors.push('summary_source_excerpt_stored');
+      if (value.summary !== null) errors.push('summary_source_summary_stored');
+    }
   }
   // 宛先と CC に同じ相手を重ねない（ADR 0027）。
   if (

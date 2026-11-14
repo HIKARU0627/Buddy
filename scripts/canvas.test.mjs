@@ -13,9 +13,11 @@ import {
   DESKTOP_ROLE_CHANNELS,
   DESKTOP_ROLE_NOTIFICATIONS,
   DESKTOP_WINDOW_ROLES,
+  SEGMENT_IDLE_TIMEOUT_MS,
   applyCanvasBatch,
   applyCanvasBatchToStore,
   applyCanvasUserOp,
+  automaticSegmentBoundary,
   beginPrivateCanvas,
   canvasBatchErrors,
   canvasDocumentErrors,
@@ -837,7 +839,77 @@ test('carried summaries expire with their earliest source, across several segmen
   );
 });
 
-// UI-06（PR #121 のレビュー P2）: 他の物から参照されている物を閉じると、その物への関係も同じ操作で取り除く。
+// UI-05（ADR 0068）: 自動の区切り（30 分・日付の変更）。期待値は手で書いた UTC の時刻で、実装の時計から作らない。
+test('automatic segment boundaries: 30 minutes idle or a local date change, whichever came first', () => {
+  assert.equal(SEGMENT_IDLE_TIMEOUT_MS, 1_800_000);
+  const boundary = (last, now, utcOffset = '+09:00') =>
+    automaticSegmentBoundary({
+      opened_at: '2026-10-05T09:00:00+09:00',
+      last_turn_at: last,
+      now,
+      utc_offset: utcOffset,
+    });
+  // 29 分 59 秒 999 ミリ秒では切らない。30 分ちょうどで切る。
+  assert.equal(
+    boundary('2026-10-05T09:00:00+09:00', '2026-10-05T09:29:59.999+09:00'),
+    null,
+  );
+  assert.equal(
+    boundary('2026-10-05T09:00:00+09:00', '2026-10-05T09:30:00+09:00'),
+    'idle_timeout',
+  );
+  // 最後のやりとりがまだ無ければ、区切りの始まりから測る。
+  assert.equal(boundary(null, '2026-10-05T09:29:59.999+09:00'), null);
+  assert.equal(boundary(null, '2026-10-05T09:30:00+09:00'), 'idle_timeout');
+  // 日付の変更（+09:00 の 0 時は 15:00Z）。30 分より 0 時が先なので date_changed。
+  assert.equal(
+    boundary('2026-10-05T23:50:00+09:00', '2026-10-05T23:59:59.999+09:00'),
+    null,
+  );
+  assert.equal(
+    boundary('2026-10-05T23:50:00+09:00', '2026-10-06T00:00:00+09:00'),
+    'date_changed',
+  );
+  // 30 分と 0 時が同じ瞬間なら idle_timeout（どちらも先ではない）。
+  assert.equal(
+    boundary('2026-10-05T23:30:00+09:00', '2026-10-06T00:00:00+09:00'),
+    'idle_timeout',
+  );
+  // 30 分の方が先に来ていれば、日をまたいでも idle_timeout。
+  assert.equal(
+    boundary('2026-10-05T23:00:00+09:00', '2026-10-06T12:00:00+09:00'),
+    'idle_timeout',
+  );
+  // 同じ日の中では日付の理由にならない。
+  assert.equal(
+    boundary('2026-10-05T00:10:00+09:00', '2026-10-05T23:00:00+09:00'),
+    'idle_timeout',
+  );
+  // 負の差（-05:00）でも本人の時間帯の 0 時で判定する（0 時は 05:00Z）。
+  assert.equal(
+    boundary(
+      '2026-10-05T23:50:00-05:00',
+      '2026-10-06T00:10:00-05:00',
+      '-05:00',
+    ),
+    'date_changed',
+  );
+  // 形の違う差・読めない時刻は推測しない（区切りを始めない）。
+  assert.equal(
+    boundary('2026-10-05T23:50:00+09:00', '2026-10-06T12:00:00+09:00', '09:00'),
+    null,
+  );
+  assert.equal(
+    boundary(
+      '2026-10-05T23:50:00+09:00',
+      '2026-10-06T12:00:00+09:00',
+      '+24:00',
+    ),
+    null,
+  );
+  assert.equal(boundary('not-a-time', '2026-10-06T12:00:00+09:00'), null);
+});
+
 // 期待値は手で書いた記述。
 const relItem = (id, relations = [], placement = 'canvas') => ({
   item_id: id,

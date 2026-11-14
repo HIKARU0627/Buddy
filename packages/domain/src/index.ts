@@ -21,9 +21,13 @@ export * from './canvas-content.js';
 // B11-01: 気づき（候補）の状態・保持（ADR 0073）。
 export * from './candidate.js';
 // B11-02: 気づきの表示順・見出し・行の文言（ADR 0115）。
+export * from './candidate-time.js';
 export * from './candidate-order.js';
 // B11-02 P2: 時間による遷移・根拠の失効・保持の段階（ADR 0116）。
 export * from './candidate-lifecycle.js';
+// B11-02 P3: 予定の重複の判定と通知の識別子・重複排除（ADR 0117）。
+export * from './schedule-overlap.js';
+export * from './candidate-notification.js';
 export * from './candidate-text.js';
 export * from './conversation.js';
 // B04-01: 操作の種類・connector の能力・照合（ADR 0027）。

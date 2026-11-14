@@ -4,6 +4,10 @@
 // 表示順: (1) 今日・明日の予定重複、(2) 期限の近い順（期限不明は最後）、(3) 受信の新しい順。
 // 見出し: 今日・明日・今週・それ以降・期限不明。初回取り込みの過去の期限は別にまとめて折りたたむ。
 
+import {
+  candidateDateToDay as dateToDay,
+  candidateLocalClock as localClock,
+} from './candidate-time.js';
 import { isRealLocalDateTime } from './local-time.js';
 import type { Deadline } from './extraction.js';
 
@@ -60,71 +64,6 @@ export type CandidateOrderResult<T extends CandidateOrderItem> =
   | { readonly ok: true; readonly groups: readonly CandidateGroup<T>[] }
   | { readonly ok: false; readonly reason: 'now_invalid' | 'zone_invalid' };
 
-const DAY_MS = 86_400_000;
-const ZONE_NAME = /^[A-Za-z][A-Za-z0-9_+-]*(?:\/[A-Za-z0-9_+-]+)*$/u;
-
-const formatters = new Map<string, Intl.DateTimeFormat | null>();
-
-function formatterFor(zone: string): Intl.DateTimeFormat | null {
-  if (!ZONE_NAME.test(zone)) return null;
-  if (!formatters.has(zone)) {
-    let formatter: Intl.DateTimeFormat | null;
-    try {
-      formatter = new Intl.DateTimeFormat('en-US', {
-        timeZone: zone,
-        calendar: 'gregory',
-        numberingSystem: 'latn',
-        hourCycle: 'h23',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-      });
-    } catch {
-      formatter = null;
-    }
-    formatters.set(zone, formatter);
-  }
-  return formatters.get(zone) ?? null;
-}
-
-// その時刻の、タイムゾーンでの現地の日付（YYYY-MM-DD）と時刻（HH:MM:SS）。
-function localClock(
-  at: number,
-  zone: string,
-): { readonly date: string; readonly time: string } | null {
-  const formatter = formatterFor(zone);
-  if (formatter === null) return null;
-  const parts: Record<string, string> = {};
-  for (const part of formatter.formatToParts(new Date(at)))
-    parts[part.type] = part.value;
-  const { year, month, day, hour, minute, second } = parts;
-  if (
-    year === undefined ||
-    month === undefined ||
-    day === undefined ||
-    hour === undefined ||
-    minute === undefined ||
-    second === undefined
-  )
-    return null;
-  return {
-    date: `${year}-${month}-${day}`,
-    time: `${hour}:${minute}:${second}`,
-  };
-}
-
-const dateToDay = (date: string): number => {
-  const [year, month, day] = date.split('-').map(Number) as [
-    number,
-    number,
-    number,
-  ];
-  return Date.UTC(year, month - 1, day) / DAY_MS;
-};
-
 // 月曜を週の始まりとする（U272）。月曜 = 0 … 日曜 = 6。1970-01-01 は木曜。
 const weekdayOfDay = (day: number): number => (((day + 3) % 7) + 7) % 7;
 
@@ -133,10 +72,6 @@ interface Classified {
   // 並べ替えの鍵。期限不明は null。日付だけの期限はその日の終わりとして並べる（時刻は補わない）。
   readonly sortKey: string | null;
 }
-
-// 本人のタイムゾーンとして使える IANA の名前か。
-export const isCandidateZone = (zone: string): boolean =>
-  localClock(0, zone) !== null;
 
 interface ParsedDeadline {
   readonly date: string;

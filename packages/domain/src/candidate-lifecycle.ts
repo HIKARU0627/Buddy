@@ -4,9 +4,12 @@
 
 import {
   candidateDeadlineEnded,
-  isCandidateZone,
   type CandidateOrderItem,
 } from './candidate-order.js';
+import {
+  isCandidateZone,
+  parseCandidateUtc as parseUtc,
+} from './candidate-time.js';
 import {
   CANDIDATE_CONTENT_RETENTION_DAYS,
   CANDIDATE_IDENTIFIER_RETENTION_DAYS,
@@ -15,18 +18,6 @@ import {
 } from './candidate.js';
 
 const DAY_MS = 86_400_000;
-const UTC_TIME =
-  /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{1,9})?Z$/u;
-
-// UTC の RFC 3339 だけを読む。暦にない日時（2 月 30 日）は繰り上げず null。
-function parseUtc(value: unknown): number | null {
-  if (typeof value !== 'string' || !UTC_TIME.test(value)) return null;
-  const millis = Date.parse(value);
-  if (Number.isNaN(millis)) return null;
-  return new Date(millis).toISOString().slice(0, 19) === value.slice(0, 19)
-    ? millis
-    : null;
-}
 
 // --- 時間による遷移 ---
 

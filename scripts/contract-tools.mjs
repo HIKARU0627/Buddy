@@ -1053,8 +1053,8 @@ export function semanticErrors(name, value) {
   }
   if (
     name === 'WebSourceRecord' &&
-    value.excerpt === null &&
-    value.summary === null
+    (value.excerpt ?? '').trim() === '' &&
+    (value.summary ?? '').trim() === ''
   )
     errors.push('missing_page_evidence');
   // 公開 Web 調査の試行の記録（B12-02 P2、ADR 0128・0129）。上限・順序・検索との関係は domain の試験が確かめる。

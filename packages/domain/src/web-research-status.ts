@@ -82,6 +82,10 @@ const STOP_REASONS: Readonly<Record<string, readonly WebResearchStopReason[]>> =
     canceled: ['user_canceled', 'superseded'],
   };
 
+function isBlank(value: string | null): boolean {
+  return value === null || value.trim().length === 0;
+}
+
 export interface WebSourceRecordLike {
   readonly source_id: string;
   readonly basis: string;
@@ -99,7 +103,8 @@ export function webSourceRecordErrors(
 ): string[] {
   const errors: string[] = [];
   if (source.basis !== 'page_read') errors.push('basis_not_page_read');
-  if (source.excerpt === null && source.summary === null)
+  // 空白だけの抜粋・要約は、読めた根拠にならない（本文の抽出が空白しか返さなかったページを読めたことにしない）。
+  if (isBlank(source.excerpt) && isBlank(source.summary))
     errors.push('missing_page_evidence');
   if (source.url !== null && policy.url_storage !== 'allowed')
     errors.push('url_not_storable');

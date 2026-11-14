@@ -68,6 +68,8 @@ export interface MaintenanceReport {
   }[];
   // 頁数の上限で読み切れなかったとき true（残りは次の回に回る）。
   readonly truncated: boolean;
+  // truncated のとき、次の回に渡す続きの位置（options.after）。同じ上限の反復でも後方へ進む。読み切ったら null。
+  readonly resume_after: CandidateListCursor | null;
 }
 
 const toIso = (millis: number | null): string | null =>
@@ -102,7 +104,12 @@ function domainDeadline(row: CandidateRow): Deadline {
 
 export async function runCandidateMaintenance(
   ports: CandidateMaintenancePorts,
-  options: { readonly limit?: number; readonly maxPages?: number } = {},
+  options: {
+    readonly limit?: number;
+    readonly maxPages?: number;
+    // 前の回の resume_after。省略は先頭から。
+    readonly after?: CandidateListCursor;
+  } = {},
 ): Promise<MaintenanceReport> {
   const limit = options.limit ?? 1000;
   const maxPages = options.maxPages ?? 100;
@@ -205,7 +212,8 @@ export async function runCandidateMaintenance(
 
   // 一覧は keyset で全頁を読む（上限で切れた先の候補にも保守が届く）。頁の途中で遷移した候補があっても、位置は動かない。
   let truncated = false;
-  let after: CandidateListCursor | undefined;
+  let after: CandidateListCursor | undefined = options.after;
+  let resumeAfter: CandidateListCursor | null = null;
   for (let page = 0; ; page += 1) {
     const listed = await ports.client.candidate({
       kind: 'candidate.list',
@@ -226,6 +234,7 @@ export async function runCandidateMaintenance(
     // 頁数の上限（異常な件数で止まらなくなるのを防ぐ）。残りは次の回に回る。
     if (page + 1 >= maxPages) {
       truncated = true;
+      resumeAfter = listed.value.next_after;
       break;
     }
     after = listed.value.next_after;
@@ -244,5 +253,6 @@ export async function runCandidateMaintenance(
     swept: swept.ok ? swept.value : { content_deleted: [], deleted: [] },
     skipped,
     truncated,
+    resume_after: resumeAfter,
   };
 }

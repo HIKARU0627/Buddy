@@ -324,9 +324,12 @@ export function scheduleOverlapDrafts(
       unread_partial: false,
       related_analysis: null,
       received_at: context.now,
-      origins: overlap.events.map((event) => ({
+      // 同じ元予定（繰り返しの別の回）から来た由来は 1 つにする（保存側は同じ由来の重複を拒否する）。
+      origins: [
+        ...new Set(overlap.events.map((event) => context.originOf(event))),
+      ].map((sourceId) => ({
         source_kind: 'source_item' as const,
-        source_id: context.originOf(event),
+        source_id: sourceId,
       })),
     });
   }

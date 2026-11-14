@@ -536,26 +536,42 @@ test('a page size of one still reaches an older passed candidate behind a newer 
     assert.deepEqual(report.snooze_elapsed, [sleepyId]);
     assert.equal(report.truncated, false);
     assert.equal(stateOf(world.db, newerId), 'new');
-    // 頁数の上限で止まったときは truncated で知らせ、次の回で続きを処理できる。
-    const second = nextEntity();
-    const secondId = await create(
+    // 頁数の上限で止まったときは truncated と続きの位置で知らせ、同じ上限の反復でも後方へ進む。
+    // 先頭の 2 件は期限なしで活動中のまま（上限の 2 頁を使い切る）、3 件目が期限切れ。
+    const late = nextEntity();
+    const lateId = await create(
       world,
-      second,
-      draft(second, {
+      late,
+      draft(late, {
         deadline: dateOnly('2030-10-07'),
         received_at: '2030-08-01T00:00:00Z',
       }),
     );
-    const partial = await runCandidateMaintenance(
-      { client: world.client, zone: ZONE, now: () => NOW },
-      { limit: 1, maxPages: 2 },
+    const options = { limit: 1, maxPages: 2 } as const;
+    // 先頭 2 件（newer と older は前の回で older が解決済みなので、新しい順の先頭は newer と、受信が次に新しい候補）。
+    const filler = nextEntity();
+    await create(
+      world,
+      filler,
+      draft(filler, {
+        deadline: { kind: 'none' },
+        received_at: '2030-09-20T00:00:00Z',
+      }),
     );
-    assert.equal(partial.truncated, true);
-    assert.equal(stateOf(world.db, secondId), 'new');
-    const rest = await runCandidateMaintenance(
+    const first = await runCandidateMaintenance(
       { client: world.client, zone: ZONE, now: () => NOW },
-      { limit: 1 },
+      options,
     );
-    assert.deepEqual(rest.deadline_passed, [secondId]);
+    assert.equal(first.truncated, true);
+    assert.ok(first.resume_after !== null);
+    assert.equal(stateOf(world.db, lateId), 'new');
+    const second = await runCandidateMaintenance(
+      { client: world.client, zone: ZONE, now: () => NOW },
+      { ...options, after: first.resume_after ?? undefined },
+    );
+    // 続きの位置から読むので、同じ上限でも後方の期限切れの候補に届く。
+    assert.deepEqual(second.deadline_passed, [lateId]);
+    assert.equal(second.truncated, false);
+    assert.equal(second.resume_after, null);
   });
 });

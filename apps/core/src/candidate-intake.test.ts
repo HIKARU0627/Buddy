@@ -826,3 +826,46 @@ test('overlap drafts are saved with one lineage edge per event and the same over
     });
   });
 });
+
+test('two occurrences of one recurring event that overlap are saved with a single lineage edge', async () => {
+  await withStore(async (db, ports) => {
+    // 同じカレンダー・同じ予定の ID で、繰り返しの回（recurrence_id）が違う 2 つが重なる。由来は元の予定 1 つ。
+    const found = findScheduleOverlaps(
+      [
+        event('a', '2030-10-09T09:00:00Z', '2030-10-09T10:00:00Z', {
+          ical_uid: 'uid-series',
+          recurrence_id: '2030-10-09T09:00:00Z',
+        }),
+        event('a', '2030-10-09T09:30:00Z', '2030-10-09T10:30:00Z', {
+          ical_uid: 'uid-series',
+          recurrence_id: '2030-10-10T09:00:00Z',
+          calendar_id: 'cal-a',
+        }),
+      ],
+      WINDOW,
+      ZONE,
+    );
+    assert.equal(found.ok, true);
+    if (!found.ok) return;
+    assert.equal(found.overlaps.length, 1);
+    const { drafts } = scheduleOverlapDrafts(found.overlaps, {
+      zone: ZONE,
+      now: '2030-10-09T03:00:00Z',
+      initial_import: false,
+      originOf,
+    });
+    assert.deepEqual(drafts[0]?.origins, [
+      { source_kind: 'source_item', source_id: 'cal-a/a' },
+    ]);
+    const saved = await persistCandidateDrafts(ports, drafts);
+    assert.equal(saved[0]?.outcome, 'created');
+    assert.deepEqual(
+      db
+        .prepare(
+          "SELECT source_id FROM derivations WHERE artifact_kind = 'notification_candidate'",
+        )
+        .all(),
+      [{ source_id: 'cal-a/a' }],
+    );
+  });
+});

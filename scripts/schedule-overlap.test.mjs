@@ -115,6 +115,28 @@ test('the same event held in two calendars is not an overlap with itself', () =>
     ical_uid: 'uid-p',
   });
   assert.deepEqual(run([original, stale]).overlaps, []);
+  // 食い違う写しは、第三の予定との重複にも使わない（同じ予定の組から複数の候補・識別子を作らない）。理由付きで除く。
+  const third = ev('q', '2030-10-09T01:45:00Z', '2030-10-09T03:00:00Z');
+  for (const input of [
+    [original, stale, third],
+    [third, stale, original],
+    [stale, third, original],
+  ]) {
+    const result = run(input);
+    assert.deepEqual(result.overlaps, []);
+    assert.deepEqual(
+      result.excluded.map((e) => [e.calendar_id, e.event_id, e.reason]),
+      [
+        ['cal-a', 'p', 'copies_disagree'],
+        ['cal-b', 'p-stale', 'copies_disagree'],
+      ],
+    );
+  }
+  // 写しの時間帯がそろえば、第三の予定との重複は 1 件になる。
+  const synced = { ...stale, time: original.time };
+  const converged = run([original, synced, third]);
+  assert.equal(converged.overlaps.length, 1);
+  assert.deepEqual(converged.excluded, []);
   // 別の予定と重なるときは、写しが 2 つあっても 1 件だけ。
   const other = ev('y', '2030-10-09T01:30:00Z', '2030-10-09T02:30:00Z');
   const result = run([copy, original, other]);

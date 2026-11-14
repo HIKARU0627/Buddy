@@ -40,7 +40,7 @@ export interface CalendarOccurrence {
 }
 
 export type OverlapExclusion =
-  'cancelled' | 'declined' | 'free_time' | 'time_invalid';
+  'cancelled' | 'declined' | 'free_time' | 'time_invalid' | 'copies_disagree';
 
 export type OverlapPeriod =
   | {
@@ -192,14 +192,31 @@ export function findScheduleOverlaps(
     });
   }
 
-  // 同じ参照で同じ時間帯の写しは 1 つに畳む（先頭は ID の昇順で決める）。
-  const unique: Resolved[] = [];
-  const seen = new Set<string>();
+  // 同じ参照（同じ予定の写し）は、時間帯が同じなら 1 つに畳む。時間帯が食い違う写し（一方が古いなど）は、どちらが
+  // 正しいか決められないので、どれも重複の判定に使わず、理由 copies_disagree で除く（第三の予定との重複から、同じ予定の組に
+  // 複数の候補・識別子を作らないため）。写しがそろえば次の回で重複になる。
+  const byRef = new Map<string, Resolved[]>();
   for (const item of candidates) {
-    const key = `${item.ref}|${item.start}|${item.end}|${item.allDay}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    unique.push(item);
+    const group = byRef.get(item.ref) ?? [];
+    group.push(item);
+    byRef.set(item.ref, group);
+  }
+  const unique: Resolved[] = [];
+  for (const group of byRef.values()) {
+    const times = new Set(
+      group.map((item) => `${item.start}|${item.end}|${item.allDay}`),
+    );
+    if (times.size > 1) {
+      for (const item of group)
+        excluded.push({
+          calendar_id: item.event.calendar_id,
+          event_id: item.event.event_id,
+          reason: 'copies_disagree',
+        });
+      continue;
+    }
+    // 先頭は ID の昇順で決める（candidates は ID の昇順）。
+    unique.push(group[0] as Resolved);
   }
   unique.sort((a, b) => a.start - b.start || a.end - b.end);
 
@@ -248,7 +265,16 @@ export function findScheduleOverlaps(
     const rb = `${b.refs[0]}\n${b.refs[1]}`;
     return ra < rb ? -1 : ra > rb ? 1 : 0;
   });
-  return { ok: true, overlaps, excluded };
+  const orderedExcluded = [...excluded].sort(
+    (x, y) =>
+      (x.calendar_id < y.calendar_id
+        ? -1
+        : x.calendar_id > y.calendar_id
+          ? 1
+          : 0) ||
+      (x.event_id < y.event_id ? -1 : x.event_id > y.event_id ? 1 : 0),
+  );
+  return { ok: true, overlaps, excluded: orderedExcluded };
 }
 
 // 予定の重複の候補の期限（表示順に使う）。重複の始まり。終日どうしの重複は日付。

@@ -135,9 +135,12 @@ export class OperationBridge {
   #order = 0;
   // 表示の権限の世代。reset で進める。
   #gen = 0;
-  // 会話（接続範囲ごとに 1 つ。発言のたびに作らない）。
-  #session: { readonly scope: string; readonly sessionId: string } | null =
-    null;
+  // 会話（接続範囲ごとに 1 つ。発言のたびに作らない）。区切りの世代は会話の作成の応答から持ち、発言の由来に使う。
+  #session: {
+    readonly scope: string;
+    readonly sessionId: string;
+    readonly segmentGeneration: string;
+  } | null = null;
 
   constructor(host: OperationHost) {
     this.#host = host;
@@ -304,8 +307,15 @@ export class OperationBridge {
         !this.#host.contract.valid('SessionReceipt', created.body)
       )
         return fail('core_rejected');
-      const body = created.body as { session_id: string };
-      session = { scope, sessionId: body.session_id };
+      const body = created.body as {
+        session_id: string;
+        segment_generation: string;
+      };
+      session = {
+        scope,
+        sessionId: body.session_id,
+        segmentGeneration: body.segment_generation,
+      };
       this.#session = session;
       // 会話を作っている間に停止した: 発言を送らない。
       const after = this.#host.io();
@@ -315,7 +325,14 @@ export class OperationBridge {
     const outcome = await connection.request({
       method: 'POST',
       path: `/v1/sessions/${encodeURIComponent(session.sessionId)}/turns`,
-      body: { text, input_kind: 'text' },
+      body: {
+        text,
+        input_kind: 'text',
+        origin: {
+          segment_id: session.sessionId,
+          segment_generation: session.segmentGeneration,
+        },
+      },
       scoped: true,
       expectedScopeId: scope,
     });

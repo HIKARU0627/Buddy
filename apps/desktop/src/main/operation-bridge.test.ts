@@ -401,6 +401,7 @@ test('a schedule answer becomes counts only: no event IDs reach the screen', asy
         request_id: id(1),
         session_id: id(0x44),
         storage_mode: 'normal',
+        segment_generation: '1',
         route_revision: '0',
       },
     },
@@ -468,6 +469,7 @@ test('a turn that created an operation points to it by the same reference the li
         request_id: id(1),
         session_id: id(0x44),
         storage_mode: 'normal',
+        segment_generation: '1',
         route_revision: '0',
       },
     },
@@ -513,6 +515,7 @@ test('a turn whose outcome is unknown is not resent; a conflict drops the conver
       request_id: id(1),
       session_id: id(0x44),
       storage_mode: 'normal',
+      segment_generation: '1',
       route_revision: '0',
     },
   };
@@ -998,6 +1001,7 @@ test('work started before a lock or disconnect sends nothing and changes nothing
       request_id: id(1),
       session_id: id(0x44),
       storage_mode: 'normal',
+      segment_generation: '1',
       route_revision: '0',
     },
   });
@@ -1517,6 +1521,7 @@ test('a turn sent before the generation changed is reported as unknown, never as
       request_id: id(1),
       session_id: id(0x44),
       storage_mode: 'normal',
+      segment_generation: '1',
       route_revision: '0',
     },
   };
@@ -1598,6 +1603,7 @@ test('B05-05: a session control turn gives the screen only the name of the contr
         request_id: id(1),
         session_id: id(0x44),
         storage_mode: 'normal',
+        segment_generation: '1',
         route_revision: '0',
       },
     },

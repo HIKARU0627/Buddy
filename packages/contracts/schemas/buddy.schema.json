@@ -200,6 +200,15 @@
       "$ref": "#/$defs/WebUsagePolicy"
     },
     {
+      "$ref": "#/$defs/WebQueryScreening"
+    },
+    {
+      "$ref": "#/$defs/WebSourceRecord"
+    },
+    {
+      "$ref": "#/$defs/WebResearchStatus"
+    },
+    {
       "$ref": "#/$defs/SyncBatch"
     },
     {
@@ -4539,6 +4548,371 @@
       ],
       "additionalProperties": false,
       "description": "公開 Web 調査の利用条件（B12-01、ADR 0077）。検索結果は操作中の一時保持だけにし、モデルの訓練・評価に使わない。URL の永続保存は B12-02 で決めるまで undecided。"
+    },
+    "WebQueryRejectReason": {
+      "type": "string",
+      "enum": [
+        "empty",
+        "too_long",
+        "too_many_words",
+        "line_break",
+        "email_address",
+        "phone_number",
+        "secret_like_token",
+        "contains_url"
+      ],
+      "description": "検索語の機械検査が拒否した理由（B12-02、ADR 0127）。検査は下限で、氏名・予定の詳細などの私的情報を見分けられない。見分けられない分は、検索語の入力元を本人の質問に限る前提で守る。"
+    },
+    "WebQueryScreening": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "const": "buddy.web-query-screening.v1"
+        },
+        "query_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "screened_query": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "input_sources": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "const": "user_question"
+          },
+          "minItems": 1,
+          "maxItems": 1,
+          "description": "検索語の元にした入力。本人の質問だけで、メール・予定・記憶・取得済みページの本文を元にしない。"
+        },
+        "rules_version": {
+          "type": "integer",
+          "const": 1
+        },
+        "outcome": {
+          "type": "string",
+          "enum": ["passed", "rejected"]
+        },
+        "rejected_reasons": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/WebQueryRejectReason"
+          },
+          "uniqueItems": true
+        },
+        "screened_at": {
+          "$ref": "#/$defs/UtcTime"
+        }
+      },
+      "required": [
+        "schema",
+        "query_id",
+        "screened_query",
+        "input_sources",
+        "rules_version",
+        "outcome",
+        "rejected_reasons",
+        "screened_at"
+      ],
+      "additionalProperties": false,
+      "description": "検索語を検査した記録（B12-02、ADR 0127、設計 05「検索語は本人の質問から必要な一般語を作り、メール全文、API キー、個人の詳細予定を含めません」）。passed のときだけ検索の要求を受け付け、rejected のときは拒否した検索語を保存しない（screened_query は null）。"
+    },
+    "WebResearchState": {
+      "type": "string",
+      "enum": [
+        "accepted",
+        "searching",
+        "reading",
+        "summarizing",
+        "completed",
+        "no_results",
+        "held",
+        "failed",
+        "canceled"
+      ],
+      "description": "公開 Web 調査の状態（B12-02、ADR 0125）。completed だけが結果と出典を持ち、完了と表示できる。no_results・failed・canceled は終端、held は本人の操作や予算の回復を待つ保留。"
+    },
+    "WebResearchStopReason": {
+      "type": "string",
+      "enum": [
+        "zero_hits",
+        "budget_held",
+        "query_rejected",
+        "search_failed",
+        "no_readable_page",
+        "summary_failed",
+        "user_canceled",
+        "superseded"
+      ],
+      "description": "完了にならなかった理由（B12-02、ADR 0125）。検索の失敗と 0 件は区別し、読めたページが無いときは完了にしない。低い層の原因（取得の失敗の種類）は B12-02 の PR2 で足す。"
+    },
+    "WebResearchStop": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["no_results", "held", "failed", "canceled"]
+        },
+        "reason": {
+          "$ref": "#/$defs/WebResearchStopReason"
+        }
+      },
+      "required": ["kind", "reason"],
+      "additionalProperties": false,
+      "description": "完了にならなかった状態の種類と理由（B12-02、ADR 0125）。kind は状態と同じ名前で、kind と reason の組み合わせは domain が検査する。"
+    },
+    "WebSourceRecord": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "const": "buddy.web-source-record.v1"
+        },
+        "source_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "query_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "basis": {
+          "type": "string",
+          "const": "page_read"
+        },
+        "fetched_at": {
+          "$ref": "#/$defs/UtcTime"
+        },
+        "page_title": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "excerpt": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "summary": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "content_hash": {
+          "$ref": "#/$defs/Hash"
+        },
+        "url": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^https://"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "schema",
+        "source_id",
+        "query_id",
+        "basis",
+        "fetched_at",
+        "page_title",
+        "excerpt",
+        "summary",
+        "content_hash",
+        "url"
+      ],
+      "additionalProperties": false,
+      "description": "永続保存してよい出典（B12-02、ADR 0126）。自分で取得した本文（page_read）から作った短い抜粋・要約と取得時刻・本文の hash だけを持つ。検索結果のタイトル・スニペット・要約は持たず、page_title は自分で取得したページの title。url は WebUsagePolicy.url_storage が allowed のときだけ非 null にできる（U183・U290）。"
+    },
+    "WebTransientLink": {
+      "type": "object",
+      "properties": {
+        "source_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "url": {
+          "type": "string",
+          "pattern": "^https://"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["source_id", "url", "title"],
+      "additionalProperties": false,
+      "description": "その場で表示する出典のリンク（B12-02、ADR 0126）。検索結果に由来するので保存しない。"
+    },
+    "WebTransientLinks": {
+      "type": "object",
+      "properties": {
+        "retention": {
+          "type": "string",
+          "const": "transient_only"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/WebTransientLink"
+          },
+          "maxItems": 5
+        }
+      },
+      "required": ["retention", "items"],
+      "additionalProperties": false,
+      "description": "出典のリンクの一時表示（B12-02、ADR 0126）。中枢のメモリの中だけに置き、データベース・イベントの記録・ファイル・キャッシュに書かない。再起動や表示の後は無くなってよい。"
+    },
+    "WebResearchResult": {
+      "type": "object",
+      "properties": {
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/WebSourceRecord"
+          },
+          "minItems": 1,
+          "maxItems": 5
+        },
+        "unread_count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "scope_reduced": {
+          "type": "boolean"
+        }
+      },
+      "required": ["summary", "sources", "unread_count", "scope_reduced"],
+      "additionalProperties": false,
+      "description": "完了した調査の結果（B12-02、ADR 0125）。出典は 1 件以上で、すべて自分で取得した本文（page_read）。読めなかったページの数と、上限や予算で範囲を減らしたかを必ず示す。"
+    },
+    "WebResearchStatus": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "const": "buddy.web-research-status.v1"
+        },
+        "workflow_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "request_revision": {
+          "$ref": "#/$defs/RequestRevision"
+        },
+        "state_revision": {
+          "$ref": "#/$defs/StateRevision"
+        },
+        "state": {
+          "$ref": "#/$defs/WebResearchState"
+        },
+        "accepted_at": {
+          "$ref": "#/$defs/UtcTime"
+        },
+        "updated_at": {
+          "$ref": "#/$defs/UtcTime"
+        },
+        "finished_at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UtcTime"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "result": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WebResearchResult"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "stop": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WebResearchStop"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "transient_links": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WebTransientLinks"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "schema",
+        "workflow_id",
+        "request_revision",
+        "state_revision",
+        "state",
+        "accepted_at",
+        "updated_at",
+        "finished_at",
+        "result",
+        "stop",
+        "transient_links"
+      ],
+      "additionalProperties": false,
+      "description": "公開 Web 調査の受付・進捗・完了の応答（B12-02、ADR 0125、設計 10 §5「裏のジョブ」）。completed だけが result を持ち、no_results・held・failed・canceled は stop を持つ。transient_links は応答の時点でメモリにあるときだけ付き、保存する形には含めない。"
     },
     "SourceQuote": {
       "type": "object",

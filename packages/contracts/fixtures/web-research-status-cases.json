@@ -1,0 +1,1656 @@
+{
+  "schema_version": 1,
+  "description": "B12-02 P1 の公開 Web 調査（検索語の検査・永続の出典・受付/進捗/完了の応答）。失敗・0 件・保留・取消を完了と表示できない形と、URL を保存しない既定を固定する（ADR 0125〜0127、設計 05・10 §5）。X18・T08 の予算と検索の上限に関わる。模擬だけ。値は合成で、example.com 等の予約済みドメインだけを使う。",
+  "cases": [
+    {
+      "id": "screening-passed",
+      "schema": "WebQueryScreening",
+      "valid": true,
+      "value": {
+        "schema": "buddy.web-query-screening.v1",
+        "query_id": "00000000-0000-4000-8000-000000000a11",
+        "screened_query": "東京 来週 天気",
+        "input_sources": ["user_question"],
+        "rules_version": 1,
+        "outcome": "passed",
+        "rejected_reasons": [],
+        "screened_at": "2030-01-01T00:00:00Z"
+      },
+      "semantic_errors": []
+    },
+    {
+      "id": "screening-rejected",
+      "schema": "WebQueryScreening",
+      "valid": true,
+      "value": {
+        "schema": "buddy.web-query-screening.v1",
+        "query_id": "00000000-0000-4000-8000-000000000a11",
+        "screened_query": null,
+        "input_sources": ["user_question"],
+        "rules_version": 1,
+        "outcome": "rejected",
+        "rejected_reasons": ["email_address"],
+        "screened_at": "2030-01-01T00:00:00Z"
+      },
+      "semantic_errors": []
+    },
+    {
+      "id": "screening-passed-with-reasons",
+      "schema": "WebQueryScreening",
+      "valid": true,
+      "value": {
+        "schema": "buddy.web-query-screening.v1",
+        "query_id": "00000000-0000-4000-8000-000000000a11",
+        "screened_query": "東京 来週 天気",
+        "input_sources": ["user_question"],
+        "rules_version": 1,
+        "outcome": "passed",
+        "rejected_reasons": ["line_break"],
+        "screened_at": "2030-01-01T00:00:00Z"
+      },
+      "semantic_errors": ["passed_with_reasons"]
+    },
+    {
+      "id": "screening-passed-without-query",
+      "schema": "WebQueryScreening",
+      "valid": true,
+      "value": {
+        "schema": "buddy.web-query-screening.v1",
+        "query_id": "00000000-0000-4000-8000-000000000a11",
+        "screened_query": null,
+        "input_sources": ["user_question"],
+        "rules_version": 1,
+        "outcome": "passed",
+        "rejected_reasons": [],
+        "screened_at": "2030-01-01T00:00:00Z"
+      },
+      "semantic_errors": ["passed_without_query"]
+    },
+    {
+      "id": "screening-rejected-without-reasons",
+      "schema": "WebQueryScreening",
+      "valid": true,
+      "value": {
+        "schema": "buddy.web-query-screening.v1",
+        "query_id": "00000000-0000-4000-8000-000000000a11",
+        "screened_query": null,
+        "input_sources": ["user_question"],
+        "rules_version": 1,
+        "outcome": "rejected",
+        "rejected_reasons": [],
+        "screened_at": "2030-01-01T00:00:00Z"
+      },
+      "semantic_errors": ["rejected_without_reasons"]
+    },
+    {
+      "id": "screening-rejected-stores-query",
+      "schema": "WebQueryScreening",
+      "valid": true,
+      "value": {
+        "schema": "buddy.web-query-screening.v1",
+        "query_id": "00000000-0000-4000-8000-000000000a11",
+        "screened_query": "東京 来週 天気",
+        "input_sources": ["user_question"],
+        "rules_version": 1,
+        "outcome": "rejected",
+        "rejected_reasons": ["phone_number"],
+        "screened_at": "2030-01-01T00:00:00Z"
+      },
+      "semantic_errors": ["rejected_query_stored"]
+    },
+    {
+      "id": "screening-input-from-mail",
+      "schema": "WebQueryScreening",
+      "valid": false,
+      "value": {
+        "schema": "buddy.web-query-screening.v1",
+        "query_id": "00000000-0000-4000-8000-000000000a11",
+        "screened_query": "東京 来週 天気",
+        "input_sources": ["mail_body"],
+        "rules_version": 1,
+        "outcome": "passed",
+        "rejected_reasons": [],
+        "screened_at": "2030-01-01T00:00:00Z"
+      }
+    },
+    {
+      "id": "screening-input-two-sources",
+      "schema": "WebQueryScreening",
+      "valid": false,
+      "value": {
+        "schema": "buddy.web-query-screening.v1",
+        "query_id": "00000000-0000-4000-8000-000000000a11",
+        "screened_query": "東京 来週 天気",
+        "input_sources": ["user_question", "calendar_event"],
+        "rules_version": 1,
+        "outcome": "passed",
+        "rejected_reasons": [],
+        "screened_at": "2030-01-01T00:00:00Z"
+      }
+    },
+    {
+      "id": "screening-rules-version-2",
+      "schema": "WebQueryScreening",
+      "valid": false,
+      "value": {
+        "schema": "buddy.web-query-screening.v1",
+        "query_id": "00000000-0000-4000-8000-000000000a11",
+        "screened_query": "東京 来週 天気",
+        "input_sources": ["user_question"],
+        "rules_version": 2,
+        "outcome": "passed",
+        "rejected_reasons": [],
+        "screened_at": "2030-01-01T00:00:00Z"
+      }
+    },
+    {
+      "id": "screening-unknown-reason",
+      "schema": "WebQueryScreening",
+      "valid": false,
+      "value": {
+        "schema": "buddy.web-query-screening.v1",
+        "query_id": "00000000-0000-4000-8000-000000000a11",
+        "screened_query": null,
+        "input_sources": ["user_question"],
+        "rules_version": 1,
+        "outcome": "rejected",
+        "rejected_reasons": ["looks_private"],
+        "screened_at": "2030-01-01T00:00:00Z"
+      }
+    },
+    {
+      "id": "source-record-page-read",
+      "schema": "WebSourceRecord",
+      "valid": true,
+      "value": {
+        "schema": "buddy.web-source-record.v1",
+        "source_id": "00000000-0000-4000-8000-000000000a21",
+        "query_id": "00000000-0000-4000-8000-000000000a11",
+        "basis": "page_read",
+        "fetched_at": "2030-01-01T00:01:00Z",
+        "page_title": "Synthetic weather page",
+        "excerpt": "Synthetic excerpt taken from the fetched page text.",
+        "summary": "Synthetic summary written from the fetched page text.",
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "url": null
+      },
+      "semantic_errors": []
+    },
+    {
+      "id": "source-record-url-set",
+      "schema": "WebSourceRecord",
+      "valid": true,
+      "value": {
+        "schema": "buddy.web-source-record.v1",
+        "source_id": "00000000-0000-4000-8000-000000000a21",
+        "query_id": "00000000-0000-4000-8000-000000000a11",
+        "basis": "page_read",
+        "fetched_at": "2030-01-01T00:01:00Z",
+        "page_title": "Synthetic weather page",
+        "excerpt": "Synthetic excerpt taken from the fetched page text.",
+        "summary": "Synthetic summary written from the fetched page text.",
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "url": "https://example.com/synthetic-1"
+      },
+      "semantic_errors": []
+    },
+    {
+      "id": "source-record-no-evidence",
+      "schema": "WebSourceRecord",
+      "valid": true,
+      "value": {
+        "schema": "buddy.web-source-record.v1",
+        "source_id": "00000000-0000-4000-8000-000000000a21",
+        "query_id": "00000000-0000-4000-8000-000000000a11",
+        "basis": "page_read",
+        "fetched_at": "2030-01-01T00:01:00Z",
+        "page_title": "Synthetic weather page",
+        "excerpt": null,
+        "summary": null,
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "url": null
+      },
+      "semantic_errors": ["missing_page_evidence"]
+    },
+    {
+      "id": "source-record-search-summary-only",
+      "schema": "WebSourceRecord",
+      "valid": false,
+      "value": {
+        "schema": "buddy.web-source-record.v1",
+        "source_id": "00000000-0000-4000-8000-000000000a21",
+        "query_id": "00000000-0000-4000-8000-000000000a11",
+        "basis": "search_summary_only",
+        "fetched_at": "2030-01-01T00:01:00Z",
+        "page_title": "Synthetic weather page",
+        "excerpt": "Synthetic excerpt taken from the fetched page text.",
+        "summary": "Synthetic summary written from the fetched page text.",
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "url": null
+      }
+    },
+    {
+      "id": "source-record-http-url",
+      "schema": "WebSourceRecord",
+      "valid": false,
+      "value": {
+        "schema": "buddy.web-source-record.v1",
+        "source_id": "00000000-0000-4000-8000-000000000a21",
+        "query_id": "00000000-0000-4000-8000-000000000a11",
+        "basis": "page_read",
+        "fetched_at": "2030-01-01T00:01:00Z",
+        "page_title": "Synthetic weather page",
+        "excerpt": "Synthetic excerpt taken from the fetched page text.",
+        "summary": "Synthetic summary written from the fetched page text.",
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "url": "http://example.com/synthetic-1"
+      }
+    },
+    {
+      "id": "source-record-with-snippet",
+      "schema": "WebSourceRecord",
+      "valid": false,
+      "value": {
+        "schema": "buddy.web-source-record.v1",
+        "source_id": "00000000-0000-4000-8000-000000000a21",
+        "query_id": "00000000-0000-4000-8000-000000000a11",
+        "basis": "page_read",
+        "fetched_at": "2030-01-01T00:01:00Z",
+        "page_title": "Synthetic weather page",
+        "excerpt": "Synthetic excerpt taken from the fetched page text.",
+        "summary": "Synthetic summary written from the fetched page text.",
+        "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "url": null,
+        "snippet": "Synthetic search snippet."
+      }
+    },
+    {
+      "id": "status-accepted",
+      "schema": "WebResearchStatus",
+      "valid": true,
+      "value": {
+        "schema": "buddy.web-research-status.v1",
+        "workflow_id": "00000000-0000-4000-8000-000000000a01",
+        "request_revision": "1",
+        "state_revision": "1",
+        "state": "accepted",
+        "accepted_at": "2030-01-01T00:00:00Z",
+        "updated_at": "2030-01-01T00:00:00Z",
+        "finished_at": null,
+        "result": null,
+        "stop": null,
+        "transient_links": null
+      },
+      "semantic_errors": []
+    },
+    {
+      "id": "status-reading",
+      "schema": "WebResearchStatus",
+      "valid": true,
+      "value": {
+        "schema": "buddy.web-research-status.v1",
+        "workflow_id": "00000000-0000-4000-8000-000000000a01",
+        "request_revision": "1",
+        "state_revision": "3",
+        "state": "reading",
+        "accepted_at": "2030-01-01T00:00:00Z",
+        "updated_at": "2030-01-01T00:01:00Z",
+        "finished_at": null,
+        "result": null,
+        "stop": null,
+        "transient_links": null
+      },
+      "semantic_errors": []
+    },
+    {
+      "id": "status-completed",
+      "schema": "WebResearchStatus",
+      "valid": true,
+      "value": {
+        "schema": "buddy.web-research-status.v1",
+        "workflow_id": "00000000-0000-4000-8000-000000000a01",
+        "request_revision": "1",
+        "state_revision": "5",
+        "state": "completed",
+        "accepted_at": "2030-01-01T00:00:00Z",
+        "updated_at": "2030-01-01T00:01:30Z",
+        "finished_at": "2030-01-01T00:01:30Z",
+        "result": {
+          "summary": "Synthetic research summary built from the pages that were read.",
+          "sources": [
+            {
+              "schema": "buddy.web-source-record.v1",
+              "source_id": "00000000-0000-4000-8000-000000000a21",
+              "query_id": "00000000-0000-4000-8000-000000000a11",
+              "basis": "page_read",
+              "fetched_at": "2030-01-01T00:01:00Z",
+              "page_title": "Synthetic weather page",
+              "excerpt": "Synthetic excerpt taken from the fetched page text.",
+              "summary": "Synthetic summary written from the fetched page text.",
+              "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "url": null
+            },
+            {
+              "schema": "buddy.web-source-record.v1",
+              "source_id": "00000000-0000-4000-8000-000000000a22",
+              "query_id": "00000000-0000-4000-8000-000000000a12",
+              "basis": "page_read",
+              "fetched_at": "2030-01-01T00:01:00Z",
+              "page_title": "Synthetic weather page",
+              "excerpt": null,
+              "summary": "Second synthetic summary.",
+              "content_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "url": null
+            }
+          ],
+          "unread_count": 1,
+          "scope_reduced": false
+        },
+        "stop": null,
+        "transient_links": null
+      },
+      "semantic_errors": []
+    },
+    {
+      "id": "status-completed-with-links",
+      "schema": "WebResearchStatus",
+      "valid": true,
+      "value": {
+        "schema": "buddy.web-research-status.v1",
+        "workflow_id": "00000000-0000-4000-8000-000000000a01",
+        "request_revision": "1",
+        "state_revision": "5",
+        "state": "completed",
+        "accepted_at": "2030-01-01T00:00:00Z",
+        "updated_at": "2030-01-01T00:01:30Z",
+        "finished_at": "2030-01-01T00:01:30Z",
+        "result": {
+          "summary": "Synthetic research summary built from the pages that were read.",
+          "sources": [
+            {
+              "schema": "buddy.web-source-record.v1",
+              "source_id": "00000000-0000-4000-8000-000000000a21",
+              "query_id": "00000000-0000-4000-8000-000000000a11",
+              "basis": "page_read",
+              "fetched_at": "2030-01-01T00:01:00Z",
+              "page_title": "Synthetic weather page",
+              "excerpt": "Synthetic excerpt taken from the fetched page text.",
+              "summary": "Synthetic summary written from the fetched page text.",
+              "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "url": null
+            },
+            {
+              "schema": "buddy.web-source-record.v1",
+              "source_id": "00000000-0000-4000-8000-000000000a22",
+              "query_id": "00000000-0000-4000-8000-000000000a12",
+              "basis": "page_read",
+              "fetched_at": "2030-01-01T00:01:00Z",
+              "page_title": "Synthetic weather page",
+              "excerpt": null,
+              "summary": "Second synthetic summary.",
+              "content_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "url": null
+            }
+          ],
+          "unread_count": 1,
+          "scope_reduced": false
+        },
+        "stop": null,
+        "transient_links": {
+          "retention": "transient_only",
+          "items": [
+            {
+              "source_id": "00000000-0000-4000-8000-000000000a21",
+              "url": "https://example.com/synthetic-1",
+              "title": "Synthetic page"
+            },
+            {
+              "source_id": "00000000-0000-4000-8000-000000000a22",
+              "url": "https://example.com/synthetic-2",
+              "title": null
+            }
+          ]
+        }
+      },
+      "semantic_errors": []
+    },
+    {
+      "id": "status-completed-with-stored-url",
+      "schema": "WebResearchStatus",
+      "valid": true,
+      "value": {
+        "schema": "buddy.web-research-status.v1",
+        "workflow_id": "00000000-0000-4000-8000-000000000a01",
+        "request_revision": "1",
+        "state_revision": "5",
+        "state": "completed",
+        "accepted_at": "2030-01-01T00:00:00Z",
+        "updated_at": "2030-01-01T00:01:30Z",
+        "finished_at": "2030-01-01T00:01:30Z",
+        "result": {
+          "summary": "Synthetic research summary built from the pages that were read.",
+          "sources": [
+            {
+              "schema": "buddy.web-source-record.v1",
+              "source_id": "00000000-0000-4000-8000-000000000a21",
+              "query_id": "00000000-0000-4000-8000-000000000a11",
+              "basis": "page_read",
+              "fetched_at": "2030-01-01T00:01:00Z",
+              "page_title": "Synthetic weather page",
+              "excerpt": "Synthetic excerpt taken from the fetched page text.",
+              "summary": "Synthetic summary written from the fetched page text.",
+              "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "url": "https://example.com/synthetic-1"
+            },
+            {
+              "schema": "buddy.web-source-record.v1",
+              "source_id": "00000000-0000-4000-8000-000000000a22",
+              "query_id": "00000000-0000-4000-8000-000000000a12",
+              "basis": "page_read",
+              "fetched_at": "2030-01-01T00:01:00Z",
+              "page_title": "Synthetic weather page",
+              "excerpt": null,
+              "summary": "Second synthetic summary.",
+              "content_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "url": null
+            }
+          ],
+          "unread_count": 1,
+          "scope_reduced": false
+        },
+        "stop": null,
+        "transient_links": null
+      },
+      "semantic_errors": []
+    },
+    {
+      "id": "status-no-results",
+      "schema": "WebResearchStatus",
+      "valid": true,
+      "value": {
+        "schema": "buddy.web-research-status.v1",
+        "workflow_id": "00000000-0000-4000-8000-000000000a01",
+        "request_revision": "1",
+        "state_revision": "3",
+        "state": "no_results",
+        "accepted_at": "2030-01-01T00:00:00Z",
+        "updated_at": "2030-01-01T00:01:00Z",
+        "finished_at": "2030-01-01T00:01:00Z",
+        "result": null,
+        "stop": {
+          "kind": "no_results",
+          "reason": "zero_hits"
+        },
+        "transient_links": null
+      },
+      "semantic_errors": []
+    },
+    {
+      "id": "status-held",
+      "schema": "WebResearchStatus",
+      "valid": true,
+      "value": {
+        "schema": "buddy.web-research-status.v1",
+        "workflow_id": "00000000-0000-4000-8000-000000000a01",
+        "request_revision": "1",
+        "state_revision": "2",
+        "state": "held",
+        "accepted_at": "2030-01-01T00:00:00Z",
+        "updated_at": "2030-01-01T00:01:00Z",
+        "finished_at": null,
+        "result": null,
+        "stop": {
+          "kind": "held",
+          "reason": "budget_held"
+        },
+        "transient_links": null
+      },
+      "semantic_errors": []
+    },
+    {
+      "id": "status-failed",
+      "schema": "WebResearchStatus",
+      "valid": true,
+      "value": {
+        "schema": "buddy.web-research-status.v1",
+        "workflow_id": "00000000-0000-4000-8000-000000000a01",
+        "request_revision": "1",
+        "state_revision": "4",
+        "state": "failed",
+        "accepted_at": "2030-01-01T00:00:00Z",
+        "updated_at": "2030-01-01T00:01:00Z",
+        "finished_at": "2030-01-01T00:01:00Z",
+        "result": null,
+        "stop": {
+          "kind": "failed",
+          "reason": "no_readable_page"
+        },
+        "transient_links": null
+      },
+      "semantic_errors": []
+    },
+    {
+      "id": "status-canceled",
+      "schema": "WebResearchStatus",
+      "valid": true,
+      "value": {
+        "schema": "buddy.web-research-status.v1",
+        "workflow_id": "00000000-0000-4000-8000-000000000a01",
+        "request_revision": "1",
+        "state_revision": "2",
+        "state": "canceled",
+        "accepted_at": "2030-01-01T00:00:00Z",
+        "updated_at": "2030-01-01T00:01:00Z",
+        "finished_at": "2030-01-01T00:01:00Z",
+        "result": null,
+        "stop": {
+          "kind": "canceled",
+          "reason": "user_canceled"
+        },
+        "transient_links": null
+      },
+      "semantic_errors": []
+    },
+    {
+      "id": "status-completed-without-result",
+      "schema": "WebResearchStatus",
+      "valid": true,
+      "value": {
+        "schema": "buddy.web-research-status.v1",
+        "workflow_id": "00000000-0000-4000-8000-000000000a01",
+        "request_revision": "1",
+        "state_revision": "5",
+        "state": "completed",
+        "accepted_at": "2030-01-01T00:00:00Z",
+        "updated_at": "2030-01-01T00:01:30Z",
+        "finished_at": "2030-01-01T00:01:30Z",
+        "result": null,
+        "stop": null,
+        "transient_links": null
+      },
+      "semantic_errors": ["completed_without_result"]
+    },
+    {
+      "id": "status-completed-with-stop",
+      "schema": "WebResearchStatus",
+      "valid": true,
+      "value": {
+        "schema": "buddy.web-research-status.v1",
+        "workflow_id": "00000000-0000-4000-8000-000000000a01",
+        "request_revision": "1",
+        "state_revision": "5",
+        "state": "completed",
+        "accepted_at": "2030-01-01T00:00:00Z",
+        "updated_at": "2030-01-01T00:01:30Z",
+        "finished_at": "2030-01-01T00:01:30Z",
+        "result": {
+          "summary": "Synthetic research summary built from the pages that were read.",
+          "sources": [
+            {
+              "schema": "buddy.web-source-record.v1",
+              "source_id": "00000000-0000-4000-8000-000000000a21",
+              "query_id": "00000000-0000-4000-8000-000000000a11",
+              "basis": "page_read",
+              "fetched_at": "2030-01-01T00:01:00Z",
+              "page_title": "Synthetic weather page",
+              "excerpt": "Synthetic excerpt taken from the fetched page text.",
+              "summary": "Synthetic summary written from the fetched page text.",
+              "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "url": null
+            },
+            {
+              "schema": "buddy.web-source-record.v1",
+              "source_id": "00000000-0000-4000-8000-000000000a22",
+              "query_id": "00000000-0000-4000-8000-000000000a12",
+              "basis": "page_read",
+              "fetched_at": "2030-01-01T00:01:00Z",
+              "page_title": "Synthetic weather page",
+              "excerpt": null,
+              "summary": "Second synthetic summary.",
+              "content_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "url": null
+            }
+          ],
+          "unread_count": 1,
+          "scope_reduced": false
+        },
+        "stop": {
+          "kind": "failed",
+          "reason": "summary_failed"
+        },
+        "transient_links": null
+      },
+      "semantic_errors": ["completed_with_stop"]
+    },
+    {
+      "id": "status-failed-with-result",
+      "schema": "WebResearchStatus",
+      "valid": true,
+      "value": {
+        "schema": "buddy.web-research-status.v1",
+        "workflow_id": "00000000-0000-4000-8000-000000000a01",
+        "request_revision": "1",
+        "state_revision": "4",
+        "state": "failed",
+        "accepted_at": "2030-01-01T00:00:00Z",
+        "updated_at": "2030-01-01T00:01:00Z",
+        "finished_at": "2030-01-01T00:01:00Z",
+        "result": {
+          "summary": "Synthetic research summary built from the pages that were read.",
+          "sources": [
+            {
+              "schema": "buddy.web-source-record.v1",
+              "source_id": "00000000-0000-4000-8000-000000000a21",
+              "query_id": "00000000-0000-4000-8000-000000000a11",
+              "basis": "page_read",
+              "fetched_at": "2030-01-01T00:01:00Z",
+              "page_title": "Synthetic weather page",
+              "excerpt": "Synthetic excerpt taken from the fetched page text.",
+              "summary": "Synthetic summary written from the fetched page text.",
+              "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "url": null
+            },
+            {
+              "schema": "buddy.web-source-record.v1",
+              "source_id": "00000000-0000-4000-8000-000000000a22",
+              "query_id": "00000000-0000-4000-8000-000000000a12",
+              "basis": "page_read",
+              "fetched_at": "2030-01-01T00:01:00Z",
+              "page_title": "Synthetic weather page",
+              "excerpt": null,
+              "summary": "Second synthetic summary.",
+              "content_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "url": null
+            }
+          ],
+          "unread_count": 1,
+          "scope_reduced": false
+        },
+        "stop": {
+          "kind": "failed",
+          "reason": "search_failed"
+        },
+        "transient_links": null
+      },
+      "semantic_errors": ["result_without_completion"]
+    },
+    {
+      "id": "status-held-with-result",
+      "schema": "WebResearchStatus",
+      "valid": true,
+      "value": {
+        "schema": "buddy.web-research-status.v1",
+        "workflow_id": "00000000-0000-4000-8000-000000000a01",
+        "request_revision": "1",
+        "state_revision": "3",
+        "state": "held",
+        "accepted_at": "2030-01-01T00:00:00Z",
+        "updated_at": "2030-01-01T00:01:00Z",
+        "finished_at": null,
+        "result": {
+          "summary": "Synthetic research summary built from the pages that were read.",
+          "sources": [
+            {
+              "schema": "buddy.web-source-record.v1",
+              "source_id": "00000000-0000-4000-8000-000000000a21",
+              "query_id": "00000000-0000-4000-8000-000000000a11",
+              "basis": "page_read",
+              "fetched_at": "2030-01-01T00:01:00Z",
+              "page_title": "Synthetic weather page",
+              "excerpt": "Synthetic excerpt taken from the fetched page text.",
+              "summary": "Synthetic summary written from the fetched page text.",
+              "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "url": null
+            },
+            {
+              "schema": "buddy.web-source-record.v1",
+              "source_id": "00000000-0000-4000-8000-000000000a22",
+              "query_id": "00000000-0000-4000-8000-000000000a12",
+              "basis": "page_read",
+              "fetched_at": "2030-01-01T00:01:00Z",
+              "page_title": "Synthetic weather page",
+              "excerpt": null,
+              "summary": "Second synthetic summary.",
+              "content_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "url": null
+            }
+          ],
+          "unread_count": 1,
+          "scope_reduced": false
+        },
+        "stop": {
+          "kind": "held",
+          "reason": "budget_held"
+        },
+        "transient_links": null
+      },
+      "semantic_errors": ["result_without_completion"]
+    },
+    {
+      "id": "status-failed-without-stop",
+      "schema": "WebResearchStatus",
+      "valid": true,
+      "value": {
+        "schema": "buddy.web-research-status.v1",
+        "workflow_id": "00000000-0000-4000-8000-000000000a01",
+        "request_revision": "1",
+        "state_revision": "4",
+        "state": "failed",
+        "accepted_at": "2030-01-01T00:00:00Z",
+        "updated_at": "2030-01-01T00:01:00Z",
+        "finished_at": "2030-01-01T00:01:00Z",
+        "result": null,
+        "stop": null,
+        "transient_links": null
+      },
+      "semantic_errors": ["stop_missing"]
+    },
+    {
+      "id": "status-failed-without-finish",
+      "schema": "WebResearchStatus",
+      "valid": true,
+      "value": {
+        "schema": "buddy.web-research-status.v1",
+        "workflow_id": "00000000-0000-4000-8000-000000000a01",
+        "request_revision": "1",
+        "state_revision": "4",
+        "state": "failed",
+        "accepted_at": "2030-01-01T00:00:00Z",
+        "updated_at": "2030-01-01T00:01:00Z",
+        "finished_at": null,
+        "result": null,
+        "stop": {
+          "kind": "failed",
+          "reason": "search_failed"
+        },
+        "transient_links": null
+      },
+      "semantic_errors": ["finished_at_missing"]
+    },
+    {
+      "id": "status-reading-with-links",
+      "schema": "WebResearchStatus",
+      "valid": true,
+      "value": {
+        "schema": "buddy.web-research-status.v1",
+        "workflow_id": "00000000-0000-4000-8000-000000000a01",
+        "request_revision": "1",
+        "state_revision": "3",
+        "state": "reading",
+        "accepted_at": "2030-01-01T00:00:00Z",
+        "updated_at": "2030-01-01T00:01:00Z",
+        "finished_at": null,
+        "result": null,
+        "stop": null,
+        "transient_links": {
+          "retention": "transient_only",
+          "items": [
+            {
+              "source_id": "00000000-0000-4000-8000-000000000a21",
+              "url": "https://example.com/synthetic-1",
+              "title": "Synthetic page"
+            },
+            {
+              "source_id": "00000000-0000-4000-8000-000000000a22",
+              "url": "https://example.com/synthetic-2",
+              "title": null
+            }
+          ]
+        }
+      },
+      "semantic_errors": ["transient_links_without_completion"]
+    },
+    {
+      "id": "status-in-progress-with-stop",
+      "schema": "WebResearchStatus",
+      "valid": true,
+      "value": {
+        "schema": "buddy.web-research-status.v1",
+        "workflow_id": "00000000-0000-4000-8000-000000000a01",
+        "request_revision": "1",
+        "state_revision": "2",
+        "state": "searching",
+        "accepted_at": "2030-01-01T00:00:00Z",
+        "updated_at": "2030-01-01T00:01:00Z",
+        "finished_at": null,
+        "result": null,
+        "stop": {
+          "kind": "failed",
+          "reason": "search_failed"
+        },
+        "transient_links": null
+      },
+      "semantic_errors": ["stop_in_progress"]
+    },
+    {
+      "id": "status-completed-no-sources",
+      "schema": "WebResearchStatus",
+      "valid": false,
+      "value": {
+        "schema": "buddy.web-research-status.v1",
+        "workflow_id": "00000000-0000-4000-8000-000000000a01",
+        "request_revision": "1",
+        "state_revision": "5",
+        "state": "completed",
+        "accepted_at": "2030-01-01T00:00:00Z",
+        "updated_at": "2030-01-01T00:01:30Z",
+        "finished_at": "2030-01-01T00:01:30Z",
+        "result": {
+          "summary": "Synthetic research summary built from the pages that were read.",
+          "sources": [],
+          "unread_count": 1,
+          "scope_reduced": false
+        },
+        "stop": null,
+        "transient_links": null
+      }
+    },
+    {
+      "id": "status-completed-seven-sources",
+      "schema": "WebResearchStatus",
+      "valid": false,
+      "value": {
+        "schema": "buddy.web-research-status.v1",
+        "workflow_id": "00000000-0000-4000-8000-000000000a01",
+        "request_revision": "1",
+        "state_revision": "5",
+        "state": "completed",
+        "accepted_at": "2030-01-01T00:00:00Z",
+        "updated_at": "2030-01-01T00:01:30Z",
+        "finished_at": "2030-01-01T00:01:30Z",
+        "result": {
+          "summary": "Synthetic research summary built from the pages that were read.",
+          "sources": [
+            {
+              "schema": "buddy.web-source-record.v1",
+              "source_id": "00000000-0000-4000-8000-000000000a21",
+              "query_id": "00000000-0000-4000-8000-000000000a11",
+              "basis": "page_read",
+              "fetched_at": "2030-01-01T00:01:00Z",
+              "page_title": "Synthetic weather page",
+              "excerpt": "Synthetic excerpt taken from the fetched page text.",
+              "summary": "Synthetic summary written from the fetched page text.",
+              "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "url": null
+            },
+            {
+              "schema": "buddy.web-source-record.v1",
+              "source_id": "00000000-0000-4000-8000-000000000a22",
+              "query_id": "00000000-0000-4000-8000-000000000a12",
+              "basis": "page_read",
+              "fetched_at": "2030-01-01T00:01:00Z",
+              "page_title": "Synthetic weather page",
+              "excerpt": null,
+              "summary": "Second synthetic summary.",
+              "content_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "url": null
+            },
+            {
+              "schema": "buddy.web-source-record.v1",
+              "source_id": "00000000-0000-4000-8000-000000000a21",
+              "query_id": "00000000-0000-4000-8000-000000000a11",
+              "basis": "page_read",
+              "fetched_at": "2030-01-01T00:01:00Z",
+              "page_title": "Synthetic weather page",
+              "excerpt": "Synthetic excerpt taken from the fetched page text.",
+              "summary": "Synthetic summary written from the fetched page text.",
+              "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "url": null
+            },
+            {
+              "schema": "buddy.web-source-record.v1",
+              "source_id": "00000000-0000-4000-8000-000000000a21",
+              "query_id": "00000000-0000-4000-8000-000000000a11",
+              "basis": "page_read",
+              "fetched_at": "2030-01-01T00:01:00Z",
+              "page_title": "Synthetic weather page",
+              "excerpt": "Synthetic excerpt taken from the fetched page text.",
+              "summary": "Synthetic summary written from the fetched page text.",
+              "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "url": null
+            },
+            {
+              "schema": "buddy.web-source-record.v1",
+              "source_id": "00000000-0000-4000-8000-000000000a21",
+              "query_id": "00000000-0000-4000-8000-000000000a11",
+              "basis": "page_read",
+              "fetched_at": "2030-01-01T00:01:00Z",
+              "page_title": "Synthetic weather page",
+              "excerpt": "Synthetic excerpt taken from the fetched page text.",
+              "summary": "Synthetic summary written from the fetched page text.",
+              "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "url": null
+            },
+            {
+              "schema": "buddy.web-source-record.v1",
+              "source_id": "00000000-0000-4000-8000-000000000a21",
+              "query_id": "00000000-0000-4000-8000-000000000a11",
+              "basis": "page_read",
+              "fetched_at": "2030-01-01T00:01:00Z",
+              "page_title": "Synthetic weather page",
+              "excerpt": "Synthetic excerpt taken from the fetched page text.",
+              "summary": "Synthetic summary written from the fetched page text.",
+              "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "url": null
+            },
+            {
+              "schema": "buddy.web-source-record.v1",
+              "source_id": "00000000-0000-4000-8000-000000000a21",
+              "query_id": "00000000-0000-4000-8000-000000000a11",
+              "basis": "page_read",
+              "fetched_at": "2030-01-01T00:01:00Z",
+              "page_title": "Synthetic weather page",
+              "excerpt": "Synthetic excerpt taken from the fetched page text.",
+              "summary": "Synthetic summary written from the fetched page text.",
+              "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "url": null
+            }
+          ],
+          "unread_count": 1,
+          "scope_reduced": false
+        },
+        "stop": null,
+        "transient_links": null
+      }
+    },
+    {
+      "id": "status-unknown-state",
+      "schema": "WebResearchStatus",
+      "valid": false,
+      "value": {
+        "schema": "buddy.web-research-status.v1",
+        "workflow_id": "00000000-0000-4000-8000-000000000a01",
+        "request_revision": "1",
+        "state_revision": "1",
+        "state": "done",
+        "accepted_at": "2030-01-01T00:00:00Z",
+        "updated_at": "2030-01-01T00:00:00Z",
+        "finished_at": null,
+        "result": null,
+        "stop": null,
+        "transient_links": null
+      }
+    },
+    {
+      "id": "status-unknown-reason",
+      "schema": "WebResearchStatus",
+      "valid": false,
+      "value": {
+        "schema": "buddy.web-research-status.v1",
+        "workflow_id": "00000000-0000-4000-8000-000000000a01",
+        "request_revision": "1",
+        "state_revision": "1",
+        "state": "failed",
+        "accepted_at": "2030-01-01T00:00:00Z",
+        "updated_at": "2030-01-01T00:00:00Z",
+        "finished_at": "2030-01-01T00:01:00Z",
+        "result": null,
+        "stop": {
+          "kind": "failed",
+          "reason": "unknown_error"
+        },
+        "transient_links": null
+      }
+    },
+    {
+      "id": "status-links-persistent",
+      "schema": "WebResearchStatus",
+      "valid": false,
+      "value": {
+        "schema": "buddy.web-research-status.v1",
+        "workflow_id": "00000000-0000-4000-8000-000000000a01",
+        "request_revision": "1",
+        "state_revision": "5",
+        "state": "completed",
+        "accepted_at": "2030-01-01T00:00:00Z",
+        "updated_at": "2030-01-01T00:01:30Z",
+        "finished_at": "2030-01-01T00:01:30Z",
+        "result": {
+          "summary": "Synthetic research summary built from the pages that were read.",
+          "sources": [
+            {
+              "schema": "buddy.web-source-record.v1",
+              "source_id": "00000000-0000-4000-8000-000000000a21",
+              "query_id": "00000000-0000-4000-8000-000000000a11",
+              "basis": "page_read",
+              "fetched_at": "2030-01-01T00:01:00Z",
+              "page_title": "Synthetic weather page",
+              "excerpt": "Synthetic excerpt taken from the fetched page text.",
+              "summary": "Synthetic summary written from the fetched page text.",
+              "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "url": null
+            },
+            {
+              "schema": "buddy.web-source-record.v1",
+              "source_id": "00000000-0000-4000-8000-000000000a22",
+              "query_id": "00000000-0000-4000-8000-000000000a12",
+              "basis": "page_read",
+              "fetched_at": "2030-01-01T00:01:00Z",
+              "page_title": "Synthetic weather page",
+              "excerpt": null,
+              "summary": "Second synthetic summary.",
+              "content_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "url": null
+            }
+          ],
+          "unread_count": 1,
+          "scope_reduced": false
+        },
+        "stop": null,
+        "transient_links": {
+          "retention": "persistent",
+          "items": [
+            {
+              "source_id": "00000000-0000-4000-8000-000000000a21",
+              "url": "https://example.com/synthetic-1",
+              "title": "Synthetic page"
+            },
+            {
+              "source_id": "00000000-0000-4000-8000-000000000a22",
+              "url": "https://example.com/synthetic-2",
+              "title": null
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "status-with-search-snippets",
+      "schema": "WebResearchStatus",
+      "valid": false,
+      "value": {
+        "schema": "buddy.web-research-status.v1",
+        "workflow_id": "00000000-0000-4000-8000-000000000a01",
+        "request_revision": "1",
+        "state_revision": "5",
+        "state": "completed",
+        "accepted_at": "2030-01-01T00:00:00Z",
+        "updated_at": "2030-01-01T00:01:30Z",
+        "finished_at": "2030-01-01T00:01:30Z",
+        "result": {
+          "summary": "Synthetic research summary built from the pages that were read.",
+          "sources": [
+            {
+              "schema": "buddy.web-source-record.v1",
+              "source_id": "00000000-0000-4000-8000-000000000a21",
+              "query_id": "00000000-0000-4000-8000-000000000a11",
+              "basis": "page_read",
+              "fetched_at": "2030-01-01T00:01:00Z",
+              "page_title": "Synthetic weather page",
+              "excerpt": "Synthetic excerpt taken from the fetched page text.",
+              "summary": "Synthetic summary written from the fetched page text.",
+              "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "url": null
+            },
+            {
+              "schema": "buddy.web-source-record.v1",
+              "source_id": "00000000-0000-4000-8000-000000000a22",
+              "query_id": "00000000-0000-4000-8000-000000000a12",
+              "basis": "page_read",
+              "fetched_at": "2030-01-01T00:01:00Z",
+              "page_title": "Synthetic weather page",
+              "excerpt": null,
+              "summary": "Second synthetic summary.",
+              "content_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "url": null
+            }
+          ],
+          "unread_count": 1,
+          "scope_reduced": false
+        },
+        "stop": null,
+        "transient_links": null,
+        "snippets": ["Synthetic search snippet."]
+      }
+    }
+  ],
+  "domain_cases": {
+    "query_reasons": [
+      {
+        "id": "general-japanese",
+        "query": "東京 来週 天気",
+        "expected": []
+      },
+      {
+        "id": "date-and-numbers",
+        "query": "2026年11月14日 12-345 の天気",
+        "expected": []
+      },
+      {
+        "id": "iso-date",
+        "query": "release schedule 2026-11-14",
+        "expected": []
+      },
+      {
+        "id": "empty",
+        "query": "",
+        "expected": ["empty"]
+      },
+      {
+        "id": "spaces-only",
+        "query": "   ",
+        "expected": ["empty"]
+      },
+      {
+        "id": "email",
+        "query": "contact taro@example.com about the schedule",
+        "expected": ["email_address"]
+      },
+      {
+        "id": "email-fullwidth-at",
+        "query": "taro＠example.com に問い合わせ",
+        "expected": ["email_address"]
+      },
+      {
+        "id": "phone-hyphens",
+        "query": "090-1234-5678 の持ち主",
+        "expected": ["phone_number"]
+      },
+      {
+        "id": "phone-fullwidth",
+        "query": "０９０－１２３４－５６７８ に電話",
+        "expected": ["phone_number"]
+      },
+      {
+        "id": "two-lines",
+        "query": "件名: 打ち合わせ\n本文: 明日の予定",
+        "expected": ["line_break"]
+      },
+      {
+        "id": "url",
+        "query": "see https://example.com/page",
+        "expected": ["contains_url"]
+      },
+      {
+        "id": "url-with-credentials",
+        "query": "https://user@example.com/private",
+        "expected": ["email_address", "contains_url"]
+      },
+      {
+        "id": "email-and-url",
+        "query": "mail a@example.com see https://example.com/",
+        "expected": ["email_address", "contains_url"]
+      }
+    ],
+    "admission": [
+      {
+        "id": "passed-and-matching",
+        "request": {
+          "query_id": "00000000-0000-4000-8000-000000000a11",
+          "query": "東京 来週 天気"
+        },
+        "screening": {
+          "schema": "buddy.web-query-screening.v1",
+          "query_id": "00000000-0000-4000-8000-000000000a11",
+          "screened_query": "東京 来週 天気",
+          "input_sources": ["user_question"],
+          "rules_version": 1,
+          "outcome": "passed",
+          "rejected_reasons": [],
+          "screened_at": "2030-01-01T00:00:00Z"
+        },
+        "expected": []
+      },
+      {
+        "id": "no-screening",
+        "request": {
+          "query_id": "00000000-0000-4000-8000-000000000a11",
+          "query": "東京 来週 天気"
+        },
+        "screening": null,
+        "expected": ["screening_missing"]
+      },
+      {
+        "id": "other-query-id",
+        "request": {
+          "query_id": "00000000-0000-4000-8000-000000000a12",
+          "query": "東京 来週 天気"
+        },
+        "screening": {
+          "schema": "buddy.web-query-screening.v1",
+          "query_id": "00000000-0000-4000-8000-000000000a11",
+          "screened_query": "東京 来週 天気",
+          "input_sources": ["user_question"],
+          "rules_version": 1,
+          "outcome": "passed",
+          "rejected_reasons": [],
+          "screened_at": "2030-01-01T00:00:00Z"
+        },
+        "expected": ["screening_query_id_mismatch"]
+      },
+      {
+        "id": "query-changed-after-screening",
+        "request": {
+          "query_id": "00000000-0000-4000-8000-000000000a11",
+          "query": "東京 来週 天気 予報"
+        },
+        "screening": {
+          "schema": "buddy.web-query-screening.v1",
+          "query_id": "00000000-0000-4000-8000-000000000a11",
+          "screened_query": "東京 来週 天気",
+          "input_sources": ["user_question"],
+          "rules_version": 1,
+          "outcome": "passed",
+          "rejected_reasons": [],
+          "screened_at": "2030-01-01T00:00:00Z"
+        },
+        "expected": ["screening_query_mismatch"]
+      },
+      {
+        "id": "rejected-record",
+        "request": {
+          "query_id": "00000000-0000-4000-8000-000000000a11",
+          "query": "東京 来週 天気"
+        },
+        "screening": {
+          "schema": "buddy.web-query-screening.v1",
+          "query_id": "00000000-0000-4000-8000-000000000a11",
+          "screened_query": null,
+          "input_sources": ["user_question"],
+          "rules_version": 1,
+          "outcome": "rejected",
+          "rejected_reasons": ["email_address"],
+          "screened_at": "2030-01-01T00:00:00Z"
+        },
+        "expected": ["screening_not_passed", "screening_query_mismatch"]
+      },
+      {
+        "id": "input-from-mail",
+        "request": {
+          "query_id": "00000000-0000-4000-8000-000000000a11",
+          "query": "東京 来週 天気"
+        },
+        "screening": {
+          "schema": "buddy.web-query-screening.v1",
+          "query_id": "00000000-0000-4000-8000-000000000a11",
+          "screened_query": "東京 来週 天気",
+          "input_sources": ["mail_body"],
+          "rules_version": 1,
+          "outcome": "passed",
+          "rejected_reasons": [],
+          "screened_at": "2030-01-01T00:00:00Z"
+        },
+        "expected": ["screening_input_source"]
+      },
+      {
+        "id": "old-rules",
+        "request": {
+          "query_id": "00000000-0000-4000-8000-000000000a11",
+          "query": "東京 来週 天気"
+        },
+        "screening": {
+          "schema": "buddy.web-query-screening.v1",
+          "query_id": "00000000-0000-4000-8000-000000000a11",
+          "screened_query": "東京 来週 天気",
+          "input_sources": ["user_question"],
+          "rules_version": 0,
+          "outcome": "passed",
+          "rejected_reasons": [],
+          "screened_at": "2030-01-01T00:00:00Z"
+        },
+        "expected": ["screening_rules_version"]
+      },
+      {
+        "id": "forged-passed-with-email",
+        "request": {
+          "query_id": "00000000-0000-4000-8000-000000000a11",
+          "query": "mail a@example.com"
+        },
+        "screening": {
+          "schema": "buddy.web-query-screening.v1",
+          "query_id": "00000000-0000-4000-8000-000000000a11",
+          "screened_query": "mail a@example.com",
+          "input_sources": ["user_question"],
+          "rules_version": 1,
+          "outcome": "passed",
+          "rejected_reasons": [],
+          "screened_at": "2030-01-01T00:00:00Z"
+        },
+        "expected": ["query_email_address"]
+      }
+    ],
+    "source_policy": [
+      {
+        "id": "no-url-undecided",
+        "source": {
+          "schema": "buddy.web-source-record.v1",
+          "source_id": "00000000-0000-4000-8000-000000000a21",
+          "query_id": "00000000-0000-4000-8000-000000000a11",
+          "basis": "page_read",
+          "fetched_at": "2030-01-01T00:01:00Z",
+          "page_title": "Synthetic weather page",
+          "excerpt": "Synthetic excerpt taken from the fetched page text.",
+          "summary": "Synthetic summary written from the fetched page text.",
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "url": null
+        },
+        "policy": {
+          "url_storage": "undecided"
+        },
+        "expected": []
+      },
+      {
+        "id": "url-undecided",
+        "source": {
+          "schema": "buddy.web-source-record.v1",
+          "source_id": "00000000-0000-4000-8000-000000000a21",
+          "query_id": "00000000-0000-4000-8000-000000000a11",
+          "basis": "page_read",
+          "fetched_at": "2030-01-01T00:01:00Z",
+          "page_title": "Synthetic weather page",
+          "excerpt": "Synthetic excerpt taken from the fetched page text.",
+          "summary": "Synthetic summary written from the fetched page text.",
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "url": "https://example.com/synthetic-1"
+        },
+        "policy": {
+          "url_storage": "undecided"
+        },
+        "expected": ["url_not_storable"]
+      },
+      {
+        "id": "url-disallowed",
+        "source": {
+          "schema": "buddy.web-source-record.v1",
+          "source_id": "00000000-0000-4000-8000-000000000a21",
+          "query_id": "00000000-0000-4000-8000-000000000a11",
+          "basis": "page_read",
+          "fetched_at": "2030-01-01T00:01:00Z",
+          "page_title": "Synthetic weather page",
+          "excerpt": "Synthetic excerpt taken from the fetched page text.",
+          "summary": "Synthetic summary written from the fetched page text.",
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "url": "https://example.com/synthetic-1"
+        },
+        "policy": {
+          "url_storage": "disallowed"
+        },
+        "expected": ["url_not_storable"]
+      },
+      {
+        "id": "url-allowed",
+        "source": {
+          "schema": "buddy.web-source-record.v1",
+          "source_id": "00000000-0000-4000-8000-000000000a21",
+          "query_id": "00000000-0000-4000-8000-000000000a11",
+          "basis": "page_read",
+          "fetched_at": "2030-01-01T00:01:00Z",
+          "page_title": "Synthetic weather page",
+          "excerpt": "Synthetic excerpt taken from the fetched page text.",
+          "summary": "Synthetic summary written from the fetched page text.",
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "url": "https://example.com/synthetic-1"
+        },
+        "policy": {
+          "url_storage": "allowed"
+        },
+        "expected": []
+      },
+      {
+        "id": "search-summary-basis",
+        "source": {
+          "schema": "buddy.web-source-record.v1",
+          "source_id": "00000000-0000-4000-8000-000000000a21",
+          "query_id": "00000000-0000-4000-8000-000000000a11",
+          "basis": "search_summary_only",
+          "fetched_at": "2030-01-01T00:01:00Z",
+          "page_title": "Synthetic weather page",
+          "excerpt": "Synthetic excerpt taken from the fetched page text.",
+          "summary": "Synthetic summary written from the fetched page text.",
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "url": null
+        },
+        "policy": {
+          "url_storage": "undecided"
+        },
+        "expected": ["basis_not_page_read"]
+      },
+      {
+        "id": "no-evidence",
+        "source": {
+          "schema": "buddy.web-source-record.v1",
+          "source_id": "00000000-0000-4000-8000-000000000a21",
+          "query_id": "00000000-0000-4000-8000-000000000a11",
+          "basis": "page_read",
+          "fetched_at": "2030-01-01T00:01:00Z",
+          "page_title": "Synthetic weather page",
+          "excerpt": null,
+          "summary": null,
+          "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "url": null
+        },
+        "policy": {
+          "url_storage": "undecided"
+        },
+        "expected": ["missing_page_evidence"]
+      }
+    ],
+    "status": [
+      {
+        "ref": "status-accepted",
+        "policy": {
+          "url_storage": "undecided"
+        },
+        "expected": [],
+        "label": "accepted"
+      },
+      {
+        "ref": "status-reading",
+        "policy": {
+          "url_storage": "undecided"
+        },
+        "expected": [],
+        "label": "in_progress"
+      },
+      {
+        "ref": "status-completed",
+        "policy": {
+          "url_storage": "undecided"
+        },
+        "expected": [],
+        "label": "completed"
+      },
+      {
+        "ref": "status-completed-with-links",
+        "policy": {
+          "url_storage": "undecided"
+        },
+        "expected": [],
+        "label": "completed"
+      },
+      {
+        "ref": "status-completed-with-stored-url",
+        "policy": {
+          "url_storage": "undecided"
+        },
+        "expected": ["source_url_not_storable"],
+        "label": "unconfirmed"
+      },
+      {
+        "ref": "status-completed-with-stored-url",
+        "policy": {
+          "url_storage": "disallowed"
+        },
+        "expected": ["source_url_not_storable"],
+        "label": "unconfirmed"
+      },
+      {
+        "ref": "status-completed-with-stored-url",
+        "policy": {
+          "url_storage": "allowed"
+        },
+        "expected": [],
+        "label": "completed"
+      },
+      {
+        "ref": "status-no-results",
+        "policy": {
+          "url_storage": "undecided"
+        },
+        "expected": [],
+        "label": "no_results"
+      },
+      {
+        "ref": "status-held",
+        "policy": {
+          "url_storage": "undecided"
+        },
+        "expected": [],
+        "label": "held"
+      },
+      {
+        "ref": "status-failed",
+        "policy": {
+          "url_storage": "undecided"
+        },
+        "expected": [],
+        "label": "failed"
+      },
+      {
+        "ref": "status-canceled",
+        "policy": {
+          "url_storage": "undecided"
+        },
+        "expected": [],
+        "label": "canceled"
+      },
+      {
+        "ref": "status-completed-without-result",
+        "policy": {
+          "url_storage": "undecided"
+        },
+        "expected": ["completed_without_result"],
+        "label": "unconfirmed"
+      },
+      {
+        "ref": "status-completed-with-stop",
+        "policy": {
+          "url_storage": "undecided"
+        },
+        "expected": ["completed_with_stop"],
+        "label": "unconfirmed"
+      },
+      {
+        "ref": "status-failed-with-result",
+        "policy": {
+          "url_storage": "undecided"
+        },
+        "expected": ["result_without_completion"],
+        "label": "unconfirmed"
+      },
+      {
+        "ref": "status-held-with-result",
+        "policy": {
+          "url_storage": "undecided"
+        },
+        "expected": ["result_without_completion"],
+        "label": "unconfirmed"
+      },
+      {
+        "ref": "status-failed-without-stop",
+        "policy": {
+          "url_storage": "undecided"
+        },
+        "expected": ["stop_missing"],
+        "label": "unconfirmed"
+      },
+      {
+        "ref": "status-failed-without-finish",
+        "policy": {
+          "url_storage": "undecided"
+        },
+        "expected": ["finished_at_missing"],
+        "label": "unconfirmed"
+      },
+      {
+        "ref": "status-reading-with-links",
+        "policy": {
+          "url_storage": "undecided"
+        },
+        "expected": ["transient_links_without_completion"],
+        "label": "unconfirmed"
+      },
+      {
+        "ref": "status-in-progress-with-stop",
+        "policy": {
+          "url_storage": "undecided"
+        },
+        "expected": ["stop_in_progress"],
+        "label": "unconfirmed"
+      }
+    ],
+    "transitions": {
+      "accepted": ["searching", "held", "failed", "canceled"],
+      "searching": ["reading", "no_results", "held", "failed", "canceled"],
+      "reading": ["searching", "summarizing", "held", "failed", "canceled"],
+      "summarizing": ["completed", "held", "failed", "canceled"],
+      "held": ["searching", "canceled"],
+      "completed": [],
+      "no_results": [],
+      "failed": [],
+      "canceled": []
+    },
+    "notification": [
+      {
+        "ref": "status-completed",
+        "policy": {
+          "url_storage": "undecided"
+        },
+        "expected": {
+          "kind": "research_done",
+          "workflow_id": "00000000-0000-4000-8000-000000000a01",
+          "completion_version": "5"
+        }
+      },
+      {
+        "ref": "status-failed",
+        "policy": {
+          "url_storage": "undecided"
+        },
+        "expected": null
+      },
+      {
+        "ref": "status-no-results",
+        "policy": {
+          "url_storage": "undecided"
+        },
+        "expected": null
+      },
+      {
+        "ref": "status-held",
+        "policy": {
+          "url_storage": "undecided"
+        },
+        "expected": null
+      },
+      {
+        "ref": "status-canceled",
+        "policy": {
+          "url_storage": "undecided"
+        },
+        "expected": null
+      },
+      {
+        "ref": "status-accepted",
+        "policy": {
+          "url_storage": "undecided"
+        },
+        "expected": null
+      },
+      {
+        "ref": "status-completed-without-result",
+        "policy": {
+          "url_storage": "undecided"
+        },
+        "expected": null
+      },
+      {
+        "ref": "status-failed-with-result",
+        "policy": {
+          "url_storage": "undecided"
+        },
+        "expected": null
+      }
+    ]
+  }
+}

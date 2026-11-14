@@ -80,6 +80,13 @@ const twelfthBytes = readFileSync(
   new URL('0012_forget_and_restore.sql', MIGRATIONS_DIR),
 );
 const twelfthSha = createHash('sha256').update(twelfthBytes).digest('hex');
+// 0013（ADR 0118）: 気づき（候補）の表の作り直し（期限・受信・スヌーズ・関連解析の列と、遷移・閉じた候補の trigger）。
+const thirteenthBytes = readFileSync(
+  new URL('0013_candidates.sql', MIGRATIONS_DIR),
+);
+const thirteenthSha = createHash('sha256')
+  .update(thirteenthBytes)
+  .digest('hex');
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
 
 function withTempDir(run: (dir: string) => void): void {
@@ -140,7 +147,7 @@ function schemaSnapshot(db: SqliteDatabase): unknown {
   };
 }
 
-test('0001 to 0012 apply to a temporary file DB: 53 STRICT tables, version 12 and the content hashes', () => {
+test('0001 to 0013 apply to a temporary file DB: 53 STRICT tables, version 13 and the content hashes', () => {
   withTempDir((dir) => {
     const path = join(dir, 'buddy.sqlite');
     const db = openWriteConnection(path, { platform: 'macos' });
@@ -148,8 +155,8 @@ test('0001 to 0012 apply to a temporary file DB: 53 STRICT tables, version 12 an
       assert.equal(readSchemaVersion(db), 0);
       assert.deepEqual(applyMigrations(db), {
         from: 0,
-        to: 12,
-        applied: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+        to: 13,
+        applied: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13],
       });
       const tables = tableNames(db);
       assert.equal(tables.length, 53);
@@ -174,20 +181,21 @@ test('0001 to 0012 apply to a temporary file DB: 53 STRICT tables, version 12 an
         'migration_sha256:0010': tenthSha,
         'migration_sha256:0011': eleventhSha,
         'migration_sha256:0012': twelfthSha,
-        schema_version: '12',
+        'migration_sha256:0013': thirteenthSha,
+        schema_version: '13',
       });
       assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
       assert.equal(db.pragma('integrity_check', { simple: true }), 'ok');
     } finally {
       db.close();
     }
-    // 開き直しても版は 12 のまま、適用するものはない。
+    // 開き直しても版は 13 のまま、適用するものはない。
     const reopened = openWriteConnection(path, { platform: 'macos' });
     try {
-      assert.equal(readSchemaVersion(reopened), 12);
+      assert.equal(readSchemaVersion(reopened), 13);
       assert.deepEqual(applyMigrations(reopened), {
-        from: 12,
-        to: 12,
+        from: 13,
+        to: 13,
         applied: [],
       });
     } finally {
@@ -366,6 +374,7 @@ test('migration files are numbered from 1 without gaps and contain no transactio
       [10, '0010_retention.sql'],
       [11, '0011_operation_body_retention.sql'],
       [12, '0012_forget_and_restore.sql'],
+      [13, '0013_candidates.sql'],
     ],
   );
   withTempDir((dir) => {
@@ -1009,4 +1018,89 @@ test('0010 upgrades a version 9 DB and keeps operations, approvals and budget ro
       db.close();
     }
   });
+});
+
+// 0013（ADR 0118）: 版 12 の DB を 13 へ移す。各状態の旧形式の行がそのまま移り、再通知の時刻を持たない旧 snoozed は
+// new に戻る（新しい CHECK は、snoozed のときだけ snooze_until がある。U276）。新しい列は既定になる。
+test('0013 upgrades a version 12 DB: every state migrates, a legacy snoozed row returns to new, new columns take their defaults', () => {
+  withTempDir((dir) => {
+    const path = join(dir, 'buddy.sqlite');
+    const db = openWriteConnection(path, { platform: 'macos' });
+    try {
+      applyMigrations(db, loadMigrations().slice(0, 12));
+      const closed = 1_000_000;
+      // 閉じた時刻の 7 日（604_800_000）+ 90 日（7_776_000_000）後が識別子の期限。手で足した値: 8_381_800_000。
+      const keyDelete = 8_381_800_000;
+      for (const sql of [
+        "INSERT INTO request_entities (request_entity_id, source_account_id, thread_id, origin_message_id, request_revision, state, summary_blob_id, created_at, delete_at) VALUES ('e-1', 'acct-a', 'th-1', 'msg-1', 2, 'active', NULL, 900, NULL)",
+        "INSERT INTO notification_candidates (candidate_id, request_entity_id, request_revision, source_revision, kind, notification_key, title_blob_id, excerpt_blob_id, state, closed_at, key_delete_at) VALUES ('c-new', 'e-1', 2, 'rev-1', 'mail_reply', 'k-new', NULL, NULL, 'new', NULL, NULL)",
+        "INSERT INTO notification_candidates (candidate_id, request_entity_id, request_revision, source_revision, kind, notification_key, title_blob_id, excerpt_blob_id, state, closed_at, key_delete_at) VALUES ('c-seen', NULL, NULL, NULL, 'mail_deadline', 'k-seen', NULL, NULL, 'seen', NULL, NULL)",
+        "INSERT INTO notification_candidates (candidate_id, request_entity_id, request_revision, source_revision, kind, notification_key, title_blob_id, excerpt_blob_id, state, closed_at, key_delete_at) VALUES ('c-acted', NULL, NULL, NULL, 'schedule_overlap', 'k-acted', NULL, NULL, 'acted', NULL, NULL)",
+        "INSERT INTO notification_candidates (candidate_id, request_entity_id, request_revision, source_revision, kind, notification_key, title_blob_id, excerpt_blob_id, state, closed_at, key_delete_at) VALUES ('c-snoozed', NULL, NULL, NULL, 'research_done', 'k-snoozed', NULL, NULL, 'snoozed', NULL, NULL)",
+        `INSERT INTO notification_candidates (candidate_id, request_entity_id, request_revision, source_revision, kind, notification_key, title_blob_id, excerpt_blob_id, state, closed_at, key_delete_at) VALUES ('c-dismissed', NULL, NULL, NULL, 'mail_reply', 'k-dismissed', NULL, NULL, 'dismissed', ${closed}, ${keyDelete})`,
+        `INSERT INTO notification_candidates (candidate_id, request_entity_id, request_revision, source_revision, kind, notification_key, title_blob_id, excerpt_blob_id, state, closed_at, key_delete_at) VALUES ('c-resolved', NULL, NULL, NULL, 'mail_reply', 'k-resolved', NULL, NULL, 'resolved', ${closed}, ${keyDelete})`,
+      ])
+        db.exec(sql);
+      assert.deepEqual(applyMigrations(db, loadMigrations().slice(0, 13)), {
+        from: 12,
+        to: 13,
+        applied: [13],
+      });
+      assert.deepEqual(
+        db
+          .prepare(
+            'SELECT candidate_id, state, request_entity_id, request_revision, source_revision, kind, notification_key, closed_at, key_delete_at, snooze_until, state_changed_at, created_at, received_at, deadline_kind, initial_import, unread_partial, content_deleted_at FROM notification_candidates ORDER BY candidate_id',
+          )
+          .all(),
+        [
+          legacyRow('c-acted', 'acted', 'schedule_overlap', 'k-acted'),
+          legacyRow('c-dismissed', 'dismissed', 'mail_reply', 'k-dismissed', {
+            closed: true,
+          }),
+          legacyRow('c-new', 'new', 'mail_reply', 'k-new', {
+            entity: true,
+          }),
+          legacyRow('c-resolved', 'resolved', 'mail_reply', 'k-resolved', {
+            closed: true,
+          }),
+          legacyRow('c-seen', 'seen', 'mail_deadline', 'k-seen'),
+          // 旧 snoozed は new（再通知の時刻を持たない）。識別子と種類は変わらない。
+          legacyRow('c-snoozed', 'new', 'research_done', 'k-snoozed'),
+        ],
+      );
+      assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
+      assert.equal(db.pragma('integrity_check', { simple: true }), 'ok');
+    } finally {
+      db.close();
+    }
+  });
+
+  function legacyRow(
+    id: string,
+    state: string,
+    kind: string,
+    key: string,
+    options: { closed?: boolean; entity?: boolean } = {},
+  ): Record<string, unknown> {
+    const closedAt = options.closed === true ? 1_000_000 : null;
+    return {
+      candidate_id: id,
+      state,
+      request_entity_id: options.entity === true ? 'e-1' : null,
+      request_revision: options.entity === true ? 2 : null,
+      source_revision: options.entity === true ? 'rev-1' : null,
+      kind,
+      notification_key: key,
+      closed_at: closedAt,
+      key_delete_at: options.closed === true ? 8_381_800_000 : null,
+      snooze_until: null,
+      state_changed_at: closedAt ?? 0,
+      created_at: closedAt ?? 0,
+      received_at: closedAt ?? 0,
+      deadline_kind: 'none',
+      initial_import: 0,
+      unread_partial: 0,
+      content_deleted_at: null,
+    };
+  }
 });

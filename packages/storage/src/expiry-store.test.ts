@@ -99,11 +99,21 @@ function insertSourceItem(
   ).run(accountId, remoteId, fetchedAt, body);
 }
 
-function insertCandidate(db: SqliteDatabase, id: string): void {
+function insertCandidate(
+  db: SqliteDatabase,
+  id: string,
+  request?: { entity: string; revision: number },
+): void {
   const title = blob(db, 'candidate_title', 'notification_candidates', id);
   db.prepare(
-    "INSERT INTO notification_candidates (candidate_id, request_entity_id, request_revision, source_revision, kind, notification_key, title_blob_id, excerpt_blob_id, state, closed_at, key_delete_at) VALUES (?, NULL, NULL, NULL, 'mail_reply', ?, ?, NULL, 'new', NULL, NULL)",
-  ).run(id, `nk-${id}`, title);
+    "INSERT INTO notification_candidates (candidate_id, request_entity_id, request_revision, source_revision, kind, notification_key, title_blob_id, excerpt_blob_id, state, closed_at, key_delete_at) VALUES (?, ?, ?, NULL, 'mail_reply', ?, ?, NULL, 'new', NULL, NULL)",
+  ).run(
+    id,
+    request?.entity ?? null,
+    request?.revision ?? null,
+    `nk-${id}`,
+    title,
+  );
 }
 
 async function withDb(
@@ -292,7 +302,7 @@ test('derived rows expire with the earliest origin; an origin that is gone expir
       'turn',
       'b1000000-0000-4000-8000-0000000000ee',
     );
-    // 元情報の由来は 24 時間で切れる（n-1 の期限は最も早い 24 時間）。1 ms 前は残る。
+    // 元情報の由来（24 時間）は候補の期限に数えない。1 ms 前も残る。
     assert.deepEqual(
       deleteExpired(
         db,
@@ -315,13 +325,17 @@ test('derived rows expire with the earliest origin; an origin that is gone expir
       ),
       0,
     );
+    // 気づきの候補は、元情報の本文キャッシュ（24 時間）では消えない（設計 11 §4。元情報への辺は忘却のためだけ）。
+    // 発言の期限（7 日）で消える。
+    for (const at of [B + 24 * HOUR, B + 7 * DAY - 1])
+      assert.deepEqual(
+        deleteExpired(db, 'derived', ['notification_candidate:n-1'], at)
+          .deleted,
+        [],
+      );
     assert.deepEqual(
-      deleteExpired(
-        db,
-        'derived',
-        ['notification_candidate:n-1'],
-        B + 24 * HOUR,
-      ).deleted,
+      deleteExpired(db, 'derived', ['notification_candidate:n-1'], B + 7 * DAY)
+        .deleted,
       ['notification_candidate:n-1'],
     );
     assert.equal(count(db, 'SELECT count(*) FROM notification_candidates'), 0);
@@ -333,8 +347,132 @@ test('derived rows expire with the earliest origin; an origin that is gone expir
       0,
     );
     assert.equal(count(db, 'SELECT count(*) FROM derivations'), 0);
-    // 発言は 7 日まで残る（派生物の期限切れで由来は消えない）。
+    // 発言は 7 日まで残る（派生物の期限切れで由来は消えない）。ちょうど 7 日で発言も期限になる。
     assert.equal(count(db, 'SELECT count(*) FROM turns'), 1);
+  });
+});
+
+test('a candidate whose only origins are source items is not planned by the origin expiry, however long after', async () => {
+  await withDb((db) => {
+    insertSourceItem(db, 'acct-a', 'msg-1', B);
+    insertCandidate(db, 'n-mail');
+    edge(db, 'notification_candidate', 'n-mail', 'source_item', 'msg-1');
+    // 計画に行を出さず、ID を直接渡されても消さない（元情報の本文は 24 時間で切れるが、候補は閉じてから 7 日・97 日で掃除する）。
+    for (const at of [B + 24 * HOUR, B + 400 * DAY]) {
+      const rows = run(db, { kind: 'retention.sweep_rows', now: at });
+      assert.equal(rows.ok, true);
+      assert.deepEqual(
+        JSON.stringify(rows.value).includes('notification_candidate:n-mail'),
+        false,
+      );
+      assert.deepEqual(
+        deleteExpired(db, 'derived', ['notification_candidate:n-mail'], at)
+          .deleted,
+        [],
+      );
+    }
+    assert.equal(count(db, 'SELECT count(*) FROM notification_candidates'), 1);
+    assert.equal(count(db, 'SELECT count(*) FROM derivations'), 1);
+  });
+});
+
+// 依頼エンティティは元情報から派生して 24 時間で期限になる。それを参照する候補は、依頼エンティティと一緒に消えず、
+// 参照だけが外れる（活動中も、閉じた候補も。題・抄録・識別子・由来の辺は残る）。
+test('a candidate that references a request entity survives the entity expiring with its source item; only the reference is dropped', async () => {
+  await withDb((db) => {
+    const entity = 'e1000000-0000-4000-8000-000000000001';
+    insertSourceItem(db, 'acct-a', 'msg-1', B);
+    db.prepare(
+      "INSERT INTO request_entities (request_entity_id, source_account_id, thread_id, origin_message_id, request_revision, state, summary_blob_id, created_at, delete_at) VALUES (?, 'acct-a', 'th-1', 'msg-1', 3, 'active', NULL, ?, ?)",
+    ).run(entity, B, B + 24 * HOUR);
+    edge(db, 'request_entity', entity, 'source_item', 'msg-1');
+    // 活動中の候補（new）と、閉じた候補（dismissed。閉じた時刻の 7 日 + 90 日が識別子の期限）。
+    insertCandidate(db, 'n-live', { entity, revision: 3 });
+    insertCandidate(db, 'n-closed', { entity, revision: 3 });
+    db.prepare(
+      "UPDATE notification_candidates SET state = 'dismissed', closed_at = ?, key_delete_at = ?, state_changed_at = ? WHERE candidate_id = 'n-closed'",
+    ).run(B + HOUR, B + HOUR + 7 * DAY + 90 * DAY, B + HOUR);
+    for (const id of ['n-live', 'n-closed']) {
+      edge(db, 'notification_candidate', id, 'source_item', 'msg-1');
+      edge(db, 'notification_candidate', id, 'request_entity', entity);
+    }
+
+    // 1 ms 前は何も消えない。ちょうど 24 時間で消す計画に出るのは依頼エンティティだけで、候補は計画に出ない。
+    assert.deepEqual(
+      deleteExpired(
+        db,
+        'derived',
+        [`request_entity:${entity}`],
+        B + 24 * HOUR - 1,
+      ).deleted,
+      [],
+    );
+    const rows = run(db, { kind: 'retention.sweep_rows', now: B + 24 * HOUR });
+    assert.equal(rows.ok, true);
+    const planned = JSON.stringify(rows.value);
+    assert.equal(planned.includes(`request_entity:${entity}`), true);
+    assert.equal(planned.includes('notification_candidate:'), false);
+
+    assert.deepEqual(
+      deleteExpired(db, 'derived', [`request_entity:${entity}`], B + 24 * HOUR)
+        .deleted,
+      [`request_entity:${entity}`],
+    );
+    assert.equal(count(db, 'SELECT count(*) FROM request_entities'), 0);
+    // 候補は 2 件とも残り、参照（と版）だけが外れる。題の暗号文と識別子・状態はそのまま。
+    assert.deepEqual(
+      db
+        .prepare(
+          'SELECT candidate_id, state, request_entity_id, request_revision, notification_key, title_blob_id IS NOT NULL AS has_title FROM notification_candidates ORDER BY candidate_id',
+        )
+        .all(),
+      [
+        {
+          candidate_id: 'n-closed',
+          state: 'dismissed',
+          request_entity_id: null,
+          request_revision: null,
+          notification_key: 'nk-n-closed',
+          has_title: 1,
+        },
+        {
+          candidate_id: 'n-live',
+          state: 'new',
+          request_entity_id: null,
+          request_revision: null,
+          notification_key: 'nk-n-live',
+          has_title: 1,
+        },
+      ],
+    );
+    assert.equal(
+      count(
+        db,
+        "SELECT count(*) FROM sealed_blobs WHERE owner_table = 'notification_candidates'",
+      ),
+      2,
+    );
+    // 由来の辺は残る（後で元情報を忘れたとき、閉包が候補へ届く）。依頼エンティティの辺も、下流の候補が生きる間は残る。
+    for (const id of ['n-live', 'n-closed'])
+      assert.equal(
+        count(
+          db,
+          `SELECT count(*) FROM derivations WHERE artifact_kind = 'notification_candidate' AND artifact_id = '${id}'`,
+        ),
+        2,
+      );
+    // 以後、どれだけ後でも、期限切れとして候補は消えない。
+    for (const id of ['n-live', 'n-closed'])
+      assert.deepEqual(
+        deleteExpired(
+          db,
+          'derived',
+          [`notification_candidate:${id}`],
+          B + 400 * DAY,
+        ).deleted,
+        [],
+      );
+    assert.equal(count(db, 'SELECT count(*) FROM notification_candidates'), 2);
   });
 });
 

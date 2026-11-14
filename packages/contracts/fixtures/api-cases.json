@@ -180,13 +180,14 @@
       "request": {
         "request_id": "00000000-0000-4000-8000-000000009001",
         "command_scope_id": "00000000-0000-4000-8000-000000009002",
-        "storage_mode": "private"
+        "storage_mode": "normal"
       },
       "response": {
         "request_id": "00000000-0000-4000-8000-000000009001",
         "session_id": "00000000-0000-4000-8000-000000000003",
-        "storage_mode": "private",
-        "route_revision": "1"
+        "storage_mode": "normal",
+        "route_revision": "1",
+        "segment_generation": "1"
       },
       "rejections": [
         ["no_token", 401, "unauthenticated"],
@@ -213,7 +214,11 @@
         "request_id": "00000000-0000-4000-8000-000000009001",
         "command_scope_id": "00000000-0000-4000-8000-000000009002",
         "text": "明日の予定は？",
-        "input_kind": "text"
+        "input_kind": "text",
+        "origin": {
+          "segment_id": "00000000-0000-4000-8000-000000000003",
+          "segment_generation": "1"
+        }
       },
       "response": {
         "request_id": "00000000-0000-4000-8000-000000009001",
@@ -378,6 +383,52 @@
           "text": "明日の予定は？",
           "input_kind": "voice_live",
           "expected_canvas_revision": "3"
+        }
+      ]
+    },
+    "postStreamStorageMode": {
+      "request": {
+        "request_id": "00000000-0000-4000-8000-000000009001",
+        "command_scope_id": "00000000-0000-4000-8000-000000009002",
+        "storage_mode": "extended"
+      },
+      "response": {
+        "request_id": "00000000-0000-4000-8000-000000009001",
+        "segment": {
+          "segment_id": "00000000-0000-4000-8000-000000000041",
+          "storage_mode": "extended",
+          "opened_at": "2026-10-22T00:40:00Z",
+          "open_reason": "storage_mode_changed",
+          "carried_summary": {
+            "source_segment_ids": ["00000000-0000-4000-8000-000000000030"],
+            "expires_at": "2026-10-29T00:10:00Z"
+          }
+        }
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"],
+        ["stale_scope", 410, "expired_scope"],
+        ["locked", 403, "device_locked"],
+        ["lock_unknown", 403, "device_locked"],
+        ["too_large", 413, "payload_too_large"]
+      ],
+      "invalid_bodies": [
+        {
+          "request_id": "00000000-0000-4000-8000-000000009001",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002"
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-000000009001",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "storage_mode": "forever"
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-000000009001",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "storage_mode": "extended",
+          "session_id": "00000000-0000-4000-8000-000000000003"
         }
       ]
     },

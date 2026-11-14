@@ -179,6 +179,27 @@
       "$ref": "#/$defs/CandidateEvidence"
     },
     {
+      "$ref": "#/$defs/WebSearchRequest"
+    },
+    {
+      "$ref": "#/$defs/WebSearchResponse"
+    },
+    {
+      "$ref": "#/$defs/WebFetchRequest"
+    },
+    {
+      "$ref": "#/$defs/WebFetchResult"
+    },
+    {
+      "$ref": "#/$defs/WebResearchSource"
+    },
+    {
+      "$ref": "#/$defs/WebResearchLimits"
+    },
+    {
+      "$ref": "#/$defs/WebUsagePolicy"
+    },
+    {
       "$ref": "#/$defs/SyncBatch"
     },
     {
@@ -4096,6 +4117,428 @@
       "required": ["version", "phrases"],
       "additionalProperties": false,
       "description": "会話そのものの操作の照合表（設計 10 §5 v0.6、質問 126）。意図判定（LLM）に入れず、画面のボタンと同じ処理をする。版を管理する。"
+    },
+    "WebSearchRequest": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "const": "buddy.web-search.v1"
+        },
+        "query_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "query": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "language": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 5
+        },
+        "country": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 2
+        },
+        "max_results": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10
+        },
+        "safesearch": {
+          "type": "string",
+          "const": "strict"
+        }
+      },
+      "required": [
+        "schema",
+        "query_id",
+        "query",
+        "language",
+        "country",
+        "max_results",
+        "safesearch"
+      ],
+      "additionalProperties": false,
+      "description": "公開 Web 検索の 1 回分の要求（B12-01、ADR 0077、設計 05）。検索語は本人の質問から作る一般語だけで、メール全文・API キー・個人の予定を含めない。検索は 1 依頼 3 回まで。"
+    },
+    "WebSearchHit": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "url": {
+          "type": "string",
+          "pattern": "^https://"
+        },
+        "snippet": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "page_age": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UtcTime"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["title", "url", "snippet", "page_age"],
+      "additionalProperties": false,
+      "description": "検索の 1 件。snippet は検索サービスの要約で、永続保存しない。出典の抜粋は自分で取得した本文から作る（ADR 0077）。"
+    },
+    "WebSearchResponse": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "const": "buddy.web-search-result.v1"
+        },
+        "provider": {
+          "type": "string",
+          "const": "brave"
+        },
+        "search_index": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3
+        },
+        "query": {
+          "type": "string",
+          "minLength": 1
+        },
+        "searched_at": {
+          "$ref": "#/$defs/UtcTime"
+        },
+        "hits": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/WebSearchHit"
+          },
+          "maxItems": 10
+        },
+        "retention": {
+          "type": "string",
+          "const": "transient_only"
+        },
+        "model_use": {
+          "type": "string",
+          "const": "grounding_only"
+        }
+      },
+      "required": [
+        "schema",
+        "provider",
+        "search_index",
+        "query",
+        "searched_at",
+        "hits",
+        "retention",
+        "model_use"
+      ],
+      "additionalProperties": false,
+      "description": "公開 Web 検索の結果（B12-01、ADR 0077）。Brave の利用条件 3(b)(i) に合わせて操作中の一時保持だけにし、3(b)(xiii) に合わせてモデルの訓練・評価に使わない。検索結果をデータベース化しない。"
+    },
+    "WebFetchRequest": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "const": "buddy.web-fetch.v1"
+        },
+        "url": {
+          "type": "string",
+          "pattern": "^https://"
+        },
+        "max_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2000000
+        },
+        "timeout_ms": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 15000
+        },
+        "max_redirects": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3
+        },
+        "content_types": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["text/html", "text/plain"]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "send_cookies": {
+          "type": "boolean",
+          "const": false
+        }
+      },
+      "required": [
+        "schema",
+        "url",
+        "max_bytes",
+        "timeout_ms",
+        "max_redirects",
+        "content_types",
+        "send_cookies"
+      ],
+      "additionalProperties": false,
+      "description": "自分で公開ページを取得する要求（B12-01、ADR 0077、設計 05）。HTTPS の公開ページだけを、1 ページ 2MB・15 秒・リダイレクト 3 回まで取得する。認証 Cookie を付けず、ローカル・プライベート・リンクローカルへの取得を拒否する。"
+    },
+    "WebFetchResult": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "const": "buddy.web-fetch-result.v1"
+        },
+        "requested_url": {
+          "type": "string",
+          "pattern": "^https://"
+        },
+        "final_url": {
+          "type": "string",
+          "pattern": "^https://"
+        },
+        "status": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 599
+        },
+        "content_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fetched_at": {
+          "$ref": "#/$defs/UtcTime"
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2000000
+        },
+        "redirects": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3
+        },
+        "readable": {
+          "type": "boolean"
+        },
+        "text": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 2000000
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "本文。実行要素を除いたテキストで、読めない形式（PDF 等）は null。"
+        }
+      },
+      "required": [
+        "schema",
+        "requested_url",
+        "final_url",
+        "status",
+        "content_type",
+        "fetched_at",
+        "bytes",
+        "redirects",
+        "readable",
+        "text"
+      ],
+      "additionalProperties": false,
+      "description": "公開ページの取得結果（B12-01、ADR 0077）。読めた本文だけを根拠の抜粋・要約に使い、検索サービスの要約だけのものと区別する。"
+    },
+    "WebResearchSource": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "const": "buddy.web-source.v1"
+        },
+        "source_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "url": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^https://"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "出典の URL。永続保存してよいかは B12-02 で決めるまで null にできる（U183）。"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "fetched_at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UtcTime"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "basis": {
+          "type": "string",
+          "enum": ["page_read", "search_summary_only"]
+        },
+        "excerpt": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "summary": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "schema",
+        "source_id",
+        "url",
+        "title",
+        "fetched_at",
+        "basis",
+        "excerpt",
+        "summary"
+      ],
+      "additionalProperties": false,
+      "description": "公開 Web の出典（B12-01、ADR 0077）。page_read は自分で取得した本文の抜粋・要約だけを持つ。search_summary_only は検索結果の要約を永続保存せず、抜粋・要約を null にする。"
+    },
+    "WebResearchLimits": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "const": "buddy.web-research-limits.v1"
+        },
+        "max_searches": {
+          "type": "integer",
+          "const": 3
+        },
+        "max_pages": {
+          "type": "integer",
+          "const": 5
+        },
+        "max_bytes_per_page": {
+          "type": "integer",
+          "const": 2000000
+        },
+        "timeout_ms": {
+          "type": "integer",
+          "const": 15000
+        },
+        "max_redirects": {
+          "type": "integer",
+          "const": 3
+        }
+      },
+      "required": [
+        "schema",
+        "max_searches",
+        "max_pages",
+        "max_bytes_per_page",
+        "timeout_ms",
+        "max_redirects"
+      ],
+      "additionalProperties": false,
+      "description": "1 依頼あたりの公開 Web 調査の上限（設計 05 の初期値、ADR 0077）。品質の保証ではなく、処理と費用の上限。予算不足では範囲を減らすか保留する。"
+    },
+    "WebUsagePolicy": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "const": "buddy.web-usage.v1"
+        },
+        "provider": {
+          "type": "string",
+          "const": "brave"
+        },
+        "retention": {
+          "type": "string",
+          "const": "transient_only"
+        },
+        "model_use": {
+          "type": "string",
+          "const": "grounding_only"
+        },
+        "url_storage": {
+          "type": "string",
+          "enum": ["undecided", "allowed", "disallowed"]
+        }
+      },
+      "required": [
+        "schema",
+        "provider",
+        "retention",
+        "model_use",
+        "url_storage"
+      ],
+      "additionalProperties": false,
+      "description": "公開 Web 調査の利用条件（B12-01、ADR 0077）。検索結果は操作中の一時保持だけにし、モデルの訓練・評価に使わない。URL の永続保存は B12-02 で決めるまで undecided。"
     },
     "SourceQuote": {
       "type": "object",

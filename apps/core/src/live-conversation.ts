@@ -17,6 +17,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { DelegationResult, TurnResponse } from '@buddy/contracts';
 import {
+  aggregateDelegationPhase,
   DELEGATION_BACKGROUND_MS,
   DELEGATION_BRIDGE_MS,
   EMPTY_HOLD,
@@ -49,6 +50,7 @@ import {
 } from '@buddy/domain';
 import type {
   Commentary,
+  DelegationPhase,
   DeviceEpochs,
   HoldEntry,
   HoldRelation,
@@ -103,6 +105,9 @@ export interface LiveConversationHost {
   };
   // サイドバンドへ結果の追記（commentary）を送る。送れなければ false（接続がない・閉じ始めた）。
   appendCommentary(liveSessionId: string, parts: readonly string[]): boolean;
+  // 委譲の状態（前面・裏・なし）を端末へ知らせる（端末が前面の待ちの間に無音で会話を終えないため。U253、ADR 0109）。
+  // 状態が変わったときだけ呼ぶ。接続が閉じていれば何もしない。
+  emitDelegationPhase(liveSessionId: string, phase: DelegationPhase): void;
   // 会話の操作を、この Live の接続へ行う（再生停止・閉じる・無音の延長）。
   applySessionControl(
     liveSessionId: string,
@@ -274,6 +279,8 @@ interface Context {
   holdTimer: unknown;
   output_gen: number;
   closed: boolean;
+  // 端末へ最後に知らせた委譲の状態。
+  phase: DelegationPhase;
 }
 
 // 決まった値から UUID v4 の形の ID を作る（同じ委譲の再送が同じ request_id になる）。
@@ -394,6 +401,7 @@ export class LiveConversation implements LiveConversationPort {
       holdTimer: null,
       output_gen: 0,
       closed: false,
+      phase: 'none',
     });
   }
 
@@ -621,6 +629,7 @@ export class LiveConversation implements LiveConversationPort {
     }
     pending.conditions = conditions;
     pending.admitted = true;
+    this.#syncPhase(context);
     // 会話の操作として使われた発話・保留の開始は、見直しの中で扱う。
     this.#await(context, pending, sessionId);
   }
@@ -1214,6 +1223,24 @@ export class LiveConversation implements LiveConversationPort {
       );
   }
 
+  // 端末へ知らせる委譲の状態（U253、ADR 0109）。結果を待っている依頼（受付条件の確認が通り、失効・終了していない。
+  // 保留中の変更も含める: 待ち続ける側へ倒し、端末が処理中の会話を無音で閉じない）が前面か裏かを集め、前回知らせた状態から
+  // 変わったときだけ、1 度だけ送る。閉じた接続には送らない。
+  #syncPhase(context: Context): void {
+    if (context.closed) return;
+    const waiting = [...context.pending.values()].filter(
+      (entry) =>
+        entry.admitted && entry.terminal === null && entry.phase !== 'done',
+    );
+    const phase = aggregateDelegationPhase(waiting);
+    if (phase === context.phase) return;
+    context.phase = phase;
+    this.#options.host.emitDelegationPhase(
+      context.handle.live_session_id,
+      phase,
+    );
+  }
+
   // ---- 時間の制御（10 §5。X33） -------------------------------------------------------------------------------
 
   // つなぎ（1.5 秒）と背景化（8 秒）の期限を、依頼を受けた時刻（accepted_at）からの絶対の経過時間で判定する。
@@ -1248,6 +1275,7 @@ export class LiveConversation implements LiveConversationPort {
       // 声へ言ってから裏へ移す（移した後は結果の届け先が画面になり、声で言えなくなる）。
       this.#speak(context, pending, backgroundCommentary());
       pending.backgrounded = true;
+      this.#syncPhase(context);
       return;
     }
     if (!pending.bridge_done && elapsed >= DELEGATION_BRIDGE_MS) {
@@ -1315,6 +1343,7 @@ export class LiveConversation implements LiveConversationPort {
         (entry) => entry.workflow_id !== pending.workflow_id,
       ),
     };
+    this.#syncPhase(context);
     this.#sweep(context);
   }
 

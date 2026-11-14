@@ -3465,3 +3465,203 @@ test(
     );
   },
 );
+
+// ---- B10-04 P4: 委譲の状態を端末へ知らせる（U253、ADR 0109。X29） ----------------------------------------------------
+
+const phaseTypes = (rig: Rig): string[] =>
+  (rig.events.get(DEV_A) ?? [])
+    .map((event) => String(event['event_type']))
+    .filter((type) => type.startsWith('delegation_'));
+
+test(
+  'U253/X29: a request that is answered at once tells the device processing and then finished, each once, with this live and epoch and no text',
+  TIMEOUT,
+  async () => {
+    await withConversation(async (c) => {
+      await speak(c, { text: SCHEDULE_TEXT });
+      await delegate(c, 'd1', 800);
+      await c.rig.clock.advance(500);
+      await waitUntil(c.rig, 'the answer', () => c.sb.commentary.length === 1);
+      assert.deepEqual(phaseTypes(c.rig), [
+        'delegation_processing',
+        'delegation_finished',
+      ]);
+      const events = (c.rig.events.get(DEV_A) ?? []).filter((event) =>
+        String(event['event_type']).startsWith('delegation_'),
+      );
+      for (const event of events) {
+        assert.equal(event['live_session_id'], c.liveId);
+        assert.equal(event['audio_epoch'], String(liveAudioEpoch(c.rig)));
+        assert.equal(event['audio_control'], null);
+        assert.deepEqual(event['candidate_ids'], []);
+        // 本文・文字起こしを載せない。
+        assert.ok(!JSON.stringify(event).includes('予定'));
+      }
+      await beat(c, 10_000);
+      assert.deepEqual(phaseTypes(c.rig), [
+        'delegation_processing',
+        'delegation_finished',
+      ]);
+    });
+  },
+);
+
+test(
+  'U253/X29: a slow request is foreground for 8 seconds, then background, and the result then ends it; the device is told only on each change',
+  TIMEOUT,
+  async () => {
+    const slow = gate();
+    await withConversation(
+      async (c) => {
+        await speak(c, { text: SCHEDULE_TEXT });
+        await delegate(c, 'd1', 800);
+        await c.rig.clock.advance(400);
+        await waitUntil(
+          c.rig,
+          'the interpretation',
+          () => c.script.calls.length === 1,
+        );
+        assert.deepEqual(phaseTypes(c.rig), ['delegation_processing']);
+        // 前面の間（7999 ms まで）は、状態の通知を重ねない。
+        await beat(c, 7599);
+        await c.rig.wait();
+        assert.deepEqual(phaseTypes(c.rig), ['delegation_processing']);
+        await beat(c, 1);
+        await waitUntil(
+          c.rig,
+          'the background',
+          () => phaseTypes(c.rig).length === 2,
+        );
+        assert.deepEqual(phaseTypes(c.rig), [
+          'delegation_processing',
+          'delegation_backgrounded',
+        ]);
+        slow.release();
+        await waitUntil(
+          c.rig,
+          'finished',
+          () => phaseTypes(c.rig).length === 3,
+        );
+        assert.deepEqual(phaseTypes(c.rig), [
+          'delegation_processing',
+          'delegation_backgrounded',
+          'delegation_finished',
+        ]);
+      },
+      {
+        prepare: (script) => {
+          script.gates.set(SCHEDULE_TEXT, slow.promise);
+        },
+      },
+    );
+  },
+);
+
+test(
+  'U253: while one request is in the background a new foreground request makes the live foreground again, and the live is background again until the first one ends',
+  TIMEOUT,
+  async () => {
+    const slow = gate();
+    await withConversation(
+      async (c) => {
+        await speak(c, { text: SCHEDULE_TEXT });
+        await delegate(c, 'd1', 800);
+        await c.rig.clock.advance(400);
+        await waitUntil(
+          c.rig,
+          'the interpretation',
+          () => c.script.calls.length === 1,
+        );
+        await beat(c, 8000);
+        await waitUntil(
+          c.rig,
+          'the background',
+          () => phaseTypes(c.rig).length === 2,
+        );
+        // 別件（すぐ答える依頼）。新しい発話として話す。
+        await speak(c, { text: '明日の予定を見せて' });
+        await delegate(c, 'd2', c.next.start - 400);
+        await c.rig.clock.advance(500);
+        await waitUntil(
+          c.rig,
+          'the second request is done',
+          () => phaseTypes(c.rig).length === 4,
+        );
+        assert.deepEqual(phaseTypes(c.rig), [
+          'delegation_processing',
+          'delegation_backgrounded',
+          'delegation_processing',
+          'delegation_backgrounded',
+        ]);
+        slow.release();
+        await waitUntil(
+          c.rig,
+          'finished',
+          () => phaseTypes(c.rig).length === 5,
+        );
+        assert.equal(phaseTypes(c.rig).at(-1), 'delegation_finished');
+      },
+      {
+        prepare: (script) => {
+          script.gates.set(SCHEDULE_TEXT, slow.promise);
+        },
+      },
+    );
+  },
+);
+
+test(
+  'U253/X46: a delegation refused at the input check tells the device nothing',
+  TIMEOUT,
+  async () => {
+    const consent = { value: 'granted' as 'granted' | 'revoked' };
+    await withConversation(
+      async (c) => {
+        consent.value = 'revoked';
+        await speak(c, { text: TASK_TEXT });
+        await delegate(c, 'd1', 800);
+        await c.rig.clock.advance(1000);
+        await c.rig.wait();
+        assert.deepEqual(phaseTypes(c.rig), []);
+      },
+      { policy: AUTO_TASK, overrides: { consent: () => consent.value } },
+    );
+  },
+);
+
+test(
+  'U253/X29: nothing is sent to a live that was closed, even when the late result returns',
+  TIMEOUT,
+  async () => {
+    const slow = gate();
+    await withConversation(
+      async (c) => {
+        await speak(c, { text: SCHEDULE_TEXT });
+        await delegate(c, 'd1', 800);
+        await c.rig.clock.advance(400);
+        await waitUntil(
+          c.rig,
+          'the interpretation',
+          () => c.script.calls.length === 1,
+        );
+        assert.deepEqual(phaseTypes(c.rig), ['delegation_processing']);
+        const closed = await c.rig.voice.closeLiveSession(A, c.liveId, {
+          request_id: uuid(0x73),
+          command_scope_id: SCOPE_A,
+          reason: 'silence',
+          audio_epoch: c.rig.voice.liveRecord(c.liveId)?.audio_epoch as string,
+        });
+        assert.equal(closed.status, 202);
+        slow.release();
+        await waitUntil(c.rig, 'the late result', () => c.shown.length === 1);
+        // 閉じた後は、結果が戻っても状態を送らない（端末は接続が閉じた時点で none として扱う）。
+        assert.deepEqual(phaseTypes(c.rig), ['delegation_processing']);
+      },
+      {
+        prepare: (script) => {
+          script.gates.set(SCHEDULE_TEXT, slow.promise);
+        },
+      },
+    );
+  },
+);

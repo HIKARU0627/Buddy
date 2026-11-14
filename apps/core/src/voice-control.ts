@@ -33,6 +33,7 @@ import {
   admitLiveStart,
   arbitrateAudioClaim,
   budgetCloseDeadline,
+  delegationPhaseEventType,
   grantedLeaseTtlMs,
   ioStopReach,
   issueLiveEpochs,
@@ -48,6 +49,7 @@ import {
 import type {
   AudioReason,
   ConsentStatus,
+  DelegationPhase,
   DeviceEpochs,
   InputCondition,
   LiveControl,
@@ -1637,6 +1639,8 @@ export class VoiceControl {
       delivery: (liveSessionId) => this.#deliveryView(liveSessionId),
       appendCommentary: (liveSessionId, parts) =>
         this.#appendCommentary(liveSessionId, parts),
+      emitDelegationPhase: (liveSessionId, phase) =>
+        this.#emitDelegationPhase(liveSessionId, phase),
       applySessionControl: (liveSessionId, action) =>
         this.applySessionControl(liveSessionId, action),
     };
@@ -1726,6 +1730,29 @@ export class VoiceControl {
       this.#log('結果の追記を送れませんでした。');
       return false;
     }
+  }
+
+  // 委譲の状態（前面・裏・なし）を端末へ知らせる（VoiceEvent の delegation_processing・delegation_backgrounded・
+  // delegation_finished。本文・文字起こしは載せない。U253、ADR 0109）。端末が前面の待ちの間に無音で会話を終えないための
+  // 通知で、届かなくても実行の権限は動かない（端末は古い世代・別の接続のイベントを捨て、届かなければ従来の無音の判定）。
+  // 接続が開いていなければ送らない。
+  #emitDelegationPhase(liveSessionId: string, phase: DelegationPhase): void {
+    const runtime = this.#lives.get(liveSessionId);
+    if (runtime === undefined || runtime.record.closure !== 'open') return;
+    const live = runtime.record;
+    this.#emit(live.device_id, {
+      schema: 'buddy.voice-event.v1',
+      event_id: this.#newId(),
+      event_type: delegationPhaseEventType(phase),
+      device_id: live.device_id,
+      session_id: live.session_id,
+      live_session_id: live.live_session_id,
+      audio_epoch: live.audio_epoch,
+      control_epoch: live.control_epoch,
+      candidate_ids: [],
+      audio_control: null,
+      occurred_at: new Date(this.#wallNow()).toISOString(),
+    });
   }
 
   // 会話の操作（照合表に当たった発話）を、開いている Live へ行う（画面のボタンと同じ処理。LLM は呼ばない）。

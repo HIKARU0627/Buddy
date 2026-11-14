@@ -327,6 +327,69 @@ test('previewView lists what changes for each operation kind without IDs or hash
     assert.equal(shown.includes(value), false, value);
 });
 
+test('B14-01: the four approval-required operations render a headline and no IDs', () => {
+  const send: OperationIntent = {
+    schema: 'buddy.operation.v1',
+    operation_id: OP,
+    content_version: '1',
+    permission_revision: '0',
+    provider: 'mock',
+    account_id: id(0xa1),
+    target: null,
+    action: {
+      kind: 'mail.send',
+      to: ['one@example.com'],
+      cc: [],
+      bcc: [],
+      subject: '件名',
+      body: '本文',
+    },
+    effects: {
+      external_recipients: ['one@example.com'],
+      reconcile_scope: 'operation_marker',
+    },
+  };
+  const sent = previewView(send, id(0x4), {
+    account_label: 'synthetic-user@example.com',
+    target: {
+      subject: '件名',
+      sender: 'sender@example.com',
+      received_at: '2026-10-04T18:30:00+09:00',
+    },
+  });
+  assert.equal(sent.operation_kind, 'mail.send');
+  assert.equal(sent.target, null);
+  // 承認画面の項目は B14-04 で足す。ここでは一覧の見出しだけを出し、ID や hash を出さない。
+  assert.deepEqual(sent.fields, []);
+  assert.equal(sent.approvable, true);
+  const created: OperationIntent = {
+    schema: 'buddy.operation.v1',
+    operation_id: OP,
+    content_version: '1',
+    permission_revision: '0',
+    provider: 'mock',
+    account_id: id(0xa1),
+    target: null,
+    action: {
+      kind: 'calendar.event.create_with_attendees',
+      calendar_id: 'calendar-001',
+      summary: '予定',
+      start: '2030-01-03T09:00',
+      end: '2030-01-03T10:00',
+      time_zone: 'Asia/Tokyo',
+      attendees: ['one@example.com'],
+      notify_attendees: true,
+    },
+    effects: {
+      external_recipients: ['one@example.com'],
+      reconcile_scope: 'operation_marker',
+    },
+  };
+  // 既存の対象を持たない作成は、対象のメールを読めないので、B14-04 まで承認へ進ませない。
+  assert.equal(previewView(created, id(0x5), undefined).approvable, false);
+  assert.equal(previewView(created, id(0x5), undefined).target, null);
+});
+
 test('a schedule answer becomes counts only: no event IDs reach the screen', async () => {
   const h = harness();
   const events = [id(0x31), id(0x32), id(0x33)];

@@ -2760,3 +2760,86 @@ test(
     );
   },
 );
+
+// ---- B10-04 P1: 同じ発話への再委譲は、先の依頼と同じものとして二重に処理しない（X51。ADR 0105） ------------------------
+
+const SCHEDULE_TEXT = '今日の予定を見せて';
+const SCHEDULE_ANSWER = [
+  '予定は2件です。',
+  '時間が重なっている予定があります。',
+];
+
+test(
+  'X51/P1: a second delegation for the same utterance with the same text after the answer is not a new request: nothing is interpreted, saved or voiced again',
+  TIMEOUT,
+  async () => {
+    await withConversation(async (c) => {
+      await speak(c, { text: SCHEDULE_TEXT });
+      await delegate(c, 'd1', 800);
+      await c.rig.clock.advance(500);
+      await waitUntil(c.rig, 'the answer', () => c.sb.commentary.length === 1);
+      assert.deepEqual(c.sb.commentary, [SCHEDULE_ANSWER]);
+      // Live が同じ発話を、別の委譲 ID で委譲し直した。
+      await delegate(c, 'd2', 800);
+      // 5 秒の待ちの上限を過ぎても、聞き返し（「聞き取れませんでした」）も 2 つ目の答えも出ない。
+      await beat(c, 6000);
+      assert.deepEqual(c.sb.commentary, [SCHEDULE_ANSWER]);
+      assert.deepEqual(c.script.calls, [SCHEDULE_TEXT]);
+      assert.deepEqual(workflowStates(c.rig), ['done']);
+      assert.equal(snapshots(c.rig).length, 1);
+      assert.deepEqual(c.shown, []);
+      assert.equal(c.conversation.pendingCount, 0);
+    });
+  },
+);
+
+test(
+  'X51/P1: two delegations for the same utterance that both wait for its input make one request and one answer',
+  TIMEOUT,
+  async () => {
+    await withConversation(async (c) => {
+      await speak(c, { text: SCHEDULE_TEXT, end: false });
+      await delegate(c, 'd1', 800);
+      await delegate(c, 'd2', 800);
+      assert.equal(c.conversation.pendingCount, 2);
+      c.sb.endCandidate();
+      await c.rig.clock.advance(500);
+      await waitUntil(c.rig, 'the answer', () => c.sb.commentary.length === 1);
+      await beat(c, 6000);
+      assert.deepEqual(c.sb.commentary, [SCHEDULE_ANSWER]);
+      assert.deepEqual(c.script.calls, [SCHEDULE_TEXT]);
+      assert.deepEqual(workflowStates(c.rig), ['done']);
+      assert.equal(c.conversation.pendingCount, 0);
+    });
+  },
+);
+
+test(
+  'X51/P1: a delegation for an utterance that grew after the first delegation read it is not a duplicate: nothing is interpreted again, and the user is asked to say it again',
+  TIMEOUT,
+  async () => {
+    await withConversation(async (c) => {
+      await speak(c, { text: SCHEDULE_TEXT });
+      await delegate(c, 'd1', 800);
+      await c.rig.clock.advance(500);
+      await waitUntil(c.rig, 'the answer', () => c.sb.commentary.length === 1);
+      // 同じ発話に断片が追記された（「…いや明日」）。先の依頼が読んだ版とは違う。
+      c.sb.fragment({
+        index: c.next.index,
+        start_ms: 800,
+        end_ms: 1200,
+        text: 'いや明日',
+      });
+      await delegate(c, 'd2', 1200);
+      await beat(c, 6000);
+      // 追記された発話を同じ版として扱わない。自動で進めず、言い直しを頼む（変更も答えも作らない）。
+      assert.deepEqual(c.script.calls, [SCHEDULE_TEXT]);
+      assert.deepEqual(c.sb.commentary, [
+        SCHEDULE_ANSWER,
+        [SAY_AGAIN_SENTENCE],
+      ]);
+      assert.deepEqual(workflowStates(c.rig), ['done']);
+      assert.deepEqual(operations(c.rig), []);
+    });
+  },
+);

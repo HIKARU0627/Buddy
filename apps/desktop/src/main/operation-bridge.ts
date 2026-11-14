@@ -804,6 +804,14 @@ export class OperationBridge {
 
 type PreviewDisplay = OperationPreview['display'];
 
+// 対象の見出しに使う識別子。参加者のいる予定の作成は既存の対象を持たないので null。
+function targetLabel(intent: OperationIntent): string | null {
+  if (intent.target === null) return null;
+  if ('list_id' in intent.target) return intent.target.list_id;
+  if ('remote_id' in intent.target) return intent.target.remote_id;
+  return null;
+}
+
 // 外部変更は、口座の表示名と対象のメールの件名・差出人・受信日時がすべてそろうまで確認できない（承認・取消・再試行の
 // 確認に出せない）。Buddy 内の用事は常に確認できる。
 function identifiedOf(
@@ -839,9 +847,7 @@ function contentOf(
       if (action.remove.length > 0)
         parts.push(`外す: ${action.remove.join('、')}`);
       return {
-        headline:
-          display?.target?.subject ??
-          ('remote_id' in intent.target ? intent.target.remote_id : null),
+        headline: display?.target?.subject ?? targetLabel(intent),
         detail: parts.length === 0 ? null : parts.join(' / '),
       };
     }
@@ -849,6 +855,21 @@ function contentOf(
       return {
         headline: action.subject,
         detail: `宛先 ${action.to.join('、')}`,
+      };
+    // B14-01: 送信・予定の変更・参加者のいる予定の作成・ごみ箱（ADR 0075）。
+    // 承認画面の項目は B14-04 で足す。ここでは一覧の見出しだけを安全に出す。
+    case 'mail.send':
+      return {
+        headline: action.subject,
+        detail: `宛先 ${action.to.join('、')}`,
+      };
+    case 'calendar.event.update':
+    case 'calendar.event.create_with_attendees':
+      return { headline: action.summary, detail: action.start };
+    case 'mail.trash':
+      return {
+        headline: display?.target?.subject ?? targetLabel(intent),
+        detail: null,
       };
   }
 }
@@ -884,6 +905,12 @@ export function previewView(
       add('task_due', action.due === null ? [] : [action.due]);
       add('task_body', action.body === null ? [] : [action.body]);
       break;
+    // B14-01: 項目の語彙は B14-04 の承認画面で足す。それまでは一覧の見出しだけを出す。
+    case 'mail.send':
+    case 'calendar.event.update':
+    case 'calendar.event.create_with_attendees':
+    case 'mail.trash':
+      break;
   }
   const external = 'provider' in intent;
   const target = display?.target ?? null;
@@ -893,10 +920,7 @@ export function previewView(
     preview_ref: previewRef,
     operation_kind: action.kind,
     service: external ? intent.provider : 'buddy',
-    target:
-      'list_id' in intent.target
-        ? intent.target.list_id
-        : intent.target.remote_id,
+    target: targetLabel(intent),
     fields,
     account_label: accountLabel,
     target_detail: external && target !== null ? { ...target } : null,

@@ -469,6 +469,9 @@ export function buildExtractionResult(
       change.relation !== 'uncertain' &&
       target.failures.length === 0 &&
       target.refs.length > 0 &&
+      // 変更の内容（「取り消します」など）の根拠も照合できたときだけ解決する。根拠のない取消で依頼を止めない。
+      evidence.failures.length === 0 &&
+      evidence.refs.length > 0 &&
       params.resolveTarget !== undefined
     ) {
       const candidates = params.resolveTarget(target.refs, change.relation);

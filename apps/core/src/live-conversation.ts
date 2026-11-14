@@ -17,6 +17,8 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { DelegationResult, TurnResponse } from '@buddy/contracts';
 import {
+  DELEGATION_BACKGROUND_MS,
+  DELEGATION_BRIDGE_MS,
   EMPTY_HOLD,
   EMPTY_LIVE_TRANSCRIPT,
   HOLD_MAX_MS,
@@ -24,6 +26,8 @@ import {
   SESSION_CONTROL_TABLE,
   admitLiveInput,
   fixOutputTarget,
+  backgroundCommentary,
+  bridgeCommentary,
   fitCommentary,
   inputCommentary,
   isHeld,
@@ -239,6 +243,11 @@ interface Pending {
   revision_current: boolean;
   // 失効したら理由を持つ（null は生きている依頼）。一度入れたら戻さない。
   terminal: Terminal | null;
+  // 時間の制御（10 §5）。つなぎ（1.5 秒）と背景化（8 秒）を、それぞれ 1 回だけ。
+  notice_timer: unknown;
+  bridge_sent: boolean;
+  // 8 秒を超えて裏のジョブへ移した。結果は声でなく画面へ回す（完了は気づきと次回の文脈で伝える。B11・B10-06）。
+  backgrounded: boolean;
 }
 
 interface Context {
@@ -535,8 +544,13 @@ export class LiveConversation implements LiveConversationPort {
       is_change: null,
       revision_current: true,
       terminal: null,
+      notice_timer: null,
+      bridge_sent: false,
+      backgrounded: false,
     };
     context.pending.set(pending.workflow_id, pending);
+    // 委譲を受けた時点から、つなぎ（1.5 秒）と背景化（8 秒）を数える。
+    this.#armNotice(context, pending, DELEGATION_BRIDGE_MS, 'bridge');
     let conditions: Readonly<Partial<Record<InputCondition, boolean>>>;
     try {
       conditions = await this.#options.host.conditions(
@@ -1087,7 +1101,7 @@ export class LiveConversation implements LiveConversationPort {
         revision_current: pending.revision_current,
         live_open: view.open && !context.closed,
         reply_text_requested: false,
-        backgrounded: false,
+        backgrounded: pending.backgrounded,
       },
       { ...view.epochs, outputEpoch: String(context.output_gen) },
     );
@@ -1170,6 +1184,59 @@ export class LiveConversation implements LiveConversationPort {
       );
   }
 
+  // ---- 時間の制御（10 §5。X33） -------------------------------------------------------------------------------
+
+  #armNotice(
+    context: Context,
+    pending: Pending,
+    ms: number,
+    which: 'bridge' | 'background',
+  ): void {
+    pending.notice_timer = this.#options.timers.set(ms, () => {
+      pending.notice_timer = null;
+      if (!this.#awaitingResult(context, pending)) return;
+      if (which === 'bridge') {
+        if (
+          !pending.bridge_sent &&
+          this.#speak(context, pending, bridgeCommentary())
+        )
+          pending.bridge_sent = true;
+        this.#armNotice(
+          context,
+          pending,
+          DELEGATION_BACKGROUND_MS - DELEGATION_BRIDGE_MS,
+          'background',
+        );
+        return;
+      }
+      // 8 秒を超えた: 声で 1 回だけ伝え、裏のジョブへ移す。結果は画面へ回る（routeResultDelivery の backgrounded）。
+      // 声へ言ってから裏へ移す（移した後は結果の届け先が画面になり、声で言えなくなる）。
+      this.#speak(context, pending, backgroundCommentary());
+      pending.backgrounded = true;
+    });
+  }
+
+  // 結果をまだ待っている依頼か。閉じた接続・失効した依頼・保留中の変更（新しい発話の確定待ち）・終わった依頼は、
+  // つなぎも背景化もしない（保留は本人の発話を待つ状態で、結果を待つ処理ではない）。
+  #awaitingResult(context: Context, pending: Pending): boolean {
+    return (
+      !context.closed &&
+      pending.terminal === null &&
+      pending.phase !== 'done' &&
+      pending.phase !== 'held' &&
+      !isHeld(context.hold, pending.workflow_id)
+    );
+  }
+
+  // 声で 1 文だけ伝える。声で返せる依頼（声で依頼され、接続・世代・端末が今も有効）のときだけ。送れたら true。
+  #speak(context: Context, pending: Pending, commentary: Commentary): boolean {
+    if (this.#route(context, pending).channel !== 'voice') return false;
+    return this.#options.host.appendCommentary(
+      context.handle.live_session_id,
+      commentary.commentary_parts,
+    );
+  }
+
   // 保留中の変更を実行せずに捨てる（画面へ知らせる）。
   #dropHeld(context: Context, pending: Pending, reason: string): void {
     // 保存の命令を送信済みの依頼は破棄しない（応答を待ち、保存結果をそのまま扱う）。
@@ -1206,6 +1273,9 @@ export class LiveConversation implements LiveConversationPort {
   #finish(context: Context, pending: Pending): void {
     if (pending.timer !== null) this.#options.timers.clear(pending.timer);
     pending.timer = null;
+    if (pending.notice_timer !== null)
+      this.#options.timers.clear(pending.notice_timer);
+    pending.notice_timer = null;
     pending.phase = 'done';
     context.pending.delete(pending.workflow_id);
     context.hold = {

@@ -742,13 +742,15 @@ test(
         await c.rig.wait();
         assert.deepEqual(c.script.calls, []);
         assert.equal(c.conversation.pendingCount, 1);
+        // 委譲を受けて 1.5 秒で結果がないので、つなぎを 1 回だけ言う（B10-04 P3）。解釈にはまだ進まない。
+        assert.deepEqual(c.sb.commentary, [['確認しますね。']]);
         // 終了候補が来て、最後の断片から 300 ms 以上変化がなければ、すぐ進む。
         c.sb.endCandidate();
         await c.rig.clock.advance(100);
         await waitUntil(
           c.rig,
           'the commentary',
-          () => c.sb.commentary.length === 1,
+          () => c.sb.commentary.length === 2,
         );
         assert.deepEqual(c.script.calls, [TASK_TEXT]);
         assert.equal(operations(c.rig).length, 1);
@@ -808,8 +810,10 @@ test(
       await speak(c, { text: '今日の予定を見せて', end: false });
       await delegate(c, 'd1', 800);
       await beat(c, 5200);
-      await waitUntil(c.rig, 'the answer', () => c.sb.commentary.length === 1);
+      await waitUntil(c.rig, 'the answer', () => c.sb.commentary.length === 2);
+      // 確定を待つ間に 1.5 秒でつなぎが 1 回出て、上限の 5 秒で答える（8 秒の背景化にはならない）。
       assert.deepEqual(c.sb.commentary, [
+        ['確認しますね。'],
         ['予定は2件です。', '時間が重なっている予定があります。'],
       ]);
       assert.deepEqual(snapshots(c.rig), [
@@ -2796,8 +2800,10 @@ test(
       await beat(c, 6000);
       // 追記された発話を同じ版として扱わない。自動で進めず、言い直しを頼む（変更も答えも作らない）。
       assert.deepEqual(c.script.calls, [SCHEDULE_TEXT]);
+      // 2 回目の委譲は結果が出るまで 1.5 秒を超えるので、つなぎが 1 回出る。
       assert.deepEqual(c.sb.commentary, [
         SCHEDULE_ANSWER,
+        ['確認しますね。'],
         [SAY_AGAIN_SENTENCE],
       ]);
       assert.deepEqual(workflowStates(c.rig), ['done']);
@@ -2836,6 +2842,204 @@ test(
             args: { ...EMPTY_ARGS },
             reply_text: 'こんにちは。声には出さない文です。',
           }),
+      },
+    );
+  },
+);
+
+// ---- B10-04 P3: つなぎ（1.5 秒）・背景化（8 秒）・遅着（X33・X29。ADR 0108） ----------------------------------------------
+
+const BRIDGE_SENTENCE = '確認しますね。';
+const BACKGROUND_SENTENCE = '少し時間がかかるので、できたら知らせます。';
+
+test(
+  'X33: a result that is not ready in 1.5 seconds gets one bridge, at 8 seconds one background notice, and then goes to the screen (not the voice), saved as one workflow',
+  TIMEOUT,
+  async () => {
+    const slow = gate();
+    await withConversation(
+      async (c) => {
+        await speak(c, { text: SCHEDULE_TEXT });
+        await delegate(c, 'd1', 800);
+        // 入力の確定（終了候補の後 300 ms）の後、解釈に入る（結果は保留）。ここまでで委譲から 400 ms。
+        await c.rig.clock.advance(400);
+        await waitUntil(
+          c.rig,
+          'the interpretation',
+          () => c.script.calls.length === 1,
+        );
+        // 委譲を受けてから 1.5 秒の手前（1499 ms）までは、何も言わない（境界は 1500 ms）。
+        await beat(c, 1099);
+        await c.rig.wait();
+        assert.deepEqual(c.sb.commentary, []);
+        await beat(c, 1);
+        await waitUntil(
+          c.rig,
+          'the bridge',
+          () => c.sb.commentary.length === 1,
+        );
+        assert.deepEqual(c.sb.commentary, [[BRIDGE_SENTENCE]]);
+        // 8 秒の手前（7999 ms）まで、つなぎを重ねず、背景化も言わない。
+        await beat(c, 6499);
+        await c.rig.wait();
+        assert.deepEqual(c.sb.commentary, [[BRIDGE_SENTENCE]]);
+        await beat(c, 1);
+        await waitUntil(
+          c.rig,
+          'the background notice',
+          () => c.sb.commentary.length === 2,
+        );
+        assert.deepEqual(c.sb.commentary, [
+          [BRIDGE_SENTENCE],
+          [BACKGROUND_SENTENCE],
+        ]);
+        // 結果が戻っても、声には載せない（裏のジョブへ移した）。画面へ回し、1 つの依頼として保存される。
+        slow.release();
+        await waitUntil(c.rig, 'the late result', () => c.shown.length === 1);
+        assert.deepEqual(
+          c.shown.map((entry) => [entry.reason, entry.session_id]),
+          [['backgrounded', SESSION]],
+        );
+        assert.deepEqual(c.sb.commentary, [
+          [BRIDGE_SENTENCE],
+          [BACKGROUND_SENTENCE],
+        ]);
+        assert.deepEqual(workflowStates(c.rig), ['done']);
+        // その後も、つなぎも背景化も重ねて言わない。
+        await beat(c, 10_000);
+        assert.equal(c.sb.commentary.length, 2);
+      },
+      {
+        prepare: (script) => {
+          script.gates.set(SCHEDULE_TEXT, slow.promise);
+        },
+      },
+    );
+  },
+);
+
+test(
+  'X33: a result that is ready before 1.5 seconds is answered alone: no bridge, no background notice, then or later',
+  TIMEOUT,
+  async () => {
+    await withConversation(async (c) => {
+      await speak(c, { text: SCHEDULE_TEXT });
+      await delegate(c, 'd1', 800);
+      await c.rig.clock.advance(500);
+      await waitUntil(c.rig, 'the answer', () => c.sb.commentary.length === 1);
+      assert.deepEqual(c.sb.commentary, [SCHEDULE_ANSWER]);
+      await beat(c, 10_000);
+      assert.deepEqual(c.sb.commentary, [SCHEDULE_ANSWER]);
+    });
+  },
+);
+
+test(
+  'X33/X29: once the live is closed no notice is appended to it, and the late result goes to the screen as a closed-connection result',
+  TIMEOUT,
+  async () => {
+    const slow = gate();
+    await withConversation(
+      async (c) => {
+        await speak(c, { text: SCHEDULE_TEXT });
+        await delegate(c, 'd1', 800);
+        await c.rig.clock.advance(400);
+        await waitUntil(
+          c.rig,
+          'the interpretation',
+          () => c.script.calls.length === 1,
+        );
+        await beat(c, 1100);
+        await waitUntil(
+          c.rig,
+          'the bridge',
+          () => c.sb.commentary.length === 1,
+        );
+        const closed = await c.rig.voice.closeLiveSession(A, c.liveId, {
+          request_id: uuid(0x72),
+          command_scope_id: SCOPE_A,
+          reason: 'silence',
+          audio_epoch: c.rig.voice.liveRecord(c.liveId)?.audio_epoch as string,
+        });
+        assert.equal(closed.status, 202);
+        // 閉じた後は、8 秒を過ぎても背景化の発話を追記しない。
+        await c.rig.clock.advance(9000);
+        await c.rig.wait();
+        assert.deepEqual(c.sb.commentary, [[BRIDGE_SENTENCE]]);
+        slow.release();
+        await waitUntil(c.rig, 'the late result', () => c.shown.length === 1);
+        // 閉じて 9 秒たつと、接続の世代の記録も残っていない（声には届けられないので、どの理由でも画面へ回る）。
+        assert.deepEqual(
+          c.shown.map((entry) => entry.reason),
+          ['no_current_epoch'],
+        );
+        assert.deepEqual(c.sb.commentary, [[BRIDGE_SENTENCE]]);
+      },
+      {
+        prepare: (script) => {
+          script.gates.set(SCHEDULE_TEXT, slow.promise);
+        },
+      },
+    );
+  },
+);
+
+test(
+  'X33/X27: a change held by a new utterance is not a running job: it gets no bridge and no background notice while it waits for the new utterance to settle',
+  TIMEOUT,
+  async () => {
+    const first = gate();
+    await withConversation(
+      async (c) => {
+        await firstRequestHeldBySecondUtterance(c, first.release);
+        await beat(c, 9000);
+        assert.equal(c.conversation.heldCount(c.liveId), 1);
+        assert.deepEqual(c.sb.commentary, []);
+        assert.deepEqual(c.shown, []);
+      },
+      {
+        policy: AUTO_TASK,
+        prepare: (script) => {
+          script.gates.set(TASK_TEXT, first.promise);
+        },
+      },
+    );
+  },
+);
+
+test(
+  'X33/X27: a request replaced by a correction is never bridged or backgrounded after it was replaced, and the corrected request is the only one answered',
+  TIMEOUT,
+  async () => {
+    const first = gate();
+    await withConversation(
+      async (c) => {
+        await firstRequestHeldBySecondUtterance(c, first.release);
+        await secondUtterance(c);
+        await waitUntil(
+          c.rig,
+          'the corrected answer',
+          () => c.sb.commentary.length === 1,
+        );
+        await beat(c, 10_000);
+        // 旧い依頼は、つなぎも背景化も言わず、結果も出さない。訂正後の依頼の答えだけ。
+        assert.deepEqual(c.sb.commentary, [[SCREEN_SENTENCE]]);
+        assert.deepEqual(c.shown, []);
+        assert.equal(operations(c.rig).length, 1);
+      },
+      {
+        policy: AUTO_TASK,
+        prepare: (script) => {
+          script.gates.set(TASK_TEXT, first.promise);
+          script.replies.set(
+            EGG_TEXT,
+            intentReply(
+              'create_task',
+              { title: '卵を買う' },
+              { relation: 'correction', target_workflow_id: uuid(0x8001) },
+            ),
+          );
+        },
       },
     );
   },

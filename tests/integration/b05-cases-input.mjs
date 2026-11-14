@@ -120,13 +120,15 @@ async function x51Confirmation() {
     await conv.delegate('d1', 800);
     // 終了候補がなければ、時間が経っても解釈に進まない（上限の 5 秒より前）。
     await w.advance(1500);
+    // 委譲を受けて 1.5 秒で結果がないので、つなぎを 1 回だけ言う（B10-04 P3。解釈には進まない）。
     const beforeEnd = {
       model_calls: conv.script.calls.length,
       pending: conv.conversation.pendingCount,
+      commentary: conv.sb().commentary.map((parts) => [...parts]),
     };
     conv.sb().endCandidate();
     await w.advance(100);
-    await w.advanceUntil('応答', () => conv.sb().commentary.length === 1, 100);
+    await w.advanceUntil('応答', () => conv.sb().commentary.length === 2, 100);
     settle(w);
     waits = {
       before_end_candidate: beforeEnd,

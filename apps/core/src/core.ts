@@ -1176,6 +1176,7 @@ async function startHttps(
     },
     policy: turnOptions.policy ?? TEST_TURN_POLICY,
     previews,
+    storage,
     utcOffset: turnOptions.utcOffset ?? '+09:00',
     now: () => now().getTime(),
     onOperationCreated: () => feed.notify(),
@@ -1221,6 +1222,7 @@ async function startHttps(
     canvas,
     createSession: turns.handlers['createSession'] as ApiRouteHandler,
     postTurn: turns.handlers['postTurn'] as ApiRouteHandler,
+    storage,
     now: () => now().getTime(),
     // 自動の区切りの日付は、発言の解釈と同じ本人の時間帯で判定する（UI-05、ADR 0068）。
     utcOffset: turnOptions.utcOffset ?? '+09:00',

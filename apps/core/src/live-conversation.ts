@@ -245,6 +245,9 @@ interface Pending {
   terminal: Terminal | null;
   // 時間の制御（10 §5）。つなぎ（1.5 秒）と背景化（8 秒）を、それぞれ 1 回だけ。
   notice_timer: unknown;
+  // 入力の受付の条件（同意・Live が使える・予算など）の確認が通った。通るまでは通知を言わない（後で拒否される委譲に
+  // 「確認しますね」を言わない）。
+  admitted: boolean;
   bridge_done: boolean;
   // 8 秒を超えて裏のジョブへ移した。結果は声でなく画面へ回す（完了は気づきと次回の文脈で伝える。B11・B10-06）。
   backgrounded: boolean;
@@ -575,6 +578,7 @@ export class LiveConversation implements LiveConversationPort {
       revision_current: true,
       terminal: null,
       notice_timer: null,
+      admitted: false,
       bridge_done: false,
       backgrounded: false,
     };
@@ -616,6 +620,7 @@ export class LiveConversation implements LiveConversationPort {
       return;
     }
     pending.conditions = conditions;
+    pending.admitted = true;
     // 会話の操作として使われた発話・保留の開始は、見直しの中で扱う。
     this.#await(context, pending, sessionId);
   }
@@ -1146,6 +1151,13 @@ export class LiveConversation implements LiveConversationPort {
     commentary: Commentary,
   ): Promise<void> {
     const handle = context.handle;
+    // 受付から 8 秒を過ぎた依頼の結果は、通知のタイマーが先に動いていなくても、声でなく画面へ回す（保留が解けた直後に
+    // 結果が戻る場合など、次の見直しより先に配信されても期限を過ぎた依頼を声で返さない）。
+    if (
+      !pending.backgrounded &&
+      this.#options.monoNow() - pending.accepted_at >= DELEGATION_BACKGROUND_MS
+    )
+      pending.backgrounded = true;
     // 声で返すはずだった案内を、画面の text の本文にも使う（turn.reply_text の汎用の文に置き換えない）。
     const text = commentary.commentary_parts.join('\n');
     const route = this.#route(context, pending);
@@ -1218,6 +1230,11 @@ export class LiveConversation implements LiveConversationPort {
     // 閉じた接続・失効した依頼・終わった依頼には、何も言わず、見直しもしない。
     if (context.closed || pending.terminal !== null || pending.phase === 'done')
       return;
+    // 受付の条件の確認が済むまでは言わない（拒否される委譲に言わない）。受付時刻は変えず、確認が通った時点で経過から判定し直す。
+    if (!pending.admitted) {
+      this.#armNotice(context, pending, LIVE_INPUT_POLL_MS);
+      return;
+    }
     // 保留中の変更（新しい発話の確定待ち）は、結果を待つ処理ではないので言わない。ただし見直しは続け、保留が解けた
     // 時点で受付時刻からの経過を判定し直す（解けた後に 8 秒を過ぎていれば、その時点で背景化する）。
     if (pending.phase === 'held' || isHeld(context.hold, pending.workflow_id)) {

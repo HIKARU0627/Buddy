@@ -3303,3 +3303,126 @@ test(
     );
   },
 );
+
+test(
+  'X33/X46/P3: while the input conditions are still being checked nothing is said, so a delegation that is then refused (consent revoked) gets no bridge even after 1.5 seconds',
+  TIMEOUT,
+  async () => {
+    const conditions = gate();
+    const consent = { value: 'granted' as 'granted' | 'revoked' };
+    await withConversation(
+      async (c) => {
+        // Live を開いた後で同意を取り消す（確認の結果は拒否になる）。
+        consent.value = 'revoked';
+        await speak(c, { text: TASK_TEXT });
+        await delegate(c, 'd1', 800);
+        // 受付条件の確認が 2 秒かかる（1.5 秒を過ぎる）。その間、つなぎを言わない。
+        await beat(c, 2000);
+        assert.deepEqual(c.sb.commentary, []);
+        conditions.release();
+        await c.rig.wait();
+        // 確認の結果は拒否（同意なし）。拒否された委譲には、何も言わず、解釈も保存もしない。
+        await beat(c, 1000);
+        assert.deepEqual(c.sb.commentary, []);
+        assert.deepEqual(c.script.calls, []);
+        assert.deepEqual(turnsOf(c.rig), []);
+        assert.equal(c.conversation.pendingCount, 0);
+      },
+      {
+        policy: AUTO_TASK,
+        conditionsGate: conditions.promise,
+        overrides: { consent: () => consent.value },
+      },
+    );
+  },
+);
+
+test(
+  'X33/P3: when the input conditions are accepted after 1.5 seconds, the bridge is said once right after, judged from the time the request was received',
+  TIMEOUT,
+  async () => {
+    const conditions = gate();
+    const slow = gate();
+    await withConversation(
+      async (c) => {
+        await speak(c, { text: SCHEDULE_TEXT });
+        await delegate(c, 'd1', 800);
+        await beat(c, 2000);
+        assert.deepEqual(c.sb.commentary, []);
+        conditions.release();
+        await c.rig.wait();
+        // 通知の見直しは 100 ms ごと。確認が通った後の最初の見直しで、受付から 1.5 秒を過ぎているのでつなぎを言う。
+        await beat(c, 200);
+        await waitUntil(
+          c.rig,
+          'the bridge',
+          () => c.sb.commentary.length === 1,
+        );
+        assert.deepEqual(c.sb.commentary, [[BRIDGE_SENTENCE]]);
+        slow.release();
+        await waitUntil(
+          c.rig,
+          'the answer',
+          () => c.sb.commentary.length === 2,
+        );
+        assert.deepEqual(c.sb.commentary, [[BRIDGE_SENTENCE], SCHEDULE_ANSWER]);
+      },
+      {
+        conditionsGate: conditions.promise,
+        prepare: (script) => {
+          script.gates.set(SCHEDULE_TEXT, slow.promise);
+        },
+      },
+    );
+  },
+);
+
+test(
+  'X33/X27/P3: a request held until after 8 seconds and resumed at the same instant its result returns is still moved to the background: the result goes to the screen, never to the voice',
+  TIMEOUT,
+  async () => {
+    const first = gate();
+    const second = gate();
+    await withConversation(
+      async (c) => {
+        await firstRequestHeldBySecondUtterance(c, first.release);
+        // 別件の発話と委譲。その解釈は保留（ゲート）にして、1 つ目の保留が解けない状態のまま 9 秒を過ぎる。
+        await speak(c, { text: EGG_TEXT, speech: false });
+        await delegate(c, 'd2', c.next.start - 400);
+        await beat(c, 9000);
+        assert.equal(c.conversation.heldCount(c.liveId), 1);
+        assert.equal(c.script.calls.length >= 2, true);
+        // 時計を進めずに 2 つ目の解釈を通す。保留が解けて 1 つ目が再開し、次の見直しより先に結果が戻る。
+        second.release();
+        await waitUntil(
+          c.rig,
+          'both results on the screen',
+          () =>
+            c.shown.filter((entry) => entry.reason === 'backgrounded')
+              .length === 2,
+        );
+        // どちらの結果も、8 秒を過ぎた依頼なので画面へ回り、声には載らない。
+        assert.equal(
+          c.sb.commentary.some((parts) => parts[0] === SCREEN_SENTENCE),
+          false,
+        );
+        assert.equal(operations(c.rig).length, 2);
+      },
+      {
+        policy: AUTO_TASK,
+        prepare: (script) => {
+          script.gates.set(TASK_TEXT, first.promise);
+          script.gates.set(EGG_TEXT, second.promise);
+          script.replies.set(
+            EGG_TEXT,
+            intentReply(
+              'create_task',
+              { title: '卵を買う' },
+              { relation: 'new' },
+            ),
+          );
+        },
+      },
+    );
+  },
+);

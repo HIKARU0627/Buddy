@@ -886,6 +886,10 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
       if ((current?.sessionId ?? before) !== before) break;
     }
     replay = acceptedIn(acceptedKey);
+    // 上限まで試してまだ区切りが要る（他の要求と競合し続けた）なら、古い区切りで答えず 503 にする
+    // （区切りの理由を落とさない。レビューの任意の指摘）。
+    if (replay === undefined && boundaryOf(current ?? stream, now()) !== null)
+      return apiErrorResponse(503, 'dependency_unavailable', requestId);
     // 再送は、元の区切り（会話）で解決する。新しい区切りで送ると request_hash が変わり 409 になる（レビュー P1）。
     // 応答の `segment` は今の区切り（表示用）。
     stream =

@@ -251,6 +251,12 @@
       "$ref": "#/$defs/AutoActionList"
     },
     {
+      "$ref": "#/$defs/PolicyApprovalRecord"
+    },
+    {
+      "$ref": "#/$defs/AutoExecutionPolicy"
+    },
+    {
       "$ref": "#/$defs/SafetyResumeRequest"
     },
     {
@@ -9457,11 +9463,134 @@
               "type": "null"
             }
           ]
+        },
+        "auto_approvals": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SafetyStopCounters"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "自動承認の時間窓の件数。停止の判定と同じ transaction で更新する。"
         }
       },
       "required": ["state", "safety_revision", "stop_reason", "stopped_at"],
       "additionalProperties": false,
       "description": "安全停止の状態（設計 03 取り消しと安全停止）。解除は登録済み・ロック解除済み端末の画面操作だけ。restored_from_backup はバックアップからの復元の後の停止で、本人が再開するまで自動実行を止める（ADR 0047）。"
+    },
+    "UndoTarget": {
+      "type": "object",
+      "properties": {
+        "content_version": {
+          "$ref": "#/$defs/ContentVersion"
+        },
+        "content_hash": {
+          "$ref": "#/$defs/Hash"
+        }
+      },
+      "required": ["content_version", "content_hash"],
+      "additionalProperties": false,
+      "description": "取り消す対象の内容版（設計 08 §9、ADR 0074）。取り消しの直前に現在値と照合し、変わっていれば補償を行わず差分を表示する。"
+    },
+    "SafetyStopCounters": {
+      "type": "object",
+      "properties": {
+        "window_started_at": {
+          "$ref": "#/$defs/UtcTime"
+        },
+        "auto_approvals": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "window_minutes": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "window_started_at",
+        "auto_approvals",
+        "limit",
+        "window_minutes"
+      ],
+      "additionalProperties": false,
+      "description": "自動承認の時間窓の件数（設計 08 §9、ADR 0074）。初期値は 10 分間に 20 件で、T10 で調整する。"
+    },
+    "AutoExecutionPolicy": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "const": "buddy.auto-execution.v1"
+        },
+        "policy_version": {
+          "$ref": "#/$defs/PolicyVersion"
+        },
+        "rules": {
+          "type": "object",
+          "properties": {
+            "task.register": { "type": "boolean" },
+            "event.create_own": { "type": "boolean" },
+            "mail.apply_existing_label": { "type": "boolean" },
+            "mail.save_draft": { "type": "boolean" }
+          },
+          "required": [
+            "task.register",
+            "event.create_own",
+            "mail.apply_existing_label",
+            "mail.save_draft"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": ["schema", "policy_version", "rules"],
+      "additionalProperties": false,
+      "description": "自動実行の有効・無効の方針（設計 08 §9、D6、ADR 0074）。4 種類すべてを明示し、未設定・初期状態はすべて無効（false）。T10 の合格後に本人が有効化する。"
+    },
+    "PolicyApprovalRecord": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "const": "buddy.policy-approval.v1"
+        },
+        "operation_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "policy_version": {
+          "$ref": "#/$defs/PolicyVersion"
+        },
+        "rule_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "content_version": {
+          "$ref": "#/$defs/ContentVersion"
+        },
+        "content_hash": {
+          "$ref": "#/$defs/Hash"
+        },
+        "approved_at": {
+          "$ref": "#/$defs/UtcTime"
+        }
+      },
+      "required": [
+        "schema",
+        "operation_id",
+        "policy_version",
+        "rule_id",
+        "content_version",
+        "content_hash",
+        "approved_at"
+      ],
+      "additionalProperties": false,
+      "description": "方針による自動承認の記録（設計 08 §1・§9、ADR 0074）。古い方針の版で判定した承認を使わない。承認の正本は Core の記録で、connector やモデルの申告から作らない。"
     },
     "AutoActionItem": {
       "type": "object",
@@ -9501,6 +9630,17 @@
         },
         "undo_deadline": {
           "$ref": "#/$defs/UtcTime"
+        },
+        "undo_target": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UndoTarget"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "取り消す対象の内容版。対象が変わっていたら自動で補償しない。"
         }
       },
       "required": [

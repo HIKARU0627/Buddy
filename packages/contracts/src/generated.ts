@@ -133,6 +133,8 @@ export type BuddyContract =
   | DesktopCanvasView
   | StreamTurnRequest
   | StreamTurnResponse
+  | StorageModeChangeRequest
+  | StorageModeChangeResponse
   | CanvasUserOpRequest
   | CanvasUserOpResponse
   | CanvasContent
@@ -800,6 +802,10 @@ export type StorageMode = 'normal' | 'extended' | 'private';
  * 会話の表示先の版（設計 07 §2 handoff の expected_route_revision）。
  */
 export type RouteRevision = string;
+/**
+ * 保存の区切りの世代（ADR 0045・0059）。記録しない区切りに入る・出るたびに 1 進み、Core の再起動をまたいでも戻らない（時計の状態ファイルの storage_boundary に番号だけを置く）。
+ */
+export type SegmentGeneration = string;
 /**
  * 会話そのものの操作（設計 10 §5 v0.6、質問 126）。照合表（SessionControlPhrases）と画面のボタンが同じ操作を指す。「処理を取り消す」（cancel_workflow）はここに含めない別の命令。
  */
@@ -1972,10 +1978,6 @@ export type RetentionNotice =
        */
       items: [RetentionNoticeItem, ...RetentionNoticeItem[]];
     };
-/**
- * 保存の区切りの世代（ADR 0045・0059）。記録しない区切りに入る・出るたびに 1 進み、Core の再起動をまたいでも戻らない（時計の状態ファイルの storage_boundary に番号だけを置く）。
- */
-export type SegmentGeneration = string;
 /**
  * 区切りの保存モードの状態（設計 03 保存期限・記録しない会話の境界、ADR 0040）。モードごとに何を保存し何を禁じるかを固定の値で持ち、private では発言・要約・記憶・抽出・影モードの記録・Live の接続を持てない。端末内の音声認識（③）は使える。判定は Core のコードが持ち、クライアントは表示にだけ使う。
  */
@@ -4685,20 +4687,32 @@ export interface SessionCreateRequest {
   command_scope_id: Id;
   storage_mode: StorageMode;
 }
+/**
+ * 会話の作成の受付。segment_generation はこの受付の時点の区切りの世代（ADR 0045・0059）。端末は発言の由来（origin）にこの値を入れる。受付の後に世代が進んだ場合は、端末は新しい世代を受け取り直すまで発言が 409 になる。
+ */
 export interface SessionReceipt {
   request_id: Id;
   session_id: Id;
   storage_mode: StorageMode;
+  segment_generation: SegmentGeneration;
   route_revision: RouteRevision;
 }
 /**
- * 画面からの発言（設計 07 §2、10 §6）。文字入力と、端末内で文字にした声（③）だけ。Live の文字起こしはこの経路で送らない。発言から外部変更を直接実行しない。
+ * 画面からの発言（設計 07 §2、10 §6）。文字入力と、端末内で文字にした声（③）だけ。Live の文字起こしはこの経路で送らない。発言から外部変更を直接実行しない。origin は端末が見ていた区切り（会話の ID と世代）で、Core が今の区切りと照合する（ADR 0045・0059）。
  */
 export interface TurnRequest {
   request_id: Id;
   command_scope_id: Id;
   text: string;
   input_kind: 'text' | 'voice_local';
+  origin: TurnOrigin;
+}
+/**
+ * 端末が見ていた区切り（ADR 0045 の P2-1・ADR 0059）。画面からの発言の由来。会話の ID と、作成の受付で受け取った世代。
+ */
+export interface TurnOrigin {
+  segment_id: Id;
+  segment_generation: SegmentGeneration;
 }
 /**
  * 文字で返す結果（設計 10 §6A）。結果は構造化した事実の表示で、文章は雑談・相談・調査のまとめだけ。外部変更の完了は操作の状態で別に示す。
@@ -6062,6 +6076,21 @@ export interface CarriedSummary {
    */
   source_segment_ids: [Id, ...Id[]];
   expires_at: UtcTime;
+}
+/**
+ * 保存モードの切り替えの要求（U170、ADR 0060）。流れの経路（POST /v1/stream/storage-mode）が保存モードの唯一の入口・出口で、private の出入りもここへ寄せる。端末は会話・区切りの ID を送らない（UI-01。区切りは Core が選ぶ）。
+ */
+export interface StorageModeChangeRequest {
+  request_id: Id;
+  command_scope_id: Id;
+  storage_mode: StorageMode;
+}
+/**
+ * 保存モードの切り替えの結果（U170、ADR 0060）。切り替えた後の区切り（StreamSegment）を返す。private の出入りでは要約をつながず、normal ⇔ extended は nextCarriedSummary の規則の範囲でだけつなぐ。外部変更の完了ではない。
+ */
+export interface StorageModeChangeResponse {
+  request_id: Id;
+  segment: StreamSegment;
 }
 /**
  * ユーザーのキャンバスの操作の記録（UI-06、ADR 0032）。expected_canvas_revision は端末が描いている版。版が今と同じか、古くてもその物の置き場所・存在がその版より後に変わっていなければ当てる。それ以外は 409（conflict）で捨てる（自動では送り直さない）。

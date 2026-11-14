@@ -392,6 +392,12 @@
       "$ref": "#/$defs/StreamTurnResponse"
     },
     {
+      "$ref": "#/$defs/StorageModeChangeRequest"
+    },
+    {
+      "$ref": "#/$defs/StorageModeChangeResponse"
+    },
+    {
       "$ref": "#/$defs/CanvasUserOpRequest"
     },
     {
@@ -10317,6 +10323,9 @@
         "storage_mode": {
           "$ref": "#/$defs/StorageMode"
         },
+        "segment_generation": {
+          "$ref": "#/$defs/SegmentGeneration"
+        },
         "route_revision": {
           "$ref": "#/$defs/RouteRevision"
         }
@@ -10325,9 +10334,25 @@
         "request_id",
         "session_id",
         "storage_mode",
+        "segment_generation",
         "route_revision"
       ],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "description": "会話の作成の受付。segment_generation はこの受付の時点の区切りの世代（ADR 0045・0059）。端末は発言の由来（origin）にこの値を入れる。受付の後に世代が進んだ場合は、端末は新しい世代を受け取り直すまで発言が 409 になる。"
+    },
+    "TurnOrigin": {
+      "type": "object",
+      "properties": {
+        "segment_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "segment_generation": {
+          "$ref": "#/$defs/SegmentGeneration"
+        }
+      },
+      "required": ["segment_id", "segment_generation"],
+      "additionalProperties": false,
+      "description": "端末が見ていた区切り（ADR 0045 の P2-1・ADR 0059）。画面からの発言の由来。会話の ID と、作成の受付で受け取った世代。"
     },
     "TurnRequest": {
       "type": "object",
@@ -10346,11 +10371,20 @@
         "input_kind": {
           "type": "string",
           "enum": ["text", "voice_local"]
+        },
+        "origin": {
+          "$ref": "#/$defs/TurnOrigin"
         }
       },
-      "required": ["request_id", "command_scope_id", "text", "input_kind"],
+      "required": [
+        "request_id",
+        "command_scope_id",
+        "text",
+        "input_kind",
+        "origin"
+      ],
       "additionalProperties": false,
-      "description": "画面からの発言（設計 07 §2、10 §6）。文字入力と、端末内で文字にした声（③）だけ。Live の文字起こしはこの経路で送らない。発言から外部変更を直接実行しない。"
+      "description": "画面からの発言（設計 07 §2、10 §6）。文字入力と、端末内で文字にした声（③）だけ。Live の文字起こしはこの経路で送らない。発言から外部変更を直接実行しない。origin は端末が見ていた区切り（会話の ID と世代）で、Core が今の区切りと照合する（ADR 0045・0059）。"
     },
     "TurnResponse": {
       "type": "object",
@@ -15614,6 +15648,37 @@
       ],
       "additionalProperties": false,
       "description": "流れ（stream）の中の今の区切り（ADR 0032）。画面には区切りとして見せず、保存モードの表示と表示の権限の判定に使う。carried_summary は前の区切りからつないだ要約の由来と期限。記録しない区切り・記録しない会話から出た区切り・流れの最初・忘却の指示で始めた区切りはつながない。期限が区切りの始まり以前の要約・自分を由来に含む要約は持たない（意味の検査）。"
+    },
+    "StorageModeChangeRequest": {
+      "type": "object",
+      "properties": {
+        "request_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "command_scope_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "storage_mode": {
+          "$ref": "#/$defs/StorageMode"
+        }
+      },
+      "required": ["request_id", "command_scope_id", "storage_mode"],
+      "additionalProperties": false,
+      "description": "保存モードの切り替えの要求（U170、ADR 0060）。流れの経路（POST /v1/stream/storage-mode）が保存モードの唯一の入口・出口で、private の出入りもここへ寄せる。端末は会話・区切りの ID を送らない（UI-01。区切りは Core が選ぶ）。"
+    },
+    "StorageModeChangeResponse": {
+      "type": "object",
+      "properties": {
+        "request_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "segment": {
+          "$ref": "#/$defs/StreamSegment"
+        }
+      },
+      "required": ["request_id", "segment"],
+      "additionalProperties": false,
+      "description": "保存モードの切り替えの結果（U170、ADR 0060）。切り替えた後の区切り（StreamSegment）を返す。private の出入りでは要約をつながず、normal ⇔ extended は nextCarriedSummary の規則の範囲でだけつなぐ。外部変更の完了ではない。"
     },
     "StreamTurnRequest": {
       "type": "object",

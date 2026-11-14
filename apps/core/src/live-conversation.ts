@@ -1241,6 +1241,16 @@ export class LiveConversation implements LiveConversationPort {
       this.#armNotice(context, pending, LIVE_INPUT_POLL_MS);
       return;
     }
+    // 入力がまだ確定していない間（本人が話し終えていない・対象の発話の終了候補がまだ見えない）は、結果を待つ処理ではないので
+    // 言わない（本人の発話にかぶせない）。時間は受付時刻から数え続け、見直しも続ける。終了候補が見えた後の判定で、
+    // 1.5 秒を過ぎていればつなぎを 1 回、8 秒を過ぎていれば背景化だけを言う。
+    if (
+      pending.phase === 'waiting_input' &&
+      !this.#inputEnded(context, pending)
+    ) {
+      this.#armNotice(context, pending, LIVE_INPUT_POLL_MS);
+      return;
+    }
     // 時計が戻ったときは 0（経過を数えられないので、期限を早めない）。
     const elapsed = Math.max(0, this.#options.monoNow() - pending.accepted_at);
     if (elapsed >= DELEGATION_BACKGROUND_MS) {
@@ -1258,6 +1268,17 @@ export class LiveConversation implements LiveConversationPort {
       ? DELEGATION_BACKGROUND_MS
       : DELEGATION_BRIDGE_MS;
     this.#armNotice(context, pending, due - elapsed);
+  }
+
+  // 委譲の対象の発話について、本人が話し終えた（端末の終了候補を観測した）か。対象を決められない（offset 不明・
+  // 対象が複数・まだ断片がない）ときは、話し終えたと言えないので false。
+  #inputEnded(context: Context, pending: Pending): boolean {
+    if (pending.target_ordinal === null) return false;
+    return (
+      context.transcript.turns.find(
+        (turn) => turn.ordinal === pending.target_ordinal,
+      )?.end_candidate === true
+    );
   }
 
   // 声で 1 文だけ伝える。声で返せる依頼（声で依頼され、接続・世代・端末が今も有効）のときだけ。送れたら true。

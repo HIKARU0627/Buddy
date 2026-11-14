@@ -609,3 +609,41 @@ test('the same recurring occurrence written with or without milliseconds is one 
     'ical:uid-series#weekly-3',
   );
 });
+
+test('a start inside a second is rounded up for the deadline, so the candidate is never resolved before the overlap starts', () => {
+  const found = run([
+    ev('a', '2030-10-09T01:00:00Z', '2030-10-09T03:00:00Z'),
+    ev('b', '2030-10-09T01:30:00.500Z', '2030-10-09T02:30:00Z'),
+  ]);
+  const [overlap] = found.overlaps;
+  assert.equal(overlap.period.start, '2030-10-09T01:30:00.500Z');
+  const deadline = scheduleOverlapDeadline(overlap, ZONE);
+  // 10:30:00.500 JST は秒精度で 10:30:01 へ切り上げる（切り下げの 10:30:00 ではない）。
+  assert.equal(deadline.local_datetime, '2030-10-09T10:30:01');
+  const eventAt = (now) =>
+    candidateDueEvent(
+      {
+        state: 'new',
+        deadline,
+        initial_import: false,
+        created_at: '2030-10-01T00:00:00Z',
+        snooze_until: null,
+      },
+      now,
+      ZONE,
+    ).event;
+  assert.equal(eventAt('2030-10-09T01:30:00.400Z'), null); // 開始の直前
+  assert.equal(eventAt('2030-10-09T01:30:00.500Z'), null); // 開始の時点
+  assert.equal(eventAt('2030-10-09T01:30:00.900Z'), null); // 開始の直後（切り下げなら過ぎたことになる）
+  assert.equal(eventAt('2030-10-09T01:30:01.000Z'), null); // 丸めた秒ちょうどは過ぎていない
+  assert.equal(eventAt('2030-10-09T01:30:01.100Z'), 'deadline_passed');
+  // 秒ちょうどの開始は丸めない。
+  const exact = run([
+    ev('a', '2030-10-09T01:00:00Z', '2030-10-09T03:00:00Z'),
+    ev('b', '2030-10-09T01:30:00Z', '2030-10-09T02:30:00Z'),
+  ]);
+  assert.equal(
+    scheduleOverlapDeadline(exact.overlaps[0], ZONE).local_datetime,
+    '2030-10-09T10:30:00',
+  );
+});

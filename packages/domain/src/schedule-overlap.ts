@@ -300,7 +300,10 @@ export function scheduleOverlapDeadline(
     };
   const start = parseCandidateUtc(overlap.period.start);
   if (start === null) return null;
-  const clock = candidateLocalClock(start, zone);
+  // 期限は秒精度。重複の開始が秒の途中（ミリ秒付き）なら、次の秒へ切り上げる。切り下げると、実際の開始より前に期限を
+  // 過ぎたと見なして候補を早く解決してしまう（U288）。
+  const rounded = Math.ceil(start / 1000) * 1000;
+  const clock = candidateLocalClock(rounded, zone);
   if (clock === null) return null;
   return {
     kind: 'instant',

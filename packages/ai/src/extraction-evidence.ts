@@ -242,6 +242,7 @@ export interface ExtractionDiagnostics {
   readonly quote_failures: Readonly<Record<QuoteFailure, number>>;
   readonly deadline_unverified: number;
   readonly year_downgrades: number;
+  readonly time_downgrades: number;
   readonly requests_lowered: number;
   readonly unresolved_changes: number;
 }
@@ -317,11 +318,23 @@ function resolvedYear(deadline: Deadline): number | null {
   return null;
 }
 
+// 原文に時刻の表現があるか（「17時」「17:00」「午後」「正午」「5pm」「noon」など）。日付だけの原文は false。
+export function timeExpressed(text: string): boolean {
+  return (
+    /[0-9０-９]{1,2}\s*[:：]\s*[0-9０-９]{2}/u.test(text) ||
+    /[0-9０-９]{1,2}\s*時/u.test(text) ||
+    /午前|午後|正午|真夜中/u.test(text) ||
+    /[0-9]\s*(?:a\.?m\.?|p\.?m\.?)(?![a-z])/iu.test(text) ||
+    /\b(?:noon|midnight)\b/iu.test(text)
+  );
+}
+
 interface DeadlineOutcome {
   readonly deadline: Deadline;
   readonly evidence: FieldEvidence | null;
   readonly verified: boolean;
   readonly year_downgraded: boolean;
+  readonly time_downgraded: boolean;
 }
 
 // 期限を確定する。原文（original_text）が、照合できた引用の中、または送ったソースの中に一意にあるときだけ explicit。
@@ -333,7 +346,22 @@ function resolveDeadline(
   const incomplete =
     context.completeness.unread_source_ids.length > 0 ||
     context.completeness.truncated_source_ids.length > 0;
-  const base = wire === null ? null : toDeadline(wire, context.zone);
+  let base = wire === null ? null : toDeadline(wire, context.zone);
+  // 原文に時刻の表現がないのにモデルが日時を確定した出力は、日付だけの期限へ下げる（時刻を補わない。設計 11 §5 D15）。
+  // 日時（instant）は予定の自動作成の条件なので、補われた時刻で予定を作らせない。
+  let timeDowngraded = false;
+  if (
+    base !== null &&
+    base.kind === 'instant' &&
+    !timeExpressed(base.original_text)
+  ) {
+    base = {
+      kind: 'date',
+      date: base.local_datetime.slice(0, 10),
+      original_text: base.original_text,
+    };
+    timeDowngraded = true;
+  }
   if (base === null || base.kind === 'none')
     return {
       deadline: { kind: 'none' },
@@ -343,6 +371,7 @@ function resolveDeadline(
         : null,
       verified: true,
       year_downgraded: false,
+      time_downgraded: false,
     };
   const original = base.original_text;
   const inQuotes = quoteRefs.filter((ref) => ref.quote.includes(original));
@@ -383,6 +412,7 @@ function resolveDeadline(
       },
       verified: false,
       year_downgraded: false,
+      time_downgraded: false,
     };
   const year = resolvedYear(base);
   const receivedYear = Number(context.received_at_local.slice(0, 4));
@@ -398,6 +428,7 @@ function resolveDeadline(
     evidence: { field: 'deadline', status: 'explicit', refs, rule_id: null },
     verified: true,
     year_downgraded: downgraded,
+    time_downgraded: timeDowngraded,
   };
 }
 
@@ -432,6 +463,7 @@ export function buildExtractionResult(
   const failures = emptyFailureCounts();
   let deadlineUnverified = 0;
   let yearDowngrades = 0;
+  let timeDowngrades = 0;
   let requestsLowered = 0;
   let unresolvedChanges = 0;
   const count = (set: QuoteSet): void => {
@@ -445,6 +477,7 @@ export function buildExtractionResult(
       const deadline = resolveDeadline(request.deadline, quotes.refs, params);
       if (!deadline.verified) deadlineUnverified += 1;
       if (deadline.year_downgraded) yearDowngrades += 1;
+      if (deadline.time_downgraded) timeDowngrades += 1;
       const summary = fieldOf('summary', quotes);
       const fields: FieldEvidence[] = [
         summary,
@@ -503,6 +536,7 @@ export function buildExtractionResult(
     if (change.new_deadline !== null && !newDeadline.verified)
       deadlineUnverified += 1;
     if (newDeadline.year_downgraded) yearDowngrades += 1;
+    if (newDeadline.time_downgraded) timeDowngrades += 1;
     if (change.new_deadline !== null && newDeadline.evidence !== null)
       fields.push(newDeadline.evidence);
 
@@ -553,6 +587,7 @@ export function buildExtractionResult(
       quote_failures: failures,
       deadline_unverified: deadlineUnverified,
       year_downgrades: yearDowngrades,
+      time_downgrades: timeDowngrades,
       requests_lowered: requestsLowered,
       unresolved_changes: unresolvedChanges,
     },

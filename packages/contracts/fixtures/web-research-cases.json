@@ -440,6 +440,66 @@
         "content_types": ["text/html"],
         "send_cookies": false
       }
+    },
+    {
+      "id": "fetch-request-short-ipv4",
+      "schema": "WebFetchRequest",
+      "valid": true,
+      "semantic_errors": ["private_target"],
+      "value": {
+        "schema": "buddy.web-fetch.v1",
+        "url": "https://127.1/synthetic",
+        "max_bytes": 2000000,
+        "timeout_ms": 15000,
+        "max_redirects": 3,
+        "content_types": ["text/html"],
+        "send_cookies": false
+      }
+    },
+    {
+      "id": "fetch-request-integer-ipv4",
+      "schema": "WebFetchRequest",
+      "valid": true,
+      "semantic_errors": ["private_target"],
+      "value": {
+        "schema": "buddy.web-fetch.v1",
+        "url": "https://2130706433/synthetic",
+        "max_bytes": 2000000,
+        "timeout_ms": 15000,
+        "max_redirects": 3,
+        "content_types": ["text/html"],
+        "send_cookies": false
+      }
+    },
+    {
+      "id": "fetch-request-hex-ipv4",
+      "schema": "WebFetchRequest",
+      "valid": true,
+      "semantic_errors": ["private_target"],
+      "value": {
+        "schema": "buddy.web-fetch.v1",
+        "url": "https://0x7f000001/synthetic",
+        "max_bytes": 2000000,
+        "timeout_ms": 15000,
+        "max_redirects": 3,
+        "content_types": ["text/html"],
+        "send_cookies": false
+      }
+    },
+    {
+      "id": "fetch-request-expanded-ipv6-loopback",
+      "schema": "WebFetchRequest",
+      "valid": true,
+      "semantic_errors": ["private_target"],
+      "value": {
+        "schema": "buddy.web-fetch.v1",
+        "url": "https://[0:0:0:0:0:0:0:1]/synthetic",
+        "max_bytes": 2000000,
+        "timeout_ms": 15000,
+        "max_redirects": 3,
+        "content_types": ["text/html"],
+        "send_cookies": false
+      }
     }
   ],
   "domain_cases": {

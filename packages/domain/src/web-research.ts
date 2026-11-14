@@ -33,24 +33,98 @@ function ipv4Private(parts: readonly number[]): boolean {
   return false;
 }
 
-function ipv6Private(host: string): boolean {
-  if (host === '::' || host === '::1') return true;
-  const mapped = /^::ffff:(.+)$/u.exec(host);
-  if (mapped) {
-    const tail = mapped[1] ?? '';
-    if (tail.includes('.'))
-      return ipv4Private(tail.split('.').map((part) => Number(part)));
-    const hex = /^([0-9a-f]{1,4}):([0-9a-f]{1,4})$/u.exec(tail);
-    if (hex) {
-      const high = Number.parseInt(hex[1] ?? '0', 16);
-      const low = Number.parseInt(hex[2] ?? '0', 16);
-      return ipv4Private([high >> 8, high & 255, low >> 8, low & 255]);
-    }
-    return true;
+// 10 進・8 進（先頭 0）・16 進（0x）の部品を数にする。読めなければ null。
+function ipv4Part(value: string): number | null {
+  if (/^0x[0-9a-f]+$/iu.test(value)) return Number.parseInt(value.slice(2), 16);
+  if (/^0[0-7]+$/u.test(value)) return Number.parseInt(value.slice(1), 8);
+  if (/^\d+$/u.test(value)) return Number.parseInt(value, 10);
+  return null;
+}
+
+// inet_aton と同じく、1〜4 個の部品を 32 ビットの IPv4 にする。
+// 127.1・2130706433・0x7f000001 のような別表記も同じアドレスとして扱う。
+function parseIpv4(host: string): number[] | null {
+  const parts = host.split('.');
+  if (parts.length === 0 || parts.length > 4) return null;
+  const values = parts.map(ipv4Part);
+  if (values.some((value) => value === null || value < 0)) return null;
+  const numbers = values as number[];
+  let value: number;
+  if (numbers.length === 4) {
+    if (numbers.some((part) => part > 255)) return null;
+    value =
+      ((numbers[0] ?? 0) * 0x1000000 +
+        (numbers[1] ?? 0) * 0x10000 +
+        (numbers[2] ?? 0) * 0x100 +
+        (numbers[3] ?? 0)) >>>
+      0;
+  } else if (numbers.length === 3) {
+    if ((numbers[0] ?? 0) > 255 || (numbers[1] ?? 0) > 255) return null;
+    if ((numbers[2] ?? 0) > 0xffff) return null;
+    value =
+      ((numbers[0] ?? 0) * 0x1000000 +
+        (numbers[1] ?? 0) * 0x10000 +
+        (numbers[2] ?? 0)) >>>
+      0;
+  } else if (numbers.length === 2) {
+    if ((numbers[0] ?? 0) > 255) return null;
+    if ((numbers[1] ?? 0) > 0xffffff) return null;
+    value = ((numbers[0] ?? 0) * 0x1000000 + (numbers[1] ?? 0)) >>> 0;
+  } else {
+    if ((numbers[0] ?? 0) > 0xffffffff) return null;
+    value = (numbers[0] ?? 0) >>> 0;
   }
-  const parts = host.split(':');
-  const first = Number.parseInt(parts[0] ?? '', 16);
-  if (Number.isNaN(first)) return false;
+  return [value >>> 24, (value >>> 16) & 255, (value >>> 8) & 255, value & 255];
+}
+
+// IPv6 を 8 個の 16 ビットに展開する。:: の省略と IPv4 末尾に対応する。
+function parseIpv6(host: string): number[] | null {
+  let text = host.toLowerCase();
+  const embedded = /(?:^|:)(\d{1,3}(?:\.\d{1,3}){3})$/u.exec(text);
+  if (embedded) {
+    const octets = (embedded[1] ?? '').split('.').map((part) => Number(part));
+    if (octets.length !== 4 || octets.some((part) => part > 255)) return null;
+    const high = (((octets[0] ?? 0) << 8) | (octets[1] ?? 0)).toString(16);
+    const low = (((octets[2] ?? 0) << 8) | (octets[3] ?? 0)).toString(16);
+    text = `${text.slice(0, text.length - (embedded[1] ?? '').length)}${high}:${low}`;
+  }
+  const halves = text.split('::');
+  if (halves.length > 2) return null;
+  const toHextets = (part: string): number[] | null => {
+    if (part.length === 0) return [];
+    const values = part.split(':');
+    if (values.length > 8) return null;
+    const parsed = values.map((value) =>
+      /^[0-9a-f]{1,4}$/u.test(value) ? Number.parseInt(value, 16) : null,
+    );
+    return parsed.some((value) => value === null) ? null : (parsed as number[]);
+  };
+  const left = toHextets(halves[0] ?? '');
+  const right = halves.length === 2 ? toHextets(halves[1] ?? '') : [];
+  if (!left || !right) return null;
+  if (halves.length === 1) return left.length === 8 ? left : null;
+  const missing = 8 - left.length - right.length;
+  if (missing < 0) return null;
+  return [...left, ...Array<number>(missing).fill(0), ...right];
+}
+
+function ipv6Private(host: string): boolean {
+  const parts = parseIpv6(host);
+  if (!parts) return true;
+  const [first, second] = [parts[0] ?? 0, parts[1] ?? 0];
+  // ::（未指定）・::1（ループバック）・IPv4 mapped/compatible。
+  const zeroPrefix = parts.slice(0, 5).every((part) => part === 0);
+  if (zeroPrefix && parts[5] === 0) {
+    if (parts[6] === 0 && parts[7] === 0) return true;
+    if (parts[6] === 0 && parts[7] === 1) return true;
+  }
+  if (zeroPrefix && parts[5] === 0xffff)
+    return ipv4Private([
+      (parts[6] ?? 0) >> 8,
+      (parts[6] ?? 0) & 255,
+      (parts[7] ?? 0) >> 8,
+      (parts[7] ?? 0) & 255,
+    ]);
   // fc00::/7（ULA）・fe80::/10（リンクローカル）・fec0::/10（サイトローカル）・ff00::/8（マルチキャスト）。
   if (
     (first >= 0xfc00 && first <= 0xfdff) ||
@@ -59,7 +133,7 @@ function ipv6Private(host: string): boolean {
   )
     return true;
   // 2001:db8::/32（文書用）。
-  return first === 0x2001 && parts[1] === 'db8';
+  return first === 0x2001 && second === 0xdb8;
 }
 
 // 取得先がローカル・プライベート・リンクローカルでないか。拒否する理由を返し、よければ null。
@@ -88,10 +162,11 @@ export function privateWebTargetReason(value: string): string | null {
   if (host.endsWith('.local') || host.endsWith('.internal'))
     return 'private_target';
   if (host.includes(':')) return ipv6Private(host) ? 'private_target' : null;
-  if (!/^\d{1,3}(?:\.\d{1,3}){3}$/u.test(host)) return null;
-  return ipv4Private(host.split('.').map((part) => Number(part)))
-    ? 'private_target'
-    : null;
+  // 数字だけに見えるホストは inet_aton の別表記として IPv4 に直す。読めなければ拒否する。
+  if (!/^(?:0x[0-9a-f]+|\d[\d.]*)$/iu.test(host)) return null;
+  const ipv4 = parseIpv4(host);
+  if (!ipv4) return 'private_target';
+  return ipv4Private(ipv4) ? 'private_target' : null;
 }
 
 // ---- 上限と利用条件 ------------------------------------------------------------------------------

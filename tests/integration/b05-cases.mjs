@@ -4,7 +4,7 @@
 // 期待値は b05-expectations.json の手書きの値（設計 10 §1・§1A・§2・§2A・§8、07 §2・§5、09 の X13 ほか、ADR 0005 の表）。
 // 待ち合わせは手で進める時計だけで行い、固定の sleep を使わない。HTTP・WSS・Electron・マイク・実 API は通さない。
 import assert from 'node:assert/strict';
-import { A, NO_FAULTS, withWorld } from './b05-world.mjs';
+import { A, B, NO_FAULTS, withWorld } from './b05-world.mjs';
 import { CONVERSATION_CASES } from './b05-cases-conversation.mjs';
 import { INPUT_CASES } from './b05-cases-input.mjs';
 import {
@@ -618,10 +618,85 @@ const summary_of = (run) => ({
   final_state: run.summary.final_state,
 });
 
+// X14: 別の端末から全体停止を要求すると、中枢は停止の対象の世代を進めてリースを取り消し、要求した端末だけを「確認済み」、
+// 他は「応答待ち」にする。中枢から届く停止のイベント（suspend_io）を端末が直接止めに使う経路は未実装（ADR 0050 の「残ること」）で、
+// 端末は次のハートビートでリースの更新が拒否されて止まる（1 ハートビート 2 秒以内・リースの期限 6 秒以内）。
+async function x14GlobalStop() {
+  let result;
+  await withWorld({}, async (w) => {
+    await w.begin();
+    w.remoteAudio();
+    await w.advance(2500);
+    const t0 = w.clock.mono();
+    const responsesBefore = w.renewResponses.length;
+    const stop = await w.rig.voice.stopIo(B, {
+      request_id: w.newId(),
+      scope: 'global',
+    });
+    await w.advance(1);
+    const atEvent = {
+      renderer_commands: commandsSince(w, t0).length,
+      sending: w.stats().sending,
+    };
+    let stopMs = null;
+    for (let dt = 2; dt <= 6000 && stopMs === null; dt += 1) {
+      await w.advance(1);
+      if (!w.stats().sending) stopMs = dt;
+    }
+    await w.advance(3000);
+    const events = w.coreEvents
+      .filter((entry) => entry.at >= t0)
+      .map((entry) => ({
+        dt: entry.at - t0,
+        type: entry.event.event_type,
+        action: entry.event.audio_control?.action ?? null,
+        reason: entry.event.audio_control?.reason ?? null,
+        scope: entry.event.audio_control?.scope ?? null,
+      }));
+    const rejected = w.renewResponses
+      .slice(responsesBefore)
+      .filter((entry) => entry.result === 'rejected');
+    const { lives } = settle(w);
+    result = summary(w, {
+      voice_stop_ms: stopMs,
+      checks: {
+        core_stop: {
+          status: stop.status,
+          scope: stop.body.scope,
+          devices: Object.fromEntries(
+            stop.body.devices.map((entry) => [
+              entry.device_id === A.device_id ? 'other_device' : 'requester',
+              entry.stop_state,
+            ]),
+          ),
+          all_confirmed: stop.body.all_confirmed,
+        },
+        event_delivered: events,
+        not_acted_on_directly: atEvent,
+        stopped_within_one_heartbeat: stopMs !== null && stopMs <= 2000,
+        stopped_within_lease_ttl: stopMs !== null && stopMs <= 6000,
+        lease_rejection: {
+          count: rejected.length,
+          includes_io_suspended: rejected[0]?.reasons.includes('io_suspended'),
+        },
+        renderer: renderer(w),
+        device_commands: commandsSince(w, t0).map(({ channel, reason }) => ({
+          channel,
+          reason,
+        })),
+        core_close_requests: closesSince(w, t0).map((entry) => entry.reason),
+        live_closure: lives[0].closure,
+      },
+    });
+  });
+  return result;
+}
+
 const CASES = {
   'X13-os-lock-stops-everything': x13OsLock,
   'X13-io-epoch-sync-before-restart': x13EpochSync,
   'QA43-three-stops-are-distinct': qa43ThreeStops,
+  'X14-global-stop-reaches-the-other-device': x14GlobalStop,
   'X25-sideband-lost-closes-and-settles': x25SidebandLost,
   'QA24-close-unconfirmed-holds-reservation': qa24CloseUnconfirmed,
   'X30-ack-deadline-boundary': x30AckDeadline,

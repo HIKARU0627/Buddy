@@ -773,6 +773,8 @@ test('restore ledger: a newer ledger entry applied to an older DB deletes the cl
         // 台帳の対象の記憶が既に消えていても（期限切れの削除など）、残った派生物は閉包で消える。
         copy.prepare('DELETE FROM memory_sources WHERE memory_id = ?').run(M);
         copy.prepare('DELETE FROM memories WHERE memory_id = ?').run(M);
+        // 発言の実体は期限切れで消え、系譜の辺（n-2 -> T_SRC）だけが残った状態。
+        copy.prepare('DELETE FROM turns WHERE turn_id = ?').run(T_SRC);
         const applied = applyRestoreLedger(copy, {
           entries: [custom],
           ledger_hmac_key: ledgerKey,
@@ -801,10 +803,10 @@ test('restore ledger: a newer ledger entry applied to an older DB deletes the cl
           count(copy, 'SELECT count(*) FROM turns WHERE turn_id = ?', T_INST),
           0,
         );
-        // 除外する由来の発言そのものは残す（その由来を持つ気づき N2 は消えている）。
+        // 発言の実体は既に消えているが、系譜の辺から除外する由来として照合し、気づき N2 は消えている。
         assert.equal(
           count(copy, 'SELECT count(*) FROM turns WHERE turn_id = ?', T_SRC),
-          1,
+          0,
         );
         assert.equal(
           count(

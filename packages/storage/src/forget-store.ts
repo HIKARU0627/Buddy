@@ -1528,6 +1528,18 @@ function restoreBlockedOrigins(
     .pluck()
     .all() as string[];
   for (const id of memories) add('memory', id);
+  for (const edge of graph.edges) {
+    if (edge.source.kind === 'turn' || edge.source.kind === 'memory')
+      add(edge.source.kind, edge.source.id);
+    if (edge.artifact.kind === 'turn' || edge.artifact.kind === 'memory')
+      add(edge.artifact.kind, edge.artifact.id);
+  }
+  for (const item of graph.unattributed) {
+    if (item.scope.kind === 'turn' || item.scope.kind === 'memory')
+      add(item.scope.kind, item.scope.id);
+    if (item.artifact.kind === 'turn' || item.artifact.kind === 'memory')
+      add(item.artifact.kind, item.artifact.id);
+  }
   for (const id of collectSourceItemIds(graph, storedSourceIds))
     add('source_item', id);
   return [...origins.values()].filter((source) =>

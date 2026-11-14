@@ -41,6 +41,8 @@ export interface WebPageAttemptLike {
 }
 
 export interface WebResearchAttemptsLike {
+  readonly workflow_id: string;
+  readonly request_revision: string;
   readonly searches: readonly WebSearchAttemptLike[];
   readonly search_denials: readonly string[];
   readonly pages: readonly WebPageAttemptLike[];
@@ -245,7 +247,11 @@ export function webResearchFinalState(
   const failed = attempts.searches.filter(
     (search) => search.outcome === 'failed',
   );
-  const budgetDenied = attempts.search_denials.includes('budget_denied');
+  // 予算で断った記録は、まだ検索を送れる（検索の枠が残っている）間だけ保留の理由になる。再開して枠を使い切った後は、
+  // 古い断りで保留を続けず、結果（失敗・0 件・読めない）で終える。
+  const budgetDenied =
+    attempts.search_denials.includes('budget_denied') &&
+    attempts.searches.length < WEB_SEARCH_MAX_SEARCHES;
   if (succeeded.length === 0) {
     if (
       attempts.search_denials.includes('query_rejected') &&
@@ -297,6 +303,12 @@ export function webResearchOutcomeErrors(
   attempts: WebResearchAttemptsLike,
 ): string[] {
   const errors: string[] = [];
+  // 別の依頼の記録で確認済みにしない。
+  if (status.workflow_id !== attempts.workflow_id)
+    errors.push('workflow_id_mismatch');
+  if (status.request_revision !== attempts.request_revision)
+    errors.push('request_revision_mismatch');
+  if (errors.length > 0) return errors;
   if (
     status.state !== 'completed' &&
     status.state !== 'no_results' &&

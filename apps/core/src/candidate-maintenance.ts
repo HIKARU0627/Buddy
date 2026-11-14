@@ -15,7 +15,11 @@ import type {
   EvidenceDecision,
   EvidenceObservation,
 } from '@buddy/domain';
-import type { CandidateRow, DbWorkerClient } from '@buddy/storage';
+import type {
+  CandidateListCursor,
+  CandidateRow,
+  DbWorkerClient,
+} from '@buddy/storage';
 
 export const LIVE_CANDIDATE_STATES: readonly CandidateState[] = [
   'new',
@@ -62,7 +66,7 @@ export interface MaintenanceReport {
     readonly step: 'list' | 'due' | 'evidence' | 'sweep';
     readonly reasons: readonly string[];
   }[];
-  // 一覧が上限で切れたとき true（残りは次の回に回る）。
+  // 頁数の上限で読み切れなかったとき true（残りは次の回に回る）。
   readonly truncated: boolean;
 }
 
@@ -98,9 +102,10 @@ function domainDeadline(row: CandidateRow): Deadline {
 
 export async function runCandidateMaintenance(
   ports: CandidateMaintenancePorts,
-  options: { readonly limit?: number } = {},
+  options: { readonly limit?: number; readonly maxPages?: number } = {},
 ): Promise<MaintenanceReport> {
   const limit = options.limit ?? 1000;
+  const maxPages = options.maxPages ?? 100;
   const skipped: {
     candidate_id: string | null;
     step: 'list' | 'due' | 'evidence' | 'sweep';
@@ -142,72 +147,88 @@ export async function runCandidateMaintenance(
     return false;
   };
 
-  const listed = await ports.client.candidate({
-    kind: 'candidate.list',
-    states: LIVE_CANDIDATE_STATES,
-    limit,
-  });
-  let truncated = false;
-  if (!listed.ok) {
-    skipped.push({ candidate_id: null, step: 'list', reasons: listed.reasons });
-  } else {
-    truncated = listed.value.truncated;
-    for (const row of listed.value.candidates) {
-      // 1. 時間による遷移。
-      const due = candidateDueEvent(
-        {
-          state: row.state,
-          deadline: domainDeadline(row),
-          initial_import: row.initial_import,
-          created_at: toIso(row.created_at) ?? now,
-          snooze_until: toIso(row.snooze_until),
-        },
-        now,
-        ports.zone,
-      );
-      if (!due.ok) {
-        skipped.push({
-          candidate_id: row.candidate_id,
-          step: 'due',
-          reasons: [due.reason],
-        });
-        continue;
-      }
-      if (due.event !== null) {
-        if (await transition(row, due.event, 'due'))
-          (due.event === 'deadline_passed'
-            ? deadlinePassed
-            : snoozeElapsed
-          ).push(row.candidate_id);
-        // 遷移した候補の根拠は、この回では再確認しない（閉じた・戻した直後）。
-        continue;
-      }
-      // 2. 根拠の再確認。
-      if (ports.checkEvidence === undefined) continue;
-      let check: CandidateCheck;
-      try {
-        check = await ports.checkEvidence(row);
-      } catch {
-        // 読めなかった。解決せず、未確認として報告する。
-        check = 'temporarily_unavailable';
-      }
-      if (check === 'overlap_resolved') {
-        if (await transition(row, 'overlap_resolved', 'evidence'))
-          evidenceResolved.push(row.candidate_id);
-        continue;
-      }
-      const decision = evidenceDecision(row.state, check);
-      if (decision.purge) purgeRequested.push(row.candidate_id);
-      if (decision.event !== null) {
-        if (await transition(row, decision.event, 'evidence'))
-          evidenceResolved.push(row.candidate_id);
-      } else if (decision.evidence !== 'valid') {
-        evidenceStanding.push({
-          candidate_id: row.candidate_id,
-          evidence: decision.evidence,
-        });
-      }
+  const processRow = async (row: CandidateRow): Promise<void> => {
+    // 1. 時間による遷移。
+    const due = candidateDueEvent(
+      {
+        state: row.state,
+        deadline: domainDeadline(row),
+        initial_import: row.initial_import,
+        created_at: toIso(row.created_at) ?? now,
+        snooze_until: toIso(row.snooze_until),
+      },
+      now,
+      ports.zone,
+    );
+    if (!due.ok) {
+      skipped.push({
+        candidate_id: row.candidate_id,
+        step: 'due',
+        reasons: [due.reason],
+      });
+      return;
     }
+    if (due.event !== null) {
+      if (await transition(row, due.event, 'due'))
+        (due.event === 'deadline_passed' ? deadlinePassed : snoozeElapsed).push(
+          row.candidate_id,
+        );
+      // 遷移した候補の根拠は、この回では再確認しない（閉じた・戻した直後）。
+      return;
+    }
+    // 2. 根拠の再確認。
+    if (ports.checkEvidence === undefined) return;
+    let check: CandidateCheck;
+    try {
+      check = await ports.checkEvidence(row);
+    } catch {
+      // 読めなかった。解決せず、未確認として報告する。
+      check = 'temporarily_unavailable';
+    }
+    if (check === 'overlap_resolved') {
+      if (await transition(row, 'overlap_resolved', 'evidence'))
+        evidenceResolved.push(row.candidate_id);
+      return;
+    }
+    const decision = evidenceDecision(row.state, check);
+    if (decision.purge) purgeRequested.push(row.candidate_id);
+    if (decision.event !== null) {
+      if (await transition(row, decision.event, 'evidence'))
+        evidenceResolved.push(row.candidate_id);
+    } else if (decision.evidence !== 'valid') {
+      evidenceStanding.push({
+        candidate_id: row.candidate_id,
+        evidence: decision.evidence,
+      });
+    }
+  };
+
+  // 一覧は keyset で全頁を読む（上限で切れた先の候補にも保守が届く）。頁の途中で遷移した候補があっても、位置は動かない。
+  let truncated = false;
+  let after: CandidateListCursor | undefined;
+  for (let page = 0; ; page += 1) {
+    const listed = await ports.client.candidate({
+      kind: 'candidate.list',
+      states: LIVE_CANDIDATE_STATES,
+      limit,
+      ...(after === undefined ? {} : { after }),
+    });
+    if (!listed.ok) {
+      skipped.push({
+        candidate_id: null,
+        step: 'list',
+        reasons: listed.reasons,
+      });
+      break;
+    }
+    for (const row of listed.value.candidates) await processRow(row);
+    if (!listed.value.truncated || listed.value.next_after === null) break;
+    // 頁数の上限（異常な件数で止まらなくなるのを防ぐ）。残りは次の回に回る。
+    if (page + 1 >= maxPages) {
+      truncated = true;
+      break;
+    }
+    after = listed.value.next_after;
   }
 
   // 3. 保持の掃除。

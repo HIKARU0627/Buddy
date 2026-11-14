@@ -492,3 +492,70 @@ test('a clock that cannot be read changes nothing', async () => {
     );
   });
 });
+
+test('a page size of one still reaches an older passed candidate behind a newer live one', async () => {
+  await withWorld(async (world) => {
+    // 受信が新しい・期限なしの活動中の候補が先頭に残り、古い期限切れの候補が頁の外にある。
+    const newer = nextEntity();
+    const newerId = await create(
+      world,
+      newer,
+      draft(newer, {
+        deadline: { kind: 'none' },
+        received_at: '2030-10-05T00:00:00Z',
+      }),
+    );
+    const older = nextEntity();
+    const olderId = await create(
+      world,
+      older,
+      draft(older, {
+        deadline: dateOnly('2030-10-08'),
+        received_at: '2030-10-01T00:00:00Z',
+      }),
+    );
+    const sleepy = nextEntity();
+    const sleepyId = await create(
+      world,
+      sleepy,
+      draft(sleepy, { received_at: '2030-09-01T00:00:00Z' }),
+    );
+    await move(
+      world,
+      sleepyId,
+      'snooze',
+      'new',
+      '2030-10-02T00:00:00Z',
+      '2030-10-09T02:00:00Z',
+    );
+    const report = await runCandidateMaintenance(
+      { client: world.client, zone: ZONE, now: () => NOW },
+      { limit: 1 },
+    );
+    assert.deepEqual(report.deadline_passed, [olderId]);
+    assert.deepEqual(report.snooze_elapsed, [sleepyId]);
+    assert.equal(report.truncated, false);
+    assert.equal(stateOf(world.db, newerId), 'new');
+    // 頁数の上限で止まったときは truncated で知らせ、次の回で続きを処理できる。
+    const second = nextEntity();
+    const secondId = await create(
+      world,
+      second,
+      draft(second, {
+        deadline: dateOnly('2030-10-07'),
+        received_at: '2030-08-01T00:00:00Z',
+      }),
+    );
+    const partial = await runCandidateMaintenance(
+      { client: world.client, zone: ZONE, now: () => NOW },
+      { limit: 1, maxPages: 2 },
+    );
+    assert.equal(partial.truncated, true);
+    assert.equal(stateOf(world.db, secondId), 'new');
+    const rest = await runCandidateMaintenance(
+      { client: world.client, zone: ZONE, now: () => NOW },
+      { limit: 1 },
+    );
+    assert.deepEqual(rest.deadline_passed, [secondId]);
+  });
+});

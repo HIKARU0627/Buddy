@@ -1476,7 +1476,7 @@ paths:
     get:
       operationId: getConnectionTargets
       summary: 取得対象の取得
-      description: 本人が選んだ取得対象と許可版を返す。新しいカレンダー・フォルダーを自動で足さない（04 取得する対象、J13・J16）。
+      description: 本人が選んだ取得対象と、期間・添付サイズを狭める設定、許可版を返す。新しいカレンダー・フォルダーを自動で足さない（04 取得する対象、J13・J16、ADR 0087）。
       x-buddy-core-checks:
         - device_token
         - home_network
@@ -1504,7 +1504,7 @@ paths:
     put:
       operationId: updateConnectionTargets
       summary: 取得対象の変更
-      description: 本人が選んだ対象だけに変える。許可版と取得範囲の版を上げ、旧範囲の走査を無効にする（04、11 §1A）。
+      description: 本人が選んだ対象だけに変える。期間と添付サイズは設計の初期値を上限に狭くだけできる（上限超過は 422）。選択に変更があれば許可版と取得範囲の版を上げ、旧範囲の走査を無効にする（04、11 §1A、ADR 0087）。
       x-buddy-core-checks:
         - device_token
         - home_network

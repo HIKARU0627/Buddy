@@ -5342,12 +5342,28 @@ export interface ConnectionSummary {
   graph_account?: GraphAccountState | null;
 }
 /**
- * 本人が選んだ取得対象（設計 04 取得する対象、J13・J16）。新しいカレンダー・フォルダーを見つけても自動で追加しない。OAuth の権限より狭い範囲を Buddy 側で検査する。
+ * 本人が選んだ取得対象と、取得範囲を狭める設定（設計 04 取得する対象、J13・J16、D5、ADR 0087）。新しいカレンダー・フォルダーを見つけても自動で追加しない。期間とサイズの項目は設計の初期値を上限とし、上限を超える値を契約で拒否する。OAuth の権限より狭い範囲を Buddy 側で検査する。
  */
 export interface ConnectionTargets {
   calendar_ids: string[];
   mail_container_ids: string[];
   attachment_kinds: ('pdf' | 'text')[];
+  /**
+   * メールを遡る日数。設計の初期値 90 日が上限で、狭くだけできる。
+   */
+  mail_lookback_days: number;
+  /**
+   * カレンダーを遡る日数。設計の初期値 30 日が上限。
+   */
+  calendar_past_days: number;
+  /**
+   * カレンダーの先の日数。設計の初期値 90 日が上限。
+   */
+  calendar_future_days: number;
+  /**
+   * 添付 1 件のバイト数の上限。設計の初期値 10MB（10,000,000 バイト）が上限。
+   */
+  attachment_max_bytes: number;
 }
 /**
  * OAuth の開始（設計 04 接続・権限）。中枢の画面だけ。PKCE と loopback の戻り先は中枢内で処理し、/v1 の経路にしない。

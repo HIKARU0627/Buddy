@@ -33,7 +33,7 @@
     },
     {
       "path": "apps/core/src/api-routes.ts",
-      "sha256": "46a33f5b757daf5bf878c4e4e3917e498d17b0c88851a557f6e43927cab9db2a"
+      "sha256": "5098bca67a013ccd8b82f965538be017f28649f70aab068f9849f6c3bc47dcd8"
     },
     {
       "path": "apps/core/src/api-server.ts",
@@ -45,7 +45,7 @@
     },
     {
       "path": "apps/core/src/api-turns.ts",
-      "sha256": "1c102782ef0e8aab249253c6ee6deeb501ffd49dbe5f3e9d4b69b017f1086e6d"
+      "sha256": "5de0e8a93a3cf158307b2e89a1cd2f504ffbb2739b47cd14fc99661b4d951b0e"
     },
     {
       "path": "apps/core/src/api-voice.ts",
@@ -93,7 +93,7 @@
     },
     {
       "path": "apps/core/src/canvas-stream.ts",
-      "sha256": "37ab4c14b86374a58b4b69a7eb14c94515c3be5b07c77d8d61d2725270c3a1e6"
+      "sha256": "546a4ae91de422594333595264c450683d6f49e49ffaa8141561743a1ddcb7e5"
     },
     {
       "path": "apps/core/src/clock-state.ts",
@@ -109,7 +109,7 @@
     },
     {
       "path": "apps/core/src/core.ts",
-      "sha256": "2b0c4c11c6c7fb1b7fda22a19798f0f4ab8d93e9221fc223907bbdb46ff4a379"
+      "sha256": "68a551dc9d3134e90ef3454962212f0eb7e834cdf0b63021409714332e428b87"
     },
     {
       "path": "apps/core/src/data-dir.ts",
@@ -153,7 +153,7 @@
     },
     {
       "path": "apps/core/src/live-conversation.ts",
-      "sha256": "46acf6f7b754c13049b24717045e9242b6afa5c30d7266eff276d3cbd869bdf7"
+      "sha256": "11d46ff407b785a13819b63ef96a3f41d79929a2ac0aa896f24fe7a43eaa89d8"
     },
     {
       "path": "apps/core/src/live-reconcile.ts",
@@ -162,6 +162,10 @@
     {
       "path": "apps/core/src/lock.ts",
       "sha256": "897e47eeea4fb93ae7d12dffb95bd93d259733a27d58b5c1f44f42b0ebc0696f"
+    },
+    {
+      "path": "apps/core/src/model-interpreter.ts",
+      "sha256": "05bff5086ebcb4ff6890a15ea86be8962b08b83f1d977802cbad3ecae581fa1b"
     },
     {
       "path": "apps/core/src/notice-sink.ts",
@@ -196,6 +200,14 @@
       "sha256": "673e5da744a2456ff2fc9cea5e54203dab3aae4b8c63d004b11fc1353cb7a71a"
     },
     {
+      "path": "apps/core/src/shadow-mode.ts",
+      "sha256": "9f2d2c09fbd40fe1eae5876fd468efe897fa94845316007fe5c2def758a8ad91"
+    },
+    {
+      "path": "apps/core/src/shadow-store.ts",
+      "sha256": "4d21c7cbc080d2be409d7e26ca396ba19f347dfa15340d4c9cdc09275053dcfa"
+    },
+    {
       "path": "apps/core/src/storage-gate.ts",
       "sha256": "63b3e9a501886dd1f155fe094c809c7985084685b0fa72476b5dc4720ad1aeb4"
     },
@@ -217,7 +229,7 @@
     },
     {
       "path": "apps/core/src/turn-ports.ts",
-      "sha256": "36593c89a7c7beeb6c6b5c03a4775e87df895525ad9f4262f702722a4b69714c"
+      "sha256": "0a7dda4d8b8d42a06e381dbc7c3faf5a8751e819da2d47c02f5b8a15c4f2d676"
     },
     {
       "path": "apps/core/src/voice-control.ts",
@@ -264,6 +276,54 @@
       "sha256": "47b504142ea86543b3386a69bfa44224aec8ad37ac3013992edaebe68e3ac616"
     },
     {
+      "path": "packages/ai/package.json",
+      "sha256": "c21fcdca685aa7ef87f5fb2181ca113b33e9b0bf2616ccf4775020e45383213f"
+    },
+    {
+      "path": "packages/ai/src/adapter.ts",
+      "sha256": "07eddb599d5d63d6200dbe1aada8968f24c57f4947a90aa8d0665eaca27a5420"
+    },
+    {
+      "path": "packages/ai/src/cost.ts",
+      "sha256": "690c2fd342dfa46ae3e70a40a4572a79c99acd4be04763859e721a6ffe08c027"
+    },
+    {
+      "path": "packages/ai/src/gemini-codec.ts",
+      "sha256": "5abd379ddf7a5bbde8b933bbab36779ae79908b6b4f7e60df33064d3b577872c"
+    },
+    {
+      "path": "packages/ai/src/index.ts",
+      "sha256": "ecc4ea6d7fb99d92fa26b1d048d8bfa858cd955ea4c0ba3612be34b5ba0645ec"
+    },
+    {
+      "path": "packages/ai/src/intent-judgment.ts",
+      "sha256": "f5e14932f57412c244451a477dfa9f896237b0acfd949591ffd1b5957cf0d17d"
+    },
+    {
+      "path": "packages/ai/src/local.ts",
+      "sha256": "16f318abfa2814d555ed93f069ee288b615267e624605124d0c305b6b1b94db5"
+    },
+    {
+      "path": "packages/ai/src/reservation.ts",
+      "sha256": "9aab0257dfb1a14ce14345c35e2e1c44809f615a51fd9da25eebce5c9cb695f7"
+    },
+    {
+      "path": "packages/ai/src/routing.ts",
+      "sha256": "9e8196b59af93dc32f2f89bb2d7ea40c1b9d85bcdeccfe5d81d075da4dbe6540"
+    },
+    {
+      "path": "packages/ai/src/scheduler.ts",
+      "sha256": "399182cd580fb242818422d25c938a5698ecf1268ae8a0c1335b92ce00fc9cd3"
+    },
+    {
+      "path": "packages/ai/src/settlement.ts",
+      "sha256": "fb8462d812f0ff1647853981a0b07d35353a91da0a598264ea76a0e678e57c95"
+    },
+    {
+      "path": "packages/ai/src/validation.ts",
+      "sha256": "f68766f06d58acab3233bfa957f645934371f6833cd547681c44a5df9945b129"
+    },
+    {
       "path": "packages/contracts/fixtures/h01.json",
       "sha256": "d8cacb2a496a13d5f908ac0f375829d2ff918a3b947a2c8b0c37249aa0a48824"
     },
@@ -273,7 +333,7 @@
     },
     {
       "path": "packages/contracts/schemas/buddy.schema.json",
-      "sha256": "3ecc0bcc6f50f7671ce5a51147ce24438d063cc379e5def726d097372977ad6e"
+      "sha256": "7b3573762b87f710770a79513910ce0b8e0af4639f7545eceedbfaae02882316"
     },
     {
       "path": "packages/domain/package.json",
@@ -285,11 +345,11 @@
     },
     {
       "path": "packages/domain/src/api.ts",
-      "sha256": "7f1de10cdbe77033e5e66bc27f85bcbf592d77f0857eb0278f69d1cd4e6a2a30"
+      "sha256": "2d84eb9c5e24dba9879191583c50871e12af5f205791e2b1bbac1cb656db0c3a"
     },
     {
       "path": "packages/domain/src/approval.ts",
-      "sha256": "60269ee1d19bce596a5a37d578f9cdb795d83b5f026e776135347c2f95af9291"
+      "sha256": "59110a0eccd25e823b5343c0ed7932c997542d0a4fa98310e8dafe794b326b05"
     },
     {
       "path": "packages/domain/src/audio.ts",
@@ -324,6 +384,10 @@
       "sha256": "65d5b7def7c5a8479f724c39311d448ee34f8bea2fd261d8fe1a21e5aa9263c7"
     },
     {
+      "path": "packages/domain/src/candidate.ts",
+      "sha256": "b0e457c6002f0ee757eb32e8100d9b1075932b8d745735b6fba40a80b75f6cc7"
+    },
+    {
       "path": "packages/domain/src/canvas-content.ts",
       "sha256": "6c4e0cea651e841fe04b8867f2974abd23d2b3e1ad62898b636271f534ea27ef"
     },
@@ -333,11 +397,11 @@
     },
     {
       "path": "packages/domain/src/canvas.ts",
-      "sha256": "4ddfda2c9c56a6be6e5479b66486b3732c646f06099193971f76378128644b0d"
+      "sha256": "c0d88c3370a2b48fc2025295a377658a424b7e441519cded7564031d161a43be"
     },
     {
       "path": "packages/domain/src/connectors.ts",
-      "sha256": "27f05ff0bb1c30ff9596390eb8bdc8b380de08923c89a5cd751376d623555f93"
+      "sha256": "61b86abdec227301cd2f1e719df8fb6c27d6f893261bb164cb5b17f25a9a066b"
     },
     {
       "path": "packages/domain/src/conversation.ts",
@@ -348,12 +412,20 @@
       "sha256": "9fc5e8a785732389a852f388af456c158e2224ce3cbf57418ff68abbaa2b4eac"
     },
     {
+      "path": "packages/domain/src/dispatch-guard.ts",
+      "sha256": "d356f905084b719a3fef4b5a4154a17ce6f26fd9ee4e72346f86ce80fd73b39d"
+    },
+    {
       "path": "packages/domain/src/evaluation.ts",
       "sha256": "acaf00285dfe320483a122950009531df69a52395f16d4e373719c8ef4be1077"
     },
     {
       "path": "packages/domain/src/extraction.ts",
       "sha256": "ab7d8dd153c04c3ca3eccd92553c1f924e897e22a779d4f1831256b4edc57121"
+    },
+    {
+      "path": "packages/domain/src/fetch-scope.ts",
+      "sha256": "447b30d80211dd2e561665790d8bcd95db38088d41473a5f2ec4f482b46400b3"
     },
     {
       "path": "packages/domain/src/forget-plan.ts",
@@ -373,7 +445,7 @@
     },
     {
       "path": "packages/domain/src/index.ts",
-      "sha256": "db5481900f9c26d71cf6a32b9191e021889ab7df18b7aaf2532904bba520a190"
+      "sha256": "0e6b70fd2ffa474ef5d3be29948b14438d5d9e43484496d58f9f86c9c1c55956"
     },
     {
       "path": "packages/domain/src/intents.ts",
@@ -412,6 +484,10 @@
       "sha256": "f61ff1b9737ab29db8197efebd047cbdecce1bde88794d523a0071f0285e844c"
     },
     {
+      "path": "packages/domain/src/reply-text.ts",
+      "sha256": "bd4f88e53d2d0376ef8c34bcb81b821d90bfa8365788192cedb97d0ead05c0f7"
+    },
+    {
       "path": "packages/domain/src/response-plan.ts",
       "sha256": "3a89fb2ecf371736d9c7ab83f916ca15670fe64b039cf94e27312fb91c364900"
     },
@@ -441,7 +517,7 @@
     },
     {
       "path": "packages/domain/src/voice-commentary.ts",
-      "sha256": "aa96aa2b04ceda9cd57b4493b306a6b1447bf717e8185016dbef41e03f2b2811"
+      "sha256": "0f5bdde1fceba7afcb9ad1bba12aa914265f569d4d56c992e765ddf315c03aec"
     },
     {
       "path": "packages/domain/src/voice-input.ts",
@@ -457,7 +533,7 @@
     },
     {
       "path": "packages/domain/src/voice-live-input.ts",
-      "sha256": "5fb683117b61f7ab38aa4e6e9cd324692bd951fba286adae75409ad19227adb9"
+      "sha256": "dab6041c035d5ac5588ffb994071b2c39181d933e004615723c674b341a2363c"
     },
     {
       "path": "packages/domain/src/voice-notification.ts",
@@ -633,15 +709,15 @@
     },
     {
       "path": "packages/storage/src/db-client.ts",
-      "sha256": "97d3af91bd707b67ba8894e284d27af03bea09b52f4e771bca3c5339ecc4bc62"
+      "sha256": "85d1b761d8bf13489fab9a0b269d9996cbfd6a36c429ab49f2cd2638d0cb40d3"
     },
     {
       "path": "packages/storage/src/db-protocol.ts",
-      "sha256": "18a43bc1ad6eda02b8bc43aedfa8943e49a7a28fce6ac1ba8e1914af607eaf55"
+      "sha256": "c407b1ebf7d76e9b258d4d63be0ef6cea1e9c8d5c4021662de9ed900b1b86552"
     },
     {
       "path": "packages/storage/src/db-worker.ts",
-      "sha256": "333964d4ca1daa3e4806463a16f9066e5cc972230201a72022354beb68a376e2"
+      "sha256": "ae2f7cf2dc7b78a677e75c95c1d21b636a701c10a49af44dc8164f06092eea4e"
     },
     {
       "path": "packages/storage/src/derivation-store.ts",
@@ -677,7 +753,11 @@
     },
     {
       "path": "packages/storage/src/index.ts",
-      "sha256": "11c919c3ce1a1a00872e96bdda7466eea592bc1757c026278e15d12a563a5e04"
+      "sha256": "d478dc20064383e06452d57a675b84dc4562f4845890e0c0ae6d14ba052c61ad"
+    },
+    {
+      "path": "packages/storage/src/intent-shadow-store.ts",
+      "sha256": "158d89d763dbb5674310cd02c524647d70f5595704b5a81ef32bb90f104c6144"
     },
     {
       "path": "packages/storage/src/memory-store.ts",
@@ -753,7 +833,7 @@
     },
     {
       "path": "tests/integration/b05-conversation.mjs",
-      "sha256": "1d85b2ce2e6aae21374f9bded7cc2742f6e295328a8d72f890f53e5d44348239"
+      "sha256": "c7c07bc69e77657d0b008cef9f27c8cac2d0e5dab49d9d6bbe3c28a2e3afc693"
     },
     {
       "path": "tests/integration/b05-expectations.json",
@@ -788,11 +868,11 @@
     {
       "case_id": "X13-os-lock-stops-everything",
       "kind": "simulated",
-      "commit": "c07bde3e20e3a2443624d8efcae7686f087a8f75",
+      "commit": "8261e2b50e5de732dd6ae7eae9b783b5418208b1",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
-        "os": "win32 10.0.26300 / v24.19.0",
+        "os": "darwin 25.6.0 / v24.19.0",
         "hub": "同一プロセスの中枢の音声の制御（VoiceControl・一時ディレクトリの DB と DB worker・予算の門・模擬の Live の provider・会話の処理）と、端末の音声の制御（VoiceController・DesktopDeviceController・模擬の音声レンダラー）を、手で進める 1 本の時計でつないだ（HTTP・WSS・Electron は通さない）",
         "devices": []
       },
@@ -802,7 +882,7 @@
       "provider_state_changes": 1,
       "approvals": 0,
       "final_state": "live:close_confirmed|reservation:settled|renderer:closed",
-      "observed_at": "2026-11-03T10:50:23.172Z",
+      "observed_at": "2026-11-14T05:01:38.699Z",
       "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。",
       "voice_stop_ms": 1,
       "outcome": "matched_expectation"
@@ -810,11 +890,11 @@
     {
       "case_id": "X13-io-epoch-sync-before-restart",
       "kind": "simulated",
-      "commit": "c07bde3e20e3a2443624d8efcae7686f087a8f75",
+      "commit": "8261e2b50e5de732dd6ae7eae9b783b5418208b1",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
-        "os": "win32 10.0.26300 / v24.19.0",
+        "os": "darwin 25.6.0 / v24.19.0",
         "hub": "同一プロセスの中枢の音声の制御（VoiceControl・一時ディレクトリの DB と DB worker・予算の門・模擬の Live の provider・会話の処理）と、端末の音声の制御（VoiceController・DesktopDeviceController・模擬の音声レンダラー）を、手で進める 1 本の時計でつないだ（HTTP・WSS・Electron は通さない）",
         "devices": []
       },
@@ -824,7 +904,7 @@
       "provider_state_changes": 1,
       "approvals": 0,
       "final_state": "live:close_confirmed+open|reservation:settled+reserved|renderer:live",
-      "observed_at": "2026-11-03T10:50:23.172Z",
+      "observed_at": "2026-11-14T05:01:38.699Z",
       "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。 既知の未了の記録: 端末が進めた io_epoch を中枢へ報告する経路は未実装（契約台帳 U70・U91）のため、端末だけが止まって再開すると中枢はリースを unknown_io_epoch で拒否し、会話は始まらない（拒否は安全側）。再開できることの確認は、試験が中枢へも停止・再開を送って世代をそろえた場合だけ。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -832,11 +912,11 @@
     {
       "case_id": "QA43-three-stops-are-distinct",
       "kind": "simulated",
-      "commit": "c07bde3e20e3a2443624d8efcae7686f087a8f75",
+      "commit": "8261e2b50e5de732dd6ae7eae9b783b5418208b1",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
-        "os": "win32 10.0.26300 / v24.19.0",
+        "os": "darwin 25.6.0 / v24.19.0",
         "hub": "同一プロセスの中枢の音声の制御（VoiceControl・一時ディレクトリの DB と DB worker・予算の門・模擬の Live の provider・会話の処理）と、端末の音声の制御（VoiceController・DesktopDeviceController・模擬の音声レンダラー）を、手で進める 1 本の時計でつないだ（HTTP・WSS・Electron は通さない）",
         "devices": []
       },
@@ -846,7 +926,7 @@
       "provider_state_changes": 2,
       "approvals": 0,
       "final_state": "live:close_confirmed+close_confirmed|reservation:settled+settled|renderer:closed",
-      "observed_at": "2026-11-03T10:50:23.172Z",
+      "observed_at": "2026-11-14T05:01:38.699Z",
       "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -854,11 +934,11 @@
     {
       "case_id": "X14-global-stop-reaches-the-other-device",
       "kind": "simulated",
-      "commit": "c07bde3e20e3a2443624d8efcae7686f087a8f75",
+      "commit": "8261e2b50e5de732dd6ae7eae9b783b5418208b1",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
-        "os": "win32 10.0.26300 / v24.19.0",
+        "os": "darwin 25.6.0 / v24.19.0",
         "hub": "同一プロセスの中枢の音声の制御（VoiceControl・一時ディレクトリの DB と DB worker・予算の門・模擬の Live の provider・会話の処理）と、端末の音声の制御（VoiceController・DesktopDeviceController・模擬の音声レンダラー）を、手で進める 1 本の時計でつないだ（HTTP・WSS・Electron は通さない）",
         "devices": []
       },
@@ -868,7 +948,7 @@
       "provider_state_changes": 1,
       "approvals": 0,
       "final_state": "live:close_confirmed|reservation:settled|renderer:closed",
-      "observed_at": "2026-11-03T10:50:23.172Z",
+      "observed_at": "2026-11-14T05:01:38.699Z",
       "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。 既知の未了の記録: 中枢から届く停止のイベント（suspend_io）を端末が止めに使う経路は未実装（ADR 0050 の「残ること」）。端末は次のハートビートでリースの更新が拒否されて止まる（理由は core_lease_lost）。",
       "voice_stop_ms": 1500,
       "outcome": "matched_expectation"
@@ -876,11 +956,11 @@
     {
       "case_id": "X25-sideband-lost-closes-and-settles",
       "kind": "simulated",
-      "commit": "c07bde3e20e3a2443624d8efcae7686f087a8f75",
+      "commit": "8261e2b50e5de732dd6ae7eae9b783b5418208b1",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
-        "os": "win32 10.0.26300 / v24.19.0",
+        "os": "darwin 25.6.0 / v24.19.0",
         "hub": "同一プロセスの中枢の音声の制御（VoiceControl・一時ディレクトリの DB と DB worker・予算の門・模擬の Live の provider・会話の処理）と、端末の音声の制御（VoiceController・DesktopDeviceController・模擬の音声レンダラー）を、手で進める 1 本の時計でつないだ（HTTP・WSS・Electron は通さない）",
         "devices": []
       },
@@ -890,7 +970,7 @@
       "provider_state_changes": 1,
       "approvals": 0,
       "final_state": "live:close_confirmed|reservation:settled|renderer:closed",
-      "observed_at": "2026-11-03T10:50:23.172Z",
+      "observed_at": "2026-11-14T05:01:38.699Z",
       "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -898,11 +978,11 @@
     {
       "case_id": "QA24-close-unconfirmed-holds-reservation",
       "kind": "simulated",
-      "commit": "c07bde3e20e3a2443624d8efcae7686f087a8f75",
+      "commit": "8261e2b50e5de732dd6ae7eae9b783b5418208b1",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
-        "os": "win32 10.0.26300 / v24.19.0",
+        "os": "darwin 25.6.0 / v24.19.0",
         "hub": "同一プロセスの中枢の音声の制御（VoiceControl・一時ディレクトリの DB と DB worker・予算の門・模擬の Live の provider・会話の処理）と、端末の音声の制御（VoiceController・DesktopDeviceController・模擬の音声レンダラー）を、手で進める 1 本の時計でつないだ（HTTP・WSS・Electron は通さない）",
         "devices": []
       },
@@ -912,7 +992,7 @@
       "provider_state_changes": 1,
       "approvals": 0,
       "final_state": "live:close_confirmed|reservation:settled|renderer:closed",
-      "observed_at": "2026-11-03T10:50:23.172Z",
+      "observed_at": "2026-11-14T05:01:38.699Z",
       "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -920,11 +1000,11 @@
     {
       "case_id": "X30-ack-deadline-boundary",
       "kind": "simulated",
-      "commit": "c07bde3e20e3a2443624d8efcae7686f087a8f75",
+      "commit": "8261e2b50e5de732dd6ae7eae9b783b5418208b1",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
-        "os": "win32 10.0.26300 / v24.19.0",
+        "os": "darwin 25.6.0 / v24.19.0",
         "hub": "同一プロセスの中枢の音声の制御（VoiceControl・一時ディレクトリの DB と DB worker・予算の門・模擬の Live の provider・会話の処理）と、端末の音声の制御（VoiceController・DesktopDeviceController・模擬の音声レンダラー）を、手で進める 1 本の時計でつないだ（HTTP・WSS・Electron は通さない）",
         "devices": []
       },
@@ -934,7 +1014,7 @@
       "provider_state_changes": 1,
       "approvals": 0,
       "final_state": "live:close_confirmed|reservation:settled|renderer:closed",
-      "observed_at": "2026-11-03T10:50:23.172Z",
+      "observed_at": "2026-11-14T05:01:38.699Z",
       "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。",
       "voice_stop_ms": 1,
       "outcome": "matched_expectation"
@@ -942,11 +1022,11 @@
     {
       "case_id": "X30-hung-renderer-is-killed",
       "kind": "simulated",
-      "commit": "c07bde3e20e3a2443624d8efcae7686f087a8f75",
+      "commit": "8261e2b50e5de732dd6ae7eae9b783b5418208b1",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
-        "os": "win32 10.0.26300 / v24.19.0",
+        "os": "darwin 25.6.0 / v24.19.0",
         "hub": "同一プロセスの中枢の音声の制御（VoiceControl・一時ディレクトリの DB と DB worker・予算の門・模擬の Live の provider・会話の処理）と、端末の音声の制御（VoiceController・DesktopDeviceController・模擬の音声レンダラー）を、手で進める 1 本の時計でつないだ（HTTP・WSS・Electron は通さない）",
         "devices": []
       },
@@ -956,7 +1036,7 @@
       "provider_state_changes": 1,
       "approvals": 0,
       "final_state": "live:close_confirmed|reservation:settled|renderer:live",
-      "observed_at": "2026-11-03T10:50:23.172Z",
+      "observed_at": "2026-11-14T05:01:38.699Z",
       "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。",
       "voice_stop_ms": 301,
       "outcome": "matched_expectation"
@@ -964,11 +1044,11 @@
     {
       "case_id": "X30-stop-playback-without-ack-escalates",
       "kind": "simulated",
-      "commit": "c07bde3e20e3a2443624d8efcae7686f087a8f75",
+      "commit": "8261e2b50e5de732dd6ae7eae9b783b5418208b1",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
-        "os": "win32 10.0.26300 / v24.19.0",
+        "os": "darwin 25.6.0 / v24.19.0",
         "hub": "同一プロセスの中枢の音声の制御（VoiceControl・一時ディレクトリの DB と DB worker・予算の門・模擬の Live の provider・会話の処理）と、端末の音声の制御（VoiceController・DesktopDeviceController・模擬の音声レンダラー）を、手で進める 1 本の時計でつないだ（HTTP・WSS・Electron は通さない）",
         "devices": []
       },
@@ -978,7 +1058,7 @@
       "provider_state_changes": 1,
       "approvals": 0,
       "final_state": "live:close_confirmed|reservation:settled|renderer:closed",
-      "observed_at": "2026-11-03T10:50:23.172Z",
+      "observed_at": "2026-11-14T05:01:38.699Z",
       "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。",
       "voice_stop_ms": 1,
       "outcome": "matched_expectation"
@@ -986,11 +1066,11 @@
     {
       "case_id": "X58-session-control-phrases-reach-the-device",
       "kind": "simulated",
-      "commit": "c07bde3e20e3a2443624d8efcae7686f087a8f75",
+      "commit": "8261e2b50e5de732dd6ae7eae9b783b5418208b1",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
-        "os": "win32 10.0.26300 / v24.19.0",
+        "os": "darwin 25.6.0 / v24.19.0",
         "hub": "同一プロセスの中枢の音声の制御（VoiceControl・一時ディレクトリの DB と DB worker・予算の門・模擬の Live の provider・会話の処理）と、端末の音声の制御（VoiceController・DesktopDeviceController・模擬の音声レンダラー）を、手で進める 1 本の時計でつないだ（HTTP・WSS・Electron は通さない）",
         "devices": []
       },
@@ -1000,7 +1080,7 @@
       "provider_state_changes": 1,
       "approvals": 0,
       "final_state": "live:close_confirmed|reservation:settled|renderer:closed",
-      "observed_at": "2026-11-03T10:50:23.172Z",
+      "observed_at": "2026-11-14T05:01:38.699Z",
       "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -1008,11 +1088,11 @@
     {
       "case_id": "X58-request-right-after-a-control-phrase",
       "kind": "simulated",
-      "commit": "c07bde3e20e3a2443624d8efcae7686f087a8f75",
+      "commit": "8261e2b50e5de732dd6ae7eae9b783b5418208b1",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
-        "os": "win32 10.0.26300 / v24.19.0",
+        "os": "darwin 25.6.0 / v24.19.0",
         "hub": "同一プロセスの中枢の音声の制御（VoiceControl・一時ディレクトリの DB と DB worker・予算の門・模擬の Live の provider・会話の処理）と、端末の音声の制御（VoiceController・DesktopDeviceController・模擬の音声レンダラー）を、手で進める 1 本の時計でつないだ（HTTP・WSS・Electron は通さない）",
         "devices": []
       },
@@ -1022,7 +1102,7 @@
       "provider_state_changes": 0,
       "approvals": 0,
       "final_state": "live:open|reservation:reserved|renderer:live",
-      "observed_at": "2026-11-03T10:50:23.172Z",
+      "observed_at": "2026-11-14T05:01:38.699Z",
       "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。 既知の制約の記録: 会話の操作に使った発話の直後（委譲の窓 2 秒以内）の依頼は、対象が複数と判定されて聞き返しになる（依頼は実行されない。契約台帳 U151、本人の判断待ち）。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -1030,11 +1110,11 @@
     {
       "case_id": "X58-reply-in-text-switches-the-device",
       "kind": "simulated",
-      "commit": "c07bde3e20e3a2443624d8efcae7686f087a8f75",
+      "commit": "8261e2b50e5de732dd6ae7eae9b783b5418208b1",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
-        "os": "win32 10.0.26300 / v24.19.0",
+        "os": "darwin 25.6.0 / v24.19.0",
         "hub": "同一プロセスの中枢の音声の制御（VoiceControl・一時ディレクトリの DB と DB worker・予算の門・模擬の Live の provider・会話の処理）と、端末の音声の制御（VoiceController・DesktopDeviceController・模擬の音声レンダラー）を、手で進める 1 本の時計でつないだ（HTTP・WSS・Electron は通さない）",
         "devices": []
       },
@@ -1044,7 +1124,7 @@
       "provider_state_changes": 1,
       "approvals": 0,
       "final_state": "live:close_confirmed+open|reservation:settled+reserved|renderer:live",
-      "observed_at": "2026-11-03T10:50:23.172Z",
+      "observed_at": "2026-11-14T05:01:38.699Z",
       "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -1052,11 +1132,11 @@
     {
       "case_id": "X49-text-request-stays-text",
       "kind": "simulated",
-      "commit": "c07bde3e20e3a2443624d8efcae7686f087a8f75",
+      "commit": "8261e2b50e5de732dd6ae7eae9b783b5418208b1",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
-        "os": "win32 10.0.26300 / v24.19.0",
+        "os": "darwin 25.6.0 / v24.19.0",
         "hub": "同一プロセスの中枢の音声の制御（VoiceControl・一時ディレクトリの DB と DB worker・予算の門・模擬の Live の provider・会話の処理）と、端末の音声の制御（VoiceController・DesktopDeviceController・模擬の音声レンダラー）を、手で進める 1 本の時計でつないだ（HTTP・WSS・Electron は通さない）",
         "devices": []
       },
@@ -1066,7 +1146,7 @@
       "provider_state_changes": 1,
       "approvals": 0,
       "final_state": "live:close_confirmed|reservation:settled|renderer:closed",
-      "observed_at": "2026-11-03T10:50:23.172Z",
+      "observed_at": "2026-11-14T05:01:38.699Z",
       "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -1074,11 +1154,11 @@
     {
       "case_id": "QA41-live-input-four-operations-need-full-text",
       "kind": "simulated",
-      "commit": "c07bde3e20e3a2443624d8efcae7686f087a8f75",
+      "commit": "8261e2b50e5de732dd6ae7eae9b783b5418208b1",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
-        "os": "win32 10.0.26300 / v24.19.0",
+        "os": "darwin 25.6.0 / v24.19.0",
         "hub": "同一プロセスの中枢の音声の制御（VoiceControl・一時ディレクトリの DB と DB worker・予算の門・模擬の Live の provider・会話の処理）と、端末の音声の制御（VoiceController・DesktopDeviceController・模擬の音声レンダラー）を、手で進める 1 本の時計でつないだ（HTTP・WSS・Electron は通さない）",
         "devices": []
       },
@@ -1088,7 +1168,7 @@
       "provider_state_changes": 0,
       "approvals": 0,
       "final_state": "live:open|reservation:reserved|renderer:live",
-      "observed_at": "2026-11-03T10:50:23.172Z",
+      "observed_at": "2026-11-14T05:01:38.699Z",
       "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -1096,11 +1176,11 @@
     {
       "case_id": "X51-input-is-confirmed-before-it-is-interpreted",
       "kind": "simulated",
-      "commit": "c07bde3e20e3a2443624d8efcae7686f087a8f75",
+      "commit": "8261e2b50e5de732dd6ae7eae9b783b5418208b1",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
-        "os": "win32 10.0.26300 / v24.19.0",
+        "os": "darwin 25.6.0 / v24.19.0",
         "hub": "同一プロセスの中枢の音声の制御（VoiceControl・一時ディレクトリの DB と DB worker・予算の門・模擬の Live の provider・会話の処理）と、端末の音声の制御（VoiceController・DesktopDeviceController・模擬の音声レンダラー）を、手で進める 1 本の時計でつないだ（HTTP・WSS・Electron は通さない）",
         "devices": []
       },
@@ -1110,7 +1190,7 @@
       "provider_state_changes": 0,
       "approvals": 0,
       "final_state": "live:open|reservation:reserved|renderer:live",
-      "observed_at": "2026-11-03T10:50:23.172Z",
+      "observed_at": "2026-11-14T05:01:38.699Z",
       "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -1118,11 +1198,11 @@
     {
       "case_id": "X27-held-change-is-superseded-or-cancelled",
       "kind": "simulated",
-      "commit": "c07bde3e20e3a2443624d8efcae7686f087a8f75",
+      "commit": "8261e2b50e5de732dd6ae7eae9b783b5418208b1",
       "contract_version": "1.0.0",
       "db_version": "12",
       "environment": {
-        "os": "win32 10.0.26300 / v24.19.0",
+        "os": "darwin 25.6.0 / v24.19.0",
         "hub": "同一プロセスの中枢の音声の制御（VoiceControl・一時ディレクトリの DB と DB worker・予算の門・模擬の Live の provider・会話の処理）と、端末の音声の制御（VoiceController・DesktopDeviceController・模擬の音声レンダラー）を、手で進める 1 本の時計でつないだ（HTTP・WSS・Electron は通さない）",
         "devices": []
       },
@@ -1132,7 +1212,7 @@
       "provider_state_changes": 0,
       "approvals": 0,
       "final_state": "live:open|reservation:reserved|renderer:live",
-      "observed_at": "2026-11-03T10:50:23.172Z",
+      "observed_at": "2026-11-14T05:01:38.699Z",
       "deviation": "模擬の音声（合成の PCM）・台本の模擬 Live・手で進める時計と故障の注入による試験。実機・実 API・実請求は未実施（#132・#133）。マイク・WebRTC・Electron・HTTP と WSS の経路は通さない。時間の値（voice_stop_ms など）は手で進める時計の模擬で、T04 の実測ではない。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"

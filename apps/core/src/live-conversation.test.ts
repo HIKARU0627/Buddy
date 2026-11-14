@@ -6,13 +6,19 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { uuid } from './budget-test-support.js';
-import { createApiContract } from './api-contract.js';
+import { createApiContract, loadContractSchema } from './api-contract.js';
+import { createFakeAdapter, syntheticProfile } from '@buddy/ai/testing';
+import { createModelInterpreter } from './model-interpreter.js';
 import { API_ROUTES } from './api-routes.js';
 import type { ApiHandlerRequest } from './api-server.js';
 import { createTurnRoutes } from './api-turns.js';
 import type { TurnRoutes } from './api-turns.js';
 import { DATA_KEY_MATERIAL } from './event-test-support.js';
-import { LiveConversation, createLiveScreenSink } from './live-conversation.js';
+import {
+  LiveConversation,
+  createLiveScreenSink,
+  deliverVoiceCommentary,
+} from './live-conversation.js';
 import type { ScreenResult } from './live-conversation.js';
 import { PreviewRegistry } from './previews.js';
 import { TEST_TURN_POLICY, createMockInterpreter } from './turn-ports.js';
@@ -141,6 +147,8 @@ interface Conv {
   readonly rig: Rig;
   readonly script: Script;
   readonly turns: TurnRoutes;
+  // 画面からの発言（postTurn）に使う会話。Live の会話とは別に 1 つ作る。
+  readonly typedSessionId: string;
   readonly conversation: LiveConversation;
   readonly sb: MockSideband;
   readonly liveId: string;
@@ -176,6 +184,8 @@ async function withConversation(
     readonly provider?: ProviderReader;
     // 委譲の受付の条件の照会（同意など。非同期）を、この Promise が解けるまで止める。
     readonly conditionsGate?: Promise<void>;
+    // 差し替える解釈（実際のモデルを使う解釈の回帰試験用）。省略は台本の解釈。
+    readonly interpreter?: Interpreter;
   } = {},
 ): Promise<void> {
   await withRig(async (rig) => {
@@ -187,16 +197,43 @@ async function withConversation(
         loadDataKey: () =>
           Promise.resolve({ ok: true as const, dataKey: DATA_KEY_MATERIAL }),
       },
-      interpreter: script,
+      interpreter: options.interpreter ?? script,
       provider: options.provider ?? provider,
       candidates: { mailCandidates: () => Promise.resolve([]) },
       policy: options.policy ?? TEST_TURN_POLICY,
       previews: new PreviewRegistry(),
+      storage: {
+        mode: 'normal',
+        origin: () => ({ segment_id: SESSION, segment_generation: '1' }),
+      },
       utcOffset: '+09:00',
       now: () => NOW,
       onSessionControl: ({ device_id, action }) =>
         rig.voice.applySessionControlForDevice(device_id, action),
     });
+    // 画面の発言の会話を 1 つ作る（postTurn は会話ごとの由来の控えを必要とする）。
+    const createRoute = API_ROUTES.find(
+      (entry) => entry.operationId === 'createSession',
+    );
+    assert(createRoute !== undefined);
+    const createdSession = await turns.handlers['createSession']?.({
+      route: createRoute,
+      device: A,
+      body: {
+        request_id: uuid(0x700000),
+        command_scope_id: SCOPE_A,
+        storage_mode: 'normal',
+      },
+      params: {},
+      remoteAddress: '127.0.0.1',
+      query: {},
+      declaredLockState: 'unlocked',
+    });
+    assert.equal(createdSession?.status, 201);
+    const typedSessionId = String(
+      (createdSession?.body as { session_id?: unknown } | undefined)
+        ?.session_id,
+    );
     const hooks: Conv['hooks'] = {
       beforeRecord: null,
       beforeCommit: null,
@@ -267,6 +304,7 @@ async function withConversation(
       rig,
       script,
       turns,
+      typedSessionId,
       conversation,
       sb: rig.provider.last,
       liveId,
@@ -826,7 +864,11 @@ test(
 
 // ---- X49: 文字の依頼は、音声の接続が開いていても文字で返す ------------------------------------------------------
 
-function typedRequest(text: string, inputKind: string): ApiHandlerRequest {
+function typedRequest(
+  text: string,
+  inputKind: string,
+  sessionId: string,
+): ApiHandlerRequest {
   const route = API_ROUTES.find((entry) => entry.operationId === 'postTurn');
   assert(route !== undefined);
   return {
@@ -837,8 +879,9 @@ function typedRequest(text: string, inputKind: string): ApiHandlerRequest {
       command_scope_id: SCOPE_A,
       text,
       input_kind: inputKind,
+      origin: { segment_id: sessionId, segment_generation: '1' },
     },
-    params: { session_id: SESSION },
+    params: { session_id: sessionId },
     remoteAddress: '127.0.0.1',
     query: {},
     declaredLockState: 'unlocked',
@@ -852,7 +895,9 @@ test(
     await withConversation(async (c) => {
       const handler = c.turns.handlers['postTurn'];
       assert(handler !== undefined);
-      const typed = await handler(typedRequest('今日の予定を見せて', 'text'));
+      const typed = await handler(
+        typedRequest('今日の予定を見せて', 'text', c.typedSessionId),
+      );
       assert.equal(typed.status, 200, JSON.stringify(typed.body));
       const body = typed.body as Record<string, unknown>;
       assert.equal(body['status'], 'answered');
@@ -868,7 +913,7 @@ test(
       assert.deepEqual(c.shown, []);
       // 端末の HTTP の経路で voice_live を名乗る入力は受け付けない（中枢がサイドバンドで受ける）。
       const claimed = await handler(
-        typedRequest('今日の予定を見せて', 'voice_live'),
+        typedRequest('今日の予定を見せて', 'voice_live', c.typedSessionId),
       );
       assert.equal(claimed.status, 503);
       assert.deepEqual(turnsOf(c.rig), [{ input_kind: 'text', role: 'user' }]);
@@ -1011,7 +1056,9 @@ test(
     await withConversation(async (c) => {
       const handler = c.turns.handlers['postTurn'];
       assert(handler !== undefined);
-      const typed = await handler(typedRequest('文字で返して', 'text'));
+      const typed = await handler(
+        typedRequest('文字で返して', 'text', c.typedSessionId),
+      );
       assert.equal(typed.status, 200, JSON.stringify(typed.body));
       assert.deepEqual(
         {
@@ -1289,6 +1336,40 @@ test(
               { relation: 'cancel', target_workflow_id: uuid(0x8001) },
             ),
           );
+        },
+      },
+    );
+  },
+);
+
+test(
+  'QA04: a cancel the model could not give an intent to (unclear) still keeps its relation and stops the held change',
+  TIMEOUT,
+  async () => {
+    const first = gate();
+    await withConversation(
+      async (c) => {
+        await firstRequestHeldBySecondUtterance(c, first.release);
+        await secondUtterance(c);
+        await waitUntil(
+          c.rig,
+          'the cancel answer',
+          () => c.sb.commentary.length === 1,
+        );
+        assert.deepEqual(c.sb.commentary, [['実行前の依頼を取り消しました。']]);
+        assert.deepEqual(operations(c.rig), []);
+        assert.deepEqual(workflowStates(c.rig), []);
+        assert.equal(c.conversation.heldCount(c.liveId), 0);
+      },
+      {
+        policy: AUTO_TASK,
+        prepare: (script) => {
+          script.gates.set(TASK_TEXT, first.promise);
+          script.replies.set(EGG_TEXT, {
+            kind: 'unclear',
+            relation: 'cancel',
+            target_workflow_id: uuid(0x8001),
+          });
         },
       },
     );
@@ -2587,3 +2668,293 @@ test(
     });
   },
 );
+
+// 実際のモデルを使う解釈（偽のアダプター）で、保存済みの依頼への訂正が新しい作成にならないこと（レビュー P1）。
+const modelWire = (over: Record<string, unknown>): string =>
+  JSON.stringify({
+    intent: 'create_task',
+    args: { ...EMPTY_ARGS, title: '牛乳を買う' },
+    relation: 'new',
+    target_workflow_id: null,
+    reply_text: null,
+    clarify_question: null,
+    confidence: 0.9,
+    ...over,
+  });
+
+test(
+  'P1: with the real model interpreter, a correction after a saved request is offered that request, and one with no target asks back instead of making a second task',
+  TIMEOUT,
+  async () => {
+    const schema = loadContractSchema() as Record<string, unknown>;
+    const contract = createApiContract();
+    const step = (text: string) => ({
+      kind: 'response' as const,
+      text,
+      usage: {
+        input_tokens: 900,
+        cached_input_tokens: 0,
+        output_tokens: 40,
+        reasoning_tokens: null,
+        usage_complete: true,
+      },
+      provider_request_id: 'req',
+      refused: false,
+      truncated: false,
+    });
+    const adapter = createFakeAdapter([
+      step(modelWire({})),
+      // 保存後の訂正だが、対象の依頼を指さない（対象なし）。
+      step(
+        modelWire({
+          args: { ...EMPTY_ARGS, title: '卵を買う' },
+          relation: 'correction',
+          target_workflow_id: null,
+        }),
+      ),
+    ]);
+    const interpreter = createModelInterpreter({
+      adapter,
+      profile: syntheticProfile({
+        profile_id: 'intent-primary',
+        role: 'intent',
+        provider: 'gemini',
+      }),
+      output_schema: { ...schema, $ref: '#/$defs/WireResponse' },
+      schema: { valid: (value) => contract.valid('WireResponse', value) },
+      guard: {
+        admit: () =>
+          Promise.resolve({
+            ok: true as const,
+            settle: () => Promise.resolve(),
+            release: () => Promise.resolve(),
+          }),
+      },
+    });
+    await withConversation(
+      async (c) => {
+        await speak(c, { text: TASK_TEXT });
+        await delegate(c, 'd1', 800);
+        await c.rig.clock.advance(500);
+        await waitUntil(
+          c.rig,
+          'the result of A',
+          () => c.sb.commentary.length === 1,
+        );
+        const aId = workflowIds(c.rig)[0] as string;
+        const operationsBefore = operations(c.rig).length;
+        await speak(c, { text: EGG_TEXT });
+        await delegate(c, 'd2', c.next.start - 400);
+        await c.rig.clock.advance(500);
+        await waitUntil(
+          c.rig,
+          'the ask back',
+          () => c.sb.commentary.length === 2,
+        );
+        // 2 回目の判定には保存済みの A が候補として渡された。
+        const sent = adapter.commands[1]?.messages[1]?.content ?? '';
+        assert.ok(sent.includes(`workflow_id=${aId}`));
+        // 対象を決めない訂正は新しい作成にならず、聞き返しになる。操作は 1 件も増えない。
+        assert.deepEqual(c.sb.commentary[1], [
+          'どの依頼のことか分かりませんでした。もう一度言ってください。',
+        ]);
+        assert.equal(operations(c.rig).length, operationsBefore);
+        assert.equal(workflowIds(c.rig).length, 1);
+      },
+      { interpreter },
+    );
+  },
+);
+
+// ---- B10-04 P1: 同じ発話への再委譲は、先の依頼と同じものとして二重に処理しない（X51。ADR 0105） ------------------------
+
+const SCHEDULE_TEXT = '今日の予定を見せて';
+const SCHEDULE_ANSWER = [
+  '予定は2件です。',
+  '時間が重なっている予定があります。',
+];
+
+test(
+  'X51/P1: a second delegation for the same utterance with the same text after the answer is not a new request: nothing is interpreted, saved or voiced again',
+  TIMEOUT,
+  async () => {
+    await withConversation(async (c) => {
+      await speak(c, { text: SCHEDULE_TEXT });
+      await delegate(c, 'd1', 800);
+      await c.rig.clock.advance(500);
+      await waitUntil(c.rig, 'the answer', () => c.sb.commentary.length === 1);
+      assert.deepEqual(c.sb.commentary, [SCHEDULE_ANSWER]);
+      // Live が同じ発話を、別の委譲 ID で委譲し直した。
+      await delegate(c, 'd2', 800);
+      // 5 秒の待ちの上限を過ぎても、聞き返し（「聞き取れませんでした」）も 2 つ目の答えも出ない。
+      await beat(c, 6000);
+      assert.deepEqual(c.sb.commentary, [SCHEDULE_ANSWER]);
+      assert.deepEqual(c.script.calls, [SCHEDULE_TEXT]);
+      assert.deepEqual(workflowStates(c.rig), ['done']);
+      assert.equal(snapshots(c.rig).length, 1);
+      assert.deepEqual(c.shown, []);
+      assert.equal(c.conversation.pendingCount, 0);
+    });
+  },
+);
+
+test(
+  'X51/P1: two delegations for the same utterance that both wait for its input make one request and one answer',
+  TIMEOUT,
+  async () => {
+    await withConversation(async (c) => {
+      await speak(c, { text: SCHEDULE_TEXT, end: false });
+      await delegate(c, 'd1', 800);
+      await delegate(c, 'd2', 800);
+      assert.equal(c.conversation.pendingCount, 2);
+      c.sb.endCandidate();
+      await c.rig.clock.advance(500);
+      await waitUntil(c.rig, 'the answer', () => c.sb.commentary.length === 1);
+      await beat(c, 6000);
+      assert.deepEqual(c.sb.commentary, [SCHEDULE_ANSWER]);
+      assert.deepEqual(c.script.calls, [SCHEDULE_TEXT]);
+      assert.deepEqual(workflowStates(c.rig), ['done']);
+      assert.equal(c.conversation.pendingCount, 0);
+    });
+  },
+);
+
+test(
+  'X51/P1: a delegation for an utterance that grew after the first delegation read it is not a duplicate: nothing is interpreted again, and the user is asked to say it again',
+  TIMEOUT,
+  async () => {
+    await withConversation(async (c) => {
+      await speak(c, { text: SCHEDULE_TEXT });
+      await delegate(c, 'd1', 800);
+      await c.rig.clock.advance(500);
+      await waitUntil(c.rig, 'the answer', () => c.sb.commentary.length === 1);
+      // 同じ発話に断片が追記された（「…いや明日」）。先の依頼が読んだ版とは違う。
+      c.sb.fragment({
+        index: c.next.index,
+        start_ms: 800,
+        end_ms: 1200,
+        text: 'いや明日',
+      });
+      await delegate(c, 'd2', 1200);
+      await beat(c, 6000);
+      // 追記された発話を同じ版として扱わない。自動で進めず、言い直しを頼む（変更も答えも作らない）。
+      assert.deepEqual(c.script.calls, [SCHEDULE_TEXT]);
+      assert.deepEqual(c.sb.commentary, [
+        SCHEDULE_ANSWER,
+        [SAY_AGAIN_SENTENCE],
+      ]);
+      assert.deepEqual(workflowStates(c.rig), ['done']);
+      assert.deepEqual(operations(c.rig), []);
+    });
+  },
+);
+
+// ---- B10-04 P2a: 声（①）の入力には、モデルの返答文を使わない（U217。ADR 0106） --------------------------------------------
+
+test(
+  'U217: a smalltalk delegated from the live voice never speaks or shows the model reply text; the fixed sentence is used',
+  TIMEOUT,
+  async () => {
+    await withConversation(
+      async (c) => {
+        await speak(c, { text: 'こんにちは' });
+        await delegate(c, 'd1', 800);
+        await c.rig.clock.advance(500);
+        await waitUntil(
+          c.rig,
+          'the answer',
+          () => c.sb.commentary.length === 1,
+        );
+        assert.deepEqual(c.sb.commentary, [
+          ['その依頼にはまだ対応していません。'],
+        ]);
+        assert.deepEqual(c.shown, []);
+        assert.deepEqual(operations(c.rig), []);
+      },
+      {
+        prepare: (script) =>
+          script.replies.set('こんにちは', {
+            kind: 'intent',
+            intent: 'smalltalk',
+            args: { ...EMPTY_ARGS },
+            reply_text: 'こんにちは。声には出さない文です。',
+          }),
+      },
+    );
+  },
+);
+
+// ---- B10-04 P2b: 声で返す結果の配信（追記の上限・画面へは多くても 1 回。ADR 0107） --------------------------------------
+
+const SCREEN_NOTICE = 'ほかは画面で確認してください。';
+
+// 結果の配信を、ポートの偽で動かして、追記した部分と画面へ置いた理由を返す。
+function deliver(options: {
+  readonly parts: readonly string[];
+  readonly appends?: boolean;
+  readonly valid?: boolean;
+}) {
+  const appended: (readonly string[])[] = [];
+  const shown: string[] = [];
+  deliverVoiceCommentary({
+    commentary: {
+      template_id: 'result.screen',
+      template_version: '1',
+      facts: [],
+      commentary_parts: options.parts,
+    },
+    build: (parts) => ({ commentary_parts: parts }) as never,
+    valid: () => options.valid !== false,
+    append: (parts) => {
+      appended.push(parts);
+      return options.appends !== false;
+    },
+    show: (reason) => shown.push(reason),
+  });
+  return { appended, shown };
+}
+
+test('B10-04 P2b: a result within the limits is appended as it is and never placed on the screen; when the append fails it is placed once', () => {
+  assert.deepEqual(deliver({ parts: ['あ', 'い', 'う'] }), {
+    appended: [['あ', 'い', 'う']],
+    shown: [],
+  });
+  assert.deepEqual(deliver({ parts: ['あ'], appends: false }), {
+    appended: [['あ']],
+    shown: ['sideband_unavailable'],
+  });
+  // 契約に合わない結果は追記せず、画面へ 1 回。
+  assert.deepEqual(deliver({ parts: ['あ'], valid: false }), {
+    appended: [],
+    shown: ['sideband_unavailable'],
+  });
+  // 載せられる部分が 1 つもない（空だけ）なら、追記せず画面へ 1 回。
+  assert.deepEqual(deliver({ parts: [''] }), {
+    appended: [],
+    shown: ['sideband_unavailable'],
+  });
+});
+
+test('B10-04 P2b: over the limits the rest is placed on the screen exactly once, whether or not the append succeeds, and the voice only asks to check the screen', () => {
+  const four = ['あ', 'い', 'う', 'え'];
+  // 追記が成功: 3 部に収め、最後を案内に置き換え、画面へは 1 回。
+  assert.deepEqual(deliver({ parts: four }), {
+    appended: [['あ', 'い', SCREEN_NOTICE]],
+    shown: ['commentary_overflow'],
+  });
+  // 追記が失敗（接続がこの間に閉じた・準備前）: 画面へは 1 回だけ（二重に置かない）。
+  assert.deepEqual(deliver({ parts: four, appends: false }), {
+    appended: [['あ', 'い', SCREEN_NOTICE]],
+    shown: ['commentary_overflow'],
+  });
+  // 契約に合わない結果でも 1 回だけ。
+  assert.deepEqual(deliver({ parts: four, valid: false }), {
+    appended: [],
+    shown: ['commentary_overflow'],
+  });
+  // 200 文字を超える部分がある: 切らずに載せず、案内だけが声に載る。
+  assert.deepEqual(deliver({ parts: ['あ'.repeat(201)], appends: false }), {
+    appended: [[SCREEN_NOTICE]],
+    shown: ['commentary_overflow'],
+  });
+});

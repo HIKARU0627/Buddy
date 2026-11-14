@@ -195,9 +195,22 @@ export function resolveDelegationTarget(
 ): DelegationTarget {
   if (!validTime(offset_ms)) return { count: 0, turn: null };
   const taken = new Set(claimed);
+  const candidates = windowTurns(transcript, offset_ms).filter(
+    (turn) => !taken.has(turn.ordinal),
+  );
+  return {
+    count: candidates.length,
+    turn: candidates.length === 1 ? (candidates[0] as LiveTurn) : null,
+  };
+}
+
+// offset の手前、窓の範囲に時間が重なるターン（先の委譲が対象にしたものも含む）。
+function windowTurns(
+  transcript: LiveTranscript,
+  offset_ms: number,
+): readonly LiveTurn[] {
   const from = offset_ms - LIVE_DELEGATION_WINDOW_MS;
-  const candidates = transcript.turns.filter((turn) => {
-    if (taken.has(turn.ordinal)) return false;
+  return transcript.turns.filter((turn) => {
     const starts = turn.fragments
       .map((fragment) => fragment.start_ms)
       .filter(validTime);
@@ -210,10 +223,41 @@ export function resolveDelegationTarget(
     const end = ends.length === 0 ? Infinity : Math.max(...ends);
     return start <= offset_ms && end >= from;
   });
-  return {
-    count: candidates.length,
-    turn: candidates.length === 1 ? (candidates[0] as LiveTurn) : null,
-  };
+}
+
+// 先の委譲が対象にしたターンと、そのときの文字（発話の版）。依頼（workflow）との対応を持つ（B10-04、設計 10 §5A-1）。
+export interface TurnBinding {
+  readonly ordinal: number;
+  readonly workflow_id: string;
+  // 先の委譲がターンから読んだ文字（その時点の版）。
+  readonly text: string;
+}
+
+// 同じ発話に対する 2 回目以降の委譲（設計 10 §5A-1: 同じ発話への複数委譲は同じ turn に結び付け、同じ依頼・版は 1 回だけ
+// 処理する）。次のすべてが成り立つときだけ、先の依頼（窓の中で最も新しいターンの依頼）と同じものとして返す。
+// - 先の委譲がまだ対象にしていないターンが、窓の中に 1 つもない（別の新しい発話への委譲ではない）。
+// - 窓の中のターンがすべて、先の委譲に紐付いている。
+// - どのターンも、今の文字が先の委譲が読んだ文字と同じ（追記された・直された発話は同じ版ではない）。
+// 追記された発話は重複と見なさず、自動では進めない（訂正が到着中のものは変更を始めない。5A-2）。offset が分からない・
+// 窓にターンがなければ重複とは言えない（null）。依頼の関係の解決（訂正・取消）ではなく、同じ入力の二重処理を除くだけの判定。
+export function resolveDuplicateDelegation(
+  transcript: LiveTranscript,
+  offset_ms: number | null,
+  bindings: readonly TurnBinding[],
+  claimed: ReadonlySet<number> | readonly number[] = [],
+): TurnBinding | null {
+  if (!validTime(offset_ms)) return null;
+  if (resolveDelegationTarget(transcript, offset_ms, claimed).count > 0)
+    return null;
+  const turns = windowTurns(transcript, offset_ms);
+  if (turns.length === 0) return null;
+  let latest: TurnBinding | null = null;
+  for (const turn of turns) {
+    const bound = bindings.find((entry) => entry.ordinal === turn.ordinal);
+    if (bound === undefined || bound.text !== turnText(turn)) return null;
+    latest = bound;
+  }
+  return latest;
 }
 
 // 方式 C の観測の事実のうち、文字起こしから決まるもの（残りの事実は呼び出し側が渡す）。

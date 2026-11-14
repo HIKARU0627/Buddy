@@ -1,0 +1,177 @@
+{
+  "status": "recorded",
+  "description": "B10-03 の模擬結果。意図判定の指示文・出力の検証・Core の解釈への接続・失敗の区別・影モードの記録を、偽のアダプターとメモリ上の保存先で確かめた。実 API・実キー・実請求・実機は未実施（B15 と本人の承認まで扱わない）。intent_shadow の SQLite 保存と起動時の設定は未実装。",
+  "command": "node --test packages/ai/dist/*.test.js apps/core/dist/model-interpreter.test.js apps/core/dist/shadow-mode.test.js apps/core/dist/live-conversation.test.js",
+  "source_sha256": [
+    {
+      "path": "packages/ai/src/intent-judgment.ts",
+      "sha256": "f5e14932f57412c244451a477dfa9f896237b0acfd949591ffd1b5957cf0d17d"
+    },
+    {
+      "path": "packages/ai/src/gemini-codec.ts",
+      "sha256": "5abd379ddf7a5bbde8b933bbab36779ae79908b6b4f7e60df33064d3b577872c"
+    },
+    {
+      "path": "apps/core/src/model-interpreter.ts",
+      "sha256": "4e4738a78c889da7cba4a171c02eb31076354d5b3f7108e1141ecb46edebcf43"
+    },
+    {
+      "path": "apps/core/src/shadow-mode.ts",
+      "sha256": "4594aa03a35964886de3bc2be63ddf7cd044dc45a248af7476af651cced3bb85"
+    },
+    {
+      "path": "packages/ai/src/intent-judgment.test.ts",
+      "sha256": "64baa242d382bf1ce373ac552dfc7c9f6b0439dee1c3c3d25a7e9c6b127d0ea9"
+    },
+    {
+      "path": "packages/ai/src/gemini-codec.test.ts",
+      "sha256": "9b3ee540d2363da1787d54e65ee5f6682242841c22ee87c8a251f8eeccd568a8"
+    },
+    {
+      "path": "packages/ai/src/candidate-comparison.test.ts",
+      "sha256": "1096d73b5d36ed2804d08bc5d399bf2af6fe9325b12b0be72cfee4bb2eb4e776"
+    },
+    {
+      "path": "apps/core/src/model-interpreter.test.ts",
+      "sha256": "cb30276bf9de30adbe98fad264bad35904d079209cb0daf1de31c73f749093fe"
+    },
+    {
+      "path": "apps/core/src/shadow-mode.test.ts",
+      "sha256": "1463168956593fb79715c665389fe38c87121687f5b2ca0370add47e3afa8983"
+    }
+  ],
+  "records": [
+    {
+      "case_id": "X48-b10-03",
+      "kind": "simulated",
+      "commit": "d6ccc87dc2fc66bdcb304e08f89d011837032890",
+      "contract_version": "1.0.0",
+      "db_version": "none",
+      "environment": {
+        "os": "Windows 11 / Node.js v24.19.0",
+        "hub": "同一プロセスの Core と偽のアダプター・メモリ上の保存先・契約の JSON Schema（Ajv）。実 provider へは接続しない。",
+        "devices": []
+      },
+      "seed": null,
+      "fault_point": "shadow_mode_recording",
+      "provider_requests": 0,
+      "provider_state_changes": 0,
+      "approvals": 0,
+      "final_state": "private_zero_records,stops_at_300,default_off,conversation_unaffected",
+      "observed_at": "2026-11-03T11:07:51.234Z",
+      "deviation": "模擬のみ。実 API・実キー・実請求・実機・実 endpoint の能力確認は未実施で、合格扱いにしない。",
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation"
+    },
+    {
+      "case_id": "X57-b10-03",
+      "kind": "simulated",
+      "commit": "d6ccc87dc2fc66bdcb304e08f89d011837032890",
+      "contract_version": "1.0.0",
+      "db_version": "none",
+      "environment": {
+        "os": "Windows 11 / Node.js v24.19.0",
+        "hub": "同一プロセスの Core と偽のアダプター・メモリ上の保存先・契約の JSON Schema（Ajv）。実 provider へは接続しない。",
+        "devices": []
+      },
+      "seed": null,
+      "fault_point": "candidate_comparison_same_conditions",
+      "provider_requests": 0,
+      "provider_state_changes": 0,
+      "approvals": 0,
+      "final_state": "same_instruction_same_base_date,results_kept_per_candidate",
+      "observed_at": "2026-11-03T11:07:51.235Z",
+      "deviation": "模擬のみ。実 API・実キー・実請求・実機・実 endpoint の能力確認は未実施で、合格扱いにしない。",
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation"
+    },
+    {
+      "case_id": "X58-b10-03",
+      "kind": "simulated",
+      "commit": "d6ccc87dc2fc66bdcb304e08f89d011837032890",
+      "contract_version": "1.0.0",
+      "db_version": "none",
+      "environment": {
+        "os": "Windows 11 / Node.js v24.19.0",
+        "hub": "同一プロセスの Core と偽のアダプター・メモリ上の保存先・契約の JSON Schema（Ajv）。実 provider へは接続しない。",
+        "devices": []
+      },
+      "seed": null,
+      "fault_point": "session_control_before_model",
+      "provider_requests": 0,
+      "provider_state_changes": 0,
+      "approvals": 0,
+      "final_state": "control_phrase_no_model_call,request_containing_phrase_reaches_model",
+      "observed_at": "2026-11-03T11:07:51.235Z",
+      "deviation": "模擬のみ。実 API・実キー・実請求・実機・実 endpoint の能力確認は未実施で、合格扱いにしない。",
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation"
+    },
+    {
+      "case_id": "QA01-b10-03",
+      "kind": "simulated",
+      "commit": "d6ccc87dc2fc66bdcb304e08f89d011837032890",
+      "contract_version": "1.0.0",
+      "db_version": "none",
+      "environment": {
+        "os": "Windows 11 / Node.js v24.19.0",
+        "hub": "同一プロセスの Core と偽のアダプター・メモリ上の保存先・契約の JSON Schema（Ajv）。実 provider へは接続しない。",
+        "devices": []
+      },
+      "seed": null,
+      "fault_point": "wire_schema_rejection",
+      "provider_requests": 0,
+      "provider_state_changes": 0,
+      "approvals": 0,
+      "final_state": "invalid_schema_stops_before_execution,clarification_only",
+      "observed_at": "2026-11-03T11:07:51.235Z",
+      "deviation": "模擬のみ。実 API・実キー・実請求・実機・実 endpoint の能力確認は未実施で、合格扱いにしない。",
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation"
+    },
+    {
+      "case_id": "QA03-b10-03",
+      "kind": "simulated",
+      "commit": "d6ccc87dc2fc66bdcb304e08f89d011837032890",
+      "contract_version": "1.0.0",
+      "db_version": "none",
+      "environment": {
+        "os": "Windows 11 / Node.js v24.19.0",
+        "hub": "同一プロセスの Core と偽のアダプター・メモリ上の保存先・契約の JSON Schema（Ajv）。実 provider へは接続しない。",
+        "devices": []
+      },
+      "seed": null,
+      "fault_point": "semantic_validation",
+      "provider_requests": 0,
+      "provider_state_changes": 0,
+      "approvals": 0,
+      "final_state": "invalid_semantics_not_unclear,no_operation_created",
+      "observed_at": "2026-11-03T11:07:51.235Z",
+      "deviation": "模擬のみ。実 API・実キー・実請求・実機・実 endpoint の能力確認は未実施で、合格扱いにしない。",
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation"
+    },
+    {
+      "case_id": "QA04-b10-03",
+      "kind": "simulated",
+      "commit": "d6ccc87dc2fc66bdcb304e08f89d011837032890",
+      "contract_version": "1.0.0",
+      "db_version": "none",
+      "environment": {
+        "os": "Windows 11 / Node.js v24.19.0",
+        "hub": "同一プロセスの Core と偽のアダプター・メモリ上の保存先・契約の JSON Schema（Ajv）。実 provider へは接続しない。",
+        "devices": []
+      },
+      "seed": null,
+      "fault_point": "relation_target_resolution",
+      "provider_requests": 0,
+      "provider_state_changes": 0,
+      "approvals": 0,
+      "final_state": "unoffered_workflow_rejected,unclear_cancel_keeps_relation",
+      "observed_at": "2026-11-03T11:07:51.235Z",
+      "deviation": "模擬のみ。実 API・実キー・実請求・実機・実 endpoint の能力確認は未実施で、合格扱いにしない。",
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation"
+    }
+  ]
+}

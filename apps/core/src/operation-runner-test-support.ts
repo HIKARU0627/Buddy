@@ -251,6 +251,10 @@ async function createOperation(
       command_scope_id: who.scope,
       text,
       input_kind: 'text',
+      origin: {
+        segment_id: sessionId,
+        segment_generation: String(created.json?.['segment_generation']),
+      },
     },
   );
   assert.equal(turn.status, 200, turn.text);
@@ -371,6 +375,10 @@ async function turn(
       command_scope_id: who.scope,
       text,
       input_kind: 'text',
+      origin: {
+        segment_id: String(created.json?.['session_id']),
+        segment_generation: String(created.json?.['segment_generation']),
+      },
     },
   );
   assert.equal(response.status, 200, response.text);

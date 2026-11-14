@@ -138,3 +138,61 @@ export function commandGuard(
     ? { action: 'apply', reasons: [] }
     : { action: 'reject', reasons };
 }
+
+// 方針による自動承認の時間窓（設計 08 §9、ADR 0074）。初期値は 10 分間に 20 件で、
+// T10 の結果で調整する。停止の判定と自動承認の記録は同じ transaction で行う（B13-04）。
+export const POLICY_AUTO_LIMIT = 20;
+export const POLICY_AUTO_WINDOW_MINUTES = 10;
+
+export interface AutoApprovalCounter {
+  readonly window_started_at: string;
+  readonly auto_approvals: number;
+  readonly limit: number;
+  readonly window_minutes: number;
+}
+
+// 次の自動承認を記録してよいか。窓が過ぎていれば新しい窓として数え直す。
+export function autoApprovalAllowed(
+  counter: AutoApprovalCounter | null | undefined,
+  now: string,
+): boolean {
+  if (!counter) return true;
+  if (
+    Date.parse(now) - Date.parse(counter.window_started_at) >=
+    counter.window_minutes * 60_000
+  )
+    return true;
+  return counter.auto_approvals < counter.limit;
+}
+
+// 自動実行の 4 種類（設計 08 §9、D6、ADR 0074）。初期状態はすべて無効で、
+// T10 の合格後に本人が有効化する。未設定・未知の規則は無効として扱う。
+export const AUTO_EXECUTION_RULES = [
+  'task.register',
+  'event.create_own',
+  'mail.apply_existing_label',
+  'mail.save_draft',
+] as const;
+export type AutoExecutionRule = (typeof AUTO_EXECUTION_RULES)[number];
+
+export interface AutoExecutionPolicy {
+  readonly policy_version: string;
+  readonly rules: Readonly<Record<AutoExecutionRule, boolean>>;
+}
+
+export const DEFAULT_AUTO_EXECUTION_POLICY: AutoExecutionPolicy = {
+  policy_version: '0',
+  rules: {
+    'task.register': false,
+    'event.create_own': false,
+    'mail.apply_existing_label': false,
+    'mail.save_draft': false,
+  },
+};
+
+export function autoExecutionEnabled(
+  policy: AutoExecutionPolicy | null | undefined,
+  rule: AutoExecutionRule,
+): boolean {
+  return policy?.rules[rule] === true;
+}

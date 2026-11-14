@@ -18,11 +18,21 @@ export interface MailCandidate {
   readonly remote_id: string;
 }
 
+// 訂正・取消・補足の対象にできる直前の依頼（5A-4）。解釈はこの中からだけ対象を選べる（コードが存在を検証する）。
+export interface OpenWorkflow {
+  readonly workflow_id: string;
+  // 意図が分かっていなければ null。
+  readonly intent: IntentName | null;
+  readonly state: 'clarifying' | 'in_flight';
+}
+
 export interface InterpretationContext {
   readonly text: string;
   // Core の時計と設定の時差から決めた今日の日付（YYYY-MM-DD）。
   readonly today: string;
   readonly mail_candidates: readonly MailCandidate[];
+  // 直前の依頼（省略は無し）。テキスト会話は依頼の保留を持たないので省略、Live は保留中の変更を渡す。
+  readonly open_workflows?: readonly OpenWorkflow[];
 }
 
 // 解釈の結果。intent・args は Core が意図表と契約（IntentArgs）で検査するまで信用しない。
@@ -35,8 +45,38 @@ export type InterpreterReply =
       // 省略・知らない値は「分からない」として扱い、保留中の変更を勝手に再開しない。コードが対象の存在・一意性を検証する。
       readonly relation?: string;
       readonly target_workflow_id?: string;
+      // モデルの返答文（smalltalk・general_question のときだけ意味を持つ平文。信用しない。表示してよいかは Core が
+      // admitReplyText で毎回決める。U217、ADR 0105）。
+      readonly reply_text?: string | null;
+      // 判定にかかった時間（診断と影モードの比較用。実行の判断には使わない）。
+      readonly elapsed_ms?: number;
     }
-  | { readonly kind: 'unclear' };
+  // モデルが「分からない」と答えた。「それやめて」のように新しい意図を持たない取消・訂正は、関係と対象を保つ。
+  | {
+      readonly kind: 'unclear';
+      readonly relation?: string;
+      readonly target_workflow_id?: string;
+      readonly elapsed_ms?: number;
+    }
+  // 判定に失敗した（拒否・打ち切り・形式/意味の不正・timeout・利用不可・予算・中断）。unclear と混ぜない（QA02・QA03）。
+  // どの場合も実行へ進まず聞き返しになる。自動の再送はしない（retryable は手での再試行で成功し得るかの表示用）。
+  | {
+      readonly kind: 'failed';
+      readonly failure: ModelFailureKind;
+      readonly retryable: boolean;
+      readonly elapsed_ms?: number;
+    };
+
+export type ModelFailureKind =
+  | 'refused'
+  | 'truncated'
+  | 'invalid_schema'
+  | 'invalid_semantics'
+  | 'timeout'
+  | 'unavailable'
+  | 'budget_denied'
+  | 'cancelled'
+  | 'stale';
 
 export interface Interpreter {
   interpret(context: InterpretationContext): Promise<InterpreterReply>;

@@ -155,6 +155,12 @@ async function startTurnCore(
   options: {
     readonly restartOf?: EventCore;
     readonly interpreter?: Interpreter;
+    readonly onTurnRecorded?: (event: {
+      readonly session_id: string;
+      readonly turn_id: string;
+      readonly created_at: string;
+      readonly expires_at: string;
+    }) => void;
   } = {},
 ): Promise<EventCore> {
   const previous = options.restartOf;
@@ -169,6 +175,9 @@ async function startTurnCore(
       ...(options.interpreter === undefined
         ? {}
         : { interpreter: options.interpreter }),
+      ...(options.onTurnRecorded === undefined
+        ? {}
+        : { onTurnRecorded: options.onTurnRecorded }),
       candidates: {
         mailCandidates: () =>
           Promise.resolve([
@@ -212,6 +221,7 @@ const postTurn = async (
       command_scope_id: scope,
       text,
       input_kind: 'text',
+      origin: { segment_id: session, segment_generation: '1' },
     },
   );
   if (response.status === 200)
@@ -288,6 +298,57 @@ test(
       ['c', 'd'],
     );
     assert.equal(scheduleOverlaps([]).size, 0);
+  },
+);
+
+test(
+  'UI-05: the saved time and expiry of a turn are passed on, and a resend passes nothing new',
+  { timeout: 60_000 },
+  async (t) => {
+    const seen: {
+      readonly session_id: string;
+      readonly turn_id: string;
+      readonly created_at: string;
+      readonly expires_at: string;
+    }[] = [];
+    const core = await startTurnCore(t, mockProvider(), {
+      onTurnRecorded: (event) => {
+        seen.push(event);
+      },
+    });
+    const device = await insertDevice(core.handle.store);
+    const scope = await bootstrap(core, device);
+    const session = await createSession(core, device, scope);
+    const requestId = randomUUID();
+    const first = await postTurn(
+      core,
+      device,
+      session,
+      scope,
+      '今日の予定を見せて',
+      requestId,
+    );
+    assert.equal(first.status, 200, first.text);
+    // 保存の命令に渡した生成の時刻と期限（手で数えた値。CLOCK は 2026-10-05T00:00:00Z、normal は 7 日後）。
+    assert.deepEqual(seen, [
+      {
+        session_id: session,
+        turn_id: first.json?.['turn_id'],
+        created_at: '2026-10-05T00:00:00Z',
+        expires_at: '2026-10-12T00:00:00Z',
+      },
+    ]);
+    // 再送は保存済みの応答を返すだけで、新しい期限を渡さない。
+    const again = await postTurn(
+      core,
+      device,
+      session,
+      scope,
+      '今日の予定を見せて',
+      requestId,
+    );
+    assert.equal(again.status, 200, again.text);
+    assert.equal(seen.length, 1);
   },
 );
 
@@ -685,6 +746,124 @@ test(
 );
 
 test(
+  'turns: the origin must name the session and the current segment generation, and a wrong origin saves nothing',
+  { timeout: 60_000 },
+  async (t) => {
+    const core = await startTurnCore(t, mockProvider());
+    const device = await insertDevice(core.handle.store);
+    const scope = await bootstrap(core, device);
+    const session = await createSession(core, device, scope);
+    const path = `/v1/sessions/${session}/turns`;
+    const send = (
+      requestId: string,
+      origin: unknown,
+      text = '明日の予定は？',
+    ) =>
+      postJson(core, device, path, {
+        request_id: requestId,
+        command_scope_id: scope,
+        text,
+        input_kind: 'text',
+        ...(origin === undefined ? {} : { origin }),
+      });
+    // 何も保存されていないことを、操作の一覧と、同じ request_id のやり直しで確かめる。
+    assert.deepEqual(await snapshotOperations(core, device), []);
+    // 形が違う由来は Schema で 422（発言を保存しない）。
+    for (const origin of [
+      undefined,
+      { segment_id: session },
+      { segment_id: session, segment_generation: '1', extra: true },
+    ]) {
+      const response = await send(randomUUID(), origin);
+      assert.equal(response.status, 422, response.text);
+    }
+    // 古い世代・別の会話の由来は 409（発言を保存しない）。
+    const rejectedId = randomUUID();
+    const stale = await send(rejectedId, {
+      segment_id: session,
+      segment_generation: '2',
+    });
+    assert.equal(stale.status, 409, stale.text);
+    const otherSession = await send(randomUUID(), {
+      segment_id: randomUUID(),
+      segment_generation: '1',
+    });
+    assert.equal(otherSession.status, 409, otherSession.text);
+    // 拒否した要求と同じ request_id を、今の由来と違う文で送り直す。保存されていれば内容違いの 409、
+    // 保存されていなければ新しい処理として 200 になる（拒否の後に発言・依頼・操作が 1 件も残っていない）。
+    const fresh = await send(
+      rejectedId,
+      { segment_id: session, segment_generation: '1' },
+      '別の用事',
+    );
+    assert.equal(fresh.status, 200, fresh.text);
+    assert.deepEqual(await snapshotOperations(core, device), []);
+    // 今の由来なら通る。
+    const ok = await postTurn(core, device, session, scope, '明日の予定は？');
+    assert.equal(ok.status, 200, ok.text);
+  },
+);
+
+test(
+  'sessions: a replayed create keeps the generation from the first receipt and does not re-tag an old conversation',
+  { timeout: 60_000 },
+  async (t) => {
+    const core = await startTurnCore(t, mockProvider());
+    const device = await insertDevice(core.handle.store);
+    const scope = await bootstrap(core, device);
+    const body = {
+      request_id: randomUUID(),
+      command_scope_id: scope,
+      storage_mode: 'normal',
+    };
+    const first = await postJson(core, device, '/v1/sessions', body);
+    assert.equal(first.status, 201, first.text);
+    const generation = String(first.json?.['segment_generation']);
+    assert.equal(generation, '1');
+    // 記録しない区切りに入って出る（世代が 1 → 2 → 3）。
+    assert.equal((await core.handle.storage.enterPrivate()).ok, true);
+    assert.equal((await core.handle.storage.exitPrivate('normal')).ok, true);
+    // 同じ作成要求の再送は、最初の受付の世代を返す（今の世代に付け替えない）。
+    const again = await postJson(core, device, '/v1/sessions', body);
+    assert.equal(again.status, 201, again.text);
+    assert.equal(again.json?.['session_id'], first.json?.['session_id']);
+    assert.equal(again.json?.['segment_generation'], generation);
+    // 古い世代のままの発言は 409（古い会話を新しい世代に付け替えない）。
+    const stale = await postTurn(
+      core,
+      device,
+      String(first.json?.['session_id']),
+      scope,
+      '明日の予定は？',
+    );
+    assert.equal(stale.status, 409, stale.text);
+  },
+);
+
+test(
+  'two conversations in the same Core can both post; creating a conversation does not rewrite the boundary segment',
+  { timeout: 60_000 },
+  async (t) => {
+    const core = await startTurnCore(t, mockProvider());
+    const device = await insertDevice(core.handle.store);
+    const scope = await bootstrap(core, device);
+    const first = await createSession(core, device, scope);
+    const second = await createSession(core, device, scope);
+    // 会話の作成は保存境界の保持者の区切りを書き換えない。両方の会話が発言できる。
+    for (const session of [first, second]) {
+      const response = await postTurn(
+        core,
+        device,
+        session,
+        scope,
+        '明日の予定は？',
+      );
+      assert.equal(response.status, 200, response.text);
+    }
+  },
+);
+
+test(
   'X03 / X04: a preview from an old command scope, after a content change, a lock, a permission change or a restart cannot approve (410 / 409)',
   { timeout: 90_000 },
   async (t) => {
@@ -928,6 +1107,10 @@ function pausedTurnRoutes() {
     candidates: { mailCandidates: () => Promise.resolve([]) },
     policy: TEST_TURN_POLICY,
     previews,
+    storage: {
+      mode: 'normal',
+      origin: () => ({ segment_id: 'gate', segment_generation: '1' }),
+    },
     utcOffset: '+09:00',
   });
   const view = {
@@ -1226,5 +1409,201 @@ test(
       assert(response.text.length < 16_384, String(response.text.length));
     }
     assert.deepEqual(await snapshotOperations(core, device), []);
+  },
+);
+
+// ---- B10-04 P2a: 返答文 reply_text の表示（U217 の本人決定 (b)。ADR 0106） ----------------------------------------------
+
+const NO_ARGS = {
+  target_candidate_id: null,
+  start: null,
+  end: null,
+  due: null,
+  title: null,
+  body: null,
+  subject: null,
+  add_labels: null,
+  remove_labels: null,
+  task_change: null,
+  memory_kind: null,
+  query: null,
+  device_name: null,
+} as const;
+
+const UNSUPPORTED_SENTENCE = 'その依頼にはまだ対応していません。';
+
+// 返す意図と返答文を、試験の中で差し替えられる解釈。
+function replyingInterpreter(state: {
+  intent: string;
+  reply_text: string | null | undefined;
+  args?: Record<string, unknown>;
+}): Interpreter {
+  return {
+    interpret: () =>
+      Promise.resolve({
+        kind: 'intent',
+        intent: state.intent,
+        args: { ...NO_ARGS, ...state.args },
+        ...(state.reply_text === undefined
+          ? {}
+          : { reply_text: state.reply_text }),
+      }),
+  };
+}
+
+test(
+  'U217/X49: a reply to smalltalk or a general question is answered as a speech bubble with the plain text, makes no workflow work or operation, and is not kept in the stored response',
+  { timeout: 60_000 },
+  async (t) => {
+    const state = {
+      intent: 'smalltalk',
+      reply_text: 'こんにちは。今日もゆっくり進めましょう。' as
+        string | null | undefined,
+    };
+    const core = await startTurnCore(t, mockProvider(), {
+      interpreter: replyingInterpreter(state),
+    });
+    const device = await insertDevice(core.handle.store);
+    const scope = await bootstrap(core, device);
+    const session = await createSession(core, device, scope);
+    for (const intent of ['smalltalk', 'general_question']) {
+      state.intent = intent;
+      const requestId = randomUUID();
+      const first = await postTurn(
+        core,
+        device,
+        session,
+        scope,
+        '合成の発言',
+        requestId,
+      );
+      assert.equal(first.status, 200, first.text);
+      assert.equal(first.json?.['status'], 'answered', intent);
+      assert.equal(
+        first.json?.['reply_text'],
+        'こんにちは。今日もゆっくり進めましょう。',
+        intent,
+      );
+      const view = first.json?.['result_view'] as Record<string, unknown>;
+      assert.equal(view['kind'], 'speech_bubble', intent);
+      assert.equal(view['intent'], intent);
+      assert.equal(view['status'], 'ready', intent);
+      assert.deepEqual(view['item_refs'], [], intent);
+      // 同じ request_id の再送は、保存した応答をそのまま返す。モデルの文は平文の列に残さないので、返答文だけがない。
+      const replay = await postTurn(
+        core,
+        device,
+        session,
+        scope,
+        '合成の発言',
+        requestId,
+      );
+      assert.equal(replay.status, 200, replay.text);
+      assert.equal(replay.json?.['turn_id'], first.json?.['turn_id'], intent);
+      assert.equal(replay.json?.['status'], 'answered', intent);
+      assert.equal(replay.json?.['reply_text'], null, intent);
+      assert(!replay.text.includes('こんにちは'), intent);
+    }
+    // 返答文は実行でも承認の対象でもない。
+    assert.deepEqual(await snapshotOperations(core, device), []);
+  },
+);
+
+test(
+  'U217: a reply that is empty, too long, a link, from a control-only text, or missing is never shown: the user gets the fixed "not supported" sentence, and nothing of the model text',
+  { timeout: 60_000 },
+  async (t) => {
+    const NUL = String.fromCharCode(0);
+    const ZWSP = String.fromCharCode(0x200b);
+    const state = {
+      intent: 'smalltalk',
+      reply_text: null as string | null | undefined,
+    };
+    const core = await startTurnCore(t, mockProvider(), {
+      interpreter: replyingInterpreter(state),
+    });
+    const device = await insertDevice(core.handle.store);
+    const scope = await bootstrap(core, device);
+    const session = await createSession(core, device, scope);
+    const rejected: (string | null | undefined)[] = [
+      null,
+      undefined,
+      '',
+      '   ',
+      NUL + ZWSP,
+      'あ'.repeat(401),
+      'こちらをどうぞ https://example.com/a',
+      'www.example.com を見てください',
+      'javascript:alert(1)',
+      '[詳細](example)',
+      '<a href="x">こちら</a>',
+      `ht${ZWSP}tp://example.com`,
+    ];
+    for (const intent of ['smalltalk', 'general_question'])
+      for (const value of rejected) {
+        state.intent = intent;
+        state.reply_text = value;
+        const response = await postTurn(
+          core,
+          device,
+          session,
+          scope,
+          '合成の発言',
+        );
+        assert.equal(response.status, 200, response.text);
+        assert.equal(
+          response.json?.['status'],
+          'clarification',
+          `${intent}/${String(value)}`,
+        );
+        assert.equal(response.json?.['reply_text'], UNSUPPORTED_SENTENCE);
+      }
+    // 検査を通る文は、取り除く文字を除いて表示される（401 文字でなく 400 文字ちょうどは通る）。
+    state.intent = 'smalltalk';
+    state.reply_text = `こん${NUL}にちは${ZWSP}`;
+    const shown = await postTurn(core, device, session, scope, '合成の発言');
+    assert.equal(shown.json?.['reply_text'], 'こんにちは');
+    state.reply_text = 'あ'.repeat(400);
+    const limit = await postTurn(core, device, session, scope, '合成の発言');
+    assert.equal(limit.json?.['reply_text'], 'あ'.repeat(400));
+    assert.deepEqual(await snapshotOperations(core, device), []);
+  },
+);
+
+test(
+  'U217: the model reply text is never carried by any intent other than smalltalk and general_question, whatever the model returns',
+  { timeout: 60_000 },
+  async (t) => {
+    const state = {
+      intent: 'query_schedule',
+      reply_text: '予定を作りました。' as string | null | undefined,
+      args: {} as Record<string, unknown>,
+    };
+    const core = await startTurnCore(t, mockProvider(), {
+      interpreter: replyingInterpreter(state),
+    });
+    const device = await insertDevice(core.handle.store);
+    const scope = await bootstrap(core, device);
+    const session = await createSession(core, device, scope);
+    const cases: readonly [string, Record<string, unknown>][] = [
+      ['query_schedule', {}],
+      ['create_task', { title: '合成の用事' }],
+      ['consult', { query: '合成の相談' }],
+      ['send_mail', {}],
+      ['memory_save', {}],
+    ];
+    for (const [intent, args] of cases) {
+      state.intent = intent;
+      state.args = args;
+      const response = await postTurn(
+        core,
+        device,
+        session,
+        scope,
+        '合成の発言',
+      );
+      assert.equal(response.status, 200, `${intent}: ${response.text}`);
+      assert(!response.text.includes('予定を作りました'), intent);
+    }
   },
 );

@@ -270,6 +270,92 @@ for (const entry of graphCases.cases) {
     );
   else assert.equal(entry.semantic_errors, undefined, entry.id);
 }
+// 気づき（候補）の一覧・根拠（B11-01、ADR 0073）。
+const candidateCases = parseStrictJson(
+  await readFile(
+    new URL('packages/contracts/fixtures/candidate-cases.json', root),
+    'utf8',
+  ),
+);
+for (const entry of candidateCases.cases) {
+  assert(!ids.has(entry.id), `Duplicate fixture id: ${entry.id}`);
+  ids.add(entry.id);
+  const validate = validators[entry.schema];
+  assert(validate, `Unknown schema: ${entry.schema}`);
+  assert.equal(
+    validate(entry.value),
+    entry.valid,
+    `${entry.id}: ${JSON.stringify(validate.errors)}`,
+  );
+  if (entry.valid)
+    assert.deepEqual(
+      semanticErrors(entry.schema, entry.value),
+      entry.semantic_errors ?? [],
+      entry.id,
+    );
+  else assert.equal(entry.semantic_errors, undefined, entry.id);
+}
+
+// 方針による自動承認・安全停止の件数・取り消しの対象版（B13-01、ADR 0074）。
+const policyCases = parseStrictJson(
+  await readFile(
+    new URL('packages/contracts/fixtures/policy-approval-cases.json', root),
+    'utf8',
+  ),
+);
+for (const entry of policyCases.cases) {
+  assert(!ids.has(entry.id), `Duplicate fixture id: ${entry.id}`);
+  ids.add(entry.id);
+  const validate = validators[entry.schema];
+  assert(validate, `Unknown schema: ${entry.schema}`);
+  assert.equal(
+    validate(entry.value),
+    entry.valid,
+    `${entry.id}: ${JSON.stringify(validate.errors)}`,
+  );
+  if (entry.valid)
+    assert.deepEqual(
+      semanticErrors(entry.schema, entry.value),
+      entry.semantic_errors ?? [],
+      entry.id,
+    );
+  else assert.equal(entry.semantic_errors, undefined, entry.id);
+}
+
+// 送信・予定の変更・参加者のいる予定・ごみ箱と送出直前の照合（B14-01、ADR 0075）。
+const approvalOperationCases = parseStrictJson(
+  await readFile(
+    new URL(
+      'packages/contracts/fixtures/approval-required-operations-cases.json',
+      root,
+    ),
+    'utf8',
+  ),
+);
+for (const entry of approvalOperationCases.cases) {
+  assert(!ids.has(entry.id), `Duplicate fixture id: ${entry.id}`);
+  ids.add(entry.id);
+  const validate = validators[entry.schema];
+  assert(validate, `Unknown schema: ${entry.schema}`);
+  assert.equal(
+    validate(entry.value),
+    entry.valid,
+    `${entry.id}: ${JSON.stringify(validate.errors)}`,
+  );
+  if (entry.valid)
+    assert.deepEqual(
+      semanticErrors(entry.schema, entry.value),
+      entry.semantic_errors ?? [],
+      entry.id,
+    );
+  else assert.equal(entry.semantic_errors, undefined, entry.id);
+  // 4 種類の intent は、一般化した OperationIntent としても解決できる。
+  if (entry.schema.endsWith('OperationIntent') && entry.valid)
+    assert(
+      validators['OperationIntent'](entry.value),
+      `${entry.id}: OperationIntent`,
+    );
+}
 
 const plan = parseStrictJson(
   await readFile(
@@ -288,5 +374,5 @@ await SwaggerParser.validate(
   },
 );
 console.log(
-  `${cases.length + canvasCases.length + voiceCases.cases.length + storageCases.cases.length + storageCases.scenarios.length + responsePlanEntries.length + responsePlanCases.intent_views.length + connectorCases.cases.length + graphCases.cases.length} schema fixtures and OpenAPI 3.1.2 validated. No product or provider test was run.`,
+  `${cases.length + canvasCases.length + voiceCases.cases.length + storageCases.cases.length + storageCases.scenarios.length + responsePlanEntries.length + responsePlanCases.intent_views.length + connectorCases.cases.length + graphCases.cases.length + candidateCases.cases.length + policyCases.cases.length + approvalOperationCases.cases.length} schema fixtures and OpenAPI 3.1.2 validated. No product or provider test was run.`,
 );

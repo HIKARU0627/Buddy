@@ -30,6 +30,7 @@ import { runBackupSetup } from './backup-setup.js';
 import { callControl } from './control-channel.js';
 import { runRestoreCheck } from './restore-check.js';
 import { runRestoreLedgerRepair } from './restore-repair.js';
+import { runRestoreRun } from './restore-run.js';
 import { readRecoveryKeyFromTty, stderrPrompt } from './restore-tty.js';
 import { CoreStartError, startCore } from './core.js';
 import type { CoreHandle, CoreHttpsOptions } from './core.js';
@@ -106,8 +107,11 @@ const USAGE = `使い方: buddy-core <start|status|stop> [--data-dir <path>]
          設定・置き場所の検査・鍵・最後の成功を表示する（置き場所のパス・鍵は表示しない）
   restore check --backup <path>
          復元できるかを確かめる（段階 1〜2）。封筒・鍵・本体を確かめ、中枢の台帳と照合し、作業用の DB に期限切れの
-         削除を当てる。復旧キーは端末の標準入力からのみ読み、画面には出さない。記憶と会話はまだ戻さない（段階 3〜6 は
-         次の PR）。Core は止めておく（動いていると拒否する）
+         削除を当てる。復旧キーは端末の標準入力からのみ読み、画面には出さない。記憶と会話はまだ戻さない。Core は
+         止めておく（動いていると拒否する）
+  restore run --backup <path>
+         復元する（段階 1〜6）。check と同じ確認の後、忘却の適用・DB の検証・作り直し・鍵の導入・承認の失効（J3）・
+         store_generation の更新を行い、DB を差し替える。復旧キーは端末の標準入力からのみ読む。Core は止めておく
   restore repair-ledger
          壊れた・DB より進んだ忘却台帳のファイル（forget-ledger.json）を、DB の台帳から作り直す。中枢・複製・
          バックアップの封筒で DB が最新であることを確かめ、ファイルを退避してから作り直す。DB が古いときは
@@ -198,7 +202,7 @@ async function main(argv: readonly string[]): Promise<number> {
   const restoreCommand =
     command === 'restore' &&
     positionals.length === 2 &&
-    (action === 'check' || action === 'repair-ledger');
+    (action === 'check' || action === 'run' || action === 'repair-ledger');
   const restoreBackupCommand = restoreCommand && action !== 'repair-ledger';
   const clockCommand =
     command === 'clock' &&
@@ -249,7 +253,9 @@ async function main(argv: readonly string[]): Promise<number> {
     return EXIT.usage;
   }
   if ((values.backup !== undefined) !== restoreBackupCommand) {
-    log('--backup は restore check で必ず指定し、他では使えません。');
+    log(
+      '--backup は restore check・restore run で必ず指定し、他では使えません。',
+    );
     return EXIT.usage;
   }
   const confirmCommand = budgetCommand && positionals[2] === 'confirm';
@@ -326,7 +332,7 @@ async function main(argv: readonly string[]): Promise<number> {
     return restore(
       dataDir,
       values.backup as string | undefined,
-      action as 'check' | 'repair-ledger',
+      action as 'check' | 'run' | 'repair-ledger',
     );
   if (backupCommand)
     return backup(dataDir, action as 'setup' | 'run' | 'status');
@@ -627,11 +633,12 @@ async function budgetCalendar(
   return EXIT.budget_refused;
 }
 
-// 復元の確認（ADR 0056。段階 1〜2）と、台帳の手での復旧（ADR 0057）。復旧キーは check だけ端末の標準入力から読む。
+// 復元（ADR 0056）と、台帳の手での復旧（ADR 0057）。`check` は段階 1〜2、`run` は段階 1〜6 と差し替えを行う。
+// 復旧キーは端末の標準入力からだけ読む（U128。repair-ledger は鍵を使わない）。Core は止めておく。
 async function restore(
   dataDir: string,
   backupPath: string | undefined,
-  action: 'check' | 'repair-ledger',
+  action: 'check' | 'run' | 'repair-ledger',
 ): Promise<number> {
   if (action === 'repair-ledger') {
     const report = await runRestoreLedgerRepair({
@@ -660,7 +667,7 @@ async function restore(
     return EXIT.restore_refused;
   }
   try {
-    const report = await runRestoreCheck({
+    const common = {
       dataDir,
       contract: createApiContract(),
       backupPath: resolve(backupPath),
@@ -669,7 +676,28 @@ async function restore(
       backupKeys: createBackupKeyStore(process.platform),
       now: () => new Date(),
       log,
-    });
+    };
+    if (action === 'run') {
+      const report = await runRestoreRun(common);
+      out(report.result ?? report);
+      if (report.outcome !== 'restored') {
+        if (report.installed)
+          log(
+            '中枢の DB は差し替えましたが、台帳の別ファイルを作り直せませんでした。Core を起動する前に台帳を確認してください。',
+          );
+        else log('復元できませんでした。中枢の DB は差し替えていません。');
+        if (!report.plaintext_deleted)
+          log(
+            '作業用の平文の DB を消せませんでした。復旧のために残しています。',
+          );
+        return EXIT.restore_refused;
+      }
+      if (!report.plaintext_deleted)
+        log('作業用の平文の DB を消せませんでした。手で削除してください。');
+      log('復元しました。中枢の Core を起動してください。');
+      return EXIT.ok;
+    }
+    const report = await runRestoreCheck(common);
     out(report);
     if (report.outcome !== 'ready') {
       log('復元を続けられません。記憶と会話は戻していません。');

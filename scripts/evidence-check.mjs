@@ -1,4 +1,4 @@
-// B04・B07 の模擬証拠（G1: 記録の同一性 / G4: 無言のドリフト防止）を、現行ソースと厳密に照合する。
+// B04・B05・B07 の模擬証拠（G1: 記録の同一性 / G4: 無言のドリフト防止）を、現行ソースと厳密に照合する。
 //
 // これは PR の必須チェックではない（ADR 0085）。PR の CI は実行器が期待値と一致すること（G5）を検査し、
 // 記録の現在性は工程の完了時・main の freshness・手動の確認で担保する。同期間、main の記録は一時的に
@@ -8,6 +8,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { assertB04EvidenceSources } from './b04-evidence-sources.mjs';
+import { assertB05EvidenceSources } from './b05-evidence-sources.mjs';
 import { assertB07EvidenceSources } from './b07-evidence-sources.mjs';
 import { root } from './contract-tools.mjs';
 
@@ -19,6 +20,11 @@ export const EVIDENCE_TARGETS = [
     label: 'B04',
     path: 'tests/integration/evidence-b04-simulated.json',
     assertSources: assertB04EvidenceSources,
+  },
+  {
+    label: 'B05',
+    path: 'tests/integration/evidence-b05-simulated.json',
+    assertSources: assertB05EvidenceSources,
   },
   {
     label: 'B07',
@@ -56,12 +62,12 @@ export function runEvidenceCheck({
   const failures = checkEvidenceSources(readFile);
   if (failures.length === 0) {
     log(
-      'B04・B07 の証拠は、現行ソースの対象ファイルと一致します（記録の現在性 G1/G4）。',
+      'B04・B05・B07 の証拠は、現行ソースの対象ファイルと一致します（記録の現在性 G1/G4）。',
     );
     return 0;
   }
   error(
-    'B04・B07 の証拠と現行ソースが一致しません。記録の現在性（G1/G4）が崩れています。',
+    'B04・B05・B07 の証拠と現行ソースが一致しません。記録の現在性（G1/G4）が崩れています。',
   );
   for (const failure of failures) error(`- ${failure}`);
   error(

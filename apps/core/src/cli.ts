@@ -29,6 +29,7 @@ import { createApiContract } from './api-contract.js';
 import { runBackupSetup } from './backup-setup.js';
 import { callControl } from './control-channel.js';
 import { runRestoreCheck } from './restore-check.js';
+import { runRestoreLedgerRepair } from './restore-repair.js';
 import { runRestoreRun } from './restore-run.js';
 import { readRecoveryKeyFromTty, stderrPrompt } from './restore-tty.js';
 import { CoreStartError, startCore } from './core.js';
@@ -111,6 +112,10 @@ const USAGE = `使い方: buddy-core <start|status|stop> [--data-dir <path>]
   restore run --backup <path>
          復元する（段階 1〜6）。check と同じ確認の後、忘却の適用・DB の検証・作り直し・鍵の導入・承認の失効（J3）・
          store_generation の更新を行い、DB を差し替える。復旧キーは端末の標準入力からのみ読む。Core は止めておく
+  restore repair-ledger
+         壊れた・DB より進んだ忘却台帳のファイル（forget-ledger.json）を、DB の台帳から作り直す。中枢・複製・
+         バックアップの封筒で DB が最新であることを確かめ、ファイルを退避してから作り直す。DB が古いときは
+         復元（restore check）に進ませる。Core は止めておく
   budget calendar status
          予算月の状態（今の月・始まり・記録の始まりと tz データで求め直した始まり・時計の戻りの下限・受付を
          止めている理由）を表示する。金額は表示しない
@@ -197,7 +202,8 @@ async function main(argv: readonly string[]): Promise<number> {
   const restoreCommand =
     command === 'restore' &&
     positionals.length === 2 &&
-    (action === 'check' || action === 'run');
+    (action === 'check' || action === 'run' || action === 'repair-ledger');
+  const restoreBackupCommand = restoreCommand && action !== 'repair-ledger';
   const clockCommand =
     command === 'clock' &&
     positionals.length === 2 &&
@@ -246,7 +252,7 @@ async function main(argv: readonly string[]): Promise<number> {
     log('--device-id は device revoke で必ず指定し、他では使えません。');
     return EXIT.usage;
   }
-  if ((values.backup !== undefined) !== restoreCommand) {
+  if ((values.backup !== undefined) !== restoreBackupCommand) {
     log(
       '--backup は restore check・restore run で必ず指定し、他では使えません。',
     );
@@ -323,7 +329,11 @@ async function main(argv: readonly string[]): Promise<number> {
     return start(dataDir, mode, https);
   }
   if (restoreCommand)
-    return restore(dataDir, values.backup as string, action as 'check' | 'run');
+    return restore(
+      dataDir,
+      values.backup as string | undefined,
+      action as 'check' | 'run' | 'repair-ledger',
+    );
   if (backupCommand)
     return backup(dataDir, action as 'setup' | 'run' | 'status');
   if (autostartCommand) return autostart(action as AutostartAction, dataDir);
@@ -623,13 +633,31 @@ async function budgetCalendar(
   return EXIT.budget_refused;
 }
 
-// 復元（ADR 0056）。`check` は段階 1〜2、`run` は段階 1〜6 と差し替えを行う。復旧キーは端末の標準入力からだけ読む
-// （U128）。Core は止めておく。
+// 復元（ADR 0056）と、台帳の手での復旧（ADR 0057）。`check` は段階 1〜2、`run` は段階 1〜6 と差し替えを行う。
+// 復旧キーは端末の標準入力からだけ読む（U128。repair-ledger は鍵を使わない）。Core は止めておく。
 async function restore(
   dataDir: string,
-  backupPath: string,
-  action: 'check' | 'run',
+  backupPath: string | undefined,
+  action: 'check' | 'run' | 'repair-ledger',
 ): Promise<number> {
+  if (action === 'repair-ledger') {
+    const report = await runRestoreLedgerRepair({
+      dataDir,
+      contract: createApiContract(),
+      now: () => new Date(),
+      log,
+    });
+    out(report);
+    if (report.outcome === 'refused') {
+      log('台帳を復旧できませんでした。Core は起動しないでください。');
+      return EXIT.restore_refused;
+    }
+    if (report.outcome === 'rebuilt')
+      log('台帳の別ファイルを DB から作り直しました。');
+    else log('台帳の別ファイルは DB と一致しています。');
+    return EXIT.ok;
+  }
+  if (backupPath === undefined) return EXIT.usage;
   const input = await readRecoveryKeyFromTty(process.stdin, stderrPrompt);
   if (!input.ok) {
     log(

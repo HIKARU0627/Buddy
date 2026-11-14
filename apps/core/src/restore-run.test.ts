@@ -42,7 +42,13 @@ import { startCore } from './core.js';
 import type { CoreHandle } from './core.js';
 import { DB_FILE, FORGET_LEDGER_FILE } from './paths.js';
 import { RESTORE_WORK_DIR } from './restore-check.js';
-import { RESTORE_INSTALL_JOURNAL } from './restore-install.js';
+import {
+  nodeRestoreInstallFs,
+  recoverRestoreInstall,
+  installRestoredDatabase,
+  RESTORE_INSTALL_JOURNAL,
+} from './restore-install.js';
+import type { RestoreInstallFs } from './restore-install.js';
 import { runRestoreRun } from './restore-run.js';
 
 const DATA_KEY = Buffer.alloc(32, 0x41);
@@ -477,5 +483,69 @@ test('復元の実行: check の後に封筒が変わったら、認証済みの
     );
   } finally {
     db.close();
+  }
+});
+
+test('復元の実行: 旧 DB の退避後に差し替えと巻き戻しが失敗しても空の DB を作らず、障害の解消後に復旧できる', async (t) => {
+  const r = await rig(t);
+  const livePath = join(r.dataDir, DB_FILE);
+  const readGeneration = (): string | null => {
+    const db = openWriteConnection(livePath, {
+      platform: storagePlatform(process.platform),
+    });
+    try {
+      return readStoreGeneration(db);
+    } finally {
+      db.close();
+    }
+  };
+  const oldGeneration = readGeneration();
+  // 今の名前へ移す rename（作業用 → 今の DB）と、巻き戻しの rename（退避した旧 DB → 今の DB）だけを失敗させる。
+  const failing: RestoreInstallFs = {
+    ...nodeRestoreInstallFs,
+    async rename(from, to) {
+      if (to === livePath) throw new Error('injected_rename_failure');
+      await nodeRestoreInstallFs.rename(from, to);
+    },
+  };
+  const report = await runRestoreRun({
+    dataDir: r.dataDir,
+    contract,
+    backupPath: r.backupPath,
+    recoveryKey: Buffer.from(decodeRecoveryCode(r.recoveryCode) as Uint8Array),
+    dataKeys: r.dataKeys,
+    backupKeys: r.keys,
+    now: () => new Date(T0 + 2000),
+    lock: true,
+    log: () => undefined,
+    install: (options) => installRestoredDatabase({ ...options, fs: failing }),
+  });
+  assert.equal(report.outcome, 'refused', JSON.stringify(report));
+  if (report.outcome !== 'refused') return;
+  assert.equal(report.reason, 'install_failed');
+  assert.equal(report.installed, false);
+  assert.equal(report.plaintext_deleted, false);
+  // 今の名前の DB は無い（旧 DB は退避したまま）。ここで空の DB を作ると次の復旧が止まる。
+  const names = await readdir(r.dataDir);
+  assert.equal(names.includes(DB_FILE), false, names.join(','));
+  assert.equal(names.includes(RESTORE_INSTALL_JOURNAL), true);
+  // 障害を取り除けば、次の復旧が退避した旧 DB を元へ戻せる。
+  assert.equal(await recoverRestoreInstall(r.dataDir), 'rolled_back');
+  assert.equal(readGeneration(), oldGeneration);
+  const restored = openWriteConnection(livePath, {
+    platform: storagePlatform(process.platform),
+  });
+  try {
+    assert.equal(
+      restored
+        .prepare(
+          "SELECT count(*) FROM approvals WHERE operation_id = ? AND status = 'valid'",
+        )
+        .pluck()
+        .get(r.operationId),
+      1,
+    );
+  } finally {
+    restored.close();
   }
 });

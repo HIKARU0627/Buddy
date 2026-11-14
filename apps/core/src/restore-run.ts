@@ -127,9 +127,14 @@ async function exists(path: string): Promise<boolean> {
 }
 
 // 差し替えの失敗の後、今の DB が復元した DB（新しい store_generation）かを読む。
+// 旧 DB を退避して差し替えと巻き戻しの両方が失敗した直後は、今の名前の DB が無い。ここで書込みの接続を開くと
+// 空の DB を作ってしまい、次の復旧が「退避した旧 DB と今の DB の両方がある」と見て restore_install_inconsistent で
+// 止まる。状態の確認はファイルの有無だけを見て、無ければ作らずに null を返す。
 async function liveStoreGeneration(dataDir: string): Promise<string | null> {
+  const path = join(dataDir, DB_FILE);
+  if (!(await exists(path))) return null;
   try {
-    const db = openWriteConnection(join(dataDir, DB_FILE), {
+    const db = openWriteConnection(path, {
       platform: storagePlatform(process.platform),
     });
     try {

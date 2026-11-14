@@ -1446,7 +1446,7 @@ export function restoreSourceHmac(
 
 // 台帳の forgotten（削除済み）と blocked_source_hmacs（除外する由来）から、規則 A・C・D を再適用する。
 // 台帳の forgotten を core にしない（通常の忘却が広げなかった由来まで規則 B で辿らない）。
-function restoreClosure(
+export function restoreClosure(
   graph: ForgetGraph,
   forgotten: readonly ForgetNode[],
   origins: readonly ForgetNode[],
@@ -1482,20 +1482,12 @@ function restoreClosure(
         doomed.set(nodeKey(edge.artifact), edge.artifact);
         changed = true;
       }
-    // D. 由来を引けない派生物の範囲の展開（範囲に除外する由来があれば範囲全体を除外する）。
+    // D. 由来を引けない派生物の範囲の展開。core に触れた範囲の全体を除外する処理は、台帳の blocked_source_hmacs が
+    // すでに持っている（元の閉包で origins に入った範囲の構成要素）。ここでは、範囲が削除する物・除外する由来に
+    // 触れるときだけ派生物を消す（新たな由来を足さない。通常の規則 D の非 core の分岐と同じ）。
     for (const item of graph.unattributed) {
       const list = members(item.scope);
-      if (list.some((member) => originMap.has(nodeKey(member)))) {
-        if (!doomed.has(nodeKey(item.artifact))) {
-          doomed.set(nodeKey(item.artifact), item.artifact);
-          changed = true;
-        }
-        for (const member of list)
-          if (!doomed.has(nodeKey(member)) && !originMap.has(nodeKey(member))) {
-            originMap.set(nodeKey(member), member);
-            changed = true;
-          }
-      } else if (
+      if (
         !doomed.has(nodeKey(item.artifact)) &&
         list.some(
           (member) =>

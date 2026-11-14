@@ -8,7 +8,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import type { MemorySource } from '@buddy/domain';
+import type { ForgetGraph, ForgetNode, MemorySource } from '@buddy/domain';
 import type {
   DbCommand,
   ForgetApplyValue,
@@ -23,6 +23,7 @@ import {
   ledgerEntryHash,
   openWriteConnection,
   readLedgerId,
+  restoreClosure,
   restoreSourceHmac,
 } from './index.js';
 import {
@@ -893,4 +894,40 @@ test('restore ledger: does not promote derived forgotten memories to new origins
       rmSync(dir, { recursive: true, force: true });
     }
   });
+});
+
+test('restore closure: an excluded origin in a scope does not make other turns in that scope origins', () => {
+  const graph: ForgetGraph = {
+    edges: [
+      {
+        artifact: { kind: 'memory', id: 'm1' },
+        source: { kind: 'turn', id: 't1' },
+      },
+      {
+        artifact: { kind: 'memory', id: 'm2' },
+        source: { kind: 'turn', id: 't2' },
+      },
+    ],
+    unattributed: [
+      {
+        artifact: { kind: 'session_summary', id: 's1' },
+        scope: { kind: 'session', id: 's1' },
+      },
+    ],
+    turn_sessions: [
+      { turn_id: 't1', session_id: 's1' },
+      { turn_id: 't2', session_id: 's1' },
+    ],
+    memories: [],
+    operations: [],
+  };
+  const forgotten: readonly ForgetNode[] = [{ kind: 'memory', id: 'm1' }];
+  const origins: readonly ForgetNode[] = [{ kind: 'turn', id: 't1' }];
+  const closure = restoreClosure(graph, forgotten, origins);
+  assert.equal(closure.doomed.has('memory\u0000m1'), true);
+  assert.equal(closure.doomed.has('session_summary\u0000s1'), true);
+  // 同じ会話の T2 は新しい除外由来にならないので、T2 から作った M2 は残る。
+  assert.equal(closure.doomed.has('memory\u0000m2'), false);
+  assert.equal(closure.origins.has('turn\u0000t2'), false);
+  assert.equal(closure.origins.has('turn\u0000t1'), true);
 });

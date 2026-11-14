@@ -90,6 +90,10 @@ async function turn(core, who, text, body = {}) {
     command_scope_id: who.scope,
     text,
     input_kind: 'text',
+    origin: {
+      segment_id: session.json.session_id,
+      segment_generation: session.json.segment_generation,
+    },
     ...body,
   };
   const response = await postJson(core, who.device, path, request);
@@ -560,6 +564,10 @@ async function qa27Guards(t, spec) {
         command_scope_id: who.scope,
         text,
         input_kind: 'text',
+        origin: {
+          segment_id: opened.json.session_id,
+          segment_generation: opened.json.segment_generation,
+        },
       },
     );
     assert.equal(response.status, expected.turn_status, text);

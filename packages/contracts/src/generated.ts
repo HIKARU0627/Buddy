@@ -794,6 +794,10 @@ export type StorageMode = 'normal' | 'extended' | 'private';
  */
 export type RouteRevision = string;
 /**
+ * 保存の区切りの世代（ADR 0045・0059）。記録しない区切りに入る・出るたびに 1 進み、Core の再起動をまたいでも戻らない（時計の状態ファイルの storage_boundary に番号だけを置く）。
+ */
+export type SegmentGeneration = string;
+/**
  * 会話そのものの操作（設計 10 §5 v0.6、質問 126）。照合表（SessionControlPhrases）と画面のボタンが同じ操作を指す。「処理を取り消す」（cancel_workflow）はここに含めない別の命令。
  */
 export type SessionControlAction =
@@ -1965,10 +1969,6 @@ export type RetentionNotice =
        */
       items: [RetentionNoticeItem, ...RetentionNoticeItem[]];
     };
-/**
- * 保存の区切りの世代（ADR 0045・0059）。記録しない区切りに入る・出るたびに 1 進み、Core の再起動をまたいでも戻らない（時計の状態ファイルの storage_boundary に番号だけを置く）。
- */
-export type SegmentGeneration = string;
 /**
  * 区切りの保存モードの状態（設計 03 保存期限・記録しない会話の境界、ADR 0040）。モードごとに何を保存し何を禁じるかを固定の値で持ち、private では発言・要約・記憶・抽出・影モードの記録・Live の接続を持てない。端末内の音声認識（③）は使える。判定は Core のコードが持ち、クライアントは表示にだけ使う。
  */
@@ -4512,20 +4512,32 @@ export interface SessionCreateRequest {
   command_scope_id: Id;
   storage_mode: StorageMode;
 }
+/**
+ * 会話の作成の受付。segment_generation はこの受付の時点の区切りの世代（ADR 0045・0059）。端末は発言の由来（origin）にこの値を入れる。受付の後に世代が進んだ場合は、端末は新しい世代を受け取り直すまで発言が 409 になる。
+ */
 export interface SessionReceipt {
   request_id: Id;
   session_id: Id;
   storage_mode: StorageMode;
+  segment_generation: SegmentGeneration;
   route_revision: RouteRevision;
 }
 /**
- * 画面からの発言（設計 07 §2、10 §6）。文字入力と、端末内で文字にした声（③）だけ。Live の文字起こしはこの経路で送らない。発言から外部変更を直接実行しない。
+ * 画面からの発言（設計 07 §2、10 §6）。文字入力と、端末内で文字にした声（③）だけ。Live の文字起こしはこの経路で送らない。発言から外部変更を直接実行しない。origin は端末が見ていた区切り（会話の ID と世代）で、Core が今の区切りと照合する（ADR 0045・0059）。
  */
 export interface TurnRequest {
   request_id: Id;
   command_scope_id: Id;
   text: string;
   input_kind: 'text' | 'voice_local';
+  origin: TurnOrigin;
+}
+/**
+ * 端末が見ていた区切り（ADR 0045 の P2-1・ADR 0059）。画面からの発言の由来。会話の ID と、作成の受付で受け取った世代。
+ */
+export interface TurnOrigin {
+  segment_id: Id;
+  segment_generation: SegmentGeneration;
 }
 /**
  * 文字で返す結果（設計 10 §6A）。結果は構造化した事実の表示で、文章は雑談・相談・調査のまとめだけ。外部変更の完了は操作の状態で別に示す。

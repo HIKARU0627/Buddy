@@ -448,6 +448,7 @@ test('a batch that fails the checks is not applied: the turn is still answered i
     canvas: hub,
     createSession,
     postTurn,
+    storage: { origin: () => ({ segment_generation: '1' }) },
     contract,
     place: (canvas) => ({
       base_canvas_revision: canvas.canvas_revision,
@@ -475,6 +476,7 @@ test('a batch that fails the checks is not applied: the turn is still answered i
     canvas: hub,
     createSession,
     postTurn,
+    storage: { origin: () => ({ segment_generation: '1' }) },
     contract,
     place: (canvas) =>
       placeCanvasForTurn(
@@ -486,6 +488,70 @@ test('a batch that fails the checks is not applied: the turn is still answered i
   assert.equal((rejected?.body as StreamTurnResponse).canvas, null);
   assert.equal(hub.document.canvas_revision, '0');
   assert.deepEqual(told, []);
+});
+
+test('postStreamTurn passes the stream conversation id and the generation read at the time to postTurn', async () => {
+  const hub = new CanvasHub(contract);
+  const device = { device_id: id(9) } as unknown as NonNullable<
+    ApiHandlerRequest['device']
+  >;
+  const route = (operationId: string) => {
+    const found = API_ROUTES.find((entry) => entry.operationId === operationId);
+    assert(found !== undefined);
+    return found;
+  };
+  const sessionId = id(20);
+  const turnResponse = (requestId: string) => ({
+    request_id: requestId,
+    session_id: sessionId,
+    turn_id: id(21),
+    input_id: id(22),
+    workflow_id: null,
+    status: 'clarification',
+    result_view: null,
+    reply_text: 'どちらですか。',
+  });
+  let generation = '1';
+  let captured: unknown = null;
+  const createSession: ApiRouteHandler = () =>
+    Promise.resolve({ status: 201, body: { session_id: sessionId } });
+  const postTurn: ApiRouteHandler = (request) => {
+    captured = request.body?.['origin'];
+    return Promise.resolve({
+      status: 200,
+      body: turnResponse(String(request.body?.['request_id'])),
+    });
+  };
+  const stream = createStreamRoutes({
+    canvas: hub,
+    createSession,
+    postTurn,
+    // 区切りの作成の後に世代が進んだ（記録しない区切りに入った等）ことを模す。
+    // 定数や作成時の値を控えて渡す実装では、この試験は通らない。
+    storage: { origin: () => ({ segment_generation: generation }) },
+    contract,
+  });
+  generation = '3';
+  const response = await stream.handlers['postStreamTurn']?.({
+    route: route('postStreamTurn'),
+    device,
+    body: {
+      request_id: id(40),
+      command_scope_id: id(30),
+      text: '今日の用事を見せて',
+      input_kind: 'text',
+      expected_canvas_revision: '0',
+    },
+    params: {},
+    remoteAddress: '127.0.0.1',
+    query: {},
+    declaredLockState: null,
+  });
+  assert.equal(response?.status, 200);
+  assert.deepEqual(captured, {
+    segment_id: sessionId,
+    segment_generation: '3',
+  });
 });
 
 test(
@@ -749,6 +815,7 @@ test('U120: the product screen sink reaches the canvas and the content route; th
     canvas: hub,
     createSession,
     postTurn,
+    storage: { origin: () => ({ segment_generation: '1' }) },
     contract,
   });
   const logs: string[] = [];
@@ -965,6 +1032,7 @@ test('UI-05: when the new segment cannot be opened, the turn is not answered in 
     `00000000-0000-4000-8000-${n.toString(16).padStart(12, '0')}`;
   const routes = createStreamRoutes({
     canvas,
+    storage: { origin: () => ({ segment_generation: '1' }) },
     now: () => at,
     utcOffset: '+09:00',
     createSession: () => {
@@ -1082,6 +1150,7 @@ test('UI-05: the expiry kept for a turn is the one saved with it, not the clock 
     `00000000-0000-4000-8000-${n.toString(16).padStart(12, '0')}`;
   const routes = createStreamRoutes({
     canvas,
+    storage: { origin: () => ({ segment_generation: '1' }) },
     now: () => at,
     utcOffset: '+09:00',
     createSession: () => {
@@ -1192,6 +1261,7 @@ test('UI-05: a new segment waits for a turn still being saved in the old segment
     `00000000-0000-4000-8000-${n.toString(16).padStart(12, '0')}`;
   const routes = createStreamRoutes({
     canvas,
+    storage: { origin: () => ({ segment_generation: '1' }) },
     now: () => at,
     utcOffset: '+09:00',
     createSession: () => {
@@ -1296,6 +1366,7 @@ test('UI-05: a resend that arrives while the first save is still running resolve
   let routes: ReturnType<typeof createStreamRoutes> | null = null;
   routes = createStreamRoutes({
     canvas,
+    storage: { origin: () => ({ segment_generation: '1' }) },
     now: () => at,
     utcOffset: '+09:00',
     createSession: () => {
@@ -1397,6 +1468,7 @@ test('UI-05: a new request that waits with a resend still opens its own segment'
   let routes: ReturnType<typeof createStreamRoutes> | null = null;
   routes = createStreamRoutes({
     canvas,
+    storage: { origin: () => ({ segment_generation: '1' }) },
     now: () => at,
     utcOffset: '+09:00',
     createSession: () => {
@@ -1516,6 +1588,7 @@ test('UI-05: a save that finishes out of order does not move the segment start b
   let routes: ReturnType<typeof createStreamRoutes> | null = null;
   routes = createStreamRoutes({
     canvas,
+    storage: { origin: () => ({ segment_generation: '1' }) },
     now: () => at,
     utcOffset: '+09:00',
     createSession: () => {

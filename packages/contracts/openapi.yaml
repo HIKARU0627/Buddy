@@ -61,7 +61,7 @@ paths:
     post:
       operationId: createSession
       summary: 会話の開始
-      description: 保存モードを固定して会話を作る。request_id・接続範囲・同じ内容の再送は保存済みの同じ受付結果を返し、内容が違えば 409（07 §3）。
+      description: 保存モードを固定して会話を作る。request_id・接続範囲・同じ内容の再送は保存済みの同じ受付結果を返し、内容が違えば 409（07 §3）。応答の segment_generation は、この会話の発言の origin に使う（ADR 0045・0059）。
       x-buddy-core-checks: &id002
         - device_token
         - home_network
@@ -102,7 +102,7 @@ paths:
     post:
       operationId: postTurn
       summary: 画面からの発言
-      description: 文字入力と端末内で文字にした声だけ。結果は文字で返し、Live へ送らない。発言から外部変更を直接実行しない（07 §2、10 §6・§6A）。request_id・接続範囲・同じ内容の再送は保存済みの同じ受付結果を返し、内容が違えば 409（07 §3）。
+      description: 文字入力と端末内で文字にした声だけ。結果は文字で返し、Live へ送らない。発言から外部変更を直接実行しない（07 §2、10 §6・§6A）。request_id・接続範囲・同じ内容の再送は保存済みの同じ受付結果を返し、内容が違えば 409（07 §3）。origin は端末が見ていた区切り（会話の ID と世代）で、Core が今の区切りと照合する（ADR 0045・0059）。
       x-buddy-core-checks: *id002
       parameters:
         - $ref: '#/components/parameters/SessionId'

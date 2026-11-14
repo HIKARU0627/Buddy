@@ -62,6 +62,17 @@ export type BuddyContract =
   | CandidateSnapshot
   | CandidateListResponse
   | CandidateEvidence
+  | WebSearchRequest
+  | WebSearchResponse
+  | WebFetchRequest
+  | WebFetchResult
+  | WebResearchSource
+  | WebResearchLimits
+  | WebUsagePolicy
+  | WebQueryScreening
+  | WebSourceRecord
+  | WebResearchStatus
+  | WebResearchAttempts
   | SyncBatch
   | SyncScopeState
   | SyncStateResponse
@@ -668,6 +679,78 @@ export type Deadline =
  * 抽出した依頼（request_entity）の版（設計 11 §5A）。本人の依頼の版 RequestRevision と同じ object に並べない。
  */
 export type RequestEntityRevision = string;
+/**
+ * 検索語の機械検査が拒否した理由（B12-02、ADR 0127）。検査は下限で、氏名・予定の詳細などの私的情報を見分けられない。見分けられない分は、検索語の入力元を本人の質問に限る前提で守る。
+ */
+export type WebQueryRejectReason =
+  | 'empty'
+  | 'too_long'
+  | 'too_many_words'
+  | 'line_break'
+  | 'email_address'
+  | 'phone_number'
+  | 'secret_like_token'
+  | 'contains_url';
+/**
+ * 公開 Web 調査の状態（B12-02、ADR 0125）。completed だけが結果と出典を持ち、完了と表示できる。no_results・failed・canceled は終端、held は本人の操作や予算の回復を待つ保留。
+ */
+export type WebResearchState =
+  | 'accepted'
+  | 'searching'
+  | 'reading'
+  | 'summarizing'
+  | 'completed'
+  | 'no_results'
+  | 'held'
+  | 'failed'
+  | 'canceled';
+/**
+ * 完了にならなかった理由（B12-02、ADR 0125）。検索の失敗と 0 件は区別し、読めたページが無いときは完了にしない。低い層の原因（取得の失敗の種類）は B12-02 の PR2 で足す。
+ */
+export type WebResearchStopReason =
+  | 'zero_hits'
+  | 'budget_held'
+  | 'query_rejected'
+  | 'search_failed'
+  | 'no_readable_page'
+  | 'summary_failed'
+  | 'user_canceled'
+  | 'superseded';
+/**
+ * 検索の呼出しが失敗した原因（B12-02 P2、ADR 0129）。0 件（zero_hits）は失敗ではない。
+ */
+export type WebSearchFailureCause =
+  | 'timeout'
+  | 'http_error'
+  | 'rate_limited'
+  | 'unauthorized'
+  | 'invalid_response'
+  | 'network_error';
+/**
+ * 検索を送らずに断った理由（B12-02 P2、ADR 0128）。search_limit は 1 依頼 3 検索の上限、budget_denied は予算の門（B07）、query_rejected は検索語の検査（ADR 0127）。送っていないので検索の回数には数えない。
+ */
+export type WebSearchDenial =
+  'search_limit' | 'budget_denied' | 'query_rejected';
+/**
+ * ページの取得の結果の種類（B12-02 P2、ADR 0129）。read だけが根拠になる。読めない形式（PDF 等）・会員限定・本文が空は、取得はできても根拠にならないので別に数える。blocked_target は接続の前に拒否した（B12-04）。
+ */
+export type WebPageOutcome =
+  | 'read'
+  | 'unreadable_format'
+  | 'login_required'
+  | 'empty_text'
+  | 'blocked_target'
+  | 'too_large'
+  | 'timeout'
+  | 'redirect_limit'
+  | 'redirect_loop'
+  | 'http_error'
+  | 'network_error';
+/**
+ * 要約の結果（B12-02 P2、ADR 0129）。読めたページがあっても、要約が作れなければ完了にしない。
+ */
+export type WebResearchSummaryOutcome =
+  'not_attempted' | 'ok' | 'budget_denied' | 'failed';
 /**
  * 同期の実行担当の世代（設計 11 §1A）。再起動で新しい担当になると上がり、旧担当の遅着ページ・公開要求を拒否する。
  */
@@ -3996,6 +4079,383 @@ export interface CandidateEvidence {
   excerpt: string | null;
 }
 /**
+ * 公開 Web 検索の 1 回分の要求（B12-01、ADR 0077、設計 05）。検索語は本人の質問から作る一般語だけで、メール全文・API キー・個人の予定を含めない。検索は 1 依頼 3 回まで。
+ */
+export interface WebSearchRequest {
+  schema: 'buddy.web-search.v1';
+  query_id: Id;
+  query: string;
+  language: string;
+  country: string;
+  max_results: number;
+  safesearch: 'strict';
+}
+/**
+ * 公開 Web 検索の結果（B12-01、ADR 0077）。Brave の利用条件 3(b)(i) に合わせて操作中の一時保持だけにし、3(b)(xiii) に合わせてモデルの訓練・評価に使わない。検索結果をデータベース化しない。
+ */
+export interface WebSearchResponse {
+  schema: 'buddy.web-search-result.v1';
+  provider: 'brave';
+  search_index: number;
+  query: string;
+  searched_at: UtcTime;
+  /**
+   * @maxItems 10
+   */
+  hits:
+    | []
+    | [WebSearchHit]
+    | [WebSearchHit, WebSearchHit]
+    | [WebSearchHit, WebSearchHit, WebSearchHit]
+    | [WebSearchHit, WebSearchHit, WebSearchHit, WebSearchHit]
+    | [WebSearchHit, WebSearchHit, WebSearchHit, WebSearchHit, WebSearchHit]
+    | [
+        WebSearchHit,
+        WebSearchHit,
+        WebSearchHit,
+        WebSearchHit,
+        WebSearchHit,
+        WebSearchHit,
+      ]
+    | [
+        WebSearchHit,
+        WebSearchHit,
+        WebSearchHit,
+        WebSearchHit,
+        WebSearchHit,
+        WebSearchHit,
+        WebSearchHit,
+      ]
+    | [
+        WebSearchHit,
+        WebSearchHit,
+        WebSearchHit,
+        WebSearchHit,
+        WebSearchHit,
+        WebSearchHit,
+        WebSearchHit,
+        WebSearchHit,
+      ]
+    | [
+        WebSearchHit,
+        WebSearchHit,
+        WebSearchHit,
+        WebSearchHit,
+        WebSearchHit,
+        WebSearchHit,
+        WebSearchHit,
+        WebSearchHit,
+        WebSearchHit,
+      ]
+    | [
+        WebSearchHit,
+        WebSearchHit,
+        WebSearchHit,
+        WebSearchHit,
+        WebSearchHit,
+        WebSearchHit,
+        WebSearchHit,
+        WebSearchHit,
+        WebSearchHit,
+        WebSearchHit,
+      ];
+  retention: 'transient_only';
+  model_use: 'grounding_only';
+}
+/**
+ * 検索の 1 件。snippet は検索サービスの要約で、永続保存しない。出典の抜粋は自分で取得した本文から作る（ADR 0077）。
+ */
+export interface WebSearchHit {
+  title: string | null;
+  url: string;
+  snippet: string | null;
+  page_age: UtcTime | null;
+}
+/**
+ * 自分で公開ページを取得する要求（B12-01、ADR 0077、設計 05）。HTTPS の公開ページだけを、1 ページ 2MB・15 秒・リダイレクト 3 回まで取得する。認証 Cookie を付けず、ローカル・プライベート・リンクローカルへの取得を拒否する。
+ */
+export interface WebFetchRequest {
+  schema: 'buddy.web-fetch.v1';
+  url: string;
+  max_bytes: number;
+  timeout_ms: number;
+  max_redirects: number;
+  /**
+   * @minItems 1
+   */
+  content_types: [
+    'text/html' | 'text/plain',
+    ...('text/html' | 'text/plain')[],
+  ];
+  send_cookies: false;
+}
+/**
+ * 公開ページの取得結果（B12-01、ADR 0077）。読めた本文だけを根拠の抜粋・要約に使い、検索サービスの要約だけのものと区別する。
+ */
+export interface WebFetchResult {
+  schema: 'buddy.web-fetch-result.v1';
+  requested_url: string;
+  final_url: string;
+  status: number;
+  content_type: string;
+  fetched_at: UtcTime;
+  bytes: number;
+  redirects: number;
+  readable: boolean;
+  /**
+   * 本文。実行要素を除いたテキストで、読めない形式（PDF 等）は null。
+   */
+  text: string | null;
+}
+/**
+ * 公開 Web の出典（B12-01、ADR 0077）。page_read は自分で取得した本文の抜粋・要約だけを持つ。search_summary_only は検索結果の要約を永続保存せず、抜粋・要約を null にする。
+ */
+export interface WebResearchSource {
+  schema: 'buddy.web-source.v1';
+  source_id: string;
+  /**
+   * 出典の URL。永続保存してよいかは B12-02 で決めるまで null にできる（U183）。
+   */
+  url: string | null;
+  title: string | null;
+  fetched_at: UtcTime | null;
+  basis: 'page_read' | 'search_summary_only';
+  excerpt: string | null;
+  summary: string | null;
+}
+/**
+ * 1 依頼あたりの公開 Web 調査の上限（設計 05 の初期値、ADR 0077）。品質の保証ではなく、処理と費用の上限。予算不足では範囲を減らすか保留する。
+ */
+export interface WebResearchLimits {
+  schema: 'buddy.web-research-limits.v1';
+  max_searches: 3;
+  max_pages: 5;
+  max_bytes_per_page: 2000000;
+  timeout_ms: 15000;
+  max_redirects: 3;
+}
+/**
+ * 公開 Web 調査の利用条件（B12-01、ADR 0077）。検索結果は操作中の一時保持だけにし、モデルの訓練・評価に使わない。URL の永続保存は B12-02 で決めるまで undecided。
+ */
+export interface WebUsagePolicy {
+  schema: 'buddy.web-usage.v1';
+  provider: 'brave';
+  retention: 'transient_only';
+  model_use: 'grounding_only';
+  url_storage: 'undecided' | 'allowed' | 'disallowed';
+}
+/**
+ * 検索語を検査した記録（B12-02、ADR 0127、設計 05「検索語は本人の質問から必要な一般語を作り、メール全文、API キー、個人の詳細予定を含めません」）。passed のときだけ検索の要求を受け付け、rejected のときは拒否した検索語を保存しない（screened_query は null）。
+ */
+export interface WebQueryScreening {
+  schema: 'buddy.web-query-screening.v1';
+  query_id: Id;
+  screened_query: string | null;
+  /**
+   * 検索語の元にした入力。本人の質問だけで、メール・予定・記憶・取得済みページの本文を元にしない。
+   *
+   * @minItems 1
+   * @maxItems 1
+   */
+  input_sources: ['user_question'];
+  rules_version: 1;
+  outcome: 'passed' | 'rejected';
+  rejected_reasons: WebQueryRejectReason[];
+  screened_at: UtcTime;
+}
+/**
+ * 永続保存してよい出典（B12-02、ADR 0126）。自分で取得した本文（page_read）から作った短い抜粋・要約と取得時刻・本文の hash だけを持つ。検索結果のタイトル・スニペット・要約は持たず、page_title は自分で取得したページの title。url は WebUsagePolicy.url_storage が allowed のときだけ非 null にできる（U183・U290）。
+ */
+export interface WebSourceRecord {
+  schema: 'buddy.web-source-record.v1';
+  source_id: Id;
+  query_id: Id;
+  basis: 'page_read';
+  fetched_at: UtcTime;
+  page_title: string | null;
+  excerpt: string | null;
+  summary: string | null;
+  content_hash: Hash;
+  url: string | null;
+}
+/**
+ * 公開 Web 調査の受付・進捗・完了の応答（B12-02、ADR 0125、設計 10 §5「裏のジョブ」）。completed だけが result を持ち、no_results・held・failed・canceled は stop を持つ。transient_links は応答の時点でメモリにあるときだけ付き、保存する形には含めない。
+ */
+export interface WebResearchStatus {
+  schema: 'buddy.web-research-status.v1';
+  workflow_id: Id;
+  request_revision: RequestRevision;
+  state_revision: StateRevision;
+  state: WebResearchState;
+  accepted_at: UtcTime;
+  updated_at: UtcTime;
+  finished_at: UtcTime | null;
+  result: WebResearchResult | null;
+  stop: WebResearchStop | null;
+  transient_links: WebTransientLinks | null;
+}
+/**
+ * 完了した調査の結果（B12-02、ADR 0125）。出典は 1 件以上で、すべて自分で取得した本文（page_read）。読めなかったページの数と、上限や予算で範囲を減らしたかを必ず示す。
+ */
+export interface WebResearchResult {
+  summary: string;
+  /**
+   * @minItems 1
+   * @maxItems 5
+   */
+  sources:
+    | [WebSourceRecord]
+    | [WebSourceRecord, WebSourceRecord]
+    | [WebSourceRecord, WebSourceRecord, WebSourceRecord]
+    | [WebSourceRecord, WebSourceRecord, WebSourceRecord, WebSourceRecord]
+    | [
+        WebSourceRecord,
+        WebSourceRecord,
+        WebSourceRecord,
+        WebSourceRecord,
+        WebSourceRecord,
+      ];
+  unread_count: number;
+  scope_reduced: boolean;
+}
+/**
+ * 完了にならなかった状態の種類と理由（B12-02、ADR 0125）。kind は状態と同じ名前で、kind と reason の組み合わせは domain が検査する。
+ */
+export interface WebResearchStop {
+  kind: 'no_results' | 'held' | 'failed' | 'canceled';
+  reason: WebResearchStopReason;
+}
+/**
+ * 出典のリンクの一時表示（B12-02、ADR 0126）。中枢のメモリの中だけに置き、データベース・イベントの記録・ファイル・キャッシュに書かない。再起動や表示の後は無くなってよい。
+ */
+export interface WebTransientLinks {
+  retention: 'transient_only';
+  /**
+   * @maxItems 5
+   */
+  items:
+    | []
+    | [WebTransientLink]
+    | [WebTransientLink, WebTransientLink]
+    | [WebTransientLink, WebTransientLink, WebTransientLink]
+    | [WebTransientLink, WebTransientLink, WebTransientLink, WebTransientLink]
+    | [
+        WebTransientLink,
+        WebTransientLink,
+        WebTransientLink,
+        WebTransientLink,
+        WebTransientLink,
+      ];
+}
+/**
+ * その場で表示する出典のリンク（B12-02、ADR 0126）。検索結果に由来するので保存しない。
+ */
+export interface WebTransientLink {
+  source_id: Id;
+  url: string;
+  title: string | null;
+}
+/**
+ * 1 依頼の検索・取得・要約の試行の記録（B12-02 P2、ADR 0128・0129）。上限（3 検索・5 ページ）の数え方と、完了・0 件・保留・失敗の最終状態の根拠になる。検索結果・URL・本文を持たず、件数と種類だけを残す。
+ */
+export interface WebResearchAttempts {
+  schema: 'buddy.web-research-attempts.v1';
+  workflow_id: Id;
+  request_revision: RequestRevision;
+  /**
+   * @maxItems 3
+   */
+  searches:
+    | []
+    | [WebSearchAttempt]
+    | [WebSearchAttempt, WebSearchAttempt]
+    | [WebSearchAttempt, WebSearchAttempt, WebSearchAttempt];
+  /**
+   * @maxItems 8
+   */
+  search_denials:
+    | []
+    | [WebSearchDenial]
+    | [WebSearchDenial, WebSearchDenial]
+    | [WebSearchDenial, WebSearchDenial, WebSearchDenial]
+    | [WebSearchDenial, WebSearchDenial, WebSearchDenial, WebSearchDenial]
+    | [
+        WebSearchDenial,
+        WebSearchDenial,
+        WebSearchDenial,
+        WebSearchDenial,
+        WebSearchDenial,
+      ]
+    | [
+        WebSearchDenial,
+        WebSearchDenial,
+        WebSearchDenial,
+        WebSearchDenial,
+        WebSearchDenial,
+        WebSearchDenial,
+      ]
+    | [
+        WebSearchDenial,
+        WebSearchDenial,
+        WebSearchDenial,
+        WebSearchDenial,
+        WebSearchDenial,
+        WebSearchDenial,
+        WebSearchDenial,
+      ]
+    | [
+        WebSearchDenial,
+        WebSearchDenial,
+        WebSearchDenial,
+        WebSearchDenial,
+        WebSearchDenial,
+        WebSearchDenial,
+        WebSearchDenial,
+        WebSearchDenial,
+      ];
+  /**
+   * @maxItems 5
+   */
+  pages:
+    | []
+    | [WebPageAttempt]
+    | [WebPageAttempt, WebPageAttempt]
+    | [WebPageAttempt, WebPageAttempt, WebPageAttempt]
+    | [WebPageAttempt, WebPageAttempt, WebPageAttempt, WebPageAttempt]
+    | [
+        WebPageAttempt,
+        WebPageAttempt,
+        WebPageAttempt,
+        WebPageAttempt,
+        WebPageAttempt,
+      ];
+  page_limit_denials: number;
+  summary: WebResearchSummaryOutcome;
+}
+/**
+ * 送った検索 1 回分の記録（B12-02 P2、ADR 0128・0129）。結果（URL・タイトル・スニペット）は持たず、件数だけを残す。hits は 1 件以上、zero_hits は 0 件、failed は原因を持つ。失敗した検索も 1 回に数える。
+ */
+export interface WebSearchAttempt {
+  search_index: number;
+  query_id: Id;
+  outcome: 'hits' | 'zero_hits' | 'failed';
+  hit_count: number;
+  failure_cause: WebSearchFailureCause | null;
+}
+/**
+ * 取得を試みたページ 1 件の記録（B12-02 P2、ADR 0128・0129）。URL・タイトルは持たない（検索結果に由来するので保存しない。ADR 0126）。取得の試行はすべて 1 ページに数える。source_id は read のときだけ持ち、永続の出典（WebSourceRecord）と対応する。
+ */
+export interface WebPageAttempt {
+  page_index: number;
+  query_id: Id;
+  outcome: WebPageOutcome;
+  source_id: Id | null;
+  http_status: number | null;
+  redirects: number;
+  bytes: number;
+  elapsed_ms: number;
+}
+/**
  * 同期の 1 回の走査（設計 11 §1・§1A F04、03 データ表）。最初のページ取得から公開または abandoned まで、同じ取得集合で有効な走査は 1 件だけ。開始時の世代・watermark・cursor・担当世代を公開時に照合する。
  */
 export interface SyncBatch {
@@ -4882,12 +5342,28 @@ export interface ConnectionSummary {
   graph_account?: GraphAccountState | null;
 }
 /**
- * 本人が選んだ取得対象（設計 04 取得する対象、J13・J16）。新しいカレンダー・フォルダーを見つけても自動で追加しない。OAuth の権限より狭い範囲を Buddy 側で検査する。
+ * 本人が選んだ取得対象と、取得範囲を狭める設定（設計 04 取得する対象、J13・J16、D5、ADR 0087）。新しいカレンダー・フォルダーを見つけても自動で追加しない。期間とサイズの項目は設計の初期値を上限とし、上限を超える値を契約で拒否する。OAuth の権限より狭い範囲を Buddy 側で検査する。
  */
 export interface ConnectionTargets {
   calendar_ids: string[];
   mail_container_ids: string[];
   attachment_kinds: ('pdf' | 'text')[];
+  /**
+   * メールを遡る日数。設計の初期値 90 日が上限で、狭くだけできる。
+   */
+  mail_lookback_days: number;
+  /**
+   * カレンダーを遡る日数。設計の初期値 30 日が上限。
+   */
+  calendar_past_days: number;
+  /**
+   * カレンダーの先の日数。設計の初期値 90 日が上限。
+   */
+  calendar_future_days: number;
+  /**
+   * 添付 1 件のバイト数の上限。設計の初期値 10MB（10,000,000 バイト）が上限。
+   */
+  attachment_max_bytes: number;
 }
 /**
  * OAuth の開始（設計 04 接続・権限）。中枢の画面だけ。PKCE と loopback の戻り先は中枢内で処理し、/v1 の経路にしない。

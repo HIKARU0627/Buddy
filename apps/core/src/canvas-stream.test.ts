@@ -1635,6 +1635,124 @@ test('UI-05: a forget that is only clarified does not open a new segment', async
   assert.equal(rig.sessions(), 1);
 });
 
+test('UI-05: a boundary that starts while a forget is being saved still starts the forget segment', async () => {
+  const canvas = new CanvasHub(contract);
+  let at = Date.parse('2026-10-05T23:59:59.500+09:00');
+  let sessions = 0;
+  let turns = 0;
+  let releaseF: (() => void) | null = null;
+  const gateF = new Promise<void>((resolve) => {
+    releaseF = resolve;
+  });
+  const id = (n: number) =>
+    `00000000-0000-4000-8000-${n.toString(16).padStart(12, '0')}`;
+  let routes: ReturnType<typeof createStreamRoutes> | null = null;
+  routes = createStreamRoutes({
+    canvas,
+    now: () => at,
+    utcOffset: '+09:00',
+    createSession: () => {
+      sessions += 1;
+      return Promise.resolve({
+        status: 201,
+        body: { session_id: id(sessions) },
+      });
+    },
+    postTurn: async (request) => {
+      turns += 1;
+      const turn = turns;
+      const sessionId = request.params['session_id'] as string;
+      const body = request.body as Record<string, string>;
+      const forget = body['text'] === '忘れて';
+      if (forget) {
+        // 23:59:59.500 の忘却の発言。保存を保留し、その間に 0 時をまたいだ発言 X が来る。
+        await gateF;
+        routes?.recordTurn({
+          session_id: sessionId,
+          turn_id: id(100 + turn),
+          created_at: '2026-10-05T14:59:59.500Z',
+          expires_at: '2026-10-12T14:59:59.500Z',
+        });
+      } else
+        routes?.recordTurn({
+          session_id: sessionId,
+          turn_id: id(100 + turn),
+          created_at: '2026-10-05T15:00:00.100Z',
+          expires_at: '2026-10-12T15:00:00.100Z',
+        });
+      return {
+        status: 200,
+        body: {
+          request_id: body['request_id'],
+          session_id: sessionId,
+          turn_id: id(100 + turn),
+          input_id: id(200 + turn),
+          workflow_id: id(500),
+          status: 'answered',
+          result_view: forget
+            ? {
+                workflow_id: id(500),
+                request_revision: '1',
+                intent: 'memory_forget',
+                kind: 'completion_line',
+                status: 'ready',
+                item_refs: [],
+                more_count: 0,
+                template_id: null,
+                template_version: null,
+              }
+            : null,
+          reply_text: null,
+        },
+      };
+    },
+  });
+  const handler = routes.handlers['postStreamTurn'];
+  assert(handler !== undefined);
+  const route = API_ROUTES.find(
+    (entry) => entry.operationId === 'postStreamTurn',
+  );
+  assert(route !== undefined);
+  const device = { device_id: id(9) } as unknown as DeviceRecord;
+  const request = (text: string): ApiHandlerRequest => ({
+    route,
+    device,
+    body: {
+      request_id: randomUUID(),
+      command_scope_id: id(400),
+      text,
+      input_kind: 'text',
+      expected_canvas_revision: '0',
+    },
+    params: {},
+    remoteAddress: '127.0.0.1',
+    query: {},
+    declaredLockState: null,
+  });
+  const forget = handler(request('忘れて'));
+  await new Promise((resolve) => setImmediate(resolve));
+  // 0 時をまたいだ発言 X。この時点では忘却の印はまだ無く、日付の理由で切り替えを始める（F の保存を待つ）。
+  at = Date.parse('2026-10-05T15:00:00.100Z');
+  const x = handler(request('こんにちは'));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert(releaseF !== null);
+  (releaseF as () => void)();
+  const [forgetDone, xDone] = await Promise.all([forget, x]);
+  assert.equal(forgetDone.status, 200);
+  assert.equal(xDone.status, 200);
+  const xb = (xDone.body as unknown as StreamTurnResponse).segment;
+  // 待った後に印を見直すので、理由は forget_requested で、忘却した区切りの要約はつながない。
+  assert.equal(xb.open_reason, 'forget_requested');
+  assert.equal(xb.carried_summary, null);
+  assert.equal(sessions, 2);
+  // 印は消費済み（次の発言で二度切らない）。
+  const y = await handler(request('こんにちは'));
+  assert.equal(
+    (y.body as unknown as StreamTurnResponse).segment.segment_id,
+    xb.segment_id,
+  );
+});
+
 test('UI-05: a save that finishes out of order does not move the segment start backwards', async () => {
   const canvas = new CanvasHub(contract);
   let at = Date.parse('2026-10-05T23:59:59+09:00');

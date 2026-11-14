@@ -690,10 +690,12 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
       const stream = current;
       if (stream === null) return false;
       if (stream.sessionId !== started.sessionId) return false;
-      // 待つ間に発言が保存されていれば、経過はその発言から測り直す（区切りが要らなくなっていれば切らない）。
-      // 忘却の指示で始める区切りは、時間・日付に関係なく始める（理由は `forget_requested`）。
+      // 待った後に理由を決める。忘却の印は、待っている間に付くことがある（保存中の忘却の発言が終わった直後）。
+      // 呼び出し時に渡された `forced` で固定せず、この時点の印を見る（レビュー P2）。
       const at = now();
-      const reason = forced ?? boundaryOf(stream, at);
+      const forgetNow =
+        afterForget !== null && afterForget.from === stream.sessionId;
+      const reason = forgetNow ? 'forget_requested' : boundaryOf(stream, at);
       if (reason === null) return false;
       const openedAt = new Date(at).toISOString();
       const summary = nextCarriedSummary({
@@ -762,8 +764,8 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
         lastTurnAt: openedAt,
         turnExpiresAt: [],
       };
-      // 忘却の指示で始めた区切りは、ここで消費する（次の発言でもう一度切らない）。
-      if (afterForget !== null && afterForget.from === started.sessionId)
+      // 忘却の指示で始めた区切りだけ、印を消費する（自動の区切りで消さない。レビュー P2）。
+      if (reason === 'forget_requested' && afterForget !== null)
         afterForget = null;
       return true;
     })().finally(() => {

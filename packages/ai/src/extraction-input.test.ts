@@ -50,6 +50,10 @@ function assemble(input: ExtractionMailInput) {
 const sentTokens = (sources: readonly { readonly text: string }[]): number =>
   sources.reduce((sum, source) => sum + estimateTokens(source.text), 0);
 
+const userTokens = (assembled: {
+  readonly messages: readonly { readonly content: string }[];
+}): number => estimateTokens(assembled.messages[1]?.content ?? '');
+
 test('user message layout matches the hand-written expectation', () => {
   const assembled = assemble(base);
   assert.equal(assembled.messages.length, 2);
@@ -189,21 +193,27 @@ test('unread and failed sources are fixed by the code and told to the model', ()
   );
 });
 
-test('the body is cut to the shared budget and recorded as truncated', () => {
-  const subject = 'あ'.repeat(10);
+test('the body is cut so that the whole user message, not only the source texts, fits in 6,000', () => {
   const assembled = assemble({
     ...base,
-    subject,
+    subject: 'あ'.repeat(10),
     body: { state: 'extracted', text: 'い'.repeat(7000) },
   });
-  const body = assembled.sources.find((source) => source.source_id === 'body');
-  // 6,000 − 件名 10 = 5,990（添付なし）。
-  assert.equal(estimateTokens(body?.text ?? ''), 5990);
   assert.deepEqual(assembled.completeness.truncated_source_ids, ['body']);
-  assert.equal(sentTokens(assembled.sources), EXTRACTION_INPUT_TOKEN_LIMIT);
+  // 送る message 全体（受信日時・一覧・区切りを含む）が枠に収まり、本文は残りを使い切る。
+  assert.equal(userTokens(assembled) <= EXTRACTION_INPUT_TOKEN_LIMIT, true);
+  assert.equal(
+    userTokens(assembled) > EXTRACTION_INPUT_TOKEN_LIMIT - 100,
+    true,
+  );
+  // 付加部分が text の外にあるので、text の合計は 6,000 より少ない。
+  assert.equal(
+    sentTokens(assembled.sources) < EXTRACTION_INPUT_TOKEN_LIMIT,
+    true,
+  );
 });
 
-test('attachments are capped at 2,000 and the body keeps the rest of the 6,000', () => {
+test('attachments are capped at 2,000 and the body keeps the rest of the shared budget', () => {
   const assembled = assemble({
     ...base,
     subject: 'あ'.repeat(100),
@@ -216,13 +226,17 @@ test('attachments are capped at 2,000 and the body keeps the rest of the 6,000',
     estimateTokens(text('att-1')),
     EXTRACTION_ATTACHMENT_TOKEN_LIMIT,
   );
-  // 6,000 − 100 − 2,000 = 3,900。
-  assert.equal(estimateTokens(text('body')), 3900);
   assert.deepEqual(assembled.completeness.truncated_source_ids, [
     'body',
     'att-1',
   ]);
-  assert.equal(sentTokens(assembled.sources), EXTRACTION_INPUT_TOKEN_LIMIT);
+  assert.equal(userTokens(assembled) <= EXTRACTION_INPUT_TOKEN_LIMIT, true);
+  assert.equal(
+    userTokens(assembled) > EXTRACTION_INPUT_TOKEN_LIMIT - 150,
+    true,
+  );
+  // 本文は件名・添付・付加部分の残りで、3,900 より少ない。
+  assert.equal(estimateTokens(text('body')) < 3900, true);
 });
 
 test('a short body leaves its unused room unspent and attachments still stop at 2,000', () => {
@@ -268,17 +282,21 @@ test('an attachment that gets no budget is not sent and is recorded as truncated
 test('truncation never splits a surrogate pair', () => {
   const assembled = assemble({
     ...base,
-    subject: 'あ'.repeat(5998),
-    body: { state: 'extracted', text: '😀'.repeat(10) },
+    subject: 'あ'.repeat(10),
+    body: { state: 'extracted', text: '😀'.repeat(7000) },
   });
   const body = assembled.sources.find((source) => source.source_id === 'body');
-  // 残りは 2 コードポイント = 絵文字 2 つ（UTF-16 では 4 単位）。
-  assert.equal(body?.text, '😀😀');
-  assert.equal(body?.text.length, 4);
   assert.deepEqual(assembled.completeness.truncated_source_ids, ['body']);
+  // 全て絵文字（UTF-16 で 2 単位）のまま、対が途中で切れていない。
+  assert.equal(
+    body?.text.length,
+    (body?.text ? estimateTokens(body.text) : 0) * 2,
+  );
+  assert.equal(/^(?:😀)+$/u.test(body?.text ?? ''), true);
+  assert.equal(userTokens(assembled) <= EXTRACTION_INPUT_TOKEN_LIMIT, true);
 });
 
-test('a subject that uses the whole budget leaves the body unsent but recorded as truncated', () => {
+test('a subject that uses the whole budget is cut, and the body is unsent but recorded as truncated', () => {
   const assembled = assemble({
     ...base,
     subject: 'あ'.repeat(6000),
@@ -287,7 +305,49 @@ test('a subject that uses the whole budget leaves the body unsent but recorded a
     assembled.sources.map((source) => source.source_id),
     ['subject'],
   );
-  assert.deepEqual(assembled.completeness.truncated_source_ids, ['body']);
+  assert.deepEqual(assembled.completeness.truncated_source_ids, [
+    'subject',
+    'body',
+  ]);
+  assert.equal(userTokens(assembled) <= EXTRACTION_INPUT_TOKEN_LIMIT, true);
+});
+
+test('the parts around the source texts are counted: many attachments with long labels are bounded or refused', () => {
+  // 添付 3 件・ID と版が 40 文字: 付加部分が大きくなっても、message 全体は枠に収まる。
+  const long = (letter: string, count: number): string => letter.repeat(count);
+  const three = ['a', 'b', 'c'].map((letter) =>
+    attachment(long(letter, 40), 'う'.repeat(3000), {
+      source_revision: long('r', 40),
+    }),
+  );
+  const assembled = assemble({
+    ...base,
+    body: { state: 'extracted', text: 'い'.repeat(7000) },
+    attachments: three,
+  });
+  assert.equal(userTokens(assembled) <= EXTRACTION_INPUT_TOKEN_LIMIT, true);
+  // 未読の添付の ID も付加部分に数える。
+  const unreadMany = assemble({
+    ...base,
+    body: { state: 'extracted', text: 'い'.repeat(7000) },
+    attachments: Array.from({ length: 10 }, (_, index) => ({
+      attachment_id: `${String(index).repeat(100)}`,
+      permitted: true,
+      state: 'unread' as const,
+      source_revision: null,
+    })),
+  });
+  assert.equal(userTokens(unreadMany) <= EXTRACTION_INPUT_TOKEN_LIMIT, true);
+  // 付加部分が上限を超える入力（長い ID と版の添付が 10 件）は、切って送らず拒否する。
+  const tooLarge = assembleExtractionInput({
+    ...base,
+    attachments: Array.from({ length: 10 }, (_, index) =>
+      attachment(String(index).repeat(100), 'う'.repeat(100), {
+        source_revision: long('r', 100),
+      }),
+    ),
+  });
+  assert.deepEqual(tooLarge, { ok: false, errors: ['overhead_too_large'] });
 });
 
 test('invalid input is refused before anything is assembled', () => {
@@ -297,6 +357,19 @@ test('invalid input is refused before anything is assembled', () => {
     [{ zone: ' ' }, 'zone_empty'],
     [{ owner_name: '' }, 'owner_name_invalid'],
     [{ message_revision: '' }, 'message_revision_empty'],
+    [{ message_revision: 'r'.repeat(101) }, 'revision_too_long'],
+    [
+      { attachments: [attachment('a'.repeat(101), 'x')] },
+      'attachment_id_too_long',
+    ],
+    [
+      {
+        attachments: Array.from({ length: 11 }, (_, index) =>
+          attachment(`att-${index}`, 'x'),
+        ),
+      },
+      'too_many_attachments',
+    ],
     [{ attachments: [attachment('body', 'x')] }, 'attachment_id_reserved'],
     [
       { attachments: [attachment('a', 'x'), attachment('a', 'y')] },

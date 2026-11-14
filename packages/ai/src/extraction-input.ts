@@ -40,6 +40,8 @@ export type MailAttachmentInput =
       readonly state: 'extracted';
       readonly source_revision: string;
       readonly text: string;
+      // 抽出テキスト自体が途中までしかない（取得・抽出の段で上限を超えて切った）。送った分に収まっても切詰めとして記録する。
+      readonly extraction_truncated?: boolean;
     }
   | {
       readonly attachment_id: string;
@@ -299,7 +301,18 @@ export function assembleExtractionInput(
       marker,
       candidates,
       unread,
-      candidates.map((source) => source.source_id),
+      // 切詰めの一覧に載りうる ID: 送る候補に加え、テキストが空でも抽出が途中までだった添付（送るものが無くても一覧に載る）。
+      [
+        ...candidates.map((source) => source.source_id),
+        ...attachments
+          .filter(
+            (attachment) =>
+              attachment.state === 'extracted' &&
+              attachment.text.trim() === '' &&
+              attachment.extraction_truncated === true,
+          )
+          .map((attachment) => attachment.attachment_id),
+      ],
     ),
   );
   if (overhead > EXTRACTION_OVERHEAD_TOKEN_LIMIT)
@@ -355,7 +368,12 @@ export function assembleExtractionInput(
   let attachmentRemaining = attachmentBudget;
   for (const attachment of attachments) {
     if (attachment.state !== 'extracted') continue;
-    if (attachment.text.trim() === '') continue;
+    if (attachment.text.trim() === '') {
+      // 空のテキストでも、抽出が途中までだった添付は読めていない範囲が残る。切詰めとして記録する（読めたことにしない）。
+      if (attachment.extraction_truncated === true)
+        truncated.push(attachment.attachment_id);
+      continue;
+    }
     // 予算が尽きて 1 文字も送れない添付は、送っていないので切詰めとして記録する（読めたことにしない）。
     if (attachmentRemaining <= 0) {
       truncated.push(attachment.attachment_id);
@@ -370,7 +388,8 @@ export function assembleExtractionInput(
       text: sent.text,
       quoted_ranges: [],
     });
-    if (sent.truncated) truncated.push(attachment.attachment_id);
+    if (sent.truncated || attachment.extraction_truncated === true)
+      truncated.push(attachment.attachment_id);
   }
 
   const content = renderUserContent(input, marker, sources, unread, truncated);

@@ -420,6 +420,42 @@ test('token estimate counts code points, including astral characters and lone su
   assert.equal(estimateTokens('é'), 2);
 });
 
+test('an attachment whose extraction itself was cut is recorded as truncated even when it fits', () => {
+  const assembled = assemble({
+    ...base,
+    attachments: [
+      attachment('att-1', '短い添付', { extraction_truncated: true }),
+      attachment('att-2', '短い添付', { extraction_truncated: false }),
+    ],
+  });
+  assert.deepEqual(assembled.completeness.truncated_source_ids, ['att-1']);
+  assert.deepEqual(
+    assembled.sources.map((source) => source.source_id),
+    ['subject', 'body', 'att-1', 'att-2'],
+  );
+});
+
+test('an attachment with blank text but a cut extraction is still recorded as truncated (review)', () => {
+  for (const text of ['', '   \n']) {
+    const assembled = assemble({
+      ...base,
+      attachments: [attachment('att-1', text, { extraction_truncated: true })],
+    });
+    assert.deepEqual(assembled.completeness.truncated_source_ids, ['att-1']);
+    // 送るものが無いので、ソースには入れない。
+    assert.deepEqual(
+      assembled.sources.map((source) => source.source_id),
+      ['subject', 'body'],
+    );
+  }
+  // 抽出が途中でない空の添付は、読めた（中身が空）として切詰めにしない。
+  const empty = assemble({
+    ...base,
+    attachments: [attachment('att-1', '', { extraction_truncated: false })],
+  });
+  assert.deepEqual(empty.completeness.truncated_source_ids, []);
+});
+
 test('a subject that is cut down to blanks is still recorded as truncated and never an empty "read" input (review)', () => {
   // 件名が空白の長い列に依頼文が続く。可読性の検査は通るが、枠で切ると空白だけになり、件名は送れない。
   const assembled = assemble({
@@ -434,4 +470,41 @@ test('a subject that is cut down to blanks is still recorded as truncated and ne
       assembled.completeness.truncated_source_ids.length === 0,
     false,
   );
+});
+
+test('the id of a blank attachment with a cut extraction is counted in the overhead too, so a long body still fits (review)', () => {
+  const assembled = assemble({
+    ...base,
+    subject: '',
+    body: { state: 'extracted', text: 'い'.repeat(7000) },
+    attachments: [
+      attachment('x'.repeat(100), '', {
+        extraction_truncated: true,
+        source_revision: 'r1',
+      }),
+    ],
+  });
+  assert.deepEqual(assembled.completeness.truncated_source_ids, [
+    'body',
+    'x'.repeat(100),
+  ]);
+  assert.equal(userTokens(assembled) <= EXTRACTION_INPUT_TOKEN_LIMIT, true);
+  // 付加部分が増えた分、本文は削られている（枠いっぱいまで入れてから ID を足していない）。
+  assert.equal(
+    userTokens(assembled) > EXTRACTION_INPUT_TOKEN_LIMIT - 150,
+    true,
+  );
+  // 空の切詰め添付を 10 件並べても、message 全体は枠に収まる。
+  const many = assemble({
+    ...base,
+    subject: '',
+    body: { state: 'extracted', text: 'い'.repeat(7000) },
+    attachments: Array.from({ length: 10 }, (_, index) =>
+      attachment(String(index).repeat(100), '', {
+        extraction_truncated: true,
+        source_revision: 'r1',
+      }),
+    ),
+  });
+  assert.equal(userTokens(many) <= EXTRACTION_INPUT_TOKEN_LIMIT, true);
 });

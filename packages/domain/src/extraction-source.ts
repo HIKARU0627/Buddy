@@ -48,6 +48,10 @@ export function takeCodePoints(text: string, count: number): string {
   return text.slice(0, end);
 }
 
+// 引用の行か（行頭の空白・全角空白を除いて `>`）。
+export const isQuotedLine = (line: string): boolean =>
+  /^[ \t\u{3000}]*>/u.test(line);
+
 // 引用された範囲。行頭（空白・全角空白を除く）が `>` の行を引用とする（プレーンテキストの返信の引用の慣習）。
 // HTML や転送の見出し（"Original Message" など）の引用は判定しない（U241）。モデルの in_quoted_text と合わせて、
 // どちらかが引用なら引用として扱う（自動実行の対象外にする方向）。
@@ -56,7 +60,7 @@ export function quotedRangesOf(text: string): readonly CodePointRange[] {
   let offset = 0;
   for (const line of text.split('\n')) {
     const length = codePointLength(line);
-    if (/^[ \t\u{3000}]*>/u.test(line))
+    if (isQuotedLine(line))
       ranges.push({ start: offset, end: offset + length });
     // 改行の 1 文字ぶんを進める。
     offset += length + 1;

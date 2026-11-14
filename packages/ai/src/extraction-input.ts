@@ -301,7 +301,18 @@ export function assembleExtractionInput(
       marker,
       candidates,
       unread,
-      candidates.map((source) => source.source_id),
+      // 切詰めの一覧に載りうる ID: 送る候補に加え、テキストが空でも抽出が途中までだった添付（送るものが無くても一覧に載る）。
+      [
+        ...candidates.map((source) => source.source_id),
+        ...attachments
+          .filter(
+            (attachment) =>
+              attachment.state === 'extracted' &&
+              attachment.text.trim() === '' &&
+              attachment.extraction_truncated === true,
+          )
+          .map((attachment) => attachment.attachment_id),
+      ],
     ),
   );
   if (overhead > EXTRACTION_OVERHEAD_TOKEN_LIMIT)

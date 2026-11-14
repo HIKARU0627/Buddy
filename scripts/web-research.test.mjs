@@ -43,7 +43,6 @@ test('B12-01: the provider is Brave and the search results are transient only', 
   assert.equal(policy.model_use, 'grounding_only');
   // URL は永続保存しない（本人の決定 A、2026-11-14。ADR 0126）。allowed にしない。
   assert.equal(policy.url_storage, 'disallowed');
-  assert.notEqual(policy.url_storage, 'allowed');
   assert.equal(
     defs.WebSearchResponse.properties.retention.const,
     'transient_only',

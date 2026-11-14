@@ -41,7 +41,7 @@
 
 **本人の決定（2026-11-14）: A（保存しない）。** 出典は、自分で取得した本文の抜粋・要約・取得時刻・検索語で作り、URL・タイトルはその場の表示だけにする。
 
-- 契約の値: `WebUsagePolicy.url_storage` の決定後の値は `disallowed`。`allowed` にしない。`undecided` は決定前の値で、**`disallowed` と同じく URL を持てない**扱いのまま残す（失敗側に閉じる。既存の試験・fixture は変えない）。
+- 契約の値: `WebUsagePolicy.url_storage` の決定後の値は `disallowed`。`allowed` にしない。`undecided` は決定前の値で、**`disallowed` と同じく URL を持てない**扱いのまま残す（失敗側に閉じる。`undecided` を使う挙動確認用の fixture・試験は変えず、正本の `policy` fixture だけ `disallowed` にした）。
 - B（Brave の書面許可）と C・D は採らない。B の許可が取れた場合に広げるのは、新しい本人の決定と ADR の更新があるときだけで、このときは `url_storage` を `allowed` にし、`WebSourceRecord.url` を保存してよい。
 - 設計 05 の「URL を対応させる」は、出典の抜粋・取得時刻・検索語・本文の hash で対応させる読みに変える（設計判断の変更として本人の決定を根拠に記録する。設計の原本は更新しない）。URL・タイトルの表示は B12-05 の画面（その場の表示）で扱う。
 

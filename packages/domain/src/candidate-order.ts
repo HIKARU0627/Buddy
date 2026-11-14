@@ -135,8 +135,9 @@ interface Classified {
   readonly sortKey: number | null;
 }
 
-// 現地の日時（YYYY-MM-DDTHH:MM:SS）の UTC 時刻（ミリ秒）。存在しない時刻（夏時間の隙間）はその直後、
-// 2 回ある時刻は先の方のどちらかを返す。zone が読めない・形が違うときは null。
+// 現地の日時（YYYY-MM-DDTHH:MM:SS）の UTC 時刻（ミリ秒）。夏時間の終わりで 2 回ある時刻は**後の回**、存在しない時刻
+// （夏時間の隙間）はその直後の時刻にする。後の回にするのは、期限を早く過ぎたと見なして候補を解決しないため（U285）。
+// zone が読めない・形が違うときは null。
 function localToUtc(local: string, zone: string): number | null {
   const match =
     /^([0-9]{4})-([0-9]{2})-([0-9]{2})T([0-9]{2}):([0-9]{2}):([0-9]{2})$/u.exec(
@@ -147,12 +148,27 @@ function localToUtc(local: string, zone: string): number | null {
     .slice(1)
     .map(Number) as [number, number, number, number, number, number];
   const guess = Date.UTC(year, month - 1, day, hour, minute, second);
-  // 時差は ±14 時間以内なので、この範囲に境目がある。
+  const localOf = (at: number): string | null => {
+    const clock = localClock(at, zone);
+    return clock === null ? null : `${clock.date}T${clock.time}`;
+  };
+  // 目標の前後で使われる UTC との差（夏時間の前後の 2 つ）。その差で戻した時刻のうち、現地の時計が一致するものが回。
+  const offsets = new Set<number>();
+  for (const probe of [guess - DAY_MS, guess + DAY_MS]) {
+    const text = localOf(probe);
+    if (text !== null)
+      offsets.add(Date.parse(`${text}Z`) - Math.floor(probe / 1000) * 1000);
+  }
+  const turns = [...offsets]
+    .map((offset) => guess - offset)
+    .filter((at) => localOf(at) === local);
+  if (turns.length > 0) return Math.max(...turns);
+  // 隙間の時刻: 現地の時計が初めてその時刻以降になる時点（直後）。時差は ±14 時間以内なので、この範囲に境目がある。
   let low = guess - 36 * 3_600_000;
   let high = guess + 36 * 3_600_000;
   const reaches = (at: number): boolean => {
-    const clock = localClock(at, zone);
-    return clock !== null && `${clock.date}T${clock.time}` >= local;
+    const text = localOf(at);
+    return text !== null && text >= local;
   };
   while (high - low > 1000) {
     const mid = low + Math.floor((high - low) / 2 / 1000) * 1000;
@@ -171,8 +187,9 @@ function classify(
   const { deadline } = item;
   let date: string;
   let sortKey: number | null;
+  let instantDeadline: boolean;
   let clockZone = zone;
-  let endedAt: (clock: { date: string; time: string }) => boolean;
+  // 過ぎたか。時刻付きは確定した UTC の時点との比較（現地の文字列の比較は夏時間の終わりで逆戻りする）。
   if (deadline.kind === 'instant') {
     if (!isRealLocalDateTime(deadline.local_datetime)) return unknown;
     date = deadline.local_datetime.slice(0, 10);
@@ -180,7 +197,7 @@ function classify(
     const local = `${date}T${time.length === 5 ? `${time}:00` : time}`;
     sortKey = localToUtc(local, deadline.zone);
     clockZone = deadline.zone;
-    endedAt = (clock) => local < `${clock.date}T${clock.time}`;
+    instantDeadline = true;
   } else if (deadline.kind === 'date') {
     if (!isRealLocalDateTime(`${deadline.date}T00:00`)) return unknown;
     date = deadline.date;
@@ -188,14 +205,14 @@ function classify(
       .toISOString()
       .slice(0, 10);
     sortKey = localToUtc(`${next}T00:00:00`, zone);
-    const day = date;
-    endedAt = (clock) => day < clock.date;
+    instantDeadline = false;
   } else {
     return unknown;
   }
   const clock = localClock(now, clockZone);
   if (clock === null || sortKey === null) return unknown;
-  if (endedAt(clock) && item.initial_import)
+  const ended = instantDeadline ? now > sortKey : date < clock.date;
+  if (ended && item.initial_import)
     return { heading: 'initial_import_past', sortKey };
   // 初回取り込みでない過去の期限は、期限切れの解消（deadline_passed）までの間、今日に置く（U271）。
   if (date <= clock.date) return { heading: 'today', sortKey };

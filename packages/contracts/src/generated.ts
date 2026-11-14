@@ -86,6 +86,7 @@ export type BuddyContract =
   | HandoffRequest
   | HandoffState
   | AutoActionList
+  | PolicyApprovalRecord
   | SafetyResumeRequest
   | SafetyState
   | IoStopRequest
@@ -4375,6 +4376,19 @@ export interface SafetyState {
       )
     | null;
   stopped_at: UtcTime | null;
+  /**
+   * 自動承認の時間窓の件数。停止の判定と同じ transaction で更新する。
+   */
+  auto_approvals?: SafetyStopCounters | null;
+}
+/**
+ * 自動承認の時間窓の件数（設計 08 §9、ADR 0074）。初期値は 10 分間に 20 件で、T10 で調整する。
+ */
+export interface SafetyStopCounters {
+  window_started_at: UtcTime;
+  auto_approvals: number;
+  limit: number;
+  window_minutes: number;
 }
 /**
  * 自動実行した操作（設計 03 auto_actions / undo_records、J12）。本文を含めない。取り消しは完了から 30 日まで。
@@ -4398,6 +4412,29 @@ export interface AutoActionItem {
     | 'undone'
     | 'unavailable';
   undo_deadline: UtcTime;
+  /**
+   * 取り消す対象の内容版。対象が変わっていたら自動で補償しない。
+   */
+  undo_target?: UndoTarget | null;
+}
+/**
+ * 取り消す対象の内容版（設計 08 §9、ADR 0074）。取り消しの直前に現在値と照合し、変わっていれば補償を行わず差分を表示する。
+ */
+export interface UndoTarget {
+  content_version: ContentVersion;
+  content_hash: Hash;
+}
+/**
+ * 方針による自動承認の記録（設計 08 §1・§9、ADR 0074）。古い方針の版で判定した承認を使わない。承認の正本は Core の記録で、connector やモデルの申告から作らない。
+ */
+export interface PolicyApprovalRecord {
+  schema: 'buddy.policy-approval.v1';
+  operation_id: Id;
+  policy_version: PolicyVersion;
+  rule_id: string;
+  content_version: ContentVersion;
+  content_hash: Hash;
+  approved_at: UtcTime;
 }
 export interface SafetyResumeRequest {
   request_id: Id;

@@ -14,7 +14,11 @@ import type {
   ModelCallGuard,
 } from './model-interpreter.js';
 import { TEST_TURN_POLICY } from './turn-ports.js';
-import type { ProviderReader } from './turn-ports.js';
+import type {
+  Interpreter,
+  InterpreterReply,
+  ProviderReader,
+} from './turn-ports.js';
 import type { TestDevice } from './api-test-support.js';
 import {
   bootstrap,
@@ -102,6 +106,7 @@ function fakeGuard(options: { deny?: boolean; throws?: boolean } = {}) {
       log.admitted.push(call.request_id);
       return Promise.resolve({
         ok: true,
+        release: () => Promise.resolve(),
         settle: (used) => {
           log.settled.push(used);
           return Promise.resolve();
@@ -111,6 +116,13 @@ function fakeGuard(options: { deny?: boolean; throws?: boolean } = {}) {
   };
   return { guard, log };
 }
+
+// 固定の時計（判定時間の期待値を手で書けるように、呼ぶたびに 25ms 進める）。
+let tick = 0;
+const clock = (): number => {
+  tick += 25;
+  return tick;
+};
 
 const context = (text: string, over: object = {}) => ({
   text,
@@ -125,15 +137,25 @@ function build(
   diagnostics: JudgmentDiagnostic[] = [],
 ) {
   const adapter = createFakeAdapter(steps);
-  const interpreter = createModelInterpreter({
+  const raw = createModelInterpreter({
     adapter,
     profile,
     output_schema: outputSchema,
     schema: schemaValidator,
     guard,
     onJudged: (diagnostic) => diagnostics.push(diagnostic),
+    now: clock,
   });
-  return { adapter, interpreter, diagnostics };
+  // 試験の期待値は判定時間を含めない（判定時間は別の試験で確かめる）。
+  const interpreter: Interpreter = {
+    interpret: async (input) => {
+      const reply = await raw.interpret(input);
+      return Object.fromEntries(
+        Object.entries(reply).filter(([key]) => key !== 'elapsed_ms'),
+      ) as InterpreterReply;
+    },
+  };
+  return { adapter, interpreter, raw, diagnostics };
 }
 
 test('an intent judgment is returned as an intent reply and the usage is settled once', async () => {
@@ -159,6 +181,15 @@ test('an intent judgment is returned as an intent reply and the usage is settled
   assert.equal(diagnostics[0]?.sent, true);
   // 診断に発話の本文を含めない。
   assert.ok(!JSON.stringify(diagnostics).includes('歯医者'));
+});
+
+test('the reply carries the elapsed time of the judgment for diagnostics', async () => {
+  const { guard } = fakeGuard();
+  const { raw } = build(response(wireJson()), guard);
+  const reply = await raw.interpret(context('用事を足して'));
+  // 時計は呼ぶたびに 25ms 進む: 開始と終了の間に診断の時刻の読みが入るので 50ms。
+  assert.equal(typeof (reply as { elapsed_ms?: number }).elapsed_ms, 'number');
+  assert.ok(((reply as { elapsed_ms?: number }).elapsed_ms ?? -1) >= 25);
 });
 
 test('candidates are sent with neutral labels only: no provider ID, subject, or sender', async () => {

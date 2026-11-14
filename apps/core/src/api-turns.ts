@@ -63,7 +63,9 @@ import type { JsonObject } from './strict-json.js';
 import { canRead, canWrite, replyFields } from './turn-ports.js';
 import type {
   CandidateSource,
+  InterpretationContext,
   Interpreter,
+  InterpreterReply,
   OpenWorkflow,
   ProviderConnection,
   ProviderReader,
@@ -92,6 +94,18 @@ export interface TurnRoutesOptions {
   readonly onOperationCreated?: () => void;
   // 会話の操作（照合表に当たった発言。LLM を呼ばない）を保存した後に呼ぶ（B05-05）。再送では呼ばない。
   // 音声の接続が開いていれば、同じ操作を接続へ行う（画面のボタンと同じ処理）。
+  // 発言の解釈を保存した後に呼ぶ（影モードの比較の入口。再送・会話の操作・Live では呼ばない）。同期で戻り、本線の応答を
+  // 待たせない。失敗しても発言の結果に影響しない。
+  readonly onInterpreted?: (event: {
+    readonly session_id: string;
+    readonly storage_mode: string;
+    readonly input_id: string;
+    readonly request_revision: string;
+    // 保存した発言の期限（UTC のミリ秒）。比較の記録は会話全文と同じ期限にそろえる。
+    readonly turn_expires_at: number;
+    readonly context: InterpretationContext;
+    readonly primary: InterpreterReply;
+  }) => void;
   readonly onSessionControl?: (event: {
     readonly device_id: string;
     readonly session_id: string;
@@ -844,11 +858,34 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
   };
 
   // 解釈と、意図表・契約での引数の検査。聞き返しなら plan、通れば意図と引数を返す。
+  // 解釈に渡した入力と本線の返答（影モードの比較用）。解釈の結果の object ごとに控える。
+  const bases = new WeakMap<
+    object,
+    { context: InterpretationContext; reply: InterpreterReply }
+  >();
+
   const interpretTurn = async (
     text: string,
     interpretOptions: {
       readonly open_workflows?: readonly OpenWorkflow[];
     } = {},
+  ): Promise<InterpretedTurn> => {
+    const basis: {
+      context?: InterpretationContext;
+      reply?: InterpreterReply;
+    } = {};
+    const result = await interpretInner(text, interpretOptions, basis);
+    if (basis.context !== undefined && basis.reply !== undefined)
+      bases.set(result, { context: basis.context, reply: basis.reply });
+    return result;
+  };
+
+  const interpretInner = async (
+    text: string,
+    interpretOptions: {
+      readonly open_workflows?: readonly OpenWorkflow[];
+    },
+    basis: { context?: InterpretationContext; reply?: InterpreterReply },
   ): Promise<InterpretedTurn> => {
     const done = (plan: TurnPlan) => ({ kind: 'plan' as const, plan });
     let candidates;
@@ -858,18 +895,21 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
       candidates = [];
     }
     let reply;
+    const context: InterpretationContext = {
+      text,
+      today: today(),
+      mail_candidates: candidates,
+      ...(interpretOptions.open_workflows === undefined
+        ? {}
+        : { open_workflows: interpretOptions.open_workflows }),
+    };
     try {
-      reply = await options.interpreter.interpret({
-        text,
-        today: today(),
-        mail_candidates: candidates,
-        ...(interpretOptions.open_workflows === undefined
-          ? {}
-          : { open_workflows: interpretOptions.open_workflows }),
-      });
+      reply = await options.interpreter.interpret(context);
     } catch {
       return done(clarify('unclear', null));
     }
+    basis.context = context;
+    basis.reply = reply;
     // 判定の失敗は「意図が不明」と混ぜず、別の聞き返しにする（実行へは進まない。QA02・QA03）。
     if (reply !== null && typeof reply === 'object' && reply.kind === 'failed')
       return done(
@@ -1011,6 +1051,8 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
         // 保存した時点で確定した値（再送では null。保存していないものを新しい期限として扱わない）。
         readonly created_at: string | null;
         readonly expires_at: string | null;
+        // 発言を保存したときの期限（UTC のミリ秒。影モードの比較に使う。保存した場合だけ）。
+        readonly expires_at_ms?: number;
       }
     | { readonly kind: 'held' }
   > => {
@@ -1191,6 +1233,7 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
       replayed: false,
       plan,
       ...savedTimes,
+      expires_at_ms: createdAt + rule.ms,
     };
   };
 
@@ -1224,6 +1267,7 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     // 会話の操作（照合表に全体が一致した短い発話）は、LLM を呼ばず、依頼も作らない（10 §5、X58）。
     const control = resolveSessionControl(text, SESSION_CONTROL_TABLE, 'text');
     // 記録する入力の時点の許可の版は provider を使う意図だけで、連携の接続がない・使わないなら 0 として記録する。
+    const interpreted = control === null ? await interpretTurn(text) : null;
     const planned: {
       readonly plan: TurnPlan;
       readonly permissionAtInput: string | null;
@@ -1233,7 +1277,11 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
             plan: { kind: 'session_control', action: control.action },
             permissionAtInput: null,
           }
-        : await planFrom(await interpretTurn(text), input, 'submitted_text');
+        : await planFrom(
+            interpreted ?? { kind: 'plan', plan: clarify('unclear', null) },
+            input,
+            'submitted_text',
+          );
     const done = await recordTurn({
       requestId,
       sessionId,
@@ -1264,6 +1312,29 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
         session_id: sessionId,
         action: done.plan.action,
       });
+    // 影モードの比較の入口。保存した発言（再送でない）の解釈だけを渡し、本線の応答を待たせない。
+    const basis = interpreted === null ? undefined : bases.get(interpreted);
+    if (
+      options.onInterpreted !== undefined &&
+      basis !== undefined &&
+      done.status === 200 &&
+      !done.replayed &&
+      done.expires_at_ms !== undefined
+    ) {
+      try {
+        options.onInterpreted({
+          session_id: sessionId,
+          storage_mode: session.value.storage_mode,
+          input_id: stringOf(done.body as JsonObject, 'input_id'),
+          request_revision: '1',
+          turn_expires_at: done.expires_at_ms,
+          context: basis.context,
+          primary: basis.reply,
+        });
+      } catch {
+        // 比較の失敗で発言の結果を変えない。
+      }
+    }
     return { status: done.status, body: done.body };
   };
 

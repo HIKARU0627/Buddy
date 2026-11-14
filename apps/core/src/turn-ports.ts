@@ -45,12 +45,15 @@ export type InterpreterReply =
       // 省略・知らない値は「分からない」として扱い、保留中の変更を勝手に再開しない。コードが対象の存在・一意性を検証する。
       readonly relation?: string;
       readonly target_workflow_id?: string;
+      // 判定にかかった時間（診断と影モードの比較用。実行の判断には使わない）。
+      readonly elapsed_ms?: number;
     }
   // モデルが「分からない」と答えた。「それやめて」のように新しい意図を持たない取消・訂正は、関係と対象を保つ。
   | {
       readonly kind: 'unclear';
       readonly relation?: string;
       readonly target_workflow_id?: string;
+      readonly elapsed_ms?: number;
     }
   // 判定に失敗した（拒否・打ち切り・形式/意味の不正・timeout・利用不可・予算・中断）。unclear と混ぜない（QA02・QA03）。
   // どの場合も実行へ進まず聞き返しになる。自動の再送はしない（retryable は手での再試行で成功し得るかの表示用）。
@@ -58,6 +61,7 @@ export type InterpreterReply =
       readonly kind: 'failed';
       readonly failure: ModelFailureKind;
       readonly retryable: boolean;
+      readonly elapsed_ms?: number;
     };
 
 export type ModelFailureKind =

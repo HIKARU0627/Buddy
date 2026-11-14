@@ -408,19 +408,22 @@ function localTimeKey(value) {
 }
 
 // 取得先がローカル・プライベート・リンクローカルでないか（設計 05、ADR 0077）。
-// IPv4・IPv6（ULA・リンクローカル・サイトローカル・IPv4 mapped）を分類する。
+// domain の privateWebTargetReason と同じ規則。接続ごと・各リダイレクトの後の判定は B12-04 が domain を使う。
 function ipv4Private(parts) {
   if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part)))
     return true;
-  const [a, b] = parts;
-  return (
-    a === 10 ||
-    a === 127 ||
-    (a === 169 && b === 254) ||
-    (a === 192 && b === 168) ||
-    (a === 172 && b >= 16 && b <= 31) ||
-    a === 0
-  );
+  const [a, b, c] = parts;
+  if (a === 0 || a === 10 || a === 127) return true;
+  if (a === 100 && b >= 64 && b <= 127) return true;
+  if (a === 169 && b === 254) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 192 && b === 168) return true;
+  if (a === 192 && b === 0 && (c === 0 || c === 2)) return true;
+  if (a === 198 && (b === 18 || b === 19)) return true;
+  if (a === 198 && b === 51 && c === 100) return true;
+  if (a === 203 && b === 0 && c === 113) return true;
+  if (a >= 224) return true;
+  return false;
 }
 
 function ipv6Private(host) {
@@ -440,10 +443,16 @@ function ipv6Private(host) {
   }
   const first = Number.parseInt(host.split(':')[0], 16);
   if (Number.isNaN(first)) return false;
-  // fc00::/7（ULA）・fe80::/10（リンクローカル）・fec0::/10（サイトローカル）。
-  return (
-    (first >= 0xfc00 && first <= 0xfdff) || (first >= 0xfe80 && first <= 0xfeff)
-  );
+  // fc00::/7（ULA）・fe80::/10（リンクローカル）・fec0::/10（サイトローカル）・ff00::/8（マルチキャスト）。
+  if (
+    (first >= 0xfc00 && first <= 0xfdff) ||
+    (first >= 0xfe80 && first <= 0xfeff) ||
+    (first >= 0xff00 && first <= 0xffff)
+  )
+    return true;
+  // 2001:db8::/32（文書用）。
+  const parts = host.split(':');
+  return first === 0x2001 && parts[1] === 'db8';
 }
 
 function isPrivateWebTarget(value) {

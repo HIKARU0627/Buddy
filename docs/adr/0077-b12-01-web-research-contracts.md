@@ -31,6 +31,7 @@
 - `WebSearchRequest` は検索語・言語・国・最大件数・安全検索だけを持つ。検索語にメール全文・API キー・個人の予定を入れない。
 - `WebSearchResponse` は `retention: 'transient_only'` と `model_use: 'grounding_only'` を必須にし、保存用の項目を持たない。`search_index` は 1〜3。
 - `WebFetchRequest`・`WebFetchResult` は 2MB・15 秒・3 リダイレクトを上限にし、`send_cookies` を false に固定する。`readable` と `text` の組み合わせを意味検査で確かめる。
+- 取得先の判定は domain の `privateWebTargetReason` が持つ（IPv4 の 0/8・10/8・127/8・100.64/10・169.254/16・172.16/12・192.168/16・198.18/15・文書用・224/4 以上、IPv6 の ULA・リンクローカル・サイトローカル・マルチキャスト・文書用・IPv4 mapped）。B12-04 は接続のたびと各リダイレクトの後に、名前解決したアドレスでも同じ判定を行う。リテラルの IP だけでは足りない。
 - `WebResearchSource` は `page_read` と `search_summary_only` を区別する。`page_read` は取得時刻と本文の抜粋または要約を必須にし、`search_summary_only` は取得時刻・抜粋・要約を null にする。
 - `WebResearchLimits` は設計 05 の初期値を const で固定する。`WebUsagePolicy` は Brave・一時保持・grounding だけを許し、URL の保存は未決を表せる。
 - `webResearchUsageErrors`・`webFetchUsageErrors`・`webSourceErrors`・`webUsagePolicyErrors` が境界を判定する。

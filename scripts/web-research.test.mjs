@@ -8,6 +8,7 @@ import {
   WEB_RESEARCH_MAX_PAGES,
   WEB_SEARCH_MAX_SEARCHES,
   WEB_SEARCH_PROVIDER,
+  privateWebTargetReason,
   webFetchUsageErrors,
   webResearchUsageErrors,
   webSourceErrors,
@@ -150,4 +151,23 @@ test('B12-01: the fixture keeps the allowed and rejected shapes', () => {
     (entry) => entry.id === 'fetch-request-ipv6-public',
   );
   assert.deepEqual(semanticErrors(publicIpv6.schema, publicIpv6.value), []);
+  // 契約ゲートと domain の判定が同じ結論になる（形式で拒否する http は除く）。
+  for (const entry of cases.cases.filter(
+    (candidate) =>
+      candidate.schema === 'WebFetchRequest' &&
+      candidate.value.url.startsWith('https://'),
+  ))
+    assert.equal(
+      privateWebTargetReason(entry.value.url) !== null,
+      semanticErrors(entry.schema, entry.value).includes('private_target'),
+      entry.id,
+    );
+  // CGNAT（Tailscale）・マルチキャスト・文書用 IPv6 も拒否し、公開 IPv6 は通す。
+  for (const url of [
+    'https://100.64.0.1/',
+    'https://224.0.0.1/',
+    'https://[2001:db8::1]/',
+  ])
+    assert.equal(privateWebTargetReason(url), 'private_target', url);
+  assert.equal(privateWebTargetReason('https://[2606:4700:4700::1111]/'), null);
 });

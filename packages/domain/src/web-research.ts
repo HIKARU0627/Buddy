@@ -10,6 +10,92 @@ export const WEB_FETCH_MAX_BYTES = 2_000_000;
 export const WEB_FETCH_TIMEOUT_MS = 15_000;
 export const WEB_FETCH_MAX_REDIRECTS = 3;
 
+// ---- 取得先の判定（B12-04 が接続ごと・各リダイレクトの後に使う） --------------------------------
+
+function ipv4Private(parts: readonly number[]): boolean {
+  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part)))
+    return true;
+  const a = parts[0] ?? -1;
+  const b = parts[1] ?? -1;
+  const c = parts[2] ?? -1;
+  // 0/8・10/8・127/8・100.64/10（CGNAT・Tailscale）・169.254/16・172.16/12・192.168/16。
+  if (a === 0 || a === 10 || a === 127) return true;
+  if (a === 100 && b >= 64 && b <= 127) return true;
+  if (a === 169 && b === 254) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 192 && b === 168) return true;
+  // 192.0.0/24・192.0.2/24・198.18/15・198.51.100/24・203.0.113/24 と、224/4・240/4。
+  if (a === 192 && b === 0 && (c === 0 || c === 2)) return true;
+  if (a === 198 && (b === 18 || b === 19)) return true;
+  if (a === 198 && b === 51 && c === 100) return true;
+  if (a === 203 && b === 0 && c === 113) return true;
+  if (a >= 224) return true;
+  return false;
+}
+
+function ipv6Private(host: string): boolean {
+  if (host === '::' || host === '::1') return true;
+  const mapped = /^::ffff:(.+)$/u.exec(host);
+  if (mapped) {
+    const tail = mapped[1] ?? '';
+    if (tail.includes('.'))
+      return ipv4Private(tail.split('.').map((part) => Number(part)));
+    const hex = /^([0-9a-f]{1,4}):([0-9a-f]{1,4})$/u.exec(tail);
+    if (hex) {
+      const high = Number.parseInt(hex[1] ?? '0', 16);
+      const low = Number.parseInt(hex[2] ?? '0', 16);
+      return ipv4Private([high >> 8, high & 255, low >> 8, low & 255]);
+    }
+    return true;
+  }
+  const parts = host.split(':');
+  const first = Number.parseInt(parts[0] ?? '', 16);
+  if (Number.isNaN(first)) return false;
+  // fc00::/7（ULA）・fe80::/10（リンクローカル）・fec0::/10（サイトローカル）・ff00::/8（マルチキャスト）。
+  if (
+    (first >= 0xfc00 && first <= 0xfdff) ||
+    (first >= 0xfe80 && first <= 0xfeff) ||
+    (first >= 0xff00 && first <= 0xffff)
+  )
+    return true;
+  // 2001:db8::/32（文書用）。
+  return first === 0x2001 && parts[1] === 'db8';
+}
+
+// 取得先がローカル・プライベート・リンクローカルでないか。拒否する理由を返し、よければ null。
+// リテラルの IP だけを見る。名前解決の結果とリダイレクト先は B12-04 が接続ごとに確かめる。
+export function privateWebTargetReason(value: string): string | null {
+  const match = /^https:\/\/([^/?#]+)/iu.exec(value);
+  if (!match) return 'invalid_url';
+  let authority = match[1] ?? '';
+  const at = authority.lastIndexOf('@');
+  if (at >= 0) authority = authority.slice(at + 1);
+  let host: string;
+  if (authority.startsWith('[')) {
+    const end = authority.indexOf(']');
+    if (end < 0) return 'invalid_url';
+    host = authority.slice(0, end + 1).toLowerCase();
+  } else {
+    host = (authority.split(':')[0] ?? '').toLowerCase();
+  }
+  if (host.length === 0) return 'invalid_url';
+  if (host.startsWith('[') && host.endsWith(']')) {
+    const address = host.slice(1, -1);
+    if (address.includes(':'))
+      return ipv6Private(address) ? 'private_target' : null;
+  }
+  if (host === 'localhost') return 'private_target';
+  if (host.endsWith('.local') || host.endsWith('.internal'))
+    return 'private_target';
+  if (host.includes(':')) return ipv6Private(host) ? 'private_target' : null;
+  if (!/^\d{1,3}(?:\.\d{1,3}){3}$/u.test(host)) return null;
+  return ipv4Private(host.split('.').map((part) => Number(part)))
+    ? 'private_target'
+    : null;
+}
+
+// ---- 上限と利用条件 ------------------------------------------------------------------------------
+
 export interface WebResearchUsage {
   readonly searches: number;
   readonly pages: number;
@@ -37,9 +123,17 @@ export interface WebFetchUsage {
 // 1 ページの取得の上限。読めない・大きすぎる・遅すぎる取得は根拠にしない。
 export function webFetchUsageErrors(usage: WebFetchUsage): string[] {
   const errors: string[] = [];
-  if (usage.bytes > WEB_FETCH_MAX_BYTES) errors.push('bytes_limit');
-  if (usage.timeout_ms > WEB_FETCH_TIMEOUT_MS) errors.push('timeout_limit');
-  if (usage.redirects > WEB_FETCH_MAX_REDIRECTS) errors.push('redirect_limit');
+  if (!Number.isSafeInteger(usage.bytes) || usage.bytes < 0)
+    errors.push('bytes_invalid');
+  else if (usage.bytes > WEB_FETCH_MAX_BYTES) errors.push('bytes_limit');
+  if (!Number.isSafeInteger(usage.timeout_ms) || usage.timeout_ms < 0)
+    errors.push('timeout_invalid');
+  else if (usage.timeout_ms > WEB_FETCH_TIMEOUT_MS)
+    errors.push('timeout_limit');
+  if (!Number.isSafeInteger(usage.redirects) || usage.redirects < 0)
+    errors.push('redirects_invalid');
+  else if (usage.redirects > WEB_FETCH_MAX_REDIRECTS)
+    errors.push('redirect_limit');
   return errors;
 }
 

@@ -162,6 +162,10 @@ test(
           command_scope_id: who.scope,
           text,
           input_kind: 'text',
+          origin: {
+            segment_id: sessionId,
+            segment_generation: String(opened.json?.['segment_generation']),
+          },
         },
       );
       assert.equal(response.status, 401, `${text}: ${response.text}`);
@@ -227,6 +231,12 @@ test(
           command_scope_id: who.scope,
           text,
           input_kind: 'text',
+          origin: {
+            segment_id: sessionId,
+            segment_generation: String(
+              sessionResponse.json?.['segment_generation'],
+            ),
+          },
         },
       );
       assert.equal(response.status, 410, `${text}: ${response.text}`);

@@ -81,6 +81,7 @@ import {
   recoverRestoreInstall,
 } from './restore-install.js';
 import { createTurnRoutes } from './api-turns.js';
+import type { TurnRoutesOptions } from './api-turns.js';
 import { CanvasHub, createStreamRoutes } from './canvas-stream.js';
 import { PreviewRegistry } from './previews.js';
 import {
@@ -97,6 +98,8 @@ import type {
   TurnPolicy,
 } from './turn-ports.js';
 import { createApiContract } from './api-contract.js';
+import { createShadowRecorder } from './shadow-mode.js';
+import { createDbShadowRecordStore } from './shadow-store.js';
 import { backupControl, isBackupControlRequest } from './backup-control.js';
 import type { BackupControlContext } from './backup-control.js';
 import { createBackupService, startBackupScheduler } from './backup-service.js';
@@ -261,6 +264,15 @@ export interface CoreTurnOptions {
   readonly writer?: ProviderWriter | null;
   // Core 側の故障点（試験用）。既定は何もしない。
   readonly faults?: FaultHook;
+  // 発言を保存したときに、保存した時点の生成の時刻と期限を受け取る（UI-05 の区切り。試験でも使う）。
+  readonly onTurnRecorded?: (event: {
+    readonly session_id: string;
+    readonly turn_id: string;
+    readonly created_at: string;
+    readonly expires_at: string;
+  }) => void;
+  // 影モードの比較の入口（ADR 0092）。既定は無し（OFF。D4）。発言の解釈を保存した後に呼ばれる。
+  readonly onInterpreted?: TurnRoutesOptions['onInterpreted'];
 }
 
 export interface CoreHttpsInfo {
@@ -1130,6 +1142,38 @@ async function startHttps(
               : base.revisionMatches(input),
   };
   const turnOptions = https.turns ?? {};
+  // 影モード（B10-03 P3、ADR 0092・0110、B06-06e）。比較の記録の入口（onInterpreted）を SQLite の保存先につなぐ。
+  // 設定（campaign・比較モデルの配備・endpoint・認証）と、予算・余力・出力の検証の口は B15 と本人の承認まで
+  // 読まない・作らない。設定が無い間は observe が何もしない（既定 OFF・D4）ので、比較の呼出しも保存も 0 件。
+  const shadow = createShadowRecorder({
+    settings: () => null,
+    store: createDbShadowRecordStore(watched),
+    // 余力（ai の planModelCalls の判定）は B15 の配線。設定が無い間は届かない。届いたときに走らせない側に倒す。
+    slotAvailable: () => false,
+    // 音声の接続（Live）が開いている間は走らせない（設計 10 §5）。Core がメモリーに置いている接続の数で見る。
+    liveSessionOpen: () => voice.liveCount > 0,
+    // 記録しない会話（StorageModeGate の今の値）。受付の前後・保存の直前にも読み直される。
+    privateConversation: () => storage.privateConversation(),
+    // 比較の費用（B07 の門）・実費の合計・出力の検証は B15。設定が無い間は呼ばれない。呼ばれても始めない側にする。
+    guard: {
+      admit: () =>
+        Promise.resolve({ ok: false, reasons: ['shadow_not_wired'] }),
+    },
+    spent: () => Promise.resolve(''),
+    contract: createApiContract(),
+    output_schema: null,
+    schema: { valid: () => false },
+    now: () => now().getTime(),
+  });
+  // 流れの区切り（UI-05）は、上の turns より後に作る。保存した発言の期限は、この口を通して区切りへ渡す。
+  let streamRecordTurn:
+    | ((event: {
+        readonly session_id: string;
+        readonly turn_id: string;
+        readonly created_at: string;
+        readonly expires_at: string;
+      }) => void)
+    | null = null;
   const turns = createTurnRoutes({
     store: watched,
     keyStore,
@@ -1140,12 +1184,31 @@ async function startHttps(
     },
     policy: turnOptions.policy ?? TEST_TURN_POLICY,
     previews,
+    storage,
     utcOffset: turnOptions.utcOffset ?? '+09:00',
     now: () => now().getTime(),
     onOperationCreated: () => feed.notify(),
+    // 比較の入口。同期で戻り、失敗しても発言の結果を変えない（ADR 0092）。呼び出し側の口（試験・診断）にも渡す。
+    onInterpreted: (event) => {
+      shadow.observe({
+        storage_mode: event.storage_mode,
+        live_session_open: voice.liveCount > 0,
+        input_id: event.input_id,
+        request_revision: event.request_revision,
+        turn_expires_at: event.turn_expires_at,
+        context: event.context,
+        primary: event.primary,
+      });
+      turnOptions.onInterpreted?.(event);
+    },
     // 会話の操作（照合表に当たった文字の発言）は、その端末の開いている Live へも行う（画面のボタンと同じ処理。B05-05）。
     onSessionControl: ({ device_id, action }) =>
       voice.applySessionControlForDevice(device_id, action),
+    // 保存した発言の生成の時刻と期限を、流れの区切りへ渡す（UI-05。再送では呼ばれない）。
+    onTurnRecorded: (event) => {
+      streamRecordTurn?.(event);
+      turnOptions.onTurnRecorded?.(event);
+    },
     // 検索・クラウドへの送信の前に、掃除のゲートを通す（ADR 0053）。今ある入口（予定の照会・下書き・ラベル）だけ。
     ...(retention === null
       ? {}
@@ -1167,8 +1230,13 @@ async function startHttps(
     canvas,
     createSession: turns.handlers['createSession'] as ApiRouteHandler,
     postTurn: turns.handlers['postTurn'] as ApiRouteHandler,
+    storage,
     now: () => now().getTime(),
+    // 自動の区切りの日付は、発言の解釈と同じ本人の時間帯で判定する（UI-05、ADR 0068）。
+    utcOffset: turnOptions.utcOffset ?? '+09:00',
   });
+  // 保存した発言の期限を、流れの区切りへ渡す口をつなぐ（UI-05）。
+  streamRecordTurn = stream.recordTurn;
   // 実行担当（ADR 0030）。承認の後・起動時の再開・本人の照合と再試行を受け持つ。
   const faults = turnOptions.faults ?? NO_FAULTS;
   const runner = createOperationRunner({

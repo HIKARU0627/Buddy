@@ -76,6 +76,13 @@ import { BUDGET_WRITE_OPS } from './budget-store.js';
 import { VOICE_WRITE_OPS } from './voice-store.js';
 import { RETENTION_WRITE_OPS } from './retention-store.js';
 import { MEMORY_WRITE_OPS } from './memory-store.js';
+import { INTENT_SHADOW_WRITE_OPS } from './intent-shadow-store.js';
+import type {
+  IntentShadowOp,
+  IntentShadowOpKind,
+  IntentShadowOpResult,
+  IntentShadowOpValues,
+} from './intent-shadow-store.js';
 import type {
   MemoryOp,
   MemoryOpKind,
@@ -277,9 +284,20 @@ interface PendingMemory {
   readonly resolve: (result: MemoryOpResult) => void;
 }
 
+interface PendingIntentShadow {
+  readonly kind: 'intent_shadow';
+  readonly op: IntentShadowOp;
+  readonly timer: NodeJS.Timeout;
+  readonly resolve: (result: IntentShadowOpResult) => void;
+}
+
 export type MemoryOpOutcome<K extends MemoryOpKind> =
   | { readonly ok: true; readonly value: MemoryOpValues[K] }
   | Extract<MemoryOpResult, { ok: false }>;
+
+export type IntentShadowOpOutcome<K extends IntentShadowOpKind> =
+  | { readonly ok: true; readonly value: IntentShadowOpValues[K] }
+  | Extract<IntentShadowOpResult, { ok: false }>;
 
 export type RetentionOpOutcome<K extends RetentionOpKind> =
   | { readonly ok: true; readonly value: RetentionOpValues[K] }
@@ -337,6 +355,7 @@ export class DbWorkerClient {
     | PendingVoice
     | PendingRetention
     | PendingMemory
+    | PendingIntentShadow
   >();
   #issued = new WeakSet<DispatchPermit>();
   #consumed = new WeakSet<DispatchPermit>();
@@ -835,6 +854,32 @@ export class DbWorkerClient {
     }) as Promise<MemoryOpOutcome<K>>;
   }
 
+  // 影モードの比較記録の保存と件数（ADR 0092・0110）。扱いは memory と同じ。
+  intentShadow<K extends IntentShadowOpKind>(
+    op: Extract<IntentShadowOp, { kind: K }>,
+  ): Promise<IntentShadowOpOutcome<K>> {
+    return new Promise<IntentShadowOpResult>((resolve) => {
+      if (this.#state !== 'running') {
+        resolve({
+          ok: false,
+          outcome: 'rejected',
+          reasons: [
+            this.#state === 'closed' ? 'worker_closed' : 'worker_unavailable',
+          ],
+        });
+        return;
+      }
+      const id = this.#nextId++;
+      const timer = setTimeout(
+        () => this.#break('worker_timeout'),
+        this.#responseTimeoutMs,
+      );
+      this.#pending.set(id, { kind: 'intent_shadow', op, timer, resolve });
+      const message: MainToWorker = { type: 'intent_shadow', id, op };
+      this.#worker.postMessage(message);
+    }) as Promise<IntentShadowOpOutcome<K>>;
+  }
+
   // 許可がこのクライアントの現在の世代で作られ、まだ使っておらず、worker が動いているか。
   isDispatchPermitCurrent(permit: DispatchPermit): boolean {
     return (
@@ -962,6 +1007,16 @@ export class DbWorkerClient {
         pending.resolve({
           ok: false,
           outcome: MEMORY_WRITE_OPS.has(pending.op.kind)
+            ? 'unknown'
+            : 'rejected',
+          reasons: [reason],
+        });
+        continue;
+      }
+      if (pending.kind === 'intent_shadow') {
+        pending.resolve({
+          ok: false,
+          outcome: INTENT_SHADOW_WRITE_OPS.has(pending.op.kind)
             ? 'unknown'
             : 'rejected',
           reasons: [reason],
@@ -1138,6 +1193,18 @@ export class DbWorkerClient {
     if (message.type === 'budget_result') {
       const pending = this.#pending.get(message.id);
       if (pending?.kind !== 'budget') return;
+      clearTimeout(pending.timer);
+      this.#pending.delete(message.id);
+      if (message.halted && this.#state === 'running') {
+        this.#state = 'broken';
+        this.#brokenReason = 'worker_halted';
+      }
+      pending.resolve(message.result);
+      return;
+    }
+    if (message.type === 'intent_shadow_result') {
+      const pending = this.#pending.get(message.id);
+      if (pending?.kind !== 'intent_shadow') return;
       clearTimeout(pending.timer);
       this.#pending.delete(message.id);
       if (message.halted && this.#state === 'running') {

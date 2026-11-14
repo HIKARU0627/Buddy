@@ -1,6 +1,6 @@
 {
   "status": "tracking",
-  "description": "設計 09 の X01〜X66・QA01〜QA45 と 09 冒頭の補助ケース MA01〜MA06 の対応表（B00-10 #29）。phases は担当工程（docs/b00/contract-map.md の利用の列から）、contract_fixtures は期待値を手で書いた契約 fixture（ファイル#ケースの id）、t は 06 の必須試験、targets は修正案・再検証の対象。status の contract_fixture は契約 fixture で期待値を検査したことだけを表し、製品試験の合格ではない。product_test は模擬確認 simulated・部分確認 simulated_partial・未実施 not_run・後回し deferred を区別する。B04・B07 の確認は product_scope と product_evidence に限定し、実機・実 API・実請求の合格を意味しない。 B05 の実 API の試験は 2 段階（まず合成の音声で接続・停止・精算、その後で本人の声で日本語の品質。本人の判断 2026-10-23）で、模擬・実機・実 API・実請求の記録を分ける。B05-01（ADR 0038）の fixture は契約の期待値で、音声レンダラー・Live・リース・同意の製品試験は未実施。 B05-02（ADR 0041）の fixture は、時計と乱数を注入した domain の純粋な規則（リースの期限・世代・3 層の停止の時間・無音・追加予約と精算の秒数・通知の頻度・方式 A/C・ASR の比較・会話の操作・接続開始の門）の期待値で、製品の統合・実機・実 API の試験は未実施。 B05-03（ADR 0046）は、中枢の音声の制御（リース・音声所有権・停止の到達・サイドバンドの喪失・再起動の後の世代）を apps/core と packages/storage の模擬試験（DB worker・模擬の provider・手で進める時計）で確かめた。証拠の記録（product_evidence）はまだ作っていないので、X13・X14・X25・X28・X32・QA24・QA43 の product_test は not_run のまま。実機・実 API・実請求は未実施。 B05-04（ADR 0049）は、会話の予算（60 秒ごとの追加予約・予算に達したときの閉じ方・精算・終了後の照合・孤児のセッション・再起動の照合）を apps/core の模擬試験（DB worker・本番と同じ予算の門の境界・模擬の provider・手で進める時計）で確かめた。X18・X26・X28・X31・X34・QA02 の product_test は B05 の完了の確認まで変えない。provider の実装・実 API・実機・実請求は未実施。",
+  "description": "設計 09 の X01〜X66・QA01〜QA45 と 09 冒頭の補助ケース MA01〜MA06 の対応表（B00-10 #29）。phases は担当工程（docs/b00/contract-map.md の利用の列から）、contract_fixtures は期待値を手で書いた契約 fixture（ファイル#ケースの id）、t は 06 の必須試験、targets は修正案・再検証の対象。status の contract_fixture は契約 fixture で期待値を検査したことだけを表し、製品試験の合格ではない。product_test は模擬確認 simulated・部分確認 simulated_partial・未実施 not_run・後回し deferred を区別する。B04・B07 の確認は product_scope と product_evidence に限定し、実機・実 API・実請求の合格を意味しない。 B05 の実 API の試験は 2 段階（まず合成の音声で接続・停止・精算、その後で本人の声で日本語の品質。本人の判断 2026-10-23）で、模擬・実機・実 API・実請求の記録を分ける。B05-01（ADR 0038）の fixture は契約の期待値で、音声レンダラー・Live・リース・同意の製品試験は未実施。 B05-02（ADR 0041）の fixture は、時計と乱数を注入した domain の純粋な規則（リースの期限・世代・3 層の停止の時間・無音・追加予約と精算の秒数・通知の頻度・方式 A/C・ASR の比較・会話の操作・接続開始の門）の期待値で、製品の統合・実機・実 API の試験は未実施。 B05-03（ADR 0046）は、中枢の音声の制御（リース・音声所有権・停止の到達・サイドバンドの喪失・再起動の後の世代）を apps/core と packages/storage の模擬試験（DB worker・模擬の provider・手で進める時計）で確かめた。証拠の記録（product_evidence）はまだ作っていないので、X13・X14・X25・X28・X32・QA24・QA43 の product_test は not_run のまま。実機・実 API・実請求は未実施。 B05-04（ADR 0049）は、会話の予算（60 秒ごとの追加予約・予算に達したときの閉じ方・精算・終了後の照合・孤児のセッション・再起動の照合）を apps/core の模擬試験（DB worker・本番と同じ予算の門の境界・模擬の provider・手で進める時計）で確かめた。X18・X26・X28・X31・X34・QA02 の product_test は B05 の完了の確認まで変えない。provider の実装・実 API・実機・実請求は未実施。 B05-07（#131）は、端末の音声の制御・模擬の音声レンダラー・中枢の音声の制御・会話の処理を手で進める 1 本の時計でつないだ模擬の統合試験（tests/integration/b05*.mjs、証拠は evidence-b05-simulated.json）で、X13・X14・X25・X27・X30・X49・X51・X58・QA24・QA41・QA43 を simulated_partial にした。B05 の実機・実 API・実請求と T04 の実測は未実施（#132・#133）。",
   "statuses": {
     "contract_fixture": "契約 fixture で期待値を検査済み。製品の統合・実機・実 API 試験は未実施",
     "specified": "試験仕様と担当工程だけ。契約 fixture なし"
@@ -208,7 +208,12 @@
         "packages/contracts/fixtures/voice-ownership-cases.json#longer-is-cut-to-six-seconds"
       ],
       "status": "contract_fixture",
-      "product_test": "not_run",
+      "product_test": "simulated_partial",
+      "product_evidence": [
+        "tests/integration/evidence-b05-simulated.json#X13-os-lock-stops-everything",
+        "tests/integration/evidence-b05-simulated.json#X13-io-epoch-sync-before-restart"
+      ],
+      "product_scope": "B05-07 の固定 seed 3 回・合成の PCM。OS のロックで収音・認識・再生・送信が止まり、止めた後は音声を送らずリースも更新しないこと、解除だけでは再開せず画面の明示再開は前面の窓・一致する版だけ受け付けることを、端末と中枢をつないで確認。既知の未了: 端末が進めた io_epoch を中枢へ報告する経路は未実装（U70・U91）で、端末だけが止まって再開すると中枢はリースを拒否して会話を始められない（世代をそろえれば新しい Live で再開できる）。スリープ復帰・リース応答の遅着は domain の単体試験のみ。 実機（Mac・Windows の実際のマイク・スピーカー・WebRTC・OS のロック）・実 API（実際の Live の provider）・実請求は未実施（#132・#133）。T04 の停止時間・日本語品質・ASR 遅延・費用の実測も未実施で、模擬の時間は手で進める時計の値。",
       "t": ["T04", "T07"]
     },
     {
@@ -220,7 +225,11 @@
         "packages/contracts/fixtures/voice-ownership-cases.json#x14-expired-lease-is-not-a-confirmation"
       ],
       "status": "contract_fixture",
-      "product_test": "not_run",
+      "product_test": "simulated_partial",
+      "product_evidence": [
+        "tests/integration/evidence-b05-simulated.json#X14-global-stop-reaches-the-other-device"
+      ],
+      "product_scope": "B05-07 の固定 seed 3 回。別の端末からの全体停止で、中枢は要求した端末だけを確認済み・他を応答待ちにし、リースを取り消して停止のイベントを送ること、端末が 1 ハートビート（2 秒）以内・リースの期限（6 秒）以内に止まることを確認。既知の未了: 中枢から届く停止のイベントを端末が止めに使う経路は未実装（ADR 0050）で、端末は次のハートビートの拒否で止まる。他の端末の ACK の経路（U70）も未実装。来客モード・unreachable な端末の確認は中枢の単体試験のみ。 実機（Mac・Windows の実際のマイク・スピーカー・WebRTC・OS のロック）・実 API（実際の Live の provider）・実請求は未実施（#132・#133）。T04 の停止時間・日本語品質・ASR 遅延・費用の実測も未実施で、模擬の時間は手で進める時計の値。",
       "t": ["T04"]
     },
     {
@@ -351,12 +360,17 @@
     },
     {
       "id": "X18",
-      "phases": ["B07"],
+      "phases": ["B07", "B12"],
       "contract_fixtures": [
         "packages/contracts/fixtures/budget-scenarios.json#x18-boundary-concurrency-month-and-pools",
         "packages/contracts/fixtures/budget-rules.json#x18-route-auto-execution",
         "packages/contracts/fixtures/budget-rules.json#qa42-x18-usage-summary",
-        "packages/contracts/fixtures/schema-cases.json#x18-runtime-routing-owner-and-autonomous"
+        "packages/contracts/fixtures/schema-cases.json#x18-runtime-routing-owner-and-autonomous",
+        "packages/contracts/fixtures/web-research-cases.json#limits",
+        "packages/contracts/fixtures/web-research-cases.json#policy",
+        "packages/contracts/fixtures/web-research-cases.json#fetch-request-cgnat",
+        "packages/contracts/fixtures/web-research-cases.json#search-response",
+        "packages/contracts/fixtures/web-research-cases.json#source-search-summary-only"
       ],
       "status": "contract_fixture",
       "product_test": "simulated",
@@ -367,7 +381,7 @@
         "tests/integration/evidence-b07-simulated.json#X18-pools-concurrency",
         "tests/integration/evidence-b07-simulated.json#X18-topup-concurrency"
       ],
-      "product_scope": "B07-06 の固定 seed 3 回・合成の通貨 XTS と縮めた上限・同一プロセスの予算の門と DB worker と模擬の有料 provider（HTTP の経路・画面は通さない）。予約の行（SQL で直接読む）と provider の受信の記録・真の usage を突き合わせ、上限を超えた予約 0 件・精算は一度だけを確認。実 API・実請求・実機は未実施で、実請求の照合は B15。 同時の予約（境界・超過枠・LLM と検索と音声の 11 件）と同時の追加予約（版の CAS・音声の上限）で、M を含む受付の上限を超えない。"
+      "product_scope": "B07-06 の固定 seed 3 回・合成の通貨 XTS と縮めた上限・同一プロセスの予算の門と DB worker と模擬の有料 provider（HTTP の経路・画面は通さない）。予約の行（SQL で直接読む）と provider の受信の記録・真の usage を突き合わせ、上限を超えた予約 0 件・精算は一度だけを確認。実 API・実請求・実機は未実施で、実請求の照合は B15。 同時の予約（境界・超過枠・LLM と検索と音声の 11 件）と同時の追加予約（版の CAS・音声の上限）で、M を含む受付の上限を超えない。 B12 は契約 fixture の形式検査だけを追加し、検索アダプター・実 API・実請求は未実施。"
     },
     {
       "id": "X19",
@@ -438,7 +452,11 @@
         "packages/contracts/fixtures/voice-reservation-cases.json#usage-not-confirmed-holds-the-reservation"
       ],
       "status": "contract_fixture",
-      "product_test": "not_run",
+      "product_test": "simulated_partial",
+      "product_evidence": [
+        "tests/integration/evidence-b05-simulated.json#X25-sideband-lost-closes-and-settles"
+      ],
+      "product_scope": "B05-07 の固定 seed 3 回。pong が止まると最後の pong から 6000 ms（5999 ms では ready）で制御接続を喪失し、リースを更新せず端末が会話を閉じ、閉じるための再接続で provider の使用秒数どおりに精算することを確認。10 秒の無音で閉じる判定は main の純粋な規則（scripts/voice-*.test.mjs）のみで、この統合では模擬の音声レンダラーが発話を作らないため通していない。 実機（Mac・Windows の実際のマイク・スピーカー・WebRTC・OS のロック）・実 API（実際の Live の provider）・実請求は未実施（#132・#133）。T04 の停止時間・日本語品質・ASR 遅延・費用の実測も未実施で、模擬の時間は手で進める時計の値。",
       "t": ["T04", "T08"]
     },
     {
@@ -460,7 +478,11 @@
         "packages/contracts/fixtures/voice-interaction-cases.json#superseded-revision-is-neither-voiced-nor-shown"
       ],
       "status": "contract_fixture",
-      "product_test": "not_run",
+      "product_test": "simulated_partial",
+      "product_evidence": [
+        "tests/integration/evidence-b05-simulated.json#X27-held-change-is-superseded-or-cancelled"
+      ],
+      "product_scope": "B05-07 の固定 seed 3 回。新しい発話の開始で送出前の変更を一時保留し、訂正は古い変更を置き換え、取消は送出前に止めることを確認（中枢の会話の処理まで）。担当の B10 の結果契約・実際の解釈との統合は未実施。 実機（Mac・Windows の実際のマイク・スピーカー・WebRTC・OS のロック）・実 API（実際の Live の provider）・実請求は未実施（#132・#133）。T04 の停止時間・日本語品質・ASR 遅延・費用の実測も未実施で、模擬の時間は手で進める時計の値。",
       "t": ["T03", "T01"]
     },
     {
@@ -503,7 +525,13 @@
         "packages/contracts/fixtures/voice-epoch-cases.json#report-io-epoch-went-back"
       ],
       "status": "contract_fixture",
-      "product_test": "not_run",
+      "product_test": "simulated_partial",
+      "product_evidence": [
+        "tests/integration/evidence-b05-simulated.json#X30-ack-deadline-boundary",
+        "tests/integration/evidence-b05-simulated.json#X30-hung-renderer-is-killed",
+        "tests/integration/evidence-b05-simulated.json#X30-stop-playback-without-ack-escalates"
+      ],
+      "product_scope": "B05-07 の固定 seed 3 回。停止の ACK は 300 ms ちょうどなら間に合い 1 ms 遅れで強制終了すること、固まった音声レンダラーは 301 ms で強制終了して送信が止まること、読み上げの停止の ACK がなければ安全側に全停止すること、強制終了した音声レンダラーの遅れた ACK は使わず再開しないことを確認。 実機（Mac・Windows の実際のマイク・スピーカー・WebRTC・OS のロック）・実 API（実際の Live の provider）・実請求は未実施（#132・#133）。T04 の停止時間・日本語品質・ASR 遅延・費用の実測も未実施で、模擬の時間は手で進める時計の値。",
       "t": ["T04"]
     },
     {
@@ -722,8 +750,12 @@
         "packages/contracts/fixtures/storage-mode-cases.json#x48-confirmation-shadow-rejected"
       ],
       "status": "contract_fixture",
-      "product_test": "not_run",
-      "t": ["T05", "T08"]
+      "product_test": "simulated_partial",
+      "t": ["T05", "T08"],
+      "product_scope": "B10-03 P3 の模擬: 既定 OFF で比較の呼出し・記録が 0、記録しない会話で呼出し 0・記録 0、300 件で止まる（同時の保存でも超えない）、保存期限は会話全文と同じ、比較の遅延・失敗が本線の応答に影響しない。 intent_shadow の SQLite 保存（DB worker の命令・保存側の前提・由来の辺・Core の入口）は B06-06e で実装し、起動時の設定の読み込みは B15 まで未実装（設定が無い間は既定 OFF のまま）。 実 API・実請求・実機・実音声は未実施（B15 と本人の承認）。",
+      "product_evidence": [
+        "tests/integration/evidence-b10-03-simulated.json#X48-b10-03"
+      ]
     },
     {
       "id": "X49",
@@ -736,7 +768,12 @@
         "packages/contracts/fixtures/voice-interaction-cases.json#text-request-with-stale-epochs-still-goes-to-the-screen"
       ],
       "status": "contract_fixture",
-      "product_test": "not_run",
+      "product_test": "simulated_partial",
+      "product_evidence": [
+        "tests/integration/evidence-b05-simulated.json#X49-text-request-stays-text",
+        "tests/integration/evidence-b05-simulated.json#X58-reply-in-text-switches-the-device"
+      ],
+      "product_scope": "B05-07 の固定 seed 3 回。文字の依頼は音声の接続が開いていても文字で返し（声の接続へも再生へも何も送らない）、HTTP の経路の voice_live は 503、文字で返す設定では声の会話を始められないことを確認。結果を画面へ回す表示（U120）は #189（UI-08 の一段階、ADR 0066）で実装済み（模擬の表示。実機・実 API は未実施）。 実機（Mac・Windows の実際のマイク・スピーカー・WebRTC・OS のロック）・実 API（実際の Live の provider）・実請求は未実施（#132・#133）。T04 の停止時間・日本語品質・ASR 遅延・費用の実測も未実施で、模擬の時間は手で進める時計の値。",
       "t": ["T01", "T08"]
     },
     {
@@ -763,7 +800,11 @@
         "packages/contracts/fixtures/voice-interaction-cases.json#two-short-utterances-before-one-delegation-are-two-targets"
       ],
       "status": "contract_fixture",
-      "product_test": "not_run",
+      "product_test": "simulated_partial",
+      "product_evidence": [
+        "tests/integration/evidence-b05-simulated.json#X51-input-is-confirmed-before-it-is-interpreted"
+      ],
+      "product_scope": "B05-07 の固定 seed 3 回。終了候補がなければ解釈しない、300 ms 変化がなければ進み 299 ms では進まない、終了候補の後の断片も含める、断片の欠落・連番なし・複数の対象・時刻の対応不明は聞き返すことを確認。B10 の実際の解釈（LLM）・共通 workflow の結果契約との統合は未実施。 実機（Mac・Windows の実際のマイク・スピーカー・WebRTC・OS のロック）・実 API（実際の Live の provider）・実請求は未実施（#132・#133）。T04 の停止時間・日本語品質・ASR 遅延・費用の実測も未実施で、模擬の時間は手で進める時計の値。",
       "t": ["T01", "T05"]
     },
     {
@@ -830,8 +871,12 @@
         "packages/contracts/fixtures/evaluation-cases.json#x57-other-uses-stay-unevaluated"
       ],
       "status": "contract_fixture",
-      "product_test": "not_run",
-      "t": ["T05", "T08"]
+      "product_test": "simulated_partial",
+      "t": ["T05", "T08"],
+      "product_scope": "B10-03 の模擬: 候補モデルに同じ指示・基準日・入力を渡し、結果を候補ごとに分けて残す。評価セット・採点・採否・他用途の評価（X66）は B10-07 で未実施。 実 API・実請求・実機・実音声は未実施（B15 と本人の承認）。intent_shadow の SQLite 保存と起動時の設定は未実装。",
+      "product_evidence": [
+        "tests/integration/evidence-b10-03-simulated.json#X57-b10-03"
+      ]
     },
     {
       "id": "X58",
@@ -847,7 +892,13 @@
         "packages/contracts/fixtures/voice-silence-cases.json#wait-a-moment-said-while-speaking-extends-the-next-silence-to-sixty-seconds"
       ],
       "status": "contract_fixture",
-      "product_test": "not_run",
+      "product_test": "simulated_partial",
+      "product_evidence": [
+        "tests/integration/evidence-b05-simulated.json#X58-session-control-phrases-reach-the-device",
+        "tests/integration/evidence-b05-simulated.json#X58-reply-in-text-switches-the-device",
+        "tests/integration/evidence-b05-simulated.json#X58-request-right-after-a-control-phrase"
+      ],
+      "product_scope": "B05-07 の固定 seed 3 回。会話の操作の言い回しは LLM を呼ばず依頼も作らず操作ごとに別の効果で端末へ届くこと、丁寧な形は通常の意図の経路へ回ることを確認。既知の制約: 操作の発話の直後（委譲の窓 2 秒以内）の依頼は聞き返しになる（U151、本人の判断待ち）。言い回しの調整は B05・B10。 実機（Mac・Windows の実際のマイク・スピーカー・WebRTC・OS のロック）・実 API（実際の Live の provider）・実請求は未実施（#132・#133）。T04 の停止時間・日本語品質・ASR 遅延・費用の実測も未実施で、模擬の時間は手で進める時計の値。",
       "t": ["T04", "T01"]
     },
     {
@@ -952,9 +1003,13 @@
         "packages/contracts/fixtures/response-plan-cases.json#qa01-outcome-ok-retryable"
       ],
       "status": "contract_fixture",
-      "product_test": "not_run",
+      "product_test": "simulated_partial",
       "targets": ["P01", "P02"],
-      "related": ["X03"]
+      "related": ["X03"],
+      "product_scope": "B10-03 P1・P2 の模擬: 余分な key・欠損・null・存在しない意図・型違いが invalid_schema になり、実行へ進まず聞き返しになる。 実 API・実請求・実機・実音声は未実施（B15 と本人の承認）。intent_shadow の SQLite 保存と起動時の設定は未実装。",
+      "product_evidence": [
+        "tests/integration/evidence-b10-03-simulated.json#QA01-b10-03"
+      ]
     },
     {
       "id": "QA02",
@@ -984,18 +1039,26 @@
         "packages/contracts/fixtures/response-plan-cases.json#qa03-plan-view-kind-mismatch"
       ],
       "status": "contract_fixture",
-      "product_test": "not_run",
+      "product_test": "simulated_partial",
       "targets": ["P01", "P02"],
-      "related": []
+      "related": [],
+      "product_scope": "B10-03 P1・P2 の模擬: 渡していない候補・依頼、許可されない引数、暦にない日付などが invalid_semantics になり、unclear と混ざらず、依頼・操作を作らない。 実 API・実請求・実機・実音声は未実施（B15 と本人の承認）。intent_shadow の SQLite 保存と起動時の設定は未実装。",
+      "product_evidence": [
+        "tests/integration/evidence-b10-03-simulated.json#QA03-b10-03"
+      ]
     },
     {
       "id": "QA04",
       "phases": ["B05", "B10", "B13"],
       "contract_fixtures": [],
       "status": "specified",
-      "product_test": "not_run",
+      "product_test": "simulated_partial",
       "targets": ["P01"],
-      "related": ["X27", "X51"]
+      "related": ["X27", "X51"],
+      "product_scope": "B10-03 P1・P2 の模擬: 渡した依頼の中だけから対象を選べ、渡していない依頼は拒否、意図の無い取消が関係と対象を保って保留中の変更を止める。取消後の遅着・input_revision の不一致は B05 の既存の試験と B10-04 で扱う。 実 API・実請求・実機・実音声は未実施（B15 と本人の承認）。intent_shadow の SQLite 保存と起動時の設定は未実装。",
+      "product_evidence": [
+        "tests/integration/evidence-b10-03-simulated.json#QA04-b10-03"
+      ]
     },
     {
       "id": "QA05",
@@ -1240,7 +1303,11 @@
         "packages/contracts/fixtures/live-control-cases.json#session-closed-after-the-wait-expired-is-accepted-as-reconciliation"
       ],
       "status": "contract_fixture",
-      "product_test": "not_run",
+      "product_test": "simulated_partial",
+      "product_evidence": [
+        "tests/integration/evidence-b05-simulated.json#QA24-close-unconfirmed-holds-reservation"
+      ],
+      "product_scope": "B05-07 の固定 seed 3 回。session.closed が 2 秒来なければ終了未確認で予約を保持（精算も解放もしない）、後から届いた使用秒数で一度だけ精算することを確認。実際の provider の session.closed の形・時間（U72）は未確認。 実機（Mac・Windows の実際のマイク・スピーカー・WebRTC・OS のロック）・実 API（実際の Live の provider）・実請求は未実施（#132・#133）。T04 の停止時間・日本語品質・ASR 遅延・費用の実測も未実施で、模擬の時間は手で進める時計の値。",
       "targets": ["P03"],
       "related": ["X25", "X28"]
     },
@@ -1450,7 +1517,11 @@
         "packages/contracts/fixtures/voice-interaction-cases.json#handoff-screen-is-not-one-of-the-four-operations"
       ],
       "status": "contract_fixture",
-      "product_test": "not_run",
+      "product_test": "simulated_partial",
+      "product_evidence": [
+        "tests/integration/evidence-b05-simulated.json#QA41-live-input-four-operations-need-full-text"
+      ],
+      "product_scope": "B05-07 の固定 seed 3 回。Live の文字起こし（方式 C）から承認待ちの操作になるのは、自動実行を許す方針での 4 操作の完全な観測だけ（実行ではない）で、既定の方針と、記憶の保存・メール送信などは全文が確定するまで操作を作らないことを確認。方式 A の試作との比較・B10 の結果契約との統合は未実施。 実機（Mac・Windows の実際のマイク・スピーカー・WebRTC・OS のロック）・実 API（実際の Live の provider）・実請求は未実施（#132・#133）。T04 の停止時間・日本語品質・ASR 遅延・費用の実測も未実施で、模擬の時間は手で進める時計の値。",
       "targets": ["F01"],
       "related": ["X51", "X59", "QA05", "QA08"]
     },
@@ -1536,7 +1607,12 @@
         "packages/contracts/fixtures/desktop-ipc-cases.json#b0506-voice-continue-from-hidden-window"
       ],
       "status": "contract_fixture",
-      "product_test": "not_run",
+      "product_test": "simulated_partial",
+      "product_evidence": [
+        "tests/integration/evidence-b05-simulated.json#QA43-three-stops-are-distinct",
+        "tests/integration/evidence-b05-simulated.json#X13-os-lock-stops-everything"
+      ],
+      "product_scope": "B05-07 の固定 seed 3 回。stop_playback は再生だけ（会話・収音・リースを保つ）、close_voice_session は Live だけ閉じて収音を保ちリースを止め、suspend_io はすべて止めることを、再生中から停止して確認。ロックの解除だけでは再開しないことも確認。実際の音声の再生の途切れの時間は未測定。 実機（Mac・Windows の実際のマイク・スピーカー・WebRTC・OS のロック）・実 API（実際の Live の provider）・実請求は未実施（#132・#133）。T04 の停止時間・日本語品質・ASR 遅延・費用の実測も未実施で、模擬の時間は手で進める時計の値。",
       "targets": ["F03"],
       "related": ["X13", "X30", "X58"]
     },

@@ -64,6 +64,8 @@ export type CandidateOrderResult<T extends CandidateOrderItem> =
   | { readonly ok: true; readonly groups: readonly CandidateGroup<T>[] }
   | { readonly ok: false; readonly reason: 'now_invalid' | 'zone_invalid' };
 
+const DAY_MS = 86_400_000;
+
 // 月曜を週の始まりとする（U272）。月曜 = 0 … 日曜 = 6。1970-01-01 は木曜。
 const weekdayOfDay = (day: number): number => (((day + 3) % 7) + 7) % 7;
 

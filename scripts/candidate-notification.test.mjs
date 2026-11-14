@@ -428,3 +428,35 @@ test('closed candidates do not alert, and the first import is listed without ind
     { deliver: true, reason: null },
   );
 });
+
+test('the same instant written with or without milliseconds gives the same key', () => {
+  const key = (start, end) =>
+    notificationKey(overlap({ period: { kind: 'timed', start, end } }), sha256);
+  assert.equal(
+    key('2030-10-09T01:30:00.000Z', '2030-10-09T02:00:00.000Z'),
+    key('2030-10-09T01:30:00Z', '2030-10-09T02:00:00Z'),
+  );
+  assert.equal(
+    key('2030-10-09T01:30:00Z', '2030-10-09T02:00:00Z'),
+    '9326a725708b047cb7041128ca462bd14668440ff51e4c7919938a30cd79a8fb',
+  );
+  // ミリ秒が 0 でなければ、別の時刻なので別の識別子。
+  assert.notEqual(
+    key('2030-10-09T01:30:00.500Z', '2030-10-09T02:00:00Z'),
+    key('2030-10-09T01:30:00Z', '2030-10-09T02:00:00Z'),
+  );
+  assert.equal(
+    notificationKeyMaterial(
+      overlap({
+        period: {
+          kind: 'timed',
+          start: '2030-10-09T01:30:00.500Z',
+          end: '2030-10-09T02:00:00.000Z',
+        },
+      }),
+    )
+      ?.split('\n')
+      .at(-1),
+    'period=timed:2030-10-09T01:30:00.500Z/2030-10-09T02:00:00Z',
+  );
+});

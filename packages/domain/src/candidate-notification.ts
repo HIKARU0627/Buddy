@@ -73,12 +73,17 @@ function dueMaterial(due: Deadline): string | null {
   }
 }
 
+// UTC のミリ秒を、秒までの正規の形（ミリ秒が 0 でなければミリ秒まで）にする。
+const canonicalUtc = (millis: number): string =>
+  new Date(millis).toISOString().replace('.000Z', 'Z');
+
 function periodMaterial(period: OverlapPeriod): string | null {
   if (period.kind === 'timed') {
     const start = parseCandidateUtc(period.start);
     const end = parseCandidateUtc(period.end);
     if (start === null || end === null || end <= start) return null;
-    return `timed:${period.start}/${period.end}`;
+    // 同じ時刻の書き方の違い（Z と .000Z）で識別子が変わらないよう、正規の形（ミリ秒が 0 なら省く）にそろえる。
+    return `timed:${canonicalUtc(start)}/${canonicalUtc(end)}`;
   }
   if (!isDate(period.start_date) || !isDate(period.end_date)) return null;
   if (period.end_date <= period.start_date) return null;

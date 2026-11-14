@@ -160,7 +160,7 @@ test('an event without an iCalUID is shown as an unconfirmed overlap, not droppe
   const result = run([noUid, other]);
   assert.equal(result.overlaps.length, 1);
   assert.equal(result.overlaps[0].identity, 'unconfirmed');
-  assert.deepEqual(result.overlaps[0].refs, ['ical:uid-b#', 'id:cal-a/a']);
+  assert.deepEqual(result.overlaps[0].refs, ['ical:uid-b#', 'id:cal-a/a#']);
   // 同じカレンダーと ID の写しは、iCalUID が無くても同じ予定。
   const dup = ev('a', '2030-10-09T01:00:00Z', '2030-10-09T02:00:00Z', {
     ical_uid: null,
@@ -423,4 +423,25 @@ test('the deadline of an overlap candidate is its start in the zone of the user,
     ordered.groups.map((g) => [g.heading, g.items.map((i) => i.candidate_id)]),
     [['today', ['overlap', 'mail']]],
   );
+});
+
+test('occurrences of a recurring event without an iCalUID are different events', () => {
+  // iCalUID が無くても、繰り返しの回の識別が違えば別の予定。同じ予定の IDで重なる別の回を見落とさない。
+  const first = ev('series', '2030-10-09T01:00:00Z', '2030-10-09T02:00:00Z', {
+    ical_uid: null,
+    recurrence_id: '2030-10-09T01:00:00Z',
+  });
+  const moved = ev('series', '2030-10-09T01:30:00Z', '2030-10-09T02:30:00Z', {
+    ical_uid: null,
+    recurrence_id: '2030-10-10T01:00:00Z',
+  });
+  const result = run([first, moved]);
+  assert.equal(result.overlaps.length, 1);
+  assert.deepEqual(result.overlaps[0].refs, [
+    'id:cal-a/series#2030-10-09T01:00:00Z',
+    'id:cal-a/series#2030-10-10T01:00:00Z',
+  ]);
+  assert.equal(result.overlaps[0].identity, 'unconfirmed');
+  // 同じ回の写し（同じ参照・同じ時間帯）は 1 つに畳まれ、重複にならない。
+  assert.deepEqual(run([first, { ...first }]).overlaps, []);
 });

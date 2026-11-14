@@ -88,11 +88,12 @@ export type ScheduleOverlapResult =
       readonly reason: 'window_invalid' | 'zone_invalid';
     };
 
-// 予定の参照。iCalUID があればカレンダーをまたいで同じ予定（と繰り返しの回）を 1 つに、無ければカレンダーと予定の ID。
+// 予定の参照。iCalUID があればカレンダーをまたいで同じ予定を 1 つに、無ければカレンダーと予定の ID。どちらも繰り返しの回の識別を
+// 含める（同じ予定の別の回を同じ参照にして、重複を見落とさない）。
 export function calendarOccurrenceRef(event: CalendarOccurrence): string {
   return event.ical_uid !== null
     ? `ical:${event.ical_uid}#${event.recurrence_id ?? ''}`
-    : `id:${event.calendar_id}/${event.event_id}`;
+    : `id:${event.calendar_id}/${event.event_id}#${event.recurrence_id ?? ''}`;
 }
 
 interface Resolved {

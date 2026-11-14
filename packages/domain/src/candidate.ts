@@ -19,6 +19,10 @@ export const CANDIDATE_EVENTS = [
   'resolve',
   'snooze_elapsed',
   'deadline_passed',
+  // 根拠が失効した（設計 11 §4 resolved の理由）。元情報が取得範囲から外れた・削除された。
+  'source_out_of_scope',
+  // 予定の重複が解消した（予定の変更・辞退・取り消し）。
+  'overlap_resolved',
 ] as const;
 export type CandidateEvent = (typeof CANDIDATE_EVENTS)[number];
 
@@ -40,6 +44,8 @@ const TRANSITIONS: Readonly<
     snooze: 'snoozed',
     resolve: 'resolved',
     deadline_passed: 'resolved',
+    source_out_of_scope: 'resolved',
+    overlap_resolved: 'resolved',
   },
   seen: {
     act: 'acted',
@@ -47,9 +53,16 @@ const TRANSITIONS: Readonly<
     snooze: 'snoozed',
     resolve: 'resolved',
     deadline_passed: 'resolved',
+    source_out_of_scope: 'resolved',
+    overlap_resolved: 'resolved',
   },
   // acted は期限まで一覧に残す。解決するか期限が過ぎると一覧から外れる。
-  acted: { resolve: 'resolved', deadline_passed: 'resolved' },
+  acted: {
+    resolve: 'resolved',
+    deadline_passed: 'resolved',
+    source_out_of_scope: 'resolved',
+    overlap_resolved: 'resolved',
+  },
   snoozed: {
     open: 'seen',
     act: 'acted',
@@ -57,6 +70,8 @@ const TRANSITIONS: Readonly<
     resolve: 'resolved',
     snooze_elapsed: 'new',
     deadline_passed: 'resolved',
+    source_out_of_scope: 'resolved',
+    overlap_resolved: 'resolved',
   },
   dismissed: {},
   resolved: {},

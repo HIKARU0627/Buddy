@@ -6,7 +6,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { uuid } from './budget-test-support.js';
-import { createApiContract } from './api-contract.js';
+import { createApiContract, loadContractSchema } from './api-contract.js';
+import { createFakeAdapter, syntheticProfile } from '@buddy/ai/testing';
+import { createModelInterpreter } from './model-interpreter.js';
 import { API_ROUTES } from './api-routes.js';
 import type { ApiHandlerRequest } from './api-server.js';
 import { createTurnRoutes } from './api-turns.js';
@@ -178,6 +180,8 @@ async function withConversation(
     readonly provider?: ProviderReader;
     // 委譲の受付の条件の照会（同意など。非同期）を、この Promise が解けるまで止める。
     readonly conditionsGate?: Promise<void>;
+    // 差し替える解釈（実際のモデルを使う解釈の回帰試験用）。省略は台本の解釈。
+    readonly interpreter?: Interpreter;
   } = {},
 ): Promise<void> {
   await withRig(async (rig) => {
@@ -189,7 +193,7 @@ async function withConversation(
         loadDataKey: () =>
           Promise.resolve({ ok: true as const, dataKey: DATA_KEY_MATERIAL }),
       },
-      interpreter: script,
+      interpreter: options.interpreter ?? script,
       provider: options.provider ?? provider,
       candidates: { mailCandidates: () => Promise.resolve([]) },
       policy: options.policy ?? TEST_TURN_POLICY,
@@ -1327,6 +1331,40 @@ test(
               { relation: 'cancel', target_workflow_id: uuid(0x8001) },
             ),
           );
+        },
+      },
+    );
+  },
+);
+
+test(
+  'QA04: a cancel the model could not give an intent to (unclear) still keeps its relation and stops the held change',
+  TIMEOUT,
+  async () => {
+    const first = gate();
+    await withConversation(
+      async (c) => {
+        await firstRequestHeldBySecondUtterance(c, first.release);
+        await secondUtterance(c);
+        await waitUntil(
+          c.rig,
+          'the cancel answer',
+          () => c.sb.commentary.length === 1,
+        );
+        assert.deepEqual(c.sb.commentary, [['実行前の依頼を取り消しました。']]);
+        assert.deepEqual(operations(c.rig), []);
+        assert.deepEqual(workflowStates(c.rig), []);
+        assert.equal(c.conversation.heldCount(c.liveId), 0);
+      },
+      {
+        policy: AUTO_TASK,
+        prepare: (script) => {
+          script.gates.set(TASK_TEXT, first.promise);
+          script.replies.set(EGG_TEXT, {
+            kind: 'unclear',
+            relation: 'cancel',
+            target_workflow_id: uuid(0x8001),
+          });
         },
       },
     );
@@ -2623,5 +2661,102 @@ test(
       assert.deepEqual(turnsOf(c.rig), []);
       assert.equal(c.conversation.pendingCount, 0);
     });
+  },
+);
+
+// 実際のモデルを使う解釈（偽のアダプター）で、保存済みの依頼への訂正が新しい作成にならないこと（レビュー P1）。
+const modelWire = (over: Record<string, unknown>): string =>
+  JSON.stringify({
+    intent: 'create_task',
+    args: { ...EMPTY_ARGS, title: '牛乳を買う' },
+    relation: 'new',
+    target_workflow_id: null,
+    reply_text: null,
+    clarify_question: null,
+    confidence: 0.9,
+    ...over,
+  });
+
+test(
+  'P1: with the real model interpreter, a correction after a saved request is offered that request, and one with no target asks back instead of making a second task',
+  TIMEOUT,
+  async () => {
+    const schema = loadContractSchema() as Record<string, unknown>;
+    const contract = createApiContract();
+    const step = (text: string) => ({
+      kind: 'response' as const,
+      text,
+      usage: {
+        input_tokens: 900,
+        cached_input_tokens: 0,
+        output_tokens: 40,
+        reasoning_tokens: null,
+        usage_complete: true,
+      },
+      provider_request_id: 'req',
+      refused: false,
+      truncated: false,
+    });
+    const adapter = createFakeAdapter([
+      step(modelWire({})),
+      // 保存後の訂正だが、対象の依頼を指さない（対象なし）。
+      step(
+        modelWire({
+          args: { ...EMPTY_ARGS, title: '卵を買う' },
+          relation: 'correction',
+          target_workflow_id: null,
+        }),
+      ),
+    ]);
+    const interpreter = createModelInterpreter({
+      adapter,
+      profile: syntheticProfile({
+        profile_id: 'intent-primary',
+        role: 'intent',
+        provider: 'gemini',
+      }),
+      output_schema: { ...schema, $ref: '#/$defs/WireResponse' },
+      schema: { valid: (value) => contract.valid('WireResponse', value) },
+      guard: {
+        admit: () =>
+          Promise.resolve({
+            ok: true as const,
+            settle: () => Promise.resolve(),
+            release: () => Promise.resolve(),
+          }),
+      },
+    });
+    await withConversation(
+      async (c) => {
+        await speak(c, { text: TASK_TEXT });
+        await delegate(c, 'd1', 800);
+        await c.rig.clock.advance(500);
+        await waitUntil(
+          c.rig,
+          'the result of A',
+          () => c.sb.commentary.length === 1,
+        );
+        const aId = workflowIds(c.rig)[0] as string;
+        const operationsBefore = operations(c.rig).length;
+        await speak(c, { text: EGG_TEXT });
+        await delegate(c, 'd2', c.next.start - 400);
+        await c.rig.clock.advance(500);
+        await waitUntil(
+          c.rig,
+          'the ask back',
+          () => c.sb.commentary.length === 2,
+        );
+        // 2 回目の判定には保存済みの A が候補として渡された。
+        const sent = adapter.commands[1]?.messages[1]?.content ?? '';
+        assert.ok(sent.includes(`workflow_id=${aId}`));
+        // 対象を決めない訂正は新しい作成にならず、聞き返しになる。操作は 1 件も増えない。
+        assert.deepEqual(c.sb.commentary[1], [
+          'どの依頼のことか分かりませんでした。もう一度言ってください。',
+        ]);
+        assert.equal(operations(c.rig).length, operationsBefore);
+        assert.equal(workflowIds(c.rig).length, 1);
+      },
+      { interpreter },
+    );
   },
 );

@@ -14,6 +14,7 @@ import {
   createMockInterpreter,
 } from '../../apps/core/dist/turn-ports.js';
 import { A, SCOPE_A, SESSION } from './b05-world.mjs';
+import { openOperationIntent } from '../../packages/storage/dist/index.js';
 
 export { createApiContract };
 
@@ -78,9 +79,12 @@ export const intentReply = (intent, args = {}, extra = {}) => ({
 class Script {
   calls = [];
   replies = new Map();
+  gates = new Map();
   #fallback = createMockInterpreter();
   async interpret(context) {
     this.calls.push(context.text);
+    const gate = this.gates.get(context.text);
+    if (gate !== undefined) await gate;
     return (
       this.replies.get(context.text) ??
       (await this.#fallback.interpret(context))
@@ -142,6 +146,17 @@ export function attachConversation(world, options = {}) {
     shown,
     dropped,
     next,
+    // 文の解釈を保留する（戻り値の release で通す）。解釈の途中に次の発話が始まる場面を作る。
+    hold(text) {
+      let release = () => undefined;
+      script.gates.set(
+        text,
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+      );
+      return release;
+    },
     // 今のサイドバンド（模擬の provider が最後に接続を許したもの）。
     sb: () => rig.provider.last,
     // 発話の開始 → 断片 → 終了候補。連番と音声内の時刻は持ち回る。時計は 50 ms ずつ進める。
@@ -221,6 +236,49 @@ export function attachConversation(world, options = {}) {
       });
     },
     rows: (sql) => rig.harness.sql((db) => db.prepare(sql).all()),
+    snapshots: () =>
+      conv.rows(
+        'SELECT origin, state, seal_reason, input_evidence, policy_version FROM input_snapshots ORDER BY rowid',
+      ),
+    // 確定した操作の意図を復号して内容（kind・title）を照合できるようにする（X27 の訂正の内容を確かめる）。
+    operationIntents: () => {
+      const rows = rig.harness.sql((db) =>
+        db
+          .prepare(
+            `SELECT o.operation_id AS operation_id, v.content_version AS content_version, v.content_hash AS content_hash,
+                    b.format_version AS format_version, b.key_id AS key_id, b.nonce AS nonce, b.ciphertext AS ciphertext, b.tag AS tag
+             FROM operations o
+             JOIN operation_versions v ON v.operation_id = o.operation_id AND v.content_version = o.current_content_version
+             JOIN sealed_blobs b ON b.blob_id = v.intent_blob_id
+             ORDER BY o.created_at, o.operation_id`,
+          )
+          .all(),
+      );
+      return rows.map((row) => {
+        const opened = openOperationIntent(
+          DATA_KEY_MATERIAL,
+          {
+            operationId: row.operation_id,
+            contentVersion: row.content_version,
+          },
+          {
+            formatVersion: row.format_version,
+            keyId: row.key_id,
+            nonce: row.nonce,
+            ciphertext: row.ciphertext,
+            tag: row.tag,
+          },
+          row.content_hash,
+        );
+        if (!opened.ok) return { ok: false, reason: opened.reason };
+        const intent = JSON.parse(opened.canonical);
+        return {
+          kind: intent.action?.kind ?? null,
+          title: intent.action?.title ?? null,
+        };
+      });
+    },
+    memories: () => conv.rows('SELECT count(*) AS n FROM memories')[0].n,
     operations: () =>
       conv.rows(
         'SELECT kind, effect_route, state FROM operations ORDER BY created_at, operation_id',
@@ -238,3 +296,13 @@ export function attachConversation(world, options = {}) {
   };
   return conv;
 }
+
+// すべての意図で自動実行を許す方針。方式 C の暫定の文字起こしは、それでも承認の対象を作らない（U101）。
+export const ALL_AUTO = {
+  ...TEST_TURN_POLICY,
+  auto_execution: Object.fromEntries(
+    Object.keys(TEST_TURN_POLICY.auto_execution).map((name) => [name, true]),
+  ),
+};
+
+export { uuid };

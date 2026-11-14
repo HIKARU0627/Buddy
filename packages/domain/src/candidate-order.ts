@@ -249,10 +249,23 @@ function classify(
   return { heading: 'later', sortKey };
 }
 
-const receivedMs = (value: string): number => {
-  const parsed = Date.parse(value);
-  return Number.isNaN(parsed) ? Number.NEGATIVE_INFINITY : parsed;
-};
+const UTC_TIME =
+  /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:.[0-9]{1,9})?Z$/u;
+
+// UTC の RFC 3339（末尾 Z）だけを読む。タイムゾーンの無い時刻（端末の時計で読まれてしまう）や、暦にない日時
+// （2 月 30 日を繰り上げてしまう）は null。
+function parseUtc(value: unknown): number | null {
+  if (typeof value !== 'string' || !UTC_TIME.test(value)) return null;
+  const millis = Date.parse(value);
+  if (Number.isNaN(millis)) return null;
+  return new Date(millis).toISOString().slice(0, 19) === value.slice(0, 19)
+    ? millis
+    : null;
+}
+
+// 受信の時刻が読めない候補は、最も古いものとして並べる（隠さない）。
+const receivedMs = (value: string): number =>
+  parseUtc(value) ?? Number.NEGATIVE_INFINITY;
 
 // 今日・明日の予定の重複を最初に出す。
 const priorityOf = (item: CandidateOrderItem, heading: CandidateHeading) =>
@@ -265,8 +278,8 @@ export function orderCandidates<T extends CandidateOrderItem>(
   items: readonly T[],
   context: CandidateOrderContext,
 ): CandidateOrderResult<T> {
-  const now = Date.parse(context.now);
-  if (Number.isNaN(now)) return { ok: false, reason: 'now_invalid' };
+  const now = parseUtc(context.now);
+  if (now === null) return { ok: false, reason: 'now_invalid' };
   if (localClock(now, context.zone) === null)
     return { ok: false, reason: 'zone_invalid' };
 

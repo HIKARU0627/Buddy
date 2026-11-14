@@ -141,9 +141,12 @@ function ipv6Private(host: string): boolean {
 export function privateWebTargetReason(value: string): string | null {
   const match = /^https:\/\/([^/?#]+)/iu.exec(value);
   if (!match) return 'invalid_url';
-  let authority = match[1] ?? '';
-  const at = authority.lastIndexOf('@');
-  if (at >= 0) authority = authority.slice(at + 1);
+  const authority = match[1] ?? '';
+  // バックスラッシュ・認証情報（@）・百分率符号・空白・非 ASCII は、URL の解釈と
+  // 自前の切り出しが食い違うため拒否する（安全側）。全角数字や percent-encoded の
+  // ループバックを公開先と誤認しない。
+  if (/[\\%@\s]/u.test(authority) || !/^[\x21-\x7e]+$/u.test(authority))
+    return 'private_target';
   let host: string;
   if (authority.startsWith('[')) {
     const end = authority.indexOf(']');
@@ -152,13 +155,15 @@ export function privateWebTargetReason(value: string): string | null {
   } else {
     host = (authority.split(':')[0] ?? '').toLowerCase();
   }
+  host = host.replace(/\.$/u, '');
   if (host.length === 0) return 'invalid_url';
+  if (host === 'localhost' || host.endsWith('.localhost'))
+    return 'private_target';
   if (host.startsWith('[') && host.endsWith(']')) {
     const address = host.slice(1, -1);
     if (address.includes(':'))
       return ipv6Private(address) ? 'private_target' : null;
   }
-  if (host === 'localhost') return 'private_target';
   if (host.endsWith('.local') || host.endsWith('.internal'))
     return 'private_target';
   if (host.includes(':')) return ipv6Private(host) ? 'private_target' : null;

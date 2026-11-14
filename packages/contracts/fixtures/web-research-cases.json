@@ -500,6 +500,111 @@
         "content_types": ["text/html"],
         "send_cookies": false
       }
+    },
+    {
+      "id": "fetch-request-percent-encoded-loopback",
+      "schema": "WebFetchRequest",
+      "valid": true,
+      "semantic_errors": ["private_target"],
+      "value": {
+        "schema": "buddy.web-fetch.v1",
+        "url": "https://%31%32%37.0.0.1/synthetic",
+        "max_bytes": 2000000,
+        "timeout_ms": 15000,
+        "max_redirects": 3,
+        "content_types": ["text/html"],
+        "send_cookies": false
+      }
+    },
+    {
+      "id": "fetch-request-userinfo",
+      "schema": "WebFetchRequest",
+      "valid": true,
+      "semantic_errors": ["private_target"],
+      "value": {
+        "schema": "buddy.web-fetch.v1",
+        "url": "https://user@127.0.0.1/synthetic",
+        "max_bytes": 2000000,
+        "timeout_ms": 15000,
+        "max_redirects": 3,
+        "content_types": ["text/html"],
+        "send_cookies": false
+      }
+    },
+    {
+      "id": "fetch-request-trailing-dot-loopback",
+      "schema": "WebFetchRequest",
+      "valid": true,
+      "semantic_errors": ["private_target"],
+      "value": {
+        "schema": "buddy.web-fetch.v1",
+        "url": "https://127.0.0.1./synthetic",
+        "max_bytes": 2000000,
+        "timeout_ms": 15000,
+        "max_redirects": 3,
+        "content_types": ["text/html"],
+        "send_cookies": false
+      }
+    },
+    {
+      "id": "fetch-request-localhost-trailing-dot",
+      "schema": "WebFetchRequest",
+      "valid": true,
+      "semantic_errors": ["private_target"],
+      "value": {
+        "schema": "buddy.web-fetch.v1",
+        "url": "https://localhost./synthetic",
+        "max_bytes": 2000000,
+        "timeout_ms": 15000,
+        "max_redirects": 3,
+        "content_types": ["text/html"],
+        "send_cookies": false
+      }
+    },
+    {
+      "id": "fetch-request-subdomain-localhost",
+      "schema": "WebFetchRequest",
+      "valid": true,
+      "semantic_errors": ["private_target"],
+      "value": {
+        "schema": "buddy.web-fetch.v1",
+        "url": "https://foo.localhost/synthetic",
+        "max_bytes": 2000000,
+        "timeout_ms": 15000,
+        "max_redirects": 3,
+        "content_types": ["text/html"],
+        "send_cookies": false
+      }
+    },
+    {
+      "id": "fetch-request-backslash",
+      "schema": "WebFetchRequest",
+      "valid": true,
+      "semantic_errors": ["private_target"],
+      "value": {
+        "schema": "buddy.web-fetch.v1",
+        "url": "https://example.com\\@127.0.0.1/synthetic",
+        "max_bytes": 2000000,
+        "timeout_ms": 15000,
+        "max_redirects": 3,
+        "content_types": ["text/html"],
+        "send_cookies": false
+      }
+    },
+    {
+      "id": "fetch-request-fullwidth",
+      "schema": "WebFetchRequest",
+      "valid": true,
+      "semantic_errors": ["private_target"],
+      "value": {
+        "schema": "buddy.web-fetch.v1",
+        "url": "https://１２７.０.０.１/synthetic",
+        "max_bytes": 2000000,
+        "timeout_ms": 15000,
+        "max_redirects": 3,
+        "content_types": ["text/html"],
+        "send_cookies": false
+      }
     }
   ],
   "domain_cases": {

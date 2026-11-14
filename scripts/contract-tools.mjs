@@ -456,17 +456,22 @@ function ipv6Private(host) {
 }
 
 function isPrivateWebTarget(value) {
+  // domain の privateWebTargetReason と同じく、曖昧な authority は拒否する。
+  const authority = /^https:\/\/([^/?#]+)/iu.exec(value)?.[1] ?? '';
+  if (/[\\%@\s]/u.test(authority) || !/^[\x21-\x7e]+$/u.test(authority))
+    return true;
   let host;
   try {
     host = new URL(value).hostname.toLowerCase();
   } catch {
     return true;
   }
+  host = host.replace(/\.$/u, '');
+  if (host === 'localhost' || host.endsWith('.localhost')) return true;
   if (host.startsWith('[') && host.endsWith(']')) {
     const address = host.slice(1, -1);
     if (address.includes(':')) return ipv6Private(address);
   }
-  if (host === 'localhost') return true;
   if (host.endsWith('.local') || host.endsWith('.internal')) return true;
   if (host.includes(':')) return ipv6Private(host);
   if (!/^\d{1,3}(?:\.\d{1,3}){3}$/u.test(host)) return false;

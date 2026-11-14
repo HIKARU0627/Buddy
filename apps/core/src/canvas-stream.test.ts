@@ -1851,6 +1851,136 @@ test('UI-05: a boundary that starts while a forget is being saved still starts t
   );
 });
 
+test('UI-05: a storage mode change right after a forget carries no summary', async () => {
+  const canvas = new CanvasHub(contract);
+  let at = Date.parse('2026-10-05T09:00:00+09:00');
+  let sessions = 0;
+  let turns = 0;
+  let mode: StreamStorageMode = 'normal';
+  const id = (n: number) =>
+    `00000000-0000-4000-8000-${n.toString(16).padStart(12, '0')}`;
+  const storage: StreamStorageGate = {
+    get mode() {
+      return mode;
+    },
+    origin: () => ({ segment_generation: '1' }),
+    enterPrivate: () => Promise.resolve({ ok: false, reason: 'closed' }),
+    exitPrivate: () => Promise.resolve({ ok: false, reason: 'closed' }),
+  };
+  const routes = createStreamRoutes({
+    canvas,
+    storage,
+    now: () => at,
+    utcOffset: '+09:00',
+    createSession: () => {
+      sessions += 1;
+      return Promise.resolve({
+        status: 201,
+        body: { session_id: id(sessions) },
+      });
+    },
+    postTurn: (request) => {
+      turns += 1;
+      const turn = turns;
+      const sessionId = request.params['session_id'] as string;
+      const body = request.body as Record<string, string>;
+      const forget = body['text'] === '忘れて';
+      routes.recordTurn({
+        session_id: sessionId,
+        turn_id: id(100 + turn),
+        created_at: '2026-10-05T00:00:00Z',
+        expires_at: '2026-10-12T00:00:00Z',
+      });
+      return Promise.resolve({
+        status: 200,
+        body: {
+          request_id: body['request_id'],
+          session_id: sessionId,
+          turn_id: id(100 + turn),
+          input_id: id(200 + turn),
+          workflow_id: id(500),
+          status: 'answered',
+          result_view: forget
+            ? {
+                workflow_id: id(500),
+                request_revision: '1',
+                intent: 'memory_forget',
+                kind: 'completion_line',
+                status: 'ready',
+                item_refs: [],
+                more_count: 0,
+                template_id: null,
+                template_version: null,
+              }
+            : null,
+          reply_text: null,
+        },
+      });
+    },
+  });
+  const turnHandler = routes.handlers['postStreamTurn'];
+  const modeHandler = routes.handlers['postStreamStorageMode'];
+  assert(turnHandler !== undefined);
+  assert(modeHandler !== undefined);
+  const turnRoute = API_ROUTES.find(
+    (entry) => entry.operationId === 'postStreamTurn',
+  );
+  const modeRoute = API_ROUTES.find(
+    (entry) => entry.operationId === 'postStreamStorageMode',
+  );
+  assert(turnRoute !== undefined);
+  assert(modeRoute !== undefined);
+  const device = { device_id: id(9) } as unknown as DeviceRecord;
+  const request = (text: string): ApiHandlerRequest => ({
+    route: turnRoute,
+    device,
+    body: {
+      request_id: randomUUID(),
+      command_scope_id: id(400),
+      text,
+      input_kind: 'text',
+      expected_canvas_revision: '0',
+    },
+    params: {},
+    remoteAddress: '127.0.0.1',
+    query: {},
+    declaredLockState: null,
+  });
+  const first = await turnHandler(request('こんにちは'));
+  assert.equal(first.status, 200);
+  const a = (first.body as unknown as StreamTurnResponse).segment;
+  const forget = await turnHandler(request('忘れて'));
+  assert.equal(forget.status, 200);
+  // 忘却の直後に normal → extended へ切り替える。要約はつながない。
+  mode = 'extended';
+  const switched = await modeHandler({
+    route: modeRoute,
+    device,
+    body: {
+      request_id: randomUUID(),
+      command_scope_id: id(400),
+      storage_mode: 'extended',
+    },
+    params: {},
+    remoteAddress: '127.0.0.1',
+    query: {},
+    declaredLockState: null,
+  });
+  assert.equal(switched.status, 200);
+  const switchedSegment = (
+    switched.body as { segment: StreamTurnResponse['segment'] }
+  ).segment;
+  assert.equal(switchedSegment.open_reason, 'storage_mode_changed');
+  assert.equal(switchedSegment.carried_summary, null);
+  // 印は消えている（次の発言で区切りを二度作らない）。
+  const next = await turnHandler(request('こんにちは'));
+  assert.equal(
+    (next.body as unknown as StreamTurnResponse).segment.segment_id,
+    switchedSegment.segment_id,
+  );
+  assert.notEqual(switchedSegment.segment_id, a.segment_id);
+});
+
 test('UI-05: a save that finishes out of order does not move the segment start backwards', async () => {
   const canvas = new CanvasHub(contract);
   let at = Date.parse('2026-10-05T23:59:59+09:00');

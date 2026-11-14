@@ -1159,6 +1159,8 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
         turnExpiresAt: [],
       };
       reopenPending = false;
+      // 区切りが変わったので、忘却の印は残さない（古い区切りを指したままにしない）。
+      afterForget = null;
       return { status: 200, body: { request_id: requestId, segment } };
     }
     // 記録しない区切りから出るときは、会話を作る前にゲートを出る（記録しない区切りの間は会話の作成が拒否される）。
@@ -1173,6 +1175,11 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
     const before = current;
     if (before !== null) await settledOld(before.sessionId);
     const carriedFrom = current;
+    // 忘却の指示を受けた区切りからの切り替えでは、要約をつながない（忘却した内容を持ち込まない。ADR 0032・0068）。
+    const forgetDue =
+      afterForget !== null &&
+      carriedFrom !== null &&
+      afterForget.from === carriedFrom.sessionId;
     const created = await createSessionWithMode(target, request);
     if (!created.ok) {
       // 記録しない区切りはもう閉じている（exitPrivate は確定済みで戻せない）。使えない区切りを残すと、private の
@@ -1194,27 +1201,29 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
     } else {
       // normal ⇔ extended。要約は、期限内の由来の範囲でだけつなぐ（ADR 0032 の nextCarriedSummary）。
       openReason = 'storage_mode_changed';
-      const carried = nextCarriedSummary({
-        previous: carriedFrom.segment.carried_summary,
-        closing: {
-          segment_id: carriedFrom.segment.segment_id,
-          storage_mode: carriedFrom.segment.storage_mode,
-          turn_expires_at: carriedFrom.turnExpiresAt,
-        },
-        open_reason: openReason,
-        now: new Date(now()).toISOString(),
-      });
-      // 契約の CarriedSummary の由来は 1 件以上（空なら nextCarriedSummary は null を返す）。
-      carriedSummary =
-        carried === null
-          ? null
-          : {
-              source_segment_ids: [...carried.source_segment_ids] as [
-                string,
-                ...string[],
-              ],
-              expires_at: carried.expires_at,
-            };
+      if (!forgetDue) {
+        const carried = nextCarriedSummary({
+          previous: carriedFrom.segment.carried_summary,
+          closing: {
+            segment_id: carriedFrom.segment.segment_id,
+            storage_mode: carriedFrom.segment.storage_mode,
+            turn_expires_at: carriedFrom.turnExpiresAt,
+          },
+          open_reason: openReason,
+          now: new Date(now()).toISOString(),
+        });
+        // 契約の CarriedSummary の由来は 1 件以上（空なら nextCarriedSummary は null を返す）。
+        carriedSummary =
+          carried === null
+            ? null
+            : {
+                source_segment_ids: [...carried.source_segment_ids] as [
+                  string,
+                  ...string[],
+                ],
+                expires_at: carried.expires_at,
+              };
+      }
     }
     const segment = openedSegment(
       { segment_id: created.sessionId, storage_mode: target },
@@ -1230,6 +1239,8 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
       turnExpiresAt: [],
     };
     reopenPending = false;
+    // 区切りが変わったので、忘却の印は残さない（古い区切りを指したままにしない）。
+    afterForget = null;
     return { status: 200, body: { request_id: requestId, segment } };
   };
 

@@ -2805,3 +2805,38 @@ test(
     });
   },
 );
+
+// ---- B10-04 P2a: 声（①）の入力には、モデルの返答文を使わない（U217。ADR 0106） --------------------------------------------
+
+test(
+  'U217: a smalltalk delegated from the live voice never speaks or shows the model reply text; the fixed sentence is used',
+  TIMEOUT,
+  async () => {
+    await withConversation(
+      async (c) => {
+        await speak(c, { text: 'こんにちは' });
+        await delegate(c, 'd1', 800);
+        await c.rig.clock.advance(500);
+        await waitUntil(
+          c.rig,
+          'the answer',
+          () => c.sb.commentary.length === 1,
+        );
+        assert.deepEqual(c.sb.commentary, [
+          ['その依頼にはまだ対応していません。'],
+        ]);
+        assert.deepEqual(c.shown, []);
+        assert.deepEqual(operations(c.rig), []);
+      },
+      {
+        prepare: (script) =>
+          script.replies.set('こんにちは', {
+            kind: 'intent',
+            intent: 'smalltalk',
+            args: { ...EMPTY_ARGS },
+            reply_text: 'こんにちは。声には出さない文です。',
+          }),
+      },
+    );
+  },
+);

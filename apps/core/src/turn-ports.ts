@@ -45,6 +45,9 @@ export type InterpreterReply =
       // 省略・知らない値は「分からない」として扱い、保留中の変更を勝手に再開しない。コードが対象の存在・一意性を検証する。
       readonly relation?: string;
       readonly target_workflow_id?: string;
+      // モデルの返答文（smalltalk・general_question のときだけ意味を持つ平文。信用しない。表示してよいかは Core が
+      // admitReplyText で毎回決める。U217、ADR 0105）。
+      readonly reply_text?: string | null;
       // 判定にかかった時間（診断と影モードの比較用。実行の判断には使わない）。
       readonly elapsed_ms?: number;
     }

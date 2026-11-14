@@ -180,6 +180,8 @@ async function withConversation(
     readonly conditionsGate?: Promise<void>;
     // 差し替える解釈（実際のモデルを使う解釈の回帰試験用）。省略は台本の解釈。
     readonly interpreter?: Interpreter;
+    // 画面へ置けないことにする（置けたかを返す口の試験用）。省略は置ける。
+    readonly screenPlaces?: boolean;
   } = {},
 ): Promise<void> {
   await withRig(async (rig) => {
@@ -258,7 +260,10 @@ async function withConversation(
         },
       },
       screen: {
-        show: (result) => shown.push(result),
+        show: (result) => {
+          shown.push(result);
+          return options.screenPlaces !== false;
+        },
         heldDropped: (info) => dropped.push({ ...info }),
       },
       monoNow: rig.clock.mono,
@@ -2527,7 +2532,7 @@ const manyEventsProvider: ProviderReader = {
 };
 
 test(
-  'P2: a voiced schedule answer with more events than fit never says they were put on the screen, because nothing was placed there',
+  'B10-04 P2b: a voiced schedule answer with more events than fit is also placed on the screen, and says so only because it was placed',
   TIMEOUT,
   async () => {
     await withConversation(
@@ -2540,13 +2545,38 @@ test(
           'the commentary',
           () => c.sb.commentary.length === 1,
         );
-        // 声だけで返した（画面へは何も置いていない）ので、画面に出したとは言わず、件数だけ伝える。
-        assert.deepEqual(c.shown, []);
+        // 残りの件数は画面にも置いた（置いた発言は 1 回だけ）。置けたので「画面に出しました」と言う。
+        assert.equal(c.shown.length, 1);
+        assert.equal(c.shown[0]?.reason, 'more_items');
+        assert.deepEqual(c.sb.commentary, [
+          ['予定は50件です。', 'ほかに3件。画面に出しました。'],
+        ]);
+      },
+      { provider: manyEventsProvider },
+    );
+  },
+);
+
+test(
+  'B10-04 P2b: when the screen cannot take the rest of the list, the voice says only the count and never that it was put on the screen',
+  TIMEOUT,
+  async () => {
+    await withConversation(
+      async (c) => {
+        await speak(c, { text: '今日の予定を見せて' });
+        await delegate(c, 'd1', 800);
+        await c.rig.clock.advance(500);
+        await waitUntil(
+          c.rig,
+          'the commentary',
+          () => c.sb.commentary.length === 1,
+        );
+        assert.equal(c.shown.length, 1);
         assert.deepEqual(c.sb.commentary, [
           ['予定は50件です。', 'ほかに3件あります。'],
         ]);
       },
-      { provider: manyEventsProvider },
+      { provider: manyEventsProvider, screenPlaces: false },
     );
   },
 );
@@ -2840,3 +2870,21 @@ test(
     );
   },
 );
+
+test('B10-04 P2b: the product screen sink says whether the result was placed, so the voice never claims a screen that did not take it', () => {
+  const sink = (placed: unknown) =>
+    createLiveScreenSink({
+      placeLate: () => placed,
+      placeNotice: () => placed,
+      log: () => undefined,
+    });
+  const result = {
+    reason: 'more_items',
+    session_id: uuid(1),
+    turn: { turn_id: uuid(2) } as unknown as ScreenResult['turn'],
+    text: '合成の文',
+  };
+  assert.equal(sink({ batch: 1 }).show(result), true);
+  assert.equal(sink(null).show(result), false);
+  assert.equal(sink(false).show(result), false);
+});

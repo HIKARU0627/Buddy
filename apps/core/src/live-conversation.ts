@@ -24,6 +24,7 @@ import {
   SESSION_CONTROL_TABLE,
   admitLiveInput,
   fixOutputTarget,
+  fitCommentary,
   inputCommentary,
   isHeld,
   liveTranscriptFacts,
@@ -38,6 +39,7 @@ import {
   routeResultDelivery,
   startUtteranceHold,
   turnText,
+  withOverflowNotice,
   METHOD_C_STABLE_MS,
   INTENT_POLICIES,
 } from '@buddy/domain';
@@ -115,7 +117,9 @@ export interface ScreenResult {
 }
 
 export interface ScreenResultSink {
-  show(result: ScreenResult): void;
+  // 画面へ置く。置けたら true（置けなかった・置かなかったら false）。声で返す結果の残りや超えた分を画面へ置くとき、
+  // 置けたときだけ「画面に出しました」と言うために、結果を返す。
+  show(result: ScreenResult): boolean;
   // 保留していた変更を実行せずに捨てた（上限・Live の終了・時計の異常。勝手に再開しない）。
   heldDropped(info: {
     readonly session_id: string;
@@ -142,8 +146,11 @@ export function createLiveScreenSink(options: {
     show: (result) => {
       const placed = options.placeLate(result.turn, result.text);
       // 置けなかったことは理由だけを残す（結果の中身は残さない）。
-      if (placed === null || placed === false)
+      if (placed === null || placed === false) {
         options.log(`live_screen_text_not_shown:${result.reason}`);
+        return false;
+      }
+      return true;
     },
     heldDropped: (info) => {
       const text = inputCommentary('hold_dropped').commentary_parts[0] ?? '';
@@ -1031,7 +1038,10 @@ export class LiveConversation implements LiveConversationPort {
       pending,
       sessionId,
       result.turn,
-      override ?? this.#commentaryOf(result.turn, result.full_text),
+      override === null
+        ? (moreOnScreen) =>
+            this.#commentaryOf(result.turn, result.full_text, moreOnScreen)
+        : () => override,
     );
   }
 
@@ -1046,7 +1056,11 @@ export class LiveConversation implements LiveConversationPort {
     await this.#commit(context, pending, sessionId, outcome, commentary);
   }
 
-  #commentaryOf(turn: TurnResponse, fullText: boolean): Commentary {
+  #commentaryOf(
+    turn: TurnResponse,
+    fullText: boolean,
+    moreOnScreen: boolean,
+  ): Commentary {
     if (fullText) return inputCommentary('full_text');
     const view = turn.result_view;
     if (turn.status === 'clarification' || view === null)
@@ -1065,6 +1079,7 @@ export class LiveConversation implements LiveConversationPort {
       overlap: view.status === 'needs_review' && view.kind === 'schedule_cards',
       more_count: view.more_count,
       clarification_text: null,
+      more_on_screen: moreOnScreen,
     });
   }
 
@@ -1091,57 +1106,73 @@ export class LiveConversation implements LiveConversationPort {
     );
   }
 
-  // 結果の届け先を決めて届ける。
+  // 結果の届け先を決めて届ける。render は、残りの件数を画面にも置けたか（置けたときだけ「画面に出しました」と言う）から、
+  // 声で返す定型文を作る。
   async #deliver(
     context: Context,
     pending: Pending,
     sessionId: string,
     turn: TurnResponse,
-    commentary: Commentary,
+    render: (moreOnScreen: boolean) => Commentary,
   ): Promise<void> {
     const handle = context.handle;
-    // 声で返すはずだった案内を、画面の text の本文にも使う（turn.reply_text の汎用の文に置き換えない）。
-    const text = commentary.commentary_parts.join('\n');
     const route = this.#route(context, pending);
     this.#finish(context, pending);
     if (route.channel === 'discard') return;
-    if (route.channel === 'voice') {
-      const result: DelegationResult = {
-        delegation_id: pending.delegation_id,
-        workflow_id: pending.workflow_id,
-        request_revision: '1',
-        live_session_id: handle.live_session_id,
-        audio_epoch: pending.audio_epoch,
-        output: pending.output as DelegationResult['output'],
-        facts: commentary.facts as DelegationResult['facts'],
-        more_count: turn.result_view?.more_count ?? 0,
-        template_id: commentary.template_id,
-        template_version: commentary.template_version,
-        commentary_parts:
-          commentary.commentary_parts as DelegationResult['commentary_parts'],
-      };
-      if (
-        this.#contract.valid('DelegationResult', result) &&
-        this.#options.host.appendCommentary(
-          handle.live_session_id,
-          result.commentary_parts,
-        )
-      )
-        return;
+    const screen = (reason: string, text: string): boolean =>
       this.#options.screen.show({
-        reason: 'sideband_unavailable',
+        reason,
         session_id: sessionId,
         turn,
         text,
       });
+    if (route.channel === 'voice') {
+      // 一覧の残りがあるときは、画面にも置いて、置けたときだけ「画面に出しました」と言う（設計 10 §5「事実文と定型文」）。
+      const more =
+        turn.result_view?.kind === 'schedule_cards' &&
+        turn.result_view.more_count > 0;
+      const moreOnScreen = more
+        ? screen('more_items', render(false).commentary_parts.join('\n'))
+        : false;
+      const commentary = render(moreOnScreen);
+      // 追記の上限（1 回 400 トークン以内・最大 3 部）。超えた分は画面へ出し、出せたときだけ案内の文を足す。
+      const fitted = fitCommentary(commentary);
+      let parts: readonly string[] = fitted.parts;
+      if (fitted.overflow) {
+        const placed =
+          moreOnScreen ||
+          screen('commentary_overflow', commentary.commentary_parts.join('\n'));
+        if (placed) parts = withOverflowNotice(parts);
+      }
+      if (parts.length > 0) {
+        const result: DelegationResult = {
+          delegation_id: pending.delegation_id,
+          workflow_id: pending.workflow_id,
+          request_revision: '1',
+          live_session_id: handle.live_session_id,
+          audio_epoch: pending.audio_epoch,
+          output: pending.output as DelegationResult['output'],
+          facts: commentary.facts as DelegationResult['facts'],
+          more_count: turn.result_view?.more_count ?? 0,
+          template_id: commentary.template_id,
+          template_version: commentary.template_version,
+          commentary_parts: parts as DelegationResult['commentary_parts'],
+        };
+        if (
+          this.#contract.valid('DelegationResult', result) &&
+          this.#options.host.appendCommentary(
+            handle.live_session_id,
+            result.commentary_parts,
+          )
+        )
+          return;
+      }
+      // 声で届けられない（サイドバンドが使えない・追記できる部分がない）。結果を失わず画面へ回す（置いた発言は重ねない）。
+      screen('sideband_unavailable', commentary.commentary_parts.join('\n'));
       return;
     }
-    this.#options.screen.show({
-      reason: route.reason ?? 'screen',
-      session_id: sessionId,
-      turn,
-      text,
-    });
+    // 声で返せない結果（接続が閉じた・文字へ切り替えた・世代が違う）は、声で返すはずだった案内を画面の本文にする。
+    screen(route.reason ?? 'screen', render(false).commentary_parts.join('\n'));
   }
 
   // 発言として残せないとき（文字がない）の声だけの返事。声で返せなければ何も出さない（見せる結果がない）。

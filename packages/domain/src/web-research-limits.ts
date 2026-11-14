@@ -294,7 +294,8 @@ export function webResearchFinalState(
   if (attempts.pages.length === 0) return null;
   const reads = attempts.pages.filter((page) => page.outcome === 'read').length;
   if (reads === 0)
-    return budgetDenied
+    // 5 ページの枠を使い切っていれば、検索を足しても本文は取れない。保留にせず、読めなかった結果で終える。
+    return budgetDenied && attempts.pages.length < WEB_RESEARCH_MAX_PAGES
       ? stopped('held', 'budget_held')
       : stopped('failed', 'no_readable_page');
   switch (attempts.summary) {

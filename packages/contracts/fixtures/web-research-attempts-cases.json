@@ -1710,6 +1710,84 @@
           "unread_count": 0,
           "scope_reduced": false
         }
+      },
+      {
+        "id": "no-readable-page-after-all-five-pages-with-old-budget-denial",
+        "attempts": {
+          "schema": "buddy.web-research-attempts.v1",
+          "workflow_id": "00000000-0000-4000-8000-000000000b01",
+          "request_revision": "1",
+          "searches": [
+            {
+              "search_index": 1,
+              "query_id": "00000000-0000-4000-8000-000000000b11",
+              "outcome": "hits",
+              "hit_count": 5,
+              "failure_cause": null
+            }
+          ],
+          "search_denials": ["budget_denied"],
+          "pages": [
+            {
+              "page_index": 1,
+              "query_id": "00000000-0000-4000-8000-000000000b11",
+              "outcome": "empty_text",
+              "source_id": null,
+              "http_status": 200,
+              "redirects": 0,
+              "bytes": 0,
+              "elapsed_ms": 400
+            },
+            {
+              "page_index": 2,
+              "query_id": "00000000-0000-4000-8000-000000000b11",
+              "outcome": "empty_text",
+              "source_id": null,
+              "http_status": 200,
+              "redirects": 0,
+              "bytes": 0,
+              "elapsed_ms": 400
+            },
+            {
+              "page_index": 3,
+              "query_id": "00000000-0000-4000-8000-000000000b11",
+              "outcome": "empty_text",
+              "source_id": null,
+              "http_status": 200,
+              "redirects": 0,
+              "bytes": 0,
+              "elapsed_ms": 400
+            },
+            {
+              "page_index": 4,
+              "query_id": "00000000-0000-4000-8000-000000000b11",
+              "outcome": "empty_text",
+              "source_id": null,
+              "http_status": 200,
+              "redirects": 0,
+              "bytes": 0,
+              "elapsed_ms": 400
+            },
+            {
+              "page_index": 5,
+              "query_id": "00000000-0000-4000-8000-000000000b11",
+              "outcome": "empty_text",
+              "source_id": null,
+              "http_status": 200,
+              "redirects": 0,
+              "bytes": 0,
+              "elapsed_ms": 400
+            }
+          ],
+          "page_limit_denials": 0,
+          "summary": "not_attempted"
+        },
+        "expected": {
+          "state": "failed",
+          "reason": "no_readable_page",
+          "unread_count": 0,
+          "scope_reduced": false
+        }
       }
     ],
     "attempts_errors": [
@@ -3783,6 +3861,192 @@
           "summary": "not_attempted"
         },
         "expected": ["workflow_id_mismatch"],
+        "label": "unconfirmed",
+        "policy": {
+          "url_storage": "undecided"
+        }
+      },
+      {
+        "id": "failed-no-readable-page-after-all-pages-with-old-budget-denial",
+        "status": {
+          "schema": "buddy.web-research-status.v1",
+          "workflow_id": "00000000-0000-4000-8000-000000000b01",
+          "request_revision": "1",
+          "state_revision": "5",
+          "state": "failed",
+          "accepted_at": "2030-01-01T00:00:00Z",
+          "updated_at": "2030-01-01T00:01:30Z",
+          "finished_at": "2030-01-01T00:01:30Z",
+          "result": null,
+          "stop": {
+            "kind": "failed",
+            "reason": "no_readable_page"
+          },
+          "transient_links": null
+        },
+        "attempts": {
+          "schema": "buddy.web-research-attempts.v1",
+          "workflow_id": "00000000-0000-4000-8000-000000000b01",
+          "request_revision": "1",
+          "searches": [
+            {
+              "search_index": 1,
+              "query_id": "00000000-0000-4000-8000-000000000b11",
+              "outcome": "hits",
+              "hit_count": 5,
+              "failure_cause": null
+            }
+          ],
+          "search_denials": ["budget_denied"],
+          "pages": [
+            {
+              "page_index": 1,
+              "query_id": "00000000-0000-4000-8000-000000000b11",
+              "outcome": "empty_text",
+              "source_id": null,
+              "http_status": 200,
+              "redirects": 0,
+              "bytes": 0,
+              "elapsed_ms": 400
+            },
+            {
+              "page_index": 2,
+              "query_id": "00000000-0000-4000-8000-000000000b11",
+              "outcome": "empty_text",
+              "source_id": null,
+              "http_status": 200,
+              "redirects": 0,
+              "bytes": 0,
+              "elapsed_ms": 400
+            },
+            {
+              "page_index": 3,
+              "query_id": "00000000-0000-4000-8000-000000000b11",
+              "outcome": "empty_text",
+              "source_id": null,
+              "http_status": 200,
+              "redirects": 0,
+              "bytes": 0,
+              "elapsed_ms": 400
+            },
+            {
+              "page_index": 4,
+              "query_id": "00000000-0000-4000-8000-000000000b11",
+              "outcome": "empty_text",
+              "source_id": null,
+              "http_status": 200,
+              "redirects": 0,
+              "bytes": 0,
+              "elapsed_ms": 400
+            },
+            {
+              "page_index": 5,
+              "query_id": "00000000-0000-4000-8000-000000000b11",
+              "outcome": "empty_text",
+              "source_id": null,
+              "http_status": 200,
+              "redirects": 0,
+              "bytes": 0,
+              "elapsed_ms": 400
+            }
+          ],
+          "page_limit_denials": 0,
+          "summary": "not_attempted"
+        },
+        "expected": [],
+        "label": "failed",
+        "policy": {
+          "url_storage": "undecided"
+        }
+      },
+      {
+        "id": "held-claimed-after-all-pages-with-old-budget-denial",
+        "status": {
+          "schema": "buddy.web-research-status.v1",
+          "workflow_id": "00000000-0000-4000-8000-000000000b01",
+          "request_revision": "1",
+          "state_revision": "5",
+          "state": "held",
+          "accepted_at": "2030-01-01T00:00:00Z",
+          "updated_at": "2030-01-01T00:01:30Z",
+          "finished_at": null,
+          "result": null,
+          "stop": {
+            "kind": "held",
+            "reason": "budget_held"
+          },
+          "transient_links": null
+        },
+        "attempts": {
+          "schema": "buddy.web-research-attempts.v1",
+          "workflow_id": "00000000-0000-4000-8000-000000000b01",
+          "request_revision": "1",
+          "searches": [
+            {
+              "search_index": 1,
+              "query_id": "00000000-0000-4000-8000-000000000b11",
+              "outcome": "hits",
+              "hit_count": 5,
+              "failure_cause": null
+            }
+          ],
+          "search_denials": ["budget_denied"],
+          "pages": [
+            {
+              "page_index": 1,
+              "query_id": "00000000-0000-4000-8000-000000000b11",
+              "outcome": "empty_text",
+              "source_id": null,
+              "http_status": 200,
+              "redirects": 0,
+              "bytes": 0,
+              "elapsed_ms": 400
+            },
+            {
+              "page_index": 2,
+              "query_id": "00000000-0000-4000-8000-000000000b11",
+              "outcome": "empty_text",
+              "source_id": null,
+              "http_status": 200,
+              "redirects": 0,
+              "bytes": 0,
+              "elapsed_ms": 400
+            },
+            {
+              "page_index": 3,
+              "query_id": "00000000-0000-4000-8000-000000000b11",
+              "outcome": "empty_text",
+              "source_id": null,
+              "http_status": 200,
+              "redirects": 0,
+              "bytes": 0,
+              "elapsed_ms": 400
+            },
+            {
+              "page_index": 4,
+              "query_id": "00000000-0000-4000-8000-000000000b11",
+              "outcome": "empty_text",
+              "source_id": null,
+              "http_status": 200,
+              "redirects": 0,
+              "bytes": 0,
+              "elapsed_ms": 400
+            },
+            {
+              "page_index": 5,
+              "query_id": "00000000-0000-4000-8000-000000000b11",
+              "outcome": "empty_text",
+              "source_id": null,
+              "http_status": 200,
+              "redirects": 0,
+              "bytes": 0,
+              "elapsed_ms": 400
+            }
+          ],
+          "page_limit_denials": 0,
+          "summary": "not_attempted"
+        },
+        "expected": ["state_mismatch"],
         "label": "unconfirmed",
         "policy": {
           "url_storage": "undecided"

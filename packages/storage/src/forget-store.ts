@@ -1339,35 +1339,9 @@ export function applyRestoreLedger(
           operation.state,
         ]),
       );
-      // 台帳に残る対象が既に消えていても、系譜の辺から閉包を作れる（memory の存在確認に依存しない）。
-      const addClosure = (
-        value: ForgetClosure,
-        exclude: string | null,
-      ): void => {
-        for (const node of value.doomed.values()) {
-          if (exclude !== null && nodeKey(node) === exclude) continue;
-          if (node.kind !== 'operation_content') {
-            nodes.set(nodeKey(node), node);
-            continue;
-          }
-          const state = states.get(node.id);
-          if (state !== undefined && operationContentPurgeable(state))
-            purge.add(node.id);
-          else retained.add(node.id);
-        }
-      };
-      addClosure(
-        computeForgetClosure(
-          graph,
-          targets.map((target) => ({
-            kind: target.source_kind,
-            id: target.source_id,
-          })),
-        ),
-        null,
-      );
-      // 台帳の「除外する由来」の HMAC から、今の DB でその由来を持つ派生物も消す（由来そのものは残す）。
-      // バックアップの後に作られた記憶を忘れた場合、記憶から由来へ遡れないので、この経路が要る。
+      // 台帳は「元の対象」と「そこから広がって消えたもの」を区別せず forgotten に持つ。全件を core にすると
+      // 通常の忘却が広げなかった由来まで規則 B が辿るため、forgotten を削除済み（非 core）、blocked_source_hmacs を
+      // 除外する由来として、規則 A・C・D をそのまま再適用する。
       const blockedOrigins = restoreBlockedOrigins(
         db,
         graph,
@@ -1375,9 +1349,26 @@ export function applyRestoreLedger(
         sourceHmac,
         sourceIds,
       );
-      for (const origin of blockedOrigins) {
-        const root = { kind: origin.source_kind, id: origin.source_id };
-        addClosure(computeForgetClosure(graph, [root]), nodeKey(root));
+      const closure = restoreClosure(
+        graph,
+        targets.map((target) => ({
+          kind: target.source_kind,
+          id: target.source_id,
+        })),
+        blockedOrigins.map((origin) => ({
+          kind: origin.source_kind,
+          id: origin.source_id,
+        })),
+      );
+      for (const node of closure.doomed.values()) {
+        if (node.kind !== 'operation_content') {
+          nodes.set(nodeKey(node), node);
+          continue;
+        }
+        const state = states.get(node.id);
+        if (state !== undefined && operationContentPurgeable(state))
+          purge.add(node.id);
+        else retained.add(node.id);
       }
       const ordered = [...nodes.values()].sort(
         (a, b) =>
@@ -1451,6 +1442,74 @@ export function restoreSourceHmac(
       .update(Buffer.from([0]))
       .update(Buffer.from(source.source_id, 'utf8'))
       .digest('hex');
+}
+
+// 台帳の forgotten（削除済み）と blocked_source_hmacs（除外する由来）から、規則 A・C・D を再適用する。
+// 台帳の forgotten を core にしない（通常の忘却が広げなかった由来まで規則 B で辿らない）。
+function restoreClosure(
+  graph: ForgetGraph,
+  forgotten: readonly ForgetNode[],
+  origins: readonly ForgetNode[],
+): ForgetClosure {
+  const doomed = new Map<string, ForgetNode>();
+  for (const node of forgotten) doomed.set(nodeKey(node), node);
+  const originMap = new Map<string, ForgetNode>();
+  for (const node of origins) originMap.set(nodeKey(node), node);
+  const members = (scope: ForgetNode): ForgetNode[] =>
+    scope.kind === 'session'
+      ? graph.turn_sessions
+          .filter((row) => row.session_id === scope.id)
+          .map((row) => ({ kind: 'turn', id: row.turn_id }))
+      : [scope];
+  let changed = true;
+  while (changed) {
+    changed = false;
+    // A. 削除する物から作られた派生物は削除する。
+    for (const edge of graph.edges)
+      if (
+        doomed.has(nodeKey(edge.source)) &&
+        !doomed.has(nodeKey(edge.artifact))
+      ) {
+        doomed.set(nodeKey(edge.artifact), edge.artifact);
+        changed = true;
+      }
+    // C. 除外する由来から作られた派生物は削除する。
+    for (const edge of graph.edges)
+      if (
+        originMap.has(nodeKey(edge.source)) &&
+        !doomed.has(nodeKey(edge.artifact))
+      ) {
+        doomed.set(nodeKey(edge.artifact), edge.artifact);
+        changed = true;
+      }
+    // D. 由来を引けない派生物の範囲の展開（範囲に除外する由来があれば範囲全体を除外する）。
+    for (const item of graph.unattributed) {
+      const list = members(item.scope);
+      if (list.some((member) => originMap.has(nodeKey(member)))) {
+        if (!doomed.has(nodeKey(item.artifact))) {
+          doomed.set(nodeKey(item.artifact), item.artifact);
+          changed = true;
+        }
+        for (const member of list)
+          if (!doomed.has(nodeKey(member)) && !originMap.has(nodeKey(member))) {
+            originMap.set(nodeKey(member), member);
+            changed = true;
+          }
+      } else if (
+        !doomed.has(nodeKey(item.artifact)) &&
+        list.some(
+          (member) =>
+            doomed.has(nodeKey(member)) || originMap.has(nodeKey(member)),
+        )
+      ) {
+        doomed.set(nodeKey(item.artifact), item.artifact);
+        changed = true;
+      }
+    }
+  }
+  for (const key of originMap.keys())
+    if (doomed.has(key)) originMap.delete(key);
+  return { doomed, core: new Set(), origins: originMap };
 }
 
 // 台帳の「除外する由来」の HMAC を、今の DB の発言・記憶・元情報の ID に戻す。由来そのものは消さない

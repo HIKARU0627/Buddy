@@ -53,6 +53,7 @@ import {
   edge,
   forgetM,
   forgetOther,
+  insertMemory,
   memoryOp,
   ok,
   planFor,
@@ -816,6 +817,75 @@ test('restore ledger: a newer ledger entry applied to an older DB deletes the cl
         const after = exportForgetLedger(copy);
         assert.equal(after.head.forgetting_generation, '1');
         assert.equal(after.head.entry_hash, custom.entry_hash);
+      } finally {
+        copy.close();
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+test('restore ledger: does not promote derived forgotten memories to new origins', async () => {
+  await withWorld((db) => {
+    const M4 = '14141414-1414-4141-8141-141414141414';
+    const M5 = '15151515-1515-4151-8151-151515151515';
+    // T_SRC/T_OTHER -> M4、T_OTHER -> M5。M1（M）を忘れると、M4 は T_SRC の除外由来で消えるが M5 は残る。
+    insertMemory(db, M4, 'd4'.repeat(32), [
+      { source_kind: 'turn', source_id: T_SRC },
+      { source_kind: 'turn', source_id: T_OTHER },
+    ]);
+    insertMemory(db, M5, 'd5'.repeat(32), [
+      { source_kind: 'turn', source_id: T_OTHER },
+    ]);
+    const dir = mkdtempSync(join(tmpdir(), 'buddy-restore-ledger-'));
+    const copyPath = join(dir, 'copy.sqlite');
+    db.exec(`VACUUM INTO '${copyPath.replace(/'/gu, "''")}'`);
+    try {
+      value<ForgetApplyValue>(forgetM(db));
+      const exported = exportForgetLedger(db);
+      const ledgerKey = Buffer.alloc(32, 0x42);
+      const base = exported.entries[0]?.entry;
+      assert.ok(base !== undefined);
+      const entry = {
+        ...base,
+        blocked_source_hmacs: [
+          restoreSourceHmac(ledgerKey)({
+            source_kind: 'turn',
+            source_id: T_SRC,
+          }),
+        ],
+        blocked_content_keys: [],
+      };
+      const custom: LedgerChainEntry = {
+        entry,
+        previous_hash: LEDGER_ZERO_HASH,
+        entry_hash: ledgerEntryHash(entry, LEDGER_ZERO_HASH),
+      };
+      const copy = openWriteConnection(copyPath, { platform: 'macos' });
+      try {
+        // 元の対象 M は既に消えている（期限削除など）。台帳の forgotten の全件を新しい起点にしない。
+        copy.prepare('DELETE FROM memory_sources WHERE memory_id = ?').run(M);
+        copy.prepare('DELETE FROM memories WHERE memory_id = ?').run(M);
+        applyRestoreLedger(copy, {
+          entries: [custom],
+          ledger_hmac_key: ledgerKey,
+          ledger_id: LEDGER_ID,
+          now: NOW_1 + 1000,
+        });
+        assert.equal(
+          count(copy, 'SELECT count(*) FROM memories WHERE memory_id = ?', M4),
+          0,
+        );
+        // T_OTHER は M4 の由来だが、M4 を新しい起点にしないので、T_OTHER から作った M5 は残る。
+        assert.equal(
+          count(copy, 'SELECT count(*) FROM memories WHERE memory_id = ?', M5),
+          1,
+        );
+        assert.equal(
+          count(copy, 'SELECT count(*) FROM turns WHERE turn_id = ?', T_OTHER),
+          1,
+        );
       } finally {
         copy.close();
       }

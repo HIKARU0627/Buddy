@@ -3550,17 +3550,20 @@ test(
         // 受付から 4.9 秒まで待つ（入力の確定待ちの上限 5 秒の手前）。
         await beat(c, 4900);
         assert.deepEqual(c.sb.commentary, []);
-        // 上限（5 秒）で、終了候補がないまま解釈に進む。結果を保留したまま 8 秒を過ぎる。
+        // 上限（5 秒）で、終了候補がないまま解釈に進む。結果を保留したまま 8 秒を過ぎても、本人がまだ話している（終了候補が
+        // 見えない）間は、処理の段階が解釈に進んでいても、何も言わない（発話にかぶせない）。
         await beat(c, 3300);
+        await c.rig.wait();
+        assert.deepEqual(c.sb.commentary, []);
+        assert.equal(c.script.calls.length, 1);
+        // 終了候補が見えた。受付から 8 秒を過ぎているので、つなぎは言わず、背景化だけを 1 回言う。
+        c.sb.endCandidate();
+        await beat(c, 200);
         await waitUntil(c.rig, 'the background notice', () =>
           c.sb.commentary.some((parts) => parts[0] === BACKGROUND_SENTENCE),
         );
-        // 背景化だけを言う回数は 1 回。結果は画面へ。
-        assert.equal(
-          c.sb.commentary.filter((parts) => parts[0] === BACKGROUND_SENTENCE)
-            .length,
-          1,
-        );
+        // 背景化だけを言う回数は 1 回で、遅いつなぎは言わない。結果は画面へ。
+        assert.deepEqual(c.sb.commentary, [[BACKGROUND_SENTENCE]]);
         slow.release();
         await waitUntil(c.rig, 'the late result', () => c.shown.length === 1);
         assert.equal(c.shown[0]?.reason, 'backgrounded');

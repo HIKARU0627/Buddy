@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
+import { isDeepStrictEqual } from 'node:util';
 import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 import { parseStrictJson, root } from './contract-tools.mjs';
@@ -10,7 +11,7 @@ import {
   b04SourceSha256,
   runtimeSpecifiers,
 } from './b04-evidence-sources.mjs';
-import { b05SourceFiles } from './b05-evidence-sources.mjs';
+import { b05SourceFiles, b05SourceSha256 } from './b05-evidence-sources.mjs';
 import { b07SourceFiles, b07SourceSha256 } from './b07-evidence-sources.mjs';
 
 // 試験 ID の対応表・B04 へ渡す故障点・証拠の形式を検査する（B00-10 #29、ADR 0011）。
@@ -393,6 +394,26 @@ const collectLedgers = (value, found = []) => {
   return found;
 };
 
+// B07・B05 の記録の db_version は、証拠が現行ソースと一致する（その head で生成された新しい証拠である）
+// ときだけ期待値と照合する。ADR 0085 により PR では証拠を再生成しないため、main の期待値だけが先に
+// 進んだ間（新しいマイグレーションを足した PR など）は、古い証拠の db_version を比べない。
+// 証拠と現行ソースの厳密な一致は `pnpm run evidence:check`（G1/G4）が検査する。
+const assertCurrentEvidenceDbVersion = (
+  evidence,
+  currentSources,
+  expectedVersion,
+  label,
+) => {
+  if (!isDeepStrictEqual(evidence.source_sha256, currentSources)) return false;
+  for (const record of evidence.records)
+    assert.equal(
+      record.db_version,
+      expectedVersion,
+      `${label}: ${record.case_id}`,
+    );
+  return true;
+};
+
 test('B07 のケース・seed・観測値・対応表の範囲が証拠と一致する', async () => {
   const spec = await read('tests/integration/b07-expectations.json');
   const evidence = await read('tests/integration/evidence-b07-simulated.json');
@@ -436,13 +457,19 @@ test('B07 のケース・seed・観測値・対応表の範囲が証拠と一致
   // seed ごとに実行の順序が違う（順序の並べ替えを実際に行った）。
   assert(orders.size > 1);
   assert.equal(evidence.records.length, ids.length);
+  // 証拠が現行ソースと一致する（新しい）ときだけ db_version を照合する。
+  assertCurrentEvidenceDbVersion(
+    evidence,
+    b07SourceSha256(),
+    spec.db_version,
+    'B07',
+  );
   for (const entry of spec.cases) {
     const record = evidence.records.find((r) => r.case_id === entry.id);
     assert(record, entry.id);
     assert.equal(record.kind, 'simulated');
     assert.equal(record.outcome, 'matched_expectation');
     assert.equal(record.seed, spec.seeds.join(','));
-    assert.equal(record.db_version, spec.db_version);
     assert.match(record.deviation, /実請求.*未実施/u);
   }
   // 対応表: B07 だけが担当の X18・X53・MA03〜MA06 は simulated。QA42 は B04 の送出の境界（操作の送出意図と予約の送出意図の
@@ -635,13 +662,19 @@ test('B05 のケース・seed・観測値・対応表の範囲が証拠と一致
   // seed ごとに実行の順序が違う（順序の並べ替えを実際に行った）。
   assert(orders.size > 1);
   assert.equal(evidence.records.length, ids.length);
+  // 証拠が現行ソースと一致する（新しい）ときだけ db_version を照合する。
+  assertCurrentEvidenceDbVersion(
+    evidence,
+    b05SourceSha256(),
+    spec.db_version,
+    'B05',
+  );
   for (const entry of spec.cases) {
     const record = evidence.records.find((r) => r.case_id === entry.id);
     assert(record, entry.id);
     assert.equal(record.kind, 'simulated');
     assert.equal(record.outcome, 'matched_expectation');
     assert.equal(record.seed, spec.seeds.join(','));
-    assert.equal(record.db_version, spec.db_version);
     assert.match(record.deviation, /実請求.*未実施/u);
     assert.match(record.deviation, /T04 の実測ではない/u);
     // 既知の未了・制約を記録するケースは、その旨を deviation に残す。
@@ -706,6 +739,52 @@ test('B05 のケース・seed・観測値・対応表の範囲が証拠と一致
   const text = JSON.stringify(spec);
   assert(!/"(JPY|USD|EUR)"/u.test(text));
   assert(!/https?:\/\//u.test(text));
+});
+
+test('古い証拠では db_version を照合せず、新しい証拠の食い違いだけを失敗にする', () => {
+  for (const [label, currentSources] of [
+    ['B07', b07SourceSha256()],
+    ['B05', b05SourceSha256()],
+  ]) {
+    const evidence = (dbVersion) => ({
+      source_sha256: currentSources,
+      records: [{ case_id: `${label}-case`, db_version: dbVersion }],
+    });
+    // 現行ソースと一致する新しい証拠で、期待値と食い違えば失敗する。
+    assert.throws(
+      () =>
+        assertCurrentEvidenceDbVersion(
+          evidence('12'),
+          currentSources,
+          '13',
+          label,
+        ),
+      new RegExp(`${label}: ${label}-case`, 'u'),
+    );
+    // 現行ソースと一致する新しい証拠で、期待値と合えば通る。
+    assert.equal(
+      assertCurrentEvidenceDbVersion(
+        evidence('13'),
+        currentSources,
+        '13',
+        label,
+      ),
+      true,
+      label,
+    );
+    // 現行ソースと一致しない古い証拠は、期待値が違っても照合しない。
+    // 証拠と現行ソースの食い違いは evidence:check が厳密に検査する。
+    assert.equal(
+      assertCurrentEvidenceDbVersion(
+        { ...evidence('12'), source_sha256: [] },
+        currentSources,
+        '13',
+        label,
+      ),
+      false,
+      label,
+    );
+  }
 });
 
 test('B05 の証拠の対象は実行器が読み込むファイルだけで、B04・B07 の実行器・画面・別の試験を含めない', () => {

@@ -286,6 +286,18 @@ test('契約に合わない記録は書かない', async () => {
         ['shadows', record({ shadows: [] })],
         ['input_id', record({ input_id: 'not-a-uuid' })],
         ['record_id', record({ record_id: 'x' })],
+        // 暦にない日時（形は合うが Date.parse が NaN）。
+        ['recorded_at', record({ recorded_at: '2031-13-01T00:00:00Z' })],
+        // JSON にできない引数（NaN）。
+        [
+          'judgments',
+          record({
+            primary: {
+              ...judgment(PRIMARY_DEPLOYMENT, 'ok'),
+              args: { value: Number.NaN },
+            },
+          }),
+        ],
         [
           'primary',
           record({
@@ -315,6 +327,35 @@ test('契約に合わない記録は書かない', async () => {
         );
       }
       assert.equal(count(db), 0);
+    } finally {
+      db.close();
+    }
+  });
+});
+
+// 判定の引数に JSON にできない値（NaN・Infinity）が入っていても、入力の拒否として扱い、worker を止めない
+// （想定外の例外で DB worker 全体を halted にしない。AO レビュー P2）。
+test('JSON にできない引数は拒否し、worker を止めない', async () => {
+  await withTempDir((dir) => {
+    const db = openSeededDatabase(databasePath(dir));
+    try {
+      const out = run(db, {
+        kind: 'intent_shadow.save',
+        record: record({
+          primary: {
+            ...judgment(PRIMARY_DEPLOYMENT, 'ok'),
+            args: { value: Number.NaN },
+          },
+        }),
+        limit: 300,
+      });
+      assert.equal(out.ok, false);
+      assert.deepEqual(out.reasons, ['judgments_invalid']);
+      assert.equal(out.halt, false);
+      assert.equal(count(db), 0);
+      // その後の正常な保存は通る（worker が止まっていない）。
+      assert.equal(save(db, record()), 'saved');
+      assert.equal(count(db), 1);
     } finally {
       db.close();
     }

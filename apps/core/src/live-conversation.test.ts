@@ -186,6 +186,9 @@ async function withConversation(
     readonly conditionsGate?: Promise<void>;
     // 差し替える解釈（実際のモデルを使う解釈の回帰試験用）。省略は台本の解釈。
     readonly interpreter?: Interpreter;
+    // つなぎの期限のタイマー（1500 ms）の登録を、この時間だけ遅らせる（イベントループの混雑・サスペンドで通知のタイマーが
+    // 遅れて動く状況の模擬）。他のタイマーは変えない。
+    readonly firstNoticeDelayMs?: number;
   } = {},
 ): Promise<void> {
   await withRig(async (rig) => {
@@ -295,7 +298,23 @@ async function withConversation(
         heldDropped: (info) => dropped.push({ ...info }),
       },
       monoNow: rig.clock.mono,
-      timers: rig.clock,
+      timers:
+        options.firstNoticeDelayMs === undefined
+          ? rig.clock
+          : (() => {
+              let delayed = false;
+              const delay = options.firstNoticeDelayMs;
+              return {
+                set: (ms: number, fn: () => void) => {
+                  if (!delayed && ms === 1500) {
+                    delayed = true;
+                    return rig.clock.set(ms + delay, fn);
+                  }
+                  return rig.clock.set(ms, fn);
+                },
+                clear: (handle: unknown) => rig.clock.clear(handle),
+              };
+            })(),
       newId: () => uuid(0x8000 + ++counter),
     });
     rig.voice.setConversation(conversation);
@@ -776,16 +795,29 @@ test(
         await c.rig.wait();
         assert.deepEqual(c.script.calls, []);
         assert.equal(c.conversation.pendingCount, 1);
+        // 本人が話し終えていない（終了候補がない）間は、1.5 秒を過ぎても何も言わない（発話にかぶせない。B10-04 P3）。
+        assert.deepEqual(c.sb.commentary, []);
         // 終了候補が来て、最後の断片から 300 ms 以上変化がなければ、すぐ進む。
         c.sb.endCandidate();
         await c.rig.clock.advance(100);
         await waitUntil(
           c.rig,
-          'the commentary',
-          () => c.sb.commentary.length === 1,
+          'the answer',
+          () => operations(c.rig).length === 1,
         );
+        await c.rig.wait();
         assert.deepEqual(c.script.calls, [TASK_TEXT]);
-        assert.equal(operations(c.rig).length, 1);
+        // 受付から 1.5 秒を過ぎているので、終了候補の後に、つなぎが答えの前に 1 回入りうる（答えが先ならつなぎは入らない）。
+        // 最後は答えで、それ以前はつなぎだけ。
+        const spoken = c.sb.commentary.map((parts) => parts[0]);
+        assert.ok(
+          spoken.length >= 1 && spoken.length <= 2,
+          String(spoken.length),
+        );
+        assert.equal(spoken.at(-1), SCREEN_SENTENCE);
+        assert.ok(
+          spoken.slice(0, -1).every((text) => text === '確認しますね。'),
+        );
       },
       { policy: AUTO_TASK },
     );
@@ -842,10 +874,22 @@ test(
       await speak(c, { text: '今日の予定を見せて', end: false });
       await delegate(c, 'd1', 800);
       await beat(c, 5200);
-      await waitUntil(c.rig, 'the answer', () => c.sb.commentary.length === 1);
-      assert.deepEqual(c.sb.commentary, [
-        ['予定は2件です。', '時間が重なっている予定があります。'],
-      ]);
+      await waitUntil(c.rig, 'the answer', () =>
+        c.sb.commentary.some((parts) => parts[0] === '予定は2件です。'),
+      );
+      await c.rig.wait();
+      // 終了候補がない間はつなぎを言わず、上限の 5 秒で答える（8 秒の背景化にはならない）。上限で解釈に進んだ後は、
+      // つなぎが答えの前に 1 回入りうる（答えが先ならつなぎは入らない）。最後は答えで、それ以前はつなぎだけ。
+      const answer = ['予定は2件です。', '時間が重なっている予定があります。'];
+      assert.deepEqual(c.sb.commentary.at(-1), answer);
+      assert.ok(
+        c.sb.commentary
+          .slice(0, -1)
+          .every(
+            (parts) => parts.length === 1 && parts[0] === '確認しますね。',
+          ),
+      );
+      assert.ok(c.sb.commentary.length <= 2);
       assert.deepEqual(snapshots(c.rig), [
         {
           origin: 'live_fragment',
@@ -2839,6 +2883,7 @@ test(
       await beat(c, 6000);
       // 追記された発話を同じ版として扱わない。自動で進めず、言い直しを頼む（変更も答えも作らない）。
       assert.deepEqual(c.script.calls, [SCHEDULE_TEXT]);
+      // 2 回目の委譲は対象の発話を決められない（入力が確定しない）ので、待つ間はつなぎを言わず、上限で言い直しを頼む。
       assert.deepEqual(c.sb.commentary, [
         SCHEDULE_ANSWER,
         [SAY_AGAIN_SENTENCE],
@@ -2879,6 +2924,204 @@ test(
             args: { ...EMPTY_ARGS },
             reply_text: 'こんにちは。声には出さない文です。',
           }),
+      },
+    );
+  },
+);
+
+// ---- B10-04 P3: つなぎ（1.5 秒）・背景化（8 秒）・遅着（X33・X29。ADR 0108） ----------------------------------------------
+
+const BRIDGE_SENTENCE = '確認しますね。';
+const BACKGROUND_SENTENCE = '少し時間がかかるので、できたら知らせます。';
+
+test(
+  'X33: a result that is not ready in 1.5 seconds gets one bridge, at 8 seconds one background notice, and then goes to the screen (not the voice), saved as one workflow',
+  TIMEOUT,
+  async () => {
+    const slow = gate();
+    await withConversation(
+      async (c) => {
+        await speak(c, { text: SCHEDULE_TEXT });
+        await delegate(c, 'd1', 800);
+        // 入力の確定（終了候補の後 300 ms）の後、解釈に入る（結果は保留）。ここまでで委譲から 400 ms。
+        await c.rig.clock.advance(400);
+        await waitUntil(
+          c.rig,
+          'the interpretation',
+          () => c.script.calls.length === 1,
+        );
+        // 委譲を受けてから 1.5 秒の手前（1499 ms）までは、何も言わない（境界は 1500 ms）。
+        await beat(c, 1099);
+        await c.rig.wait();
+        assert.deepEqual(c.sb.commentary, []);
+        await beat(c, 1);
+        await waitUntil(
+          c.rig,
+          'the bridge',
+          () => c.sb.commentary.length === 1,
+        );
+        assert.deepEqual(c.sb.commentary, [[BRIDGE_SENTENCE]]);
+        // 8 秒の手前（7999 ms）まで、つなぎを重ねず、背景化も言わない。
+        await beat(c, 6499);
+        await c.rig.wait();
+        assert.deepEqual(c.sb.commentary, [[BRIDGE_SENTENCE]]);
+        await beat(c, 1);
+        await waitUntil(
+          c.rig,
+          'the background notice',
+          () => c.sb.commentary.length === 2,
+        );
+        assert.deepEqual(c.sb.commentary, [
+          [BRIDGE_SENTENCE],
+          [BACKGROUND_SENTENCE],
+        ]);
+        // 結果が戻っても、声には載せない（裏のジョブへ移した）。画面へ回し、1 つの依頼として保存される。
+        slow.release();
+        await waitUntil(c.rig, 'the late result', () => c.shown.length === 1);
+        assert.deepEqual(
+          c.shown.map((entry) => [entry.reason, entry.session_id]),
+          [['backgrounded', SESSION]],
+        );
+        assert.deepEqual(c.sb.commentary, [
+          [BRIDGE_SENTENCE],
+          [BACKGROUND_SENTENCE],
+        ]);
+        assert.deepEqual(workflowStates(c.rig), ['done']);
+        // その後も、つなぎも背景化も重ねて言わない。
+        await beat(c, 10_000);
+        assert.equal(c.sb.commentary.length, 2);
+      },
+      {
+        prepare: (script) => {
+          script.gates.set(SCHEDULE_TEXT, slow.promise);
+        },
+      },
+    );
+  },
+);
+
+test(
+  'X33: a result that is ready before 1.5 seconds is answered alone: no bridge, no background notice, then or later',
+  TIMEOUT,
+  async () => {
+    await withConversation(async (c) => {
+      await speak(c, { text: SCHEDULE_TEXT });
+      await delegate(c, 'd1', 800);
+      await c.rig.clock.advance(500);
+      await waitUntil(c.rig, 'the answer', () => c.sb.commentary.length === 1);
+      assert.deepEqual(c.sb.commentary, [SCHEDULE_ANSWER]);
+      await beat(c, 10_000);
+      assert.deepEqual(c.sb.commentary, [SCHEDULE_ANSWER]);
+    });
+  },
+);
+
+test(
+  'X33/X29: once the live is closed no notice is appended to it, and the late result goes to the screen as a closed-connection result',
+  TIMEOUT,
+  async () => {
+    const slow = gate();
+    await withConversation(
+      async (c) => {
+        await speak(c, { text: SCHEDULE_TEXT });
+        await delegate(c, 'd1', 800);
+        await c.rig.clock.advance(400);
+        await waitUntil(
+          c.rig,
+          'the interpretation',
+          () => c.script.calls.length === 1,
+        );
+        await beat(c, 1100);
+        await waitUntil(
+          c.rig,
+          'the bridge',
+          () => c.sb.commentary.length === 1,
+        );
+        const closed = await c.rig.voice.closeLiveSession(A, c.liveId, {
+          request_id: uuid(0x72),
+          command_scope_id: SCOPE_A,
+          reason: 'silence',
+          audio_epoch: c.rig.voice.liveRecord(c.liveId)?.audio_epoch as string,
+        });
+        assert.equal(closed.status, 202);
+        // 閉じた後は、8 秒を過ぎても背景化の発話を追記しない。
+        await c.rig.clock.advance(9000);
+        await c.rig.wait();
+        assert.deepEqual(c.sb.commentary, [[BRIDGE_SENTENCE]]);
+        slow.release();
+        await waitUntil(c.rig, 'the late result', () => c.shown.length === 1);
+        // 閉じて 9 秒たつと、接続の世代の記録も残っていない（声には届けられないので、どの理由でも画面へ回る）。
+        assert.deepEqual(
+          c.shown.map((entry) => entry.reason),
+          ['no_current_epoch'],
+        );
+        assert.deepEqual(c.sb.commentary, [[BRIDGE_SENTENCE]]);
+      },
+      {
+        prepare: (script) => {
+          script.gates.set(SCHEDULE_TEXT, slow.promise);
+        },
+      },
+    );
+  },
+);
+
+test(
+  'X33/X27: a change held by a new utterance is not a running job: it gets no bridge and no background notice while it waits for the new utterance to settle',
+  TIMEOUT,
+  async () => {
+    const first = gate();
+    await withConversation(
+      async (c) => {
+        await firstRequestHeldBySecondUtterance(c, first.release);
+        await beat(c, 9000);
+        assert.equal(c.conversation.heldCount(c.liveId), 1);
+        assert.deepEqual(c.sb.commentary, []);
+        assert.deepEqual(c.shown, []);
+      },
+      {
+        policy: AUTO_TASK,
+        prepare: (script) => {
+          script.gates.set(TASK_TEXT, first.promise);
+        },
+      },
+    );
+  },
+);
+
+test(
+  'X33/X27: a request replaced by a correction is never bridged or backgrounded after it was replaced, and the corrected request is the only one answered',
+  TIMEOUT,
+  async () => {
+    const first = gate();
+    await withConversation(
+      async (c) => {
+        await firstRequestHeldBySecondUtterance(c, first.release);
+        await secondUtterance(c);
+        await waitUntil(
+          c.rig,
+          'the corrected answer',
+          () => c.sb.commentary.length === 1,
+        );
+        await beat(c, 10_000);
+        // 旧い依頼は、つなぎも背景化も言わず、結果も出さない。訂正後の依頼の答えだけ。
+        assert.deepEqual(c.sb.commentary, [[SCREEN_SENTENCE]]);
+        assert.deepEqual(c.shown, []);
+        assert.equal(operations(c.rig).length, 1);
+      },
+      {
+        policy: AUTO_TASK,
+        prepare: (script) => {
+          script.gates.set(TASK_TEXT, first.promise);
+          script.replies.set(
+            EGG_TEXT,
+            intentReply(
+              'create_task',
+              { title: '卵を買う' },
+              { relation: 'correction', target_workflow_id: uuid(0x8001) },
+            ),
+          );
+        },
       },
     );
   },
@@ -2958,3 +3201,378 @@ test('B10-04 P2b: over the limits the rest is placed on the screen exactly once,
     shown: ['commentary_overflow'],
   });
 });
+
+test(
+  'X33/P3: when the notice timer runs late, the background deadline stays at 8 seconds from the request (not from the late timer), and the bridge is still said once',
+  TIMEOUT,
+  async () => {
+    const slow = gate();
+    await withConversation(
+      async (c) => {
+        await speak(c, { text: SCHEDULE_TEXT });
+        await delegate(c, 'd1', 800);
+        await c.rig.clock.advance(400);
+        await waitUntil(
+          c.rig,
+          'the interpretation',
+          () => c.script.calls.length === 1,
+        );
+        // つなぎのタイマーは 2 秒遅れて、受付の 3500 ms 後に動く。それまでは何も言わない。
+        await beat(c, 3099);
+        await c.rig.wait();
+        assert.deepEqual(c.sb.commentary, []);
+        await beat(c, 1);
+        await waitUntil(
+          c.rig,
+          'the late bridge',
+          () => c.sb.commentary.length === 1,
+        );
+        assert.deepEqual(c.sb.commentary, [[BRIDGE_SENTENCE]]);
+        // 背景化は、つなぎが遅れた分だけ遅らせず、受付の 8000 ms ちょうど（7999 ms ではまだ言わない）。
+        await beat(c, 4499);
+        await c.rig.wait();
+        assert.deepEqual(c.sb.commentary, [[BRIDGE_SENTENCE]]);
+        await beat(c, 1);
+        await waitUntil(
+          c.rig,
+          'the background notice',
+          () => c.sb.commentary.length === 2,
+        );
+        assert.deepEqual(c.sb.commentary, [
+          [BRIDGE_SENTENCE],
+          [BACKGROUND_SENTENCE],
+        ]);
+        slow.release();
+        await waitUntil(c.rig, 'the late result', () => c.shown.length === 1);
+        assert.equal(c.shown[0]?.reason, 'backgrounded');
+        assert.equal(c.sb.commentary.length, 2);
+      },
+      {
+        firstNoticeDelayMs: 2000,
+        prepare: (script) => {
+          script.gates.set(SCHEDULE_TEXT, slow.promise);
+        },
+      },
+    );
+  },
+);
+
+test(
+  'X33/P3: when the notice timer first runs after the 8 second deadline, only the background notice is said (no late bridge), and the result goes to the screen',
+  TIMEOUT,
+  async () => {
+    const slow = gate();
+    await withConversation(
+      async (c) => {
+        await speak(c, { text: SCHEDULE_TEXT });
+        await delegate(c, 'd1', 800);
+        await c.rig.clock.advance(400);
+        await waitUntil(
+          c.rig,
+          'the interpretation',
+          () => c.script.calls.length === 1,
+        );
+        await beat(c, 8600);
+        await waitUntil(
+          c.rig,
+          'the background notice',
+          () => c.sb.commentary.length === 1,
+        );
+        assert.deepEqual(c.sb.commentary, [[BACKGROUND_SENTENCE]]);
+        slow.release();
+        await waitUntil(c.rig, 'the late result', () => c.shown.length === 1);
+        assert.equal(c.shown[0]?.reason, 'backgrounded');
+        assert.equal(c.sb.commentary.length, 1);
+      },
+      {
+        firstNoticeDelayMs: 7500,
+        prepare: (script) => {
+          script.gates.set(SCHEDULE_TEXT, slow.promise);
+        },
+      },
+    );
+  },
+);
+
+test(
+  'X33/X27/P3: a request held past 1.5 seconds and then resumed by a separate request is bridged when it resumes, and moved to the background at 8 seconds from its own start',
+  TIMEOUT,
+  async () => {
+    const first = gate();
+    const commit = gate();
+    await withConversation(
+      async (c) => {
+        await firstRequestHeldBySecondUtterance(c, first.release);
+        // 保留のまま 1.5 秒をまたぐ。保留中は何も言わない。
+        await beat(c, 2500);
+        assert.equal(c.conversation.heldCount(c.liveId), 1);
+        assert.deepEqual(c.sb.commentary, []);
+        // 別件（new）が確定して、保留中の変更が再開する。保存の準備を保留して、結果が出ないままにする。
+        c.hooks.beforeCommit = () => commit.promise;
+        await secondUtterance(c);
+        await waitUntil(
+          c.rig,
+          'the resumed request waits for its record',
+          () => c.hooks.entered >= 1,
+        );
+        // 再開した後の見直しで、受付から 1.5 秒を過ぎているので、つなぎを 1 回言う（保留で言えなかった分）。
+        await waitUntil(c.rig, 'the bridge', () =>
+          c.sb.commentary.some((parts) => parts[0] === BRIDGE_SENTENCE),
+        );
+        // 8 秒は、再開した時点からではなく、依頼を受けた時点から数える。
+        await beat(c, 6000);
+        await waitUntil(c.rig, 'the background notice', () =>
+          c.sb.commentary.some((parts) => parts[0] === BACKGROUND_SENTENCE),
+        );
+        // 背景化したのは再開した依頼だけで、ちょうど 1 回（別件の依頼は 8 秒に届かず答えた）。つなぎは依頼ごとに 1 回なので、
+        // 2 つの依頼で多くても 2 回。
+        assert.equal(
+          c.sb.commentary.filter((parts) => parts[0] === BACKGROUND_SENTENCE)
+            .length,
+          1,
+        );
+        const bridges = c.sb.commentary.filter(
+          (parts) => parts[0] === BRIDGE_SENTENCE,
+        ).length;
+        assert.ok(bridges >= 1 && bridges <= 2, String(bridges));
+        // 結果は声ではなく画面へ（背景化した）。
+        commit.release();
+        await waitUntil(c.rig, 'the late result', () =>
+          c.shown.some((entry) => entry.reason === 'backgrounded'),
+        );
+        assert.equal(
+          c.shown.filter((entry) => entry.reason === 'backgrounded').length,
+          1,
+        );
+      },
+      {
+        policy: AUTO_TASK,
+        prepare: (script) => {
+          script.gates.set(TASK_TEXT, first.promise);
+          script.replies.set(
+            EGG_TEXT,
+            intentReply(
+              'create_task',
+              { title: '卵を買う' },
+              { relation: 'new' },
+            ),
+          );
+        },
+      },
+    );
+  },
+);
+
+test(
+  'X33/X46/P3: while the input conditions are still being checked nothing is said, so a delegation that is then refused (consent revoked) gets no bridge even after 1.5 seconds',
+  TIMEOUT,
+  async () => {
+    const conditions = gate();
+    const consent = { value: 'granted' as 'granted' | 'revoked' };
+    await withConversation(
+      async (c) => {
+        // Live を開いた後で同意を取り消す（確認の結果は拒否になる）。
+        consent.value = 'revoked';
+        await speak(c, { text: TASK_TEXT });
+        await delegate(c, 'd1', 800);
+        // 受付条件の確認が 2 秒かかる（1.5 秒を過ぎる）。その間、つなぎを言わない。
+        await beat(c, 2000);
+        assert.deepEqual(c.sb.commentary, []);
+        conditions.release();
+        await c.rig.wait();
+        // 確認の結果は拒否（同意なし）。拒否された委譲には、何も言わず、解釈も保存もしない。
+        await beat(c, 1000);
+        assert.deepEqual(c.sb.commentary, []);
+        assert.deepEqual(c.script.calls, []);
+        assert.deepEqual(turnsOf(c.rig), []);
+        assert.equal(c.conversation.pendingCount, 0);
+      },
+      {
+        policy: AUTO_TASK,
+        conditionsGate: conditions.promise,
+        overrides: { consent: () => consent.value },
+      },
+    );
+  },
+);
+
+test(
+  'X33/P3: when the input conditions are accepted after 1.5 seconds, the bridge is said once right after, judged from the time the request was received',
+  TIMEOUT,
+  async () => {
+    const conditions = gate();
+    const slow = gate();
+    await withConversation(
+      async (c) => {
+        await speak(c, { text: SCHEDULE_TEXT });
+        await delegate(c, 'd1', 800);
+        await beat(c, 2000);
+        assert.deepEqual(c.sb.commentary, []);
+        conditions.release();
+        await c.rig.wait();
+        // 通知の見直しは 100 ms ごと。確認が通った後の最初の見直しで、受付から 1.5 秒を過ぎているのでつなぎを言う。
+        await beat(c, 200);
+        await waitUntil(
+          c.rig,
+          'the bridge',
+          () => c.sb.commentary.length === 1,
+        );
+        assert.deepEqual(c.sb.commentary, [[BRIDGE_SENTENCE]]);
+        slow.release();
+        await waitUntil(
+          c.rig,
+          'the answer',
+          () => c.sb.commentary.length === 2,
+        );
+        assert.deepEqual(c.sb.commentary, [[BRIDGE_SENTENCE], SCHEDULE_ANSWER]);
+      },
+      {
+        conditionsGate: conditions.promise,
+        prepare: (script) => {
+          script.gates.set(SCHEDULE_TEXT, slow.promise);
+        },
+      },
+    );
+  },
+);
+
+test(
+  'X33/X27/P3: a request held until after 8 seconds and resumed at the same instant its result returns is still moved to the background: the result goes to the screen, never to the voice',
+  TIMEOUT,
+  async () => {
+    const first = gate();
+    const second = gate();
+    await withConversation(
+      async (c) => {
+        await firstRequestHeldBySecondUtterance(c, first.release);
+        // 別件の発話と委譲。その解釈は保留（ゲート）にして、1 つ目の保留が解けない状態のまま 9 秒を過ぎる。
+        await speak(c, { text: EGG_TEXT, speech: false });
+        await delegate(c, 'd2', c.next.start - 400);
+        await beat(c, 9000);
+        assert.equal(c.conversation.heldCount(c.liveId), 1);
+        assert.equal(c.script.calls.length >= 2, true);
+        // 時計を進めずに 2 つ目の解釈を通す。保留が解けて 1 つ目が再開し、次の見直しより先に結果が戻る。
+        second.release();
+        await waitUntil(
+          c.rig,
+          'both results on the screen',
+          () =>
+            c.shown.filter((entry) => entry.reason === 'backgrounded')
+              .length === 2,
+        );
+        // どちらの結果も、8 秒を過ぎた依頼なので画面へ回り、声には載らない。
+        assert.equal(
+          c.sb.commentary.some((parts) => parts[0] === SCREEN_SENTENCE),
+          false,
+        );
+        assert.equal(operations(c.rig).length, 2);
+      },
+      {
+        policy: AUTO_TASK,
+        prepare: (script) => {
+          script.gates.set(TASK_TEXT, first.promise);
+          script.gates.set(EGG_TEXT, second.promise);
+          script.replies.set(
+            EGG_TEXT,
+            intentReply(
+              'create_task',
+              { title: '卵を買う' },
+              { relation: 'new' },
+            ),
+          );
+        },
+      },
+    );
+  },
+);
+
+test(
+  'X33/X51/P3: while the user has not finished speaking (no end candidate) nothing is said even after 1.5 seconds, and after the end candidate the bridge is said once, judged from the time the request was received',
+  TIMEOUT,
+  async () => {
+    const slow = gate();
+    await withConversation(
+      async (c) => {
+        // 委譲が先に届き、本人はまだ話している（終了候補がない）。
+        await speak(c, { text: SCHEDULE_TEXT, end: false });
+        await delegate(c, 'd1', 800);
+        // 1.5 秒を過ぎ、8 秒の手前まで待っても、何も言わない（発話にかぶせない）。解釈にも進まない。
+        await beat(c, 1500);
+        await c.rig.wait();
+        assert.deepEqual(c.sb.commentary, []);
+        await beat(c, 2000);
+        assert.deepEqual(c.sb.commentary, []);
+        assert.deepEqual(c.script.calls, []);
+        // 終了候補が来て入力が確定し、解釈に入る（結果は保留）。受付から 3.5 秒を過ぎているので、つなぎを 1 回だけ言う。
+        c.sb.endCandidate();
+        await beat(c, 600);
+        await waitUntil(
+          c.rig,
+          'the interpretation',
+          () => c.script.calls.length === 1,
+        );
+        await beat(c, 200);
+        await waitUntil(
+          c.rig,
+          'the bridge',
+          () => c.sb.commentary.length === 1,
+        );
+        assert.deepEqual(c.sb.commentary, [[BRIDGE_SENTENCE]]);
+        // 以後、重ねない。結果が出たら答える。
+        await beat(c, 1000);
+        assert.deepEqual(c.sb.commentary, [[BRIDGE_SENTENCE]]);
+        slow.release();
+        await waitUntil(
+          c.rig,
+          'the answer',
+          () => c.sb.commentary.length === 2,
+        );
+        assert.deepEqual(c.sb.commentary, [[BRIDGE_SENTENCE], SCHEDULE_ANSWER]);
+      },
+      {
+        prepare: (script) => {
+          script.gates.set(SCHEDULE_TEXT, slow.promise);
+        },
+      },
+    );
+  },
+);
+
+test(
+  'X33/X51/P3: when the end candidate comes only after the 8 second deadline, only the background notice is said and the result goes to the screen',
+  TIMEOUT,
+  async () => {
+    const slow = gate();
+    await withConversation(
+      async (c) => {
+        await speak(c, { text: SCHEDULE_TEXT, end: false });
+        await delegate(c, 'd1', 800);
+        // 受付から 4.9 秒まで待つ（入力の確定待ちの上限 5 秒の手前）。
+        await beat(c, 4900);
+        assert.deepEqual(c.sb.commentary, []);
+        // 上限（5 秒）で、終了候補がないまま解釈に進む。結果を保留したまま 8 秒を過ぎても、本人がまだ話している（終了候補が
+        // 見えない）間は、処理の段階が解釈に進んでいても、何も言わない（発話にかぶせない）。
+        await beat(c, 3300);
+        await c.rig.wait();
+        assert.deepEqual(c.sb.commentary, []);
+        assert.equal(c.script.calls.length, 1);
+        // 終了候補が見えた。受付から 8 秒を過ぎているので、つなぎは言わず、背景化だけを 1 回言う。
+        c.sb.endCandidate();
+        await beat(c, 200);
+        await waitUntil(c.rig, 'the background notice', () =>
+          c.sb.commentary.some((parts) => parts[0] === BACKGROUND_SENTENCE),
+        );
+        // 背景化だけを言う回数は 1 回で、遅いつなぎは言わない。結果は画面へ。
+        assert.deepEqual(c.sb.commentary, [[BACKGROUND_SENTENCE]]);
+        slow.release();
+        await waitUntil(c.rig, 'the late result', () => c.shown.length === 1);
+        assert.equal(c.shown[0]?.reason, 'backgrounded');
+      },
+      {
+        prepare: (script) => {
+          script.gates.set(SCHEDULE_TEXT, slow.promise);
+        },
+      },
+    );
+  },
+);

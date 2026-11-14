@@ -216,6 +216,11 @@ export function planReplyModeChange(
 // 保留の上限（ms）。原本に決めなし（U103）。超えたら、実行せずに破棄して画面で確かめる（勝手に再開しない側）。
 export const HOLD_MAX_MS = 30_000;
 
+// 委譲を受けてから、結果が出ないときの時間の制御（設計 10 §5「つなぎ」「即時ジョブの上限」、設計初期値）。
+// 1.5 秒で「確認しますね」を 1 回だけ、8 秒で「少し時間がかかるので…」を 1 回だけ言い、裏のジョブへ移す（結果は声でなく画面へ）。
+export const DELEGATION_BRIDGE_MS = 1500;
+export const DELEGATION_BACKGROUND_MS = 8000;
+
 export interface InFlightWorkflow {
   readonly workflow_id: string;
   readonly request_revision: string;

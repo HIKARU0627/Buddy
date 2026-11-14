@@ -168,7 +168,8 @@ export function privateWebTargetReason(value: string): string | null {
     return 'private_target';
   if (host.includes(':')) return ipv6Private(host) ? 'private_target' : null;
   // 数字だけに見えるホストは inet_aton の別表記として IPv4 に直す。読めなければ拒否する。
-  if (!/^(?:0x[0-9a-f]+|\d[\d.]*)$/iu.test(host)) return null;
+  if (!/^(?:0x[0-9a-f]+|\d+)(?:\.(?:0x[0-9a-f]+|\d+))*$/iu.test(host))
+    return null;
   const ipv4 = parseIpv4(host);
   if (!ipv4) return 'private_target';
   return ipv4Private(ipv4) ? 'private_target' : null;

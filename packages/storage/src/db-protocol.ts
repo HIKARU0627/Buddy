@@ -45,10 +45,21 @@ import type {
 } from './retention-store.js';
 // B06-06d2: 記憶の保存・継続・削除、指示の取り消し、忘却の transaction と台帳の書き出し（ADR 0054）。
 import type { MemoryOp, MemoryOpKind, MemoryOpResult } from './memory-store.js';
+// B06-06e: 影モードの比較記録の保存と件数（ADR 0092・0110）。
+import type {
+  IntentShadowOp,
+  IntentShadowOpKind,
+  IntentShadowOpResult,
+} from './intent-shadow-store.js';
 
 // 故障注入の対象（操作の命令・予算の命令・音声の命令の種類）。
 export type DbFaultKind =
-  DbCommandKind | BudgetOpKind | VoiceOpKind | RetentionOpKind | MemoryOpKind;
+  | DbCommandKind
+  | BudgetOpKind
+  | VoiceOpKind
+  | RetentionOpKind
+  | MemoryOpKind
+  | IntentShadowOpKind;
 
 // 故障注入の試験用。製品の起動では渡さない。指定した種類の命令で一度だけ起こす。
 export interface DbWorkerFaults {
@@ -142,7 +153,13 @@ export type MainToWorker =
       readonly op: RetentionOp;
     }
   // 記憶と忘却の命令と照会（ADR 0054）。
-  | { readonly type: 'memory'; readonly id: number; readonly op: MemoryOp };
+  | { readonly type: 'memory'; readonly id: number; readonly op: MemoryOp }
+  // 影モードの比較記録の保存と件数（ADR 0092・0110）。
+  | {
+      readonly type: 'intent_shadow';
+      readonly id: number;
+      readonly op: IntentShadowOp;
+    };
 
 export interface WorkerTimings extends StoreTimings {
   // Core main が送ってから worker が処理を始めるまで（IPC と待ち行列の待ち）。
@@ -235,6 +252,12 @@ export type WorkerToMain =
       readonly type: 'memory_result';
       readonly id: number;
       readonly result: MemoryOpResult;
+      readonly halted: boolean;
+    }
+  | {
+      readonly type: 'intent_shadow_result';
+      readonly id: number;
+      readonly result: IntentShadowOpResult;
       readonly halted: boolean;
     };
 

@@ -135,9 +135,12 @@ export class OperationBridge {
   #order = 0;
   // 表示の権限の世代。reset で進める。
   #gen = 0;
-  // 会話（接続範囲ごとに 1 つ。発言のたびに作らない）。
-  #session: { readonly scope: string; readonly sessionId: string } | null =
-    null;
+  // 会話（接続範囲ごとに 1 つ。発言のたびに作らない）。区切りの世代は会話の作成の応答から持ち、発言の由来に使う。
+  #session: {
+    readonly scope: string;
+    readonly sessionId: string;
+    readonly segmentGeneration: string;
+  } | null = null;
 
   constructor(host: OperationHost) {
     this.#host = host;
@@ -304,8 +307,15 @@ export class OperationBridge {
         !this.#host.contract.valid('SessionReceipt', created.body)
       )
         return fail('core_rejected');
-      const body = created.body as { session_id: string };
-      session = { scope, sessionId: body.session_id };
+      const body = created.body as {
+        session_id: string;
+        segment_generation: string;
+      };
+      session = {
+        scope,
+        sessionId: body.session_id,
+        segmentGeneration: body.segment_generation,
+      };
       this.#session = session;
       // 会話を作っている間に停止した: 発言を送らない。
       const after = this.#host.io();
@@ -315,7 +325,14 @@ export class OperationBridge {
     const outcome = await connection.request({
       method: 'POST',
       path: `/v1/sessions/${encodeURIComponent(session.sessionId)}/turns`,
-      body: { text, input_kind: 'text' },
+      body: {
+        text,
+        input_kind: 'text',
+        origin: {
+          segment_id: session.sessionId,
+          segment_generation: session.segmentGeneration,
+        },
+      },
       scoped: true,
       expectedScopeId: scope,
     });
@@ -787,6 +804,14 @@ export class OperationBridge {
 
 type PreviewDisplay = OperationPreview['display'];
 
+// 対象の見出しに使う識別子。参加者のいる予定の作成は既存の対象を持たないので null。
+function targetLabel(intent: OperationIntent): string | null {
+  if (intent.target === null) return null;
+  if ('list_id' in intent.target) return intent.target.list_id;
+  if ('remote_id' in intent.target) return intent.target.remote_id;
+  return null;
+}
+
 // 外部変更は、口座の表示名と対象のメールの件名・差出人・受信日時がすべてそろうまで確認できない（承認・取消・再試行の
 // 確認に出せない）。Buddy 内の用事は常に確認できる。
 function identifiedOf(
@@ -822,9 +847,7 @@ function contentOf(
       if (action.remove.length > 0)
         parts.push(`外す: ${action.remove.join('、')}`);
       return {
-        headline:
-          display?.target?.subject ??
-          ('remote_id' in intent.target ? intent.target.remote_id : null),
+        headline: display?.target?.subject ?? targetLabel(intent),
         detail: parts.length === 0 ? null : parts.join(' / '),
       };
     }
@@ -832,6 +855,21 @@ function contentOf(
       return {
         headline: action.subject,
         detail: `宛先 ${action.to.join('、')}`,
+      };
+    // B14-01: 送信・予定の変更・参加者のいる予定の作成・ごみ箱（ADR 0075）。
+    // 承認画面の項目は B14-04 で足す。ここでは一覧の見出しだけを安全に出す。
+    case 'mail.send':
+      return {
+        headline: action.subject,
+        detail: `宛先 ${action.to.join('、')}`,
+      };
+    case 'calendar.event.update':
+    case 'calendar.event.create_with_attendees':
+      return { headline: action.summary, detail: action.start };
+    case 'mail.trash':
+      return {
+        headline: display?.target?.subject ?? targetLabel(intent),
+        detail: null,
       };
   }
 }
@@ -867,6 +905,12 @@ export function previewView(
       add('task_due', action.due === null ? [] : [action.due]);
       add('task_body', action.body === null ? [] : [action.body]);
       break;
+    // B14-01: 項目の語彙は B14-04 の承認画面で足す。それまでは一覧の見出しだけを出す。
+    case 'mail.send':
+    case 'calendar.event.update':
+    case 'calendar.event.create_with_attendees':
+    case 'mail.trash':
+      break;
   }
   const external = 'provider' in intent;
   const target = display?.target ?? null;
@@ -876,10 +920,7 @@ export function previewView(
     preview_ref: previewRef,
     operation_kind: action.kind,
     service: external ? intent.provider : 'buddy',
-    target:
-      'list_id' in intent.target
-        ? intent.target.list_id
-        : intent.target.remote_id,
+    target: targetLabel(intent),
     fields,
     account_label: accountLabel,
     target_detail: external && target !== null ? { ...target } : null,

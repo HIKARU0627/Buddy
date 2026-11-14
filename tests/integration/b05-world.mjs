@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 import {
   A,
+  B,
   CORE,
   DEV_A,
   SCOPE_A,
@@ -25,7 +26,7 @@ import {
   NO_FAULTS,
 } from '../../apps/desktop/dist/main/voice-mock-renderer.js';
 
-export { A, CORE, DEV_A, NO_FAULTS, SCOPE_A, SESSION, waitUntil };
+export { A, B, CORE, DEV_A, NO_FAULTS, SCOPE_A, SESSION, waitUntil };
 
 // 合成の PCM の 1 つの区間（フレームを 20 ms として数え、PCM_BATCH 個を 1 つの timer でまとめて進める）。
 const PCM_FRAME_MS = 20;

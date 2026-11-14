@@ -577,6 +577,56 @@ export interface StreamSegmentLike {
 
 export const CARRIED_SUMMARY_SOURCE_LIMIT = 256;
 
+// 自動の区切り（UI-05、ADR 0032・0068）。前の発言から 30 分やりとりがない（idle_timeout）か、本人の時間帯で
+// 日付が変わった（date_changed）ときに新しい区切りを始める。両方が成り立つときは、先に来ていた方の理由にする
+// （区切りは次の発言で遅れて評価するので、実際に先に起きた出来事を記録する。U166）。
+export const SEGMENT_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
+
+export type AutomaticSegmentBoundaryReason = 'idle_timeout' | 'date_changed';
+
+const UTC_OFFSET = /^([+-])([0-9]{2}):([0-9]{2})$/u;
+const DAY_MS = 86_400_000;
+
+// UTC からの差（ミリ秒）。形が違えば null（推測しない）。
+function utcOffsetMs(utcOffset: string): number | null {
+  const match = UTC_OFFSET.exec(utcOffset);
+  if (match === null) return null;
+  const hours = Number(match[2]);
+  const minutes = Number(match[3]);
+  if (hours > 23 || minutes > 59) return null;
+  const ms = (hours * 60 + minutes) * 60_000;
+  return match[1] === '-' ? -ms : ms;
+}
+
+// 区切りを新しく始める理由。無ければ null。区切りの経過は最後のやりとりから測る（区切りの始まりから測ると、
+// 長い区切りの中で何度も切れてしまう）。最後のやりとりがまだ無ければ区切りの始まりを起点にする。
+// 時刻は UTC のミリ秒で比べ、本人の時間帯は utc_offset（Core の設定）から求める。端末の時刻は使わない。
+export function automaticSegmentBoundary(input: {
+  readonly opened_at: string;
+  readonly last_turn_at: string | null;
+  readonly now: string;
+  readonly utc_offset: string;
+}): AutomaticSegmentBoundaryReason | null {
+  const now = Date.parse(input.now);
+  const opened = Date.parse(input.opened_at);
+  const last =
+    input.last_turn_at === null ? opened : Date.parse(input.last_turn_at);
+  const offset = utcOffsetMs(input.utc_offset);
+  if (
+    !Number.isFinite(now) ||
+    !Number.isFinite(opened) ||
+    !Number.isFinite(last) ||
+    offset === null
+  )
+    return null;
+  const idleAt = last + SEGMENT_IDLE_TIMEOUT_MS;
+  // 最後のやりとりの後で、本人の時間帯の最初の 0 時。
+  const dateAt =
+    Math.floor((last + offset) / DAY_MS) * DAY_MS + DAY_MS - offset;
+  if (now < idleAt && now < dateAt) return null;
+  return idleAt <= dateAt ? 'idle_timeout' : 'date_changed';
+}
+
 // 前の区切りの要約をつながない始まり方。流れの最初・忘却の指示・記録しない会話の出入り。
 // 記録しない会話の要約は作らないので、出た後にも持ち込まない（ADR 0032）。
 const NO_CARRY_REASONS = [

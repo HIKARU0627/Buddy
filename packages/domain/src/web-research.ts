@@ -35,7 +35,10 @@ function ipv4Private(parts: readonly number[]): boolean {
 
 // 10 進・8 進（先頭 0）・16 進（0x）の部品を数にする。読めなければ null。
 function ipv4Part(value: string): number | null {
-  if (/^0x[0-9a-f]+$/iu.test(value)) return Number.parseInt(value.slice(2), 16);
+  if (/^0x[0-9a-f]*$/iu.test(value)) {
+    const digits = value.slice(2);
+    return digits.length === 0 ? 0 : Number.parseInt(digits, 16);
+  }
   if (/^0[0-7]+$/u.test(value)) return Number.parseInt(value.slice(1), 8);
   if (/^\d+$/u.test(value)) return Number.parseInt(value, 10);
   return null;
@@ -168,7 +171,7 @@ export function privateWebTargetReason(value: string): string | null {
     return 'private_target';
   if (host.includes(':')) return ipv6Private(host) ? 'private_target' : null;
   // 数字だけに見えるホストは inet_aton の別表記として IPv4 に直す。読めなければ拒否する。
-  if (!/^(?:0x[0-9a-f]+|\d+)(?:\.(?:0x[0-9a-f]+|\d+))*$/iu.test(host))
+  if (!/^(?:0x[0-9a-f]*|\d+)(?:\.(?:0x[0-9a-f]*|\d+))*$/iu.test(host))
     return null;
   const ipv4 = parseIpv4(host);
   if (!ipv4) return 'private_target';

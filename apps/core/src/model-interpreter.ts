@@ -131,6 +131,9 @@ function replyOf(result: IntentJudgmentResult): InterpreterReply {
     ...(judgment.target_workflow_id === null
       ? {}
       : { target_workflow_id: judgment.target_workflow_id }),
+    ...(judgment.reply_text === null
+      ? {}
+      : { reply_text: judgment.reply_text }),
   };
 }
 

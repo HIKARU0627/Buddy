@@ -455,3 +455,19 @@ test('an attachment with blank text but a cut extraction is still recorded as tr
   });
   assert.deepEqual(empty.completeness.truncated_source_ids, []);
 });
+
+test('a subject that is cut down to blanks is still recorded as truncated and never an empty "read" input (review)', () => {
+  // 件名が空白の長い列に依頼文が続く。可読性の検査は通るが、枠で切ると空白だけになり、件名は送れない。
+  const assembled = assemble({
+    ...base,
+    subject: `${' '.repeat(6000)}参加可否を返信してください`,
+    body: { state: 'extracted', text: '' },
+  });
+  assert.deepEqual(assembled.completeness.truncated_source_ids, ['subject']);
+  assert.deepEqual(assembled.sources, []);
+  assert.equal(
+    assembled.completeness.unread_source_ids.length === 0 &&
+      assembled.completeness.truncated_source_ids.length === 0,
+    false,
+  );
+});

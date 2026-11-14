@@ -31,6 +31,7 @@ import {
   observeFragment,
   observeSpeechStart,
   resolveDelegationTarget,
+  resolveDuplicateDelegation,
   resolveHold,
   resolveSessionControl,
   resultCommentary,
@@ -53,6 +54,7 @@ import type {
   LiveTranscript,
   OutputTargetValue,
   SessionControlAction,
+  TurnBinding,
 } from '@buddy/domain';
 import type { ApiContract } from './api-contract.js';
 import { createApiContract } from './api-contract.js';
@@ -249,6 +251,9 @@ interface Context {
   // 先の委譲がすでに対象にした発話（次の委譲の対象の候補から外す。処理中に始まった訂正の発話が、先の発話と並んで
   // 「対象が複数」にならない）。
   claimed: Set<number>;
+  // 先の委譲が対象にしたターンと、そのとき読んだ文字（発話の版）の対応。同じ発話・同じ版への再委譲を二重に処理しない
+  // （10 §5A-1）。claimed と同じ連番を持つ。
+  bindings: Map<number, TurnBinding>;
   checked: Set<number>;
   controlTimer: unknown;
   // 保留の上限を見る timer（保留が残っている間だけ）。
@@ -339,6 +344,7 @@ export class LiveConversation implements LiveConversationPort {
       delegations: [],
       controlled: new Set(),
       claimed: new Set(),
+      bindings: new Map(),
       checked: new Set(),
       controlTimer: null,
       holdTimer: null,
@@ -591,6 +597,20 @@ export class LiveConversation implements LiveConversationPort {
       this.#finish(context, pending);
       return;
     }
+    // 同じ発話・同じ版への 2 回目以降の委譲は、新しい依頼にしない（解釈も保存も声も出さない）。先の依頼が答える。
+    if (
+      target.turn === null &&
+      resolveDuplicateDelegation(
+        context.transcript,
+        pending.offset_ms,
+        [...context.bindings.values()],
+        context.claimed,
+      ) !== null
+    ) {
+      this.#log('live_delegation_duplicate');
+      this.#finish(context, pending);
+      return;
+    }
     const turn = target.turn;
     const ready =
       turn !== null &&
@@ -636,7 +656,14 @@ export class LiveConversation implements LiveConversationPort {
     const text = turn === null ? '' : turnText(turn);
     pending.text = text;
     // この発話は、この委譲が対象にした（次の委譲の候補から外す）。
-    if (turn !== null) context.claimed.add(turn.ordinal);
+    if (turn !== null) {
+      context.claimed.add(turn.ordinal);
+      context.bindings.set(turn.ordinal, {
+        ordinal: turn.ordinal,
+        workflow_id: pending.workflow_id,
+        text,
+      });
+    }
     if (text.length === 0) {
       // 文字がない（対象が決まらない・まだ断片がない）: 発言として残せないので、解釈も保存もせず、声で言い直しを頼む。
       this.#sayOnly(context, pending, inputCommentary('say_again'));

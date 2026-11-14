@@ -8,6 +8,10 @@ export const OPERATION_KINDS = [
   'mail.labels.change',
   'mail.draft.create',
   'task.create',
+  'mail.send',
+  'calendar.event.update',
+  'calendar.event.create_with_attendees',
+  'mail.trash',
 ] as const;
 
 export type OperationKind = (typeof OPERATION_KINDS)[number];
@@ -48,6 +52,10 @@ export const OPERATION_STEP_KINDS = [
   'create_draft',
   'send',
   'create_task',
+  'send_mail',
+  'update_event',
+  'create_event_with_attendees',
+  'trash_mail',
 ] as const;
 export type OperationStepKind = (typeof OPERATION_STEP_KINDS)[number];
 
@@ -125,6 +133,44 @@ export const OPERATION_KIND_RULES: Readonly<
     precondition_target_read: null,
     preconditions: ['not_required'],
     steps: ['create_task'],
+  },
+  // B14-01: 画面承認が必要な 4 種類（ADR 0075）。送信・参加者のいる作成は、
+  // 送出前の対象版が固定できないため、作成物の目印で照合する。
+  'mail.send': {
+    route: 'remote_mutation',
+    reconcile_scope: 'operation_marker',
+    lookup: 'by_operation_marker',
+    lookup_read: 'mail.message',
+    precondition_target_read: 'mail.message',
+    preconditions: ['recheck_before_dispatch'],
+    steps: ['send_mail'],
+  },
+  'calendar.event.update': {
+    route: 'remote_mutation',
+    reconcile_scope: 'exact_target',
+    lookup: 'by_remote_id',
+    lookup_read: 'calendar.events',
+    precondition_target_read: 'calendar.events',
+    preconditions: ['recheck_before_dispatch'],
+    steps: ['update_event'],
+  },
+  'calendar.event.create_with_attendees': {
+    route: 'remote_mutation',
+    reconcile_scope: 'operation_marker',
+    lookup: 'by_operation_marker',
+    lookup_read: 'calendar.events',
+    precondition_target_read: null,
+    preconditions: ['recheck_before_dispatch'],
+    steps: ['create_event_with_attendees'],
+  },
+  'mail.trash': {
+    route: 'remote_mutation',
+    reconcile_scope: 'exact_target',
+    lookup: 'by_remote_id',
+    lookup_read: 'mail.message',
+    precondition_target_read: 'mail.message',
+    preconditions: ['recheck_before_dispatch'],
+    steps: ['trash_mail'],
   },
 };
 

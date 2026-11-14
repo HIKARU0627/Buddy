@@ -185,7 +185,7 @@ function classify(
 ): Classified {
   const unknown: Classified = { heading: 'unknown', sortKey: null };
   const { deadline } = item;
-  let date = '';
+  let date: string;
   let sortKey: number | null;
   let instantDeadline: boolean;
   // 過ぎたか。時刻付きは確定した UTC の時点との比較（現地の文字列の比較は夏時間の終わりで逆戻りする）。

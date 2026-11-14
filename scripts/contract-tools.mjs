@@ -955,12 +955,49 @@ export function semanticErrors(name, value) {
     value.action.due.includes('T')
   )
     errors.push(...semanticErrors('LocalDateTime', value.action.due));
-  // 一般化した intent と preview は、action.kind で種類ごとの意味検査へ回す（ADR 0027）。
+  // 送信・予定の変更・参加者のいる予定の作成・ごみ箱（B14-01、ADR 0075）。
+  // 宛先は to・cc・bcc で重ねず、effects.external_recipients と一致させる。
+  if (name === 'MailSendOperationIntent') {
+    const recipients = [
+      ...value.action.to,
+      ...value.action.cc,
+      ...value.action.bcc,
+    ];
+    if (new Set(recipients).size !== recipients.length)
+      errors.push('duplicate_recipient');
+    if (
+      [...new Set(recipients)].sort().join('\n') !==
+      [...new Set(value.effects.external_recipients)].sort().join('\n')
+    )
+      errors.push('recipient_effects_mismatch');
+  }
+  if (
+    name === 'CalendarUpdateOperationIntent' ||
+    name === 'CalendarCreateWithAttendeesOperationIntent'
+  ) {
+    if (
+      [...new Set(value.action.attendees)].sort().join('\n') !==
+      [...new Set(value.effects.external_recipients)].sort().join('\n')
+    )
+      errors.push('recipient_effects_mismatch');
+    if (
+      value.action.start.includes('T') &&
+      value.action.end.includes('T') &&
+      Date.parse(value.action.end) <= Date.parse(value.action.start)
+    )
+      errors.push('event_time_order');
+  }
+  // 一般化した intent と preview は、action.kind で種類ごとの意味検査へ回す（ADR 0027・0075）。
   if (name === 'OperationIntent') {
     const byKind = {
       'mail.labels.change': 'LabelOperationIntent',
       'mail.draft.create': 'DraftReplyOperationIntent',
       'task.create': 'TaskOperationIntent',
+      'mail.send': 'MailSendOperationIntent',
+      'calendar.event.update': 'CalendarUpdateOperationIntent',
+      'calendar.event.create_with_attendees':
+        'CalendarCreateWithAttendeesOperationIntent',
+      'mail.trash': 'MailTrashOperationIntent',
     };
     const kind = byKind[value.action.kind];
     if (kind) errors.push(...semanticErrors(kind, value));

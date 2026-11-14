@@ -12,6 +12,7 @@ export type BuddyContract =
   | WorkContext
   | ActionReadiness
   | OperationIntent
+  | DispatchGuard
   | CommandContext
   | PreviewRequest
   | OperationPreview
@@ -382,14 +383,32 @@ export type SessionEpoch = string;
  */
 export type AnalysisRevision = string;
 /**
- * 承認対象として確定した変更内容。ラベル変更（H01）・返信の下書き・用事の登録（ADR 0027）。content_hash はこの確定 intent 全体の JCS+SHA-256。依頼ID・表示端末・state_revisionを混ぜない。
+ * 承認対象として確定した変更内容。ラベル変更（H01）・返信の下書き・用事の登録（ADR 0027）と、送信・予定の変更・参加者のいる予定の作成・ごみ箱（ADR 0075）。content_hash はこの確定 intent 全体の JCS+SHA-256。依頼ID・表示端末・state_revisionを混ぜない。
  */
 export type OperationIntent =
-  LabelOperationIntent | DraftReplyOperationIntent | TaskOperationIntent;
+  | LabelOperationIntent
+  | DraftReplyOperationIntent
+  | TaskOperationIntent
+  | MailSendOperationIntent
+  | CalendarUpdateOperationIntent
+  | CalendarCreateWithAttendeesOperationIntent
+  | MailTrashOperationIntent;
 /**
  * 承認対象の内容版。宛先・本文・対象・影響・前提が変わったときだけ上がる（設計 07 §1、08 §1）。
  */
 export type ContentVersion = string;
+/**
+ * IANA タイムゾーン名。実在の確認は意味検査で行う（設計 07 §1）。
+ */
+export type TimeZone = string;
+/**
+ * 画面承認が必要な外部変更の 4 種類（設計 04 表、08 §1〜§4、ADR 0075）。完全削除の操作はない。
+ */
+export type ApprovalRequiredOperationKind =
+  | 'mail.send'
+  | 'calendar.event.update'
+  | 'calendar.event.create_with_attendees'
+  | 'mail.trash';
 /**
  * 処理状態の更新番号。競合検査用で、内容が同じなら ContentVersion は変えない（設計 07 §1、08 §1）。
  */
@@ -415,10 +434,16 @@ export type CommandReceipt =
       committed_state_revision: StateRevision;
     };
 /**
- * 操作の種類。確定 intent の action.kind と同じ値（ADR 0027）。経路（Read / LocalCommand / RemoteMutation）はコードの表が決める。
+ * 操作の種類。確定 intent の action.kind と同じ値（ADR 0027・0075）。経路（Read / LocalCommand / RemoteMutation）はコードの表が決める。
  */
 export type OperationKind =
-  'mail.labels.change' | 'mail.draft.create' | 'task.create';
+  | 'mail.labels.change'
+  | 'mail.draft.create'
+  | 'task.create'
+  | 'mail.send'
+  | 'calendar.event.update'
+  | 'calendar.event.create_with_attendees'
+  | 'mail.trash';
 /**
  * DB の世代。通常の再起動では維持し、バックアップ復元・新規作成で新しい値にする。等値比較だけに使う（設計 07 §1・§4、ADR 0003）。
  */
@@ -602,10 +627,6 @@ export type QuantityString = string;
  */
 export type DecimalString = string;
 /**
- * IANA タイムゾーン名。実在の確認は意味検査で行う（設計 07 §1）。
- */
-export type TimeZone = string;
-/**
  * 枠の予算保留の理由（01 いつも見える状態の「予算保留」）。limit_reached は精算済み額＋未精算の M が上限に達した、overrun_review_pending は M 超過の確認待ち、ancestor_held は祖先の枠の保留、config_invalid は設定の検査に失敗して有料処理を止めている。理由のコードを利用者に見せない。
  */
 export type BudgetHoldReason =
@@ -676,7 +697,14 @@ export type ReconcileScope =
  * 操作の工程（設計 08 §4、ADR 0027）。2 工程の操作はこの順にだけ進める。
  */
 export type OperationStepKind =
-  'apply_labels' | 'create_draft' | 'send' | 'create_task';
+  | 'apply_labels'
+  | 'create_draft'
+  | 'send'
+  | 'create_task'
+  | 'send_mail'
+  | 'update_event'
+  | 'create_event_with_attendees'
+  | 'trash_mail';
 /**
  * Outlook のアカウント種別（設計 04 接続・権限）。接続時に特定し、個人と職場・学校で使える範囲を分ける。
  */
@@ -2254,6 +2282,174 @@ export interface TaskOperationIntent {
     external_recipients: [];
     reconcile_scope: 'local_transaction';
   };
+}
+/**
+ * メールの送信（mail.send、RemoteMutation、設計 04 表、ADR 0075）。宛先・CC・BCC・件名・本文は承認の対象で、送出の直前に変えない。外部の相手に届くので external_recipients を空にしない。送信は取り消せないため、結果不明は再送せず保留する。
+ */
+export interface MailSendOperationIntent {
+  schema: 'buddy.operation.v1';
+  operation_id: Id;
+  content_version: ContentVersion;
+  permission_revision: PermissionRevision;
+  provider: 'mock' | 'gmail' | 'microsoft_graph';
+  account_id: Id;
+  /**
+   * 送る下書き・返信元のメール。新規作成の送信では null。
+   */
+  target: {
+    remote_id: string;
+    source_revision: SourceRevision;
+  } | null;
+  action: {
+    kind: 'mail.send';
+    /**
+     * @minItems 1
+     */
+    to: [string, ...string[]];
+    cc: string[];
+    bcc: string[];
+    subject: string;
+    body: string;
+  };
+  effects: {
+    /**
+     * @maxItems 50
+     */
+    external_recipients: string[];
+    reconcile_scope: 'operation_marker';
+  };
+}
+/**
+ * 予定の変更（calendar.event.update、RemoteMutation、設計 04 表、ADR 0075）。対象の予定と版、カレンダー、時刻、参加者、通知の有無を承認の対象にする。参加者の有無にかかわらず毎回確認する。
+ */
+export interface CalendarUpdateOperationIntent {
+  schema: 'buddy.operation.v1';
+  operation_id: Id;
+  content_version: ContentVersion;
+  permission_revision: PermissionRevision;
+  provider: 'mock' | 'gmail' | 'microsoft_graph';
+  account_id: Id;
+  target: {
+    remote_id: string;
+    source_revision: SourceRevision;
+  };
+  action: {
+    kind: 'calendar.event.update';
+    calendar_id: string;
+    summary: string;
+    start: DateOrDateTime;
+    end: DateOrDateTime;
+    time_zone: TimeZone;
+    attendees: string[];
+    notify_attendees: boolean;
+  };
+  effects: {
+    /**
+     * @maxItems 50
+     */
+    external_recipients: string[];
+    reconcile_scope: 'exact_target';
+  };
+}
+/**
+ * 参加者のいる予定の作成（calendar.event.create_with_attendees、RemoteMutation、設計 04 表、ADR 0075）。参加者が 1 人以上いるので、自分だけの予定の自動実行とは別の種類にし、毎回画面で承認する。作成物は操作の目印で照合する。
+ */
+export interface CalendarCreateWithAttendeesOperationIntent {
+  schema: 'buddy.operation.v1';
+  operation_id: Id;
+  content_version: ContentVersion;
+  permission_revision: PermissionRevision;
+  provider: 'mock' | 'gmail' | 'microsoft_graph';
+  account_id: Id;
+  /**
+   * 参加者のいる予定の作成は新しい予定なので、既存の対象を持たない。
+   */
+  target: null;
+  action: {
+    kind: 'calendar.event.create_with_attendees';
+    calendar_id: string;
+    summary: string;
+    start: DateOrDateTime;
+    end: DateOrDateTime;
+    time_zone: TimeZone;
+    /**
+     * @minItems 1
+     */
+    attendees: [string, ...string[]];
+    notify_attendees: boolean;
+  };
+  effects: {
+    /**
+     * @minItems 1
+     * @maxItems 50
+     */
+    external_recipients: [string, ...string[]];
+    reconcile_scope: 'operation_marker';
+  };
+}
+/**
+ * メールをごみ箱へ移す（mail.trash、RemoteMutation、設計 04 表、ADR 0075）。Gmail の trash・Outlook の deleteditems への移動だけを行い、完全削除・空にする操作は作らない。外部の相手へは送らないので external_recipients は空。
+ */
+export interface MailTrashOperationIntent {
+  schema: 'buddy.operation.v1';
+  operation_id: Id;
+  content_version: ContentVersion;
+  permission_revision: PermissionRevision;
+  provider: 'mock' | 'gmail' | 'microsoft_graph';
+  account_id: Id;
+  target: {
+    remote_id: string;
+    source_revision: SourceRevision;
+  };
+  action: {
+    kind: 'mail.trash';
+  };
+  effects: {
+    /**
+     * @maxItems 0
+     */
+    external_recipients: [];
+    reconcile_scope: 'exact_target';
+  };
+}
+/**
+ * 画面承認が必要な外部変更の送出直前の照合（設計 08 §2・§3、ADR 0075）。未承認・取消済み・内容変更・宛先変更・対象変更・旧版を形式として表し、結果不明の再送を許可しない。
+ */
+export interface DispatchGuard {
+  schema: 'buddy.dispatch-guard.v1';
+  operation_id: Id;
+  operation_kind: ApprovalRequiredOperationKind;
+  content_version: ContentVersion;
+  content_hash: Hash;
+  state_revision: StateRevision;
+  /**
+   * この内容版に対する有効な画面承認。null は未承認。
+   */
+  approval: ApprovalBinding | null;
+  /**
+   * 送出の直前に読み直した対象の版。送信・予定変更・ごみ箱では必須、参加者のいる予定の作成では null。
+   */
+  target: OperationTargetVersion | null;
+  /**
+   * 承認の時点で確かめた対象の版。target と食い違えば宛先・対象の変更として拒否する。
+   */
+  expected_target: OperationTargetVersion | null;
+}
+/**
+ * 画面承認の記録の写し（設計 08 §1、ADR 0010・0075）。取消済みの承認を新しい内容へ流用しない。
+ */
+export interface ApprovalBinding {
+  content_version: ContentVersion;
+  content_hash: Hash;
+  state_revision: StateRevision;
+  cancelled: boolean;
+}
+/**
+ * 対象（メール・予定）の版。承認の時点と送出の直前で比べる（ADR 0075）。
+ */
+export interface OperationTargetVersion {
+  content_version: ContentVersion;
+  content_hash: Hash;
 }
 export interface CommandContext {
   request_id: Id;

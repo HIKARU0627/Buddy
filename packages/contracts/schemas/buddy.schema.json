@@ -29,6 +29,9 @@
       "$ref": "#/$defs/OperationIntent"
     },
     {
+      "$ref": "#/$defs/DispatchGuard"
+    },
+    {
       "$ref": "#/$defs/CommandContext"
     },
     {
@@ -5341,7 +5344,16 @@
     },
     "OperationStepKind": {
       "type": "string",
-      "enum": ["apply_labels", "create_draft", "send", "create_task"],
+      "enum": [
+        "apply_labels",
+        "create_draft",
+        "send",
+        "create_task",
+        "send_mail",
+        "update_event",
+        "create_event_with_attendees",
+        "trash_mail"
+      ],
       "description": "操作の工程（設計 08 §4、ADR 0027）。2 工程の操作はこの順にだけ進める。"
     },
     "ConnectorWriteCapability": {
@@ -5991,10 +6003,587 @@
       "additionalProperties": false,
       "description": "Buddy 内の用事の登録（create_task、LocalCommand、ADR 0027）。外部 HTTP を使わず、承認の後に一つの transaction で適用する。target.list_id は登録先の一覧、permission_revision は Buddy 内の用事の保存先の許可の版。"
     },
+    "MailSendOperationIntent": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "const": "buddy.operation.v1"
+        },
+        "operation_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "content_version": {
+          "$ref": "#/$defs/ContentVersion"
+        },
+        "permission_revision": {
+          "$ref": "#/$defs/PermissionRevision"
+        },
+        "provider": {
+          "type": "string",
+          "enum": ["mock", "gmail", "microsoft_graph"]
+        },
+        "account_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "target": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "remote_id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "source_revision": {
+                  "$ref": "#/$defs/SourceRevision"
+                }
+              },
+              "required": ["remote_id", "source_revision"],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "送る下書き・返信元のメール。新規作成の送信では null。"
+        },
+        "action": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "mail.send"
+            },
+            "to": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "cc": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "uniqueItems": true
+            },
+            "bcc": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "uniqueItems": true
+            },
+            "subject": {
+              "type": "string",
+              "minLength": 1
+            },
+            "body": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": ["kind", "to", "cc", "bcc", "subject", "body"],
+          "additionalProperties": false
+        },
+        "effects": {
+          "type": "object",
+          "properties": {
+            "external_recipients": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "maxItems": 50,
+              "uniqueItems": true
+            },
+            "reconcile_scope": {
+              "type": "string",
+              "const": "operation_marker"
+            }
+          },
+          "required": ["external_recipients", "reconcile_scope"],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "schema",
+        "operation_id",
+        "content_version",
+        "permission_revision",
+        "provider",
+        "account_id",
+        "target",
+        "action",
+        "effects"
+      ],
+      "additionalProperties": false,
+      "description": "メールの送信（mail.send、RemoteMutation、設計 04 表、ADR 0075）。宛先・CC・BCC・件名・本文は承認の対象で、送出の直前に変えない。外部の相手に届くので external_recipients を空にしない。送信は取り消せないため、結果不明は再送せず保留する。"
+    },
+    "CalendarUpdateOperationIntent": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "const": "buddy.operation.v1"
+        },
+        "operation_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "content_version": {
+          "$ref": "#/$defs/ContentVersion"
+        },
+        "permission_revision": {
+          "$ref": "#/$defs/PermissionRevision"
+        },
+        "provider": {
+          "type": "string",
+          "enum": ["mock", "gmail", "microsoft_graph"]
+        },
+        "account_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "target": {
+          "type": "object",
+          "properties": {
+            "remote_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "source_revision": {
+              "$ref": "#/$defs/SourceRevision"
+            }
+          },
+          "required": ["remote_id", "source_revision"],
+          "additionalProperties": false
+        },
+        "action": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "calendar.event.update"
+            },
+            "calendar_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "summary": {
+              "type": "string",
+              "minLength": 1
+            },
+            "start": {
+              "$ref": "#/$defs/DateOrDateTime"
+            },
+            "end": {
+              "$ref": "#/$defs/DateOrDateTime"
+            },
+            "time_zone": {
+              "$ref": "#/$defs/TimeZone"
+            },
+            "attendees": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "uniqueItems": true
+            },
+            "notify_attendees": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "kind",
+            "calendar_id",
+            "summary",
+            "start",
+            "end",
+            "time_zone",
+            "attendees",
+            "notify_attendees"
+          ],
+          "additionalProperties": false
+        },
+        "effects": {
+          "type": "object",
+          "properties": {
+            "external_recipients": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "maxItems": 50,
+              "uniqueItems": true
+            },
+            "reconcile_scope": {
+              "type": "string",
+              "const": "exact_target"
+            }
+          },
+          "required": ["external_recipients", "reconcile_scope"],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "schema",
+        "operation_id",
+        "content_version",
+        "permission_revision",
+        "provider",
+        "account_id",
+        "target",
+        "action",
+        "effects"
+      ],
+      "additionalProperties": false,
+      "description": "予定の変更（calendar.event.update、RemoteMutation、設計 04 表、ADR 0075）。対象の予定と版、カレンダー、時刻、参加者、通知の有無を承認の対象にする。参加者の有無にかかわらず毎回確認する。"
+    },
+    "CalendarCreateWithAttendeesOperationIntent": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "const": "buddy.operation.v1"
+        },
+        "operation_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "content_version": {
+          "$ref": "#/$defs/ContentVersion"
+        },
+        "permission_revision": {
+          "$ref": "#/$defs/PermissionRevision"
+        },
+        "provider": {
+          "type": "string",
+          "enum": ["mock", "gmail", "microsoft_graph"]
+        },
+        "account_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "target": {
+          "type": "null",
+          "description": "参加者のいる予定の作成は新しい予定なので、既存の対象を持たない。"
+        },
+        "action": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "calendar.event.create_with_attendees"
+            },
+            "calendar_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "summary": {
+              "type": "string",
+              "minLength": 1
+            },
+            "start": {
+              "$ref": "#/$defs/DateOrDateTime"
+            },
+            "end": {
+              "$ref": "#/$defs/DateOrDateTime"
+            },
+            "time_zone": {
+              "$ref": "#/$defs/TimeZone"
+            },
+            "attendees": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "notify_attendees": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "kind",
+            "calendar_id",
+            "summary",
+            "start",
+            "end",
+            "time_zone",
+            "attendees",
+            "notify_attendees"
+          ],
+          "additionalProperties": false
+        },
+        "effects": {
+          "type": "object",
+          "properties": {
+            "external_recipients": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "minItems": 1,
+              "maxItems": 50,
+              "uniqueItems": true
+            },
+            "reconcile_scope": {
+              "type": "string",
+              "const": "operation_marker"
+            }
+          },
+          "required": ["external_recipients", "reconcile_scope"],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "schema",
+        "operation_id",
+        "content_version",
+        "permission_revision",
+        "provider",
+        "account_id",
+        "target",
+        "action",
+        "effects"
+      ],
+      "additionalProperties": false,
+      "description": "参加者のいる予定の作成（calendar.event.create_with_attendees、RemoteMutation、設計 04 表、ADR 0075）。参加者が 1 人以上いるので、自分だけの予定の自動実行とは別の種類にし、毎回画面で承認する。作成物は操作の目印で照合する。"
+    },
+    "MailTrashOperationIntent": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "const": "buddy.operation.v1"
+        },
+        "operation_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "content_version": {
+          "$ref": "#/$defs/ContentVersion"
+        },
+        "permission_revision": {
+          "$ref": "#/$defs/PermissionRevision"
+        },
+        "provider": {
+          "type": "string",
+          "enum": ["mock", "gmail", "microsoft_graph"]
+        },
+        "account_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "target": {
+          "type": "object",
+          "properties": {
+            "remote_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "source_revision": {
+              "$ref": "#/$defs/SourceRevision"
+            }
+          },
+          "required": ["remote_id", "source_revision"],
+          "additionalProperties": false
+        },
+        "action": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "mail.trash"
+            }
+          },
+          "required": ["kind"],
+          "additionalProperties": false
+        },
+        "effects": {
+          "type": "object",
+          "properties": {
+            "external_recipients": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "maxItems": 0
+            },
+            "reconcile_scope": {
+              "type": "string",
+              "const": "exact_target"
+            }
+          },
+          "required": ["external_recipients", "reconcile_scope"],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "schema",
+        "operation_id",
+        "content_version",
+        "permission_revision",
+        "provider",
+        "account_id",
+        "target",
+        "action",
+        "effects"
+      ],
+      "additionalProperties": false,
+      "description": "メールをごみ箱へ移す（mail.trash、RemoteMutation、設計 04 表、ADR 0075）。Gmail の trash・Outlook の deleteditems への移動だけを行い、完全削除・空にする操作は作らない。外部の相手へは送らないので external_recipients は空。"
+    },
     "OperationKind": {
       "type": "string",
-      "enum": ["mail.labels.change", "mail.draft.create", "task.create"],
-      "description": "操作の種類。確定 intent の action.kind と同じ値（ADR 0027）。経路（Read / LocalCommand / RemoteMutation）はコードの表が決める。"
+      "enum": [
+        "mail.labels.change",
+        "mail.draft.create",
+        "task.create",
+        "mail.send",
+        "calendar.event.update",
+        "calendar.event.create_with_attendees",
+        "mail.trash"
+      ],
+      "description": "操作の種類。確定 intent の action.kind と同じ値（ADR 0027・0075）。経路（Read / LocalCommand / RemoteMutation）はコードの表が決める。"
+    },
+    "ApprovalRequiredOperationKind": {
+      "type": "string",
+      "enum": [
+        "mail.send",
+        "calendar.event.update",
+        "calendar.event.create_with_attendees",
+        "mail.trash"
+      ],
+      "description": "画面承認が必要な外部変更の 4 種類（設計 04 表、08 §1〜§4、ADR 0075）。完全削除の操作はない。"
+    },
+    "OperationTargetVersion": {
+      "type": "object",
+      "properties": {
+        "content_version": {
+          "$ref": "#/$defs/ContentVersion"
+        },
+        "content_hash": {
+          "$ref": "#/$defs/Hash"
+        }
+      },
+      "required": ["content_version", "content_hash"],
+      "additionalProperties": false,
+      "description": "対象（メール・予定）の版。承認の時点と送出の直前で比べる（ADR 0075）。"
+    },
+    "ApprovalBinding": {
+      "type": "object",
+      "properties": {
+        "content_version": {
+          "$ref": "#/$defs/ContentVersion"
+        },
+        "content_hash": {
+          "$ref": "#/$defs/Hash"
+        },
+        "state_revision": {
+          "$ref": "#/$defs/StateRevision"
+        },
+        "cancelled": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "content_version",
+        "content_hash",
+        "state_revision",
+        "cancelled"
+      ],
+      "additionalProperties": false,
+      "description": "画面承認の記録の写し（設計 08 §1、ADR 0010・0075）。取消済みの承認を新しい内容へ流用しない。"
+    },
+    "DispatchGuardRejection": {
+      "type": "string",
+      "enum": [
+        "not_approved",
+        "approval_cancelled",
+        "content_changed",
+        "recipient_changed",
+        "target_changed",
+        "stale_version"
+      ],
+      "description": "送出の直前に見つかった拒否の理由（設計 08 §2・§3、ADR 0075）。結果不明は拒否ではなく保留として別に扱い、自動で再送しない。"
+    },
+    "DispatchGuard": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "const": "buddy.dispatch-guard.v1"
+        },
+        "operation_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "operation_kind": {
+          "$ref": "#/$defs/ApprovalRequiredOperationKind"
+        },
+        "content_version": {
+          "$ref": "#/$defs/ContentVersion"
+        },
+        "content_hash": {
+          "$ref": "#/$defs/Hash"
+        },
+        "state_revision": {
+          "$ref": "#/$defs/StateRevision"
+        },
+        "approval": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ApprovalBinding"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "この内容版に対する有効な画面承認。null は未承認。"
+        },
+        "target": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OperationTargetVersion"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "送出の直前に読み直した対象の版。送信・予定変更・ごみ箱では必須、参加者のいる予定の作成では null。"
+        },
+        "expected_target": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OperationTargetVersion"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "承認の時点で確かめた対象の版。target と食い違えば宛先・対象の変更として拒否する。"
+        }
+      },
+      "required": [
+        "schema",
+        "operation_id",
+        "operation_kind",
+        "content_version",
+        "content_hash",
+        "state_revision",
+        "approval",
+        "target",
+        "expected_target"
+      ],
+      "additionalProperties": false,
+      "description": "画面承認が必要な外部変更の送出直前の照合（設計 08 §2・§3、ADR 0075）。未承認・取消済み・内容変更・宛先変更・対象変更・旧版を形式として表し、結果不明の再送を許可しない。"
     },
     "OperationIntent": {
       "oneOf": [
@@ -6006,9 +6595,21 @@
         },
         {
           "$ref": "#/$defs/TaskOperationIntent"
+        },
+        {
+          "$ref": "#/$defs/MailSendOperationIntent"
+        },
+        {
+          "$ref": "#/$defs/CalendarUpdateOperationIntent"
+        },
+        {
+          "$ref": "#/$defs/CalendarCreateWithAttendeesOperationIntent"
+        },
+        {
+          "$ref": "#/$defs/MailTrashOperationIntent"
         }
       ],
-      "description": "承認対象として確定した変更内容。ラベル変更（H01）・返信の下書き・用事の登録（ADR 0027）。content_hash はこの確定 intent 全体の JCS+SHA-256。依頼ID・表示端末・state_revisionを混ぜない。"
+      "description": "承認対象として確定した変更内容。ラベル変更（H01）・返信の下書き・用事の登録（ADR 0027）と、送信・予定の変更・参加者のいる予定の作成・ごみ箱（ADR 0075）。content_hash はこの確定 intent 全体の JCS+SHA-256。依頼ID・表示端末・state_revisionを混ぜない。"
     },
     "CommandContext": {
       "type": "object",

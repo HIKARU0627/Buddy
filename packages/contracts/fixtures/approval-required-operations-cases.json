@@ -1,0 +1,522 @@
+{
+  "schema_version": 1,
+  "description": "B14-01 の送信・予定の変更・参加者のいる予定・ごみ箱と、送出直前の照合の拒否（ADR 0075、設計 04 表、08 §1〜§4）。模擬だけ。",
+  "cases": [
+    {
+      "id": "send",
+      "schema": "MailSendOperationIntent",
+      "valid": true,
+      "value": {
+        "schema": "buddy.operation.v1",
+        "operation_id": "00000000-0000-4000-8000-000000000801",
+        "content_version": "1",
+        "permission_revision": "1",
+        "provider": "mock",
+        "account_id": "00000000-0000-4000-8000-000000000002",
+        "target": {
+          "remote_id": "draft-001",
+          "source_revision": "r1"
+        },
+        "action": {
+          "kind": "mail.send",
+          "to": ["one@example.com"],
+          "cc": ["two@example.com"],
+          "bcc": [],
+          "subject": "Synthetic subject",
+          "body": "Synthetic body"
+        },
+        "effects": {
+          "external_recipients": ["one@example.com", "two@example.com"],
+          "reconcile_scope": "operation_marker"
+        }
+      }
+    },
+    {
+      "id": "send-duplicate-recipient",
+      "schema": "MailSendOperationIntent",
+      "valid": true,
+      "semantic_errors": ["duplicate_recipient"],
+      "value": {
+        "schema": "buddy.operation.v1",
+        "operation_id": "00000000-0000-4000-8000-000000000801",
+        "content_version": "1",
+        "permission_revision": "1",
+        "provider": "mock",
+        "account_id": "00000000-0000-4000-8000-000000000002",
+        "target": null,
+        "action": {
+          "kind": "mail.send",
+          "to": ["one@example.com"],
+          "cc": ["one@example.com"],
+          "bcc": [],
+          "subject": "Synthetic subject",
+          "body": "Synthetic body"
+        },
+        "effects": {
+          "external_recipients": ["one@example.com"],
+          "reconcile_scope": "operation_marker"
+        }
+      }
+    },
+    {
+      "id": "send-effects-mismatch",
+      "schema": "MailSendOperationIntent",
+      "valid": true,
+      "semantic_errors": ["recipient_effects_mismatch"],
+      "value": {
+        "schema": "buddy.operation.v1",
+        "operation_id": "00000000-0000-4000-8000-000000000801",
+        "content_version": "1",
+        "permission_revision": "1",
+        "provider": "mock",
+        "account_id": "00000000-0000-4000-8000-000000000002",
+        "target": null,
+        "action": {
+          "kind": "mail.send",
+          "to": ["one@example.com"],
+          "cc": [],
+          "bcc": [],
+          "subject": "Synthetic subject",
+          "body": "Synthetic body"
+        },
+        "effects": {
+          "external_recipients": ["other@example.com"],
+          "reconcile_scope": "operation_marker"
+        }
+      }
+    },
+    {
+      "id": "send-without-bcc",
+      "schema": "MailSendOperationIntent",
+      "valid": false,
+      "value": {
+        "schema": "buddy.operation.v1",
+        "operation_id": "00000000-0000-4000-8000-000000000801",
+        "content_version": "1",
+        "permission_revision": "1",
+        "provider": "mock",
+        "account_id": "00000000-0000-4000-8000-000000000002",
+        "target": null,
+        "action": {
+          "kind": "mail.send",
+          "to": ["one@example.com"],
+          "cc": [],
+          "subject": "Synthetic subject",
+          "body": "Synthetic body"
+        },
+        "effects": {
+          "external_recipients": ["one@example.com"],
+          "reconcile_scope": "operation_marker"
+        }
+      }
+    },
+    {
+      "id": "calendar-update",
+      "schema": "CalendarUpdateOperationIntent",
+      "valid": true,
+      "value": {
+        "schema": "buddy.operation.v1",
+        "operation_id": "00000000-0000-4000-8000-000000000802",
+        "content_version": "2",
+        "permission_revision": "1",
+        "provider": "mock",
+        "account_id": "00000000-0000-4000-8000-000000000002",
+        "target": {
+          "remote_id": "event-001",
+          "source_revision": "r2"
+        },
+        "action": {
+          "kind": "calendar.event.update",
+          "calendar_id": "calendar-001",
+          "summary": "Synthetic event",
+          "start": "2030-01-02T09:00",
+          "end": "2030-01-02T10:00",
+          "time_zone": "Asia/Tokyo",
+          "attendees": ["one@example.com"],
+          "notify_attendees": false
+        },
+        "effects": {
+          "external_recipients": ["one@example.com"],
+          "reconcile_scope": "exact_target"
+        }
+      }
+    },
+    {
+      "id": "calendar-update-end-before-start",
+      "schema": "CalendarUpdateOperationIntent",
+      "valid": true,
+      "semantic_errors": ["event_time_order"],
+      "value": {
+        "schema": "buddy.operation.v1",
+        "operation_id": "00000000-0000-4000-8000-000000000802",
+        "content_version": "2",
+        "permission_revision": "1",
+        "provider": "mock",
+        "account_id": "00000000-0000-4000-8000-000000000002",
+        "target": {
+          "remote_id": "event-001",
+          "source_revision": "r2"
+        },
+        "action": {
+          "kind": "calendar.event.update",
+          "calendar_id": "calendar-001",
+          "summary": "Synthetic event",
+          "start": "2030-01-02T10:00",
+          "end": "2030-01-02T09:00",
+          "time_zone": "Asia/Tokyo",
+          "attendees": [],
+          "notify_attendees": false
+        },
+        "effects": {
+          "external_recipients": [],
+          "reconcile_scope": "exact_target"
+        }
+      }
+    },
+    {
+      "id": "calendar-create-with-attendees",
+      "schema": "CalendarCreateWithAttendeesOperationIntent",
+      "valid": true,
+      "value": {
+        "schema": "buddy.operation.v1",
+        "operation_id": "00000000-0000-4000-8000-000000000803",
+        "content_version": "1",
+        "permission_revision": "1",
+        "provider": "mock",
+        "account_id": "00000000-0000-4000-8000-000000000002",
+        "target": null,
+        "action": {
+          "kind": "calendar.event.create_with_attendees",
+          "calendar_id": "calendar-001",
+          "summary": "Synthetic event",
+          "start": "2030-01-03T09:00",
+          "end": "2030-01-03T10:00",
+          "time_zone": "Asia/Tokyo",
+          "attendees": ["one@example.com", "two@example.com"],
+          "notify_attendees": true
+        },
+        "effects": {
+          "external_recipients": ["one@example.com", "two@example.com"],
+          "reconcile_scope": "operation_marker"
+        }
+      }
+    },
+    {
+      "id": "calendar-create-without-attendees",
+      "schema": "CalendarCreateWithAttendeesOperationIntent",
+      "valid": false,
+      "value": {
+        "schema": "buddy.operation.v1",
+        "operation_id": "00000000-0000-4000-8000-000000000803",
+        "content_version": "1",
+        "permission_revision": "1",
+        "provider": "mock",
+        "account_id": "00000000-0000-4000-8000-000000000002",
+        "target": null,
+        "action": {
+          "kind": "calendar.event.create_with_attendees",
+          "calendar_id": "calendar-001",
+          "summary": "Synthetic event",
+          "start": "2030-01-03T09:00",
+          "end": "2030-01-03T10:00",
+          "time_zone": "Asia/Tokyo",
+          "attendees": [],
+          "notify_attendees": true
+        },
+        "effects": {
+          "external_recipients": [],
+          "reconcile_scope": "operation_marker"
+        }
+      }
+    },
+    {
+      "id": "trash",
+      "schema": "MailTrashOperationIntent",
+      "valid": true,
+      "value": {
+        "schema": "buddy.operation.v1",
+        "operation_id": "00000000-0000-4000-8000-000000000804",
+        "content_version": "1",
+        "permission_revision": "1",
+        "provider": "mock",
+        "account_id": "00000000-0000-4000-8000-000000000002",
+        "target": {
+          "remote_id": "mail-001",
+          "source_revision": "r1"
+        },
+        "action": {
+          "kind": "mail.trash"
+        },
+        "effects": {
+          "external_recipients": [],
+          "reconcile_scope": "exact_target"
+        }
+      }
+    },
+    {
+      "id": "trash-with-recipient",
+      "schema": "MailTrashOperationIntent",
+      "valid": false,
+      "value": {
+        "schema": "buddy.operation.v1",
+        "operation_id": "00000000-0000-4000-8000-000000000804",
+        "content_version": "1",
+        "permission_revision": "1",
+        "provider": "mock",
+        "account_id": "00000000-0000-4000-8000-000000000002",
+        "target": {
+          "remote_id": "mail-001",
+          "source_revision": "r1"
+        },
+        "action": {
+          "kind": "mail.trash"
+        },
+        "effects": {
+          "external_recipients": ["one@example.com"],
+          "reconcile_scope": "exact_target"
+        }
+      }
+    },
+    {
+      "id": "permanent-delete-is-not-an-operation",
+      "schema": "OperationKind",
+      "valid": false,
+      "value": "mail.delete"
+    },
+    {
+      "id": "guard-allowed-send",
+      "schema": "DispatchGuard",
+      "valid": true,
+      "expected_reasons": [],
+      "value": {
+        "schema": "buddy.dispatch-guard.v1",
+        "operation_id": "00000000-0000-4000-8000-000000000801",
+        "operation_kind": "mail.send",
+        "content_version": "1",
+        "content_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+        "state_revision": "3",
+        "approval": {
+          "content_version": "1",
+          "content_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+          "state_revision": "3",
+          "cancelled": false
+        },
+        "target": {
+          "content_version": "1",
+          "content_hash": "2222222222222222222222222222222222222222222222222222222222222222"
+        },
+        "expected_target": {
+          "content_version": "1",
+          "content_hash": "2222222222222222222222222222222222222222222222222222222222222222"
+        }
+      }
+    },
+    {
+      "id": "guard-not-approved",
+      "schema": "DispatchGuard",
+      "valid": true,
+      "expected_reasons": ["not_approved"],
+      "value": {
+        "schema": "buddy.dispatch-guard.v1",
+        "operation_id": "00000000-0000-4000-8000-000000000801",
+        "operation_kind": "mail.send",
+        "content_version": "1",
+        "content_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+        "state_revision": "3",
+        "approval": null,
+        "target": {
+          "content_version": "1",
+          "content_hash": "2222222222222222222222222222222222222222222222222222222222222222"
+        },
+        "expected_target": {
+          "content_version": "1",
+          "content_hash": "2222222222222222222222222222222222222222222222222222222222222222"
+        }
+      }
+    },
+    {
+      "id": "guard-cancelled",
+      "schema": "DispatchGuard",
+      "valid": true,
+      "expected_reasons": ["approval_cancelled"],
+      "value": {
+        "schema": "buddy.dispatch-guard.v1",
+        "operation_id": "00000000-0000-4000-8000-000000000801",
+        "operation_kind": "mail.send",
+        "content_version": "1",
+        "content_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+        "state_revision": "3",
+        "approval": {
+          "content_version": "1",
+          "content_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+          "state_revision": "3",
+          "cancelled": true
+        },
+        "target": {
+          "content_version": "1",
+          "content_hash": "2222222222222222222222222222222222222222222222222222222222222222"
+        },
+        "expected_target": {
+          "content_version": "1",
+          "content_hash": "2222222222222222222222222222222222222222222222222222222222222222"
+        }
+      }
+    },
+    {
+      "id": "guard-content-changed",
+      "schema": "DispatchGuard",
+      "valid": true,
+      "expected_reasons": ["content_changed"],
+      "value": {
+        "schema": "buddy.dispatch-guard.v1",
+        "operation_id": "00000000-0000-4000-8000-000000000801",
+        "operation_kind": "mail.send",
+        "content_version": "2",
+        "content_hash": "3333333333333333333333333333333333333333333333333333333333333333",
+        "state_revision": "3",
+        "approval": {
+          "content_version": "1",
+          "content_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+          "state_revision": "3",
+          "cancelled": false
+        },
+        "target": {
+          "content_version": "1",
+          "content_hash": "2222222222222222222222222222222222222222222222222222222222222222"
+        },
+        "expected_target": {
+          "content_version": "1",
+          "content_hash": "2222222222222222222222222222222222222222222222222222222222222222"
+        }
+      }
+    },
+    {
+      "id": "guard-recipient-changed",
+      "schema": "DispatchGuard",
+      "valid": true,
+      "expected_reasons": ["recipient_changed"],
+      "value": {
+        "schema": "buddy.dispatch-guard.v1",
+        "operation_id": "00000000-0000-4000-8000-000000000801",
+        "operation_kind": "mail.send",
+        "content_version": "1",
+        "content_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+        "state_revision": "3",
+        "approval": {
+          "content_version": "1",
+          "content_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+          "state_revision": "3",
+          "cancelled": false
+        },
+        "target": {
+          "content_version": "2",
+          "content_hash": "4444444444444444444444444444444444444444444444444444444444444444"
+        },
+        "expected_target": {
+          "content_version": "1",
+          "content_hash": "2222222222222222222222222222222222222222222222222222222222222222"
+        }
+      }
+    },
+    {
+      "id": "guard-event-target-changed",
+      "schema": "DispatchGuard",
+      "valid": true,
+      "expected_reasons": ["target_changed"],
+      "value": {
+        "schema": "buddy.dispatch-guard.v1",
+        "operation_id": "00000000-0000-4000-8000-000000000802",
+        "operation_kind": "calendar.event.update",
+        "content_version": "2",
+        "content_hash": "5555555555555555555555555555555555555555555555555555555555555555",
+        "state_revision": "4",
+        "approval": {
+          "content_version": "2",
+          "content_hash": "5555555555555555555555555555555555555555555555555555555555555555",
+          "state_revision": "4",
+          "cancelled": false
+        },
+        "target": {
+          "content_version": "2",
+          "content_hash": "6666666666666666666666666666666666666666666666666666666666666666"
+        },
+        "expected_target": {
+          "content_version": "1",
+          "content_hash": "7777777777777777777777777777777777777777777777777777777777777777"
+        }
+      }
+    },
+    {
+      "id": "guard-stale-version",
+      "schema": "DispatchGuard",
+      "valid": true,
+      "expected_reasons": ["stale_version"],
+      "value": {
+        "schema": "buddy.dispatch-guard.v1",
+        "operation_id": "00000000-0000-4000-8000-000000000804",
+        "operation_kind": "mail.trash",
+        "content_version": "1",
+        "content_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+        "state_revision": "5",
+        "approval": {
+          "content_version": "1",
+          "content_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+          "state_revision": "4",
+          "cancelled": false
+        },
+        "target": {
+          "content_version": "1",
+          "content_hash": "2222222222222222222222222222222222222222222222222222222222222222"
+        },
+        "expected_target": {
+          "content_version": "1",
+          "content_hash": "2222222222222222222222222222222222222222222222222222222222222222"
+        }
+      }
+    },
+    {
+      "id": "guard-created-event-allowed",
+      "schema": "DispatchGuard",
+      "valid": true,
+      "expected_reasons": [],
+      "value": {
+        "schema": "buddy.dispatch-guard.v1",
+        "operation_id": "00000000-0000-4000-8000-000000000803",
+        "operation_kind": "calendar.event.create_with_attendees",
+        "content_version": "1",
+        "content_hash": "8888888888888888888888888888888888888888888888888888888888888888",
+        "state_revision": "2",
+        "approval": {
+          "content_version": "1",
+          "content_hash": "8888888888888888888888888888888888888888888888888888888888888888",
+          "state_revision": "2",
+          "cancelled": false
+        },
+        "target": null,
+        "expected_target": null
+      }
+    },
+    {
+      "id": "guard-send-without-target",
+      "schema": "DispatchGuard",
+      "valid": true,
+      "expected_reasons": ["target_changed"],
+      "value": {
+        "schema": "buddy.dispatch-guard.v1",
+        "operation_id": "00000000-0000-4000-8000-000000000801",
+        "operation_kind": "mail.send",
+        "content_version": "1",
+        "content_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+        "state_revision": "3",
+        "approval": {
+          "content_version": "1",
+          "content_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+          "state_revision": "3",
+          "cancelled": false
+        },
+        "target": null,
+        "expected_target": null
+      }
+    }
+  ]
+}

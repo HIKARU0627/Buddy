@@ -65,7 +65,8 @@ ID・時刻・金額・null・版の文字列表現と検査の層の割り当�
 | WorkContext                                              | S:WorkContext、M:async_context_guards                                                    | 08 §5、11 §5B、修正案 H06             | QA33、QA34、QA45、X15            | B06、B10、B13 | 形式。共通の検査処理は未実装                            |
 | 実行経路の登録表（Read / LocalCommand / RemoteMutation） | packages/domain/src/intents.ts                                                           | 08 §3 D15、修正案 H02                 | QA27、QA28、QA38                 | B04、B13      | 純粋関数と試験あり（ADR 0004）                          |
 | ConnectorCapability（操作別の前提条件）                  | S:ConnectorCapability、D:connectors.ts                                                   | 08 §3、04 変更操作と結果照合、11 §5A  | QA22、QA23、QA25                 | B08、B09、B13 | 形式と domain の検査（ADR 0071）。書込みの再送は 0 回   |
-| OperationIntent（buddy.operation.v1）                    | S:OperationIntent                                                                        | 08 §2                                 | X03、X09、H01                    | B04、B13、B14 | 形式（ラベル・下書き・用事）。遷移表は domain           |
+| OperationIntent（buddy.operation.v1）                    | S:OperationIntent（7 種類）                                                              | 08 §2                                 | X01〜X11、X03、X09、H01          | B04、B13、B14 | 形式。拒否の理由は domain が返す                        |
+| 送出直前の照合（拒否の形式）                             | S:DispatchGuard、S:DispatchGuardRejection、D:dispatch-guard.ts                           | 08 §2・§3、04 変更操作の表            | X02、X03、X05、X09、X10          | B14           | 形式と理由の判定（ADR 0075）。実行は B14-03             |
 | PreviewRequest / Preview                                 | S:PreviewRequest、S:OperationPreview                                                     | 07 §2・§3                             | X02、X09                         | B03、B04      | 形式（ラベル・下書き・用事）                            |
 | ApprovalRequest                                          | S:ApprovalRequest                                                                        | 07 §2・§3、08 §1                      | X01、X02、X03、X09、X61          | B03、B04      | 形式                                                    |
 | 承認の記録（本人／方針による自動／拡張有効化）           | M:approvals                                                                              | 08 §1・§5、03 承認                    | X02、X21、X23                    | B02、B13      | 未作成                                                  |
@@ -515,6 +516,8 @@ QA41〜QA45 は代表入力・拒否入力・期待遷移を B00 で fixture 化
 | U178 | 安全停止の初期値 | 設計 08 §9 は 10 分間に 20 件を初期案とし、T10 で調整するとするが、測定済みの値ではない | (a) 10 分・20 件を仮に使う (b) 実測まで別の値 (c) 停止しない | 自動実行の安全性、取り消しの件数 | 解決: (a)。ADR 0074 の `POLICY_AUTO_LIMIT`・`POLICY_AUTO_WINDOW_MINUTES`。T10 で調整する |
 | U179 | 取り消し後の再作成を抑止する単位 | 設計 08 §9 は取り消しを補償操作とし、再作成を禁じていない | (a) 同じ候補・同じ内容版から自動実行しない (b) 候補を dismissed にする (c) 抑止しない | 二重作成、候補の状態、本人の明示依頼との区別 | 解決: (a)。ADR 0074。本人の明示依頼は新しい依頼として扱う |
 | U180 | 自動実行の既定値 | D6 は自動実行をすべて既定 OFF とし、T10 の合格後に本人が有効化するとするが、契約の形を定めていない | (a) 4 種類を明示する `AutoExecutionPolicy` を置き、未設定・初期値を false にする (b) 設定がなければ有効 (c) 種類ごとに別の設定 | 誤実行の危険、B13-02〜04 の初期状態 | 解決: (a)。ADR 0074。T10 の合格後に本人が有効化する |
+| U181 | 4 操作で条件付き要求を使うか | 設計 08 §3 は API が版条件を提供する場合は書込みにも指定するとするが、サービスごとの提供は未確定 | (a) すべて送出直前の読み直しだけにする (b) 版条件を提供する操作だけ条件付き要求も使う (c) 常に条件付き要求 | 送出直前の競合の幅、サービス差 | 暫定: (a)。ADR 0075。B14-03 で (b) へ広げられる |
+| U182 | 参加者のいる予定で、通知しない参加者を外部の宛先に数えるか | 設計 04 は参加者のいる作成を毎回確認とし、通知の有無を別項目にするが、external_recipients の範囲を定めていない | (a) 参加者は通知の有無にかかわらず外部の宛先 (b) 通知するときだけ (c) 数えない | 承認画面の表示、予算・危険度の判定 | 暫定: (a)。ADR 0075。B14-04 で表示と合わせて確定する |
 これまでの未解決事項（認可・最終ガードの未実装、外部クレジットの取得方法・価格・通貨換算・課金上限の未検証、全 API・保存制約・試験全件の未対応）は継続します。取得方法を推測で契約にしません。
 
 ## 照合しなかった原本

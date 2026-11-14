@@ -533,3 +533,72 @@ test('the worker refuses to start when the durability settings do not read back'
     );
   });
 });
+
+// 影モードの比較記録の保存と件数が、クライアントと worker の間を通る（B06-06e、ADR 0110）。
+// 保存は 1 回だけ書かれ、同じ組の再送は duplicate、件数は campaign ごとに読める。
+test('the intent shadow save and count round-trip through the worker', async () => {
+  await withClient(async (_path, client) => {
+    const record = {
+      schema: 'buddy.intent-shadow.v1' as const,
+      record_id: 'c1000000-0000-4000-8000-000000000001',
+      campaign_id: 'a1000000-0000-4000-8000-000000000001',
+      input_id: 'b1000000-0000-4000-8000-000000000001',
+      request_revision: '1',
+      primary: {
+        deployment_id: 'd1000000-0000-4000-8000-000000000001',
+        outcome: 'ok',
+        intent: 'create_task',
+        args: { title: '牛乳を買う' },
+        probability: null,
+        latency_ms: 120,
+      },
+      shadows: [
+        {
+          deployment_id: 'd1000000-0000-4000-8000-000000000002',
+          outcome: 'timeout',
+          intent: null,
+          args: null,
+          probability: null,
+          latency_ms: null,
+        },
+      ],
+      recorded_at: '2031-01-01T00:00:00Z',
+      expires_at: '2031-01-08T00:00:00Z',
+      used_for_execution: false,
+    };
+    const empty = await client.intentShadow({
+      kind: 'intent_shadow.count',
+      campaign_id: record.campaign_id,
+    });
+    assert.deepEqual(empty, {
+      ok: true,
+      value: { campaign_id: record.campaign_id, count: 0 },
+    });
+    const first = await client.intentShadow({
+      kind: 'intent_shadow.save',
+      record,
+      limit: 300,
+    });
+    assert.deepEqual(first, {
+      ok: true,
+      value: { record_id: record.record_id, result: 'saved' },
+    });
+    const again = await client.intentShadow({
+      kind: 'intent_shadow.save',
+      record,
+      limit: 300,
+    });
+    assert.deepEqual(again, {
+      ok: true,
+      value: { record_id: record.record_id, result: 'duplicate' },
+    });
+    const after = await client.intentShadow({
+      kind: 'intent_shadow.count',
+      campaign_id: record.campaign_id,
+    });
+    assert.deepEqual(after, {
+      ok: true,
+      value: { campaign_id: record.campaign_id, count: 1 },
+    });
+  });
+});

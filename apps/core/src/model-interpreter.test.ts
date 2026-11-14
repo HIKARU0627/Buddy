@@ -406,6 +406,7 @@ async function startCore(
     device,
     scope,
     session: String(created.json?.['session_id']),
+    generation: String(created.json?.['segment_generation']),
     adapter: built.adapter,
     log,
   };
@@ -425,6 +426,10 @@ const say = (
       command_scope_id: ctx.scope,
       text,
       input_kind: 'text',
+      origin: {
+        segment_id: ctx.session,
+        segment_generation: ctx.generation,
+      },
     },
   );
 
@@ -534,5 +539,72 @@ test(
     assert.equal(ctx.log.settled.length, 1);
     const snapshot = await getJson(ctx.core, ctx.device, '/v1/snapshot');
     assert.equal((snapshot.json?.['operations'] as unknown[]).length, 1);
+  },
+);
+
+// ---- B10-04 P2a: 返答文 reply_text の通過と表示（U217 の本人決定 (b)。ADR 0106） --------------------------------------
+
+test('the reply text of the model is passed through as plain data only when it is not null', async () => {
+  const { guard } = fakeGuard();
+  const talk = build(
+    response(
+      wireJson({
+        intent: 'smalltalk',
+        args: { ...emptyArgs },
+        reply_text: 'こんにちは。',
+      }),
+    ),
+    guard,
+  );
+  assert.deepEqual(await talk.interpreter.interpret(context('こんにちは')), {
+    kind: 'intent',
+    intent: 'smalltalk',
+    args: { ...emptyArgs },
+    relation: 'new',
+    reply_text: 'こんにちは。',
+  });
+  // reply_text が null の判定は、項目を持たない（従来の返り値のまま）。
+  const none = build(response(wireJson()), fakeGuard().guard);
+  assert.deepEqual(await none.interpreter.interpret(context('用事を足して')), {
+    kind: 'intent',
+    intent: 'create_task',
+    args: { ...emptyArgs, title: '歯医者の予約' },
+    relation: 'new',
+  });
+});
+
+test(
+  'U217: with the real model path, a typed smalltalk is answered with the reply text, a link reply falls back to the fixed sentence, and a reply on an intent that may not carry one is rejected by the judgment itself',
+  { timeout: 60_000 },
+  async (t) => {
+    const talk = (reply: string | null, intent = 'smalltalk') =>
+      response(wireJson({ intent, args: { ...emptyArgs }, reply_text: reply }));
+    const shown = await startCore(t, [
+      talk('こんにちは。ゆっくりやりましょう。'),
+    ]);
+    const ok = await say(shown, 'こんにちは');
+    assert.equal(ok.status, 200, ok.text);
+    assert.equal(ok.json?.['status'], 'answered');
+    assert.equal(ok.json?.['reply_text'], 'こんにちは。ゆっくりやりましょう。');
+    assert.equal(
+      (ok.json?.['result_view'] as Record<string, unknown>)['kind'],
+      'speech_bubble',
+    );
+    const link = await startCore(t, [talk('詳しくは https://example.com へ')]);
+    const hidden = await say(link, 'こんにちは');
+    assert.equal(hidden.json?.['status'], 'clarification');
+    assert.equal(
+      hidden.json?.['reply_text'],
+      'その依頼にはまだ対応していません。',
+    );
+    // 表示の対象でない意図に返答文を付けた判定は、判定の層で意味の不正になり、実行へ進まない（従来の規則）。
+    const wrong = await startCore(t, [
+      response(wireJson({ reply_text: '用事を作りました。' })),
+    ]);
+    const refused = await say(wrong, '用事に歯医者の予約を追加して');
+    assert.equal(refused.json?.['status'], 'clarification');
+    assert(!refused.text.includes('用事を作りました'));
+    const snapshot = await getJson(wrong.core, wrong.device, '/v1/snapshot');
+    assert.deepEqual(snapshot.json?.['operations'], []);
   },
 );

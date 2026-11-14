@@ -38,6 +38,7 @@ import { executeBudgetOp } from './budget-store.js';
 import { executeVoiceOp } from './voice-store.js';
 import { executeRetentionOp } from './retention-store.js';
 import { executeMemoryOp } from './memory-store.js';
+import { executeIntentShadowOp } from './intent-shadow-store.js';
 import { bindStore } from './store-binding.js';
 import type { StoreBindingResult } from './store-binding.js';
 
@@ -402,6 +403,35 @@ function main(): void {
     post({ type: 'memory_result', id: message.id, result, halted });
   };
 
+  // 影モードの比較記録の保存と件数（ADR 0092・0110）。故障注入は記憶の命令と同じ。
+  const handleIntentShadow = (
+    message: Extract<MainToWorker, { type: 'intent_shadow' }>,
+  ): void => {
+    const op = message.op;
+    if (takeFault('ignore', op)) return;
+    if (takeFault('weakenDurability', op))
+      connection.pragma('synchronous = NORMAL');
+    let result;
+    try {
+      const run = executeIntentShadowOp(connection, op, {
+        platform: data.platform,
+        halted,
+        beforeCommit,
+      });
+      if (run.halt) halted = true;
+      result = run.result;
+    } catch {
+      // 照会の想定外の失敗。書込みは executeIntentShadowOp の中で巻き戻している。
+      result = {
+        ok: false as const,
+        outcome: 'rejected' as const,
+        reasons: ['intent_shadow_op_failed'],
+      };
+    }
+    if (result.ok && takeFault('exitAfterCommit', op)) process.exit(71);
+    post({ type: 'intent_shadow_result', id: message.id, result, halted });
+  };
+
   port.on('message', (message: MainToWorker) => {
     if (message.type === 'command') handleCommand(message);
     else if (message.type === 'query') handleQuery(message);
@@ -413,6 +443,7 @@ function main(): void {
     else if (message.type === 'voice') handleVoice(message);
     else if (message.type === 'retention') handleRetention(message);
     else if (message.type === 'memory') handleMemory(message);
+    else if (message.type === 'intent_shadow') handleIntentShadow(message);
     else if (message.type === 'close') {
       halted = true;
       connection.close();

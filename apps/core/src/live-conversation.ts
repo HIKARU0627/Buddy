@@ -24,6 +24,7 @@ import {
   SESSION_CONTROL_TABLE,
   admitLiveInput,
   fixOutputTarget,
+  fitCommentary,
   inputCommentary,
   isHeld,
   liveTranscriptFacts,
@@ -31,12 +32,14 @@ import {
   observeFragment,
   observeSpeechStart,
   resolveDelegationTarget,
+  resolveDuplicateDelegation,
   resolveHold,
   resolveSessionControl,
   resultCommentary,
   routeResultDelivery,
   startUtteranceHold,
   turnText,
+  withOverflowNotice,
   METHOD_C_STABLE_MS,
   INTENT_POLICIES,
 } from '@buddy/domain';
@@ -53,6 +56,7 @@ import type {
   LiveTranscript,
   OutputTargetValue,
   SessionControlAction,
+  TurnBinding,
 } from '@buddy/domain';
 import type { ApiContract } from './api-contract.js';
 import { createApiContract } from './api-contract.js';
@@ -249,6 +253,9 @@ interface Context {
   // 先の委譲がすでに対象にした発話（次の委譲の対象の候補から外す。処理中に始まった訂正の発話が、先の発話と並んで
   // 「対象が複数」にならない）。
   claimed: Set<number>;
+  // 先の委譲が対象にしたターンと、そのとき読んだ文字（発話の版）の対応。同じ発話・同じ版への再委譲を二重に処理しない
+  // （10 §5A-1）。claimed と同じ連番を持つ。
+  bindings: Map<number, TurnBinding>;
   checked: Set<number>;
   controlTimer: unknown;
   // 保留の上限を見る timer（保留が残っている間だけ）。
@@ -295,6 +302,36 @@ const HOLD_CANCELLED: Commentary = {
   commentary_parts: ['実行前の依頼を取り消しました。'],
 };
 
+// 声で返す結果の配信。追記の上限（1 回 400 トークン以内・最大 3 部）を守り、声で届けられないときは結果を画面へ回す。
+// 画面へ置くのは**多くても 1 回**: 上限を超えた分を画面へ置いた後に追記が失敗しても、同じ結果を重ねて置かない
+// （同じ turn・同じ本文の物が 2 つ置かれる）。超えた分は切らずに声へ載せず、「画面で確認」の案内だけを声で足す
+// （画面に出したとは言わない。ADR 0107）。ポートを引数に取り、Core の組み立てなしで試験できる。
+export function deliverVoiceCommentary(input: {
+  readonly commentary: Commentary;
+  readonly build: (parts: readonly string[]) => DelegationResult;
+  readonly valid: (result: DelegationResult) => boolean;
+  readonly append: (parts: readonly string[]) => boolean;
+  readonly show: (reason: string) => void;
+}): void {
+  const fitted = fitCommentary(input.commentary);
+  const parts = fitted.overflow
+    ? withOverflowNotice(fitted.parts)
+    : fitted.parts;
+  let shown = false;
+  const showOnce = (reason: string): void => {
+    if (shown) return;
+    shown = true;
+    input.show(reason);
+  };
+  if (fitted.overflow) showOnce('commentary_overflow');
+  if (parts.length > 0) {
+    const result = input.build(parts);
+    if (input.valid(result) && input.append(result.commentary_parts)) return;
+  }
+  // 声で届けられない（サイドバンドが使えない・追記できる部分がない・契約に合わない）。結果を失わず画面へ回す。
+  showOnce('sideband_unavailable');
+}
+
 export class LiveConversation implements LiveConversationPort {
   readonly #options: LiveConversationOptions;
   readonly #contract: ApiContract;
@@ -339,6 +376,7 @@ export class LiveConversation implements LiveConversationPort {
       delegations: [],
       controlled: new Set(),
       claimed: new Set(),
+      bindings: new Map(),
       checked: new Set(),
       controlTimer: null,
       holdTimer: null,
@@ -591,6 +629,20 @@ export class LiveConversation implements LiveConversationPort {
       this.#finish(context, pending);
       return;
     }
+    // 同じ発話・同じ版への 2 回目以降の委譲は、新しい依頼にしない（解釈も保存も声も出さない）。先の依頼が答える。
+    if (
+      target.turn === null &&
+      resolveDuplicateDelegation(
+        context.transcript,
+        pending.offset_ms,
+        [...context.bindings.values()],
+        context.claimed,
+      ) !== null
+    ) {
+      this.#log('live_delegation_duplicate');
+      this.#finish(context, pending);
+      return;
+    }
     const turn = target.turn;
     const ready =
       turn !== null &&
@@ -636,7 +688,14 @@ export class LiveConversation implements LiveConversationPort {
     const text = turn === null ? '' : turnText(turn);
     pending.text = text;
     // この発話は、この委譲が対象にした（次の委譲の候補から外す）。
-    if (turn !== null) context.claimed.add(turn.ordinal);
+    if (turn !== null) {
+      context.claimed.add(turn.ordinal);
+      context.bindings.set(turn.ordinal, {
+        ordinal: turn.ordinal,
+        workflow_id: pending.workflow_id,
+        text,
+      });
+    }
     if (text.length === 0) {
       // 文字がない（対象が決まらない・まだ断片がない）: 発言として残せないので、解釈も保存もせず、声で言い直しを頼む。
       this.#sayOnly(context, pending, inputCommentary('say_again'));
@@ -1079,33 +1138,31 @@ export class LiveConversation implements LiveConversationPort {
     this.#finish(context, pending);
     if (route.channel === 'discard') return;
     if (route.channel === 'voice') {
-      const result: DelegationResult = {
-        delegation_id: pending.delegation_id,
-        workflow_id: pending.workflow_id,
-        request_revision: '1',
-        live_session_id: handle.live_session_id,
-        audio_epoch: pending.audio_epoch,
-        output: pending.output as DelegationResult['output'],
-        facts: commentary.facts as DelegationResult['facts'],
-        more_count: turn.result_view?.more_count ?? 0,
-        template_id: commentary.template_id,
-        template_version: commentary.template_version,
-        commentary_parts:
-          commentary.commentary_parts as DelegationResult['commentary_parts'],
-      };
-      if (
-        this.#contract.valid('DelegationResult', result) &&
-        this.#options.host.appendCommentary(
-          handle.live_session_id,
-          result.commentary_parts,
-        )
-      )
-        return;
-      this.#options.screen.show({
-        reason: 'sideband_unavailable',
-        session_id: sessionId,
-        turn,
-        text,
+      deliverVoiceCommentary({
+        commentary,
+        build: (parts) => ({
+          delegation_id: pending.delegation_id,
+          workflow_id: pending.workflow_id,
+          request_revision: '1',
+          live_session_id: handle.live_session_id,
+          audio_epoch: pending.audio_epoch,
+          output: pending.output as DelegationResult['output'],
+          facts: commentary.facts as DelegationResult['facts'],
+          more_count: turn.result_view?.more_count ?? 0,
+          template_id: commentary.template_id,
+          template_version: commentary.template_version,
+          commentary_parts: parts as DelegationResult['commentary_parts'],
+        }),
+        valid: (result) => this.#contract.valid('DelegationResult', result),
+        append: (parts) =>
+          this.#options.host.appendCommentary(handle.live_session_id, parts),
+        show: (reason) =>
+          this.#options.screen.show({
+            reason,
+            session_id: sessionId,
+            turn,
+            text,
+          }),
       });
       return;
     }
@@ -1121,10 +1178,13 @@ export class LiveConversation implements LiveConversationPort {
   #sayOnly(context: Context, pending: Pending, commentary: Commentary): void {
     const route = this.#route(context, pending);
     this.#finish(context, pending);
-    if (route.channel === 'voice')
+    // 追記の上限は、結果を伴わない返事にも同じ規則を通す（最終の防御。今の固定文は上限を超えない）。超えた分は、
+    // 画面へ回す結果がないので、声にも載せずに捨てる。
+    const parts = fitCommentary(commentary).parts;
+    if (route.channel === 'voice' && parts.length > 0)
       this.#options.host.appendCommentary(
         context.handle.live_session_id,
-        commentary.commentary_parts,
+        parts,
       );
   }
 

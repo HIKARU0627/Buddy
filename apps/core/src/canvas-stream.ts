@@ -31,6 +31,7 @@ import type {
   CanvasUserOpResponse,
   StreamSegment,
   StreamTurnResponse,
+  StorageModeChangeRequest,
   TurnResponse,
 } from '@buddy/contracts';
 import {
@@ -453,12 +454,36 @@ export interface StreamRoutesOptions {
   // 既存の会話・発言の処理（api-turns.ts の createSession・postTurn）。関数として呼ぶだけで、中身は変えない。
   readonly createSession: ApiRouteHandler;
   readonly postTurn: ApiRouteHandler;
+  // 保存境界の保持者（今の区切りの世代・保存モード・保存モードの切り替え）。流れの発言の由来と、
+  // POST /v1/stream/storage-mode の切り替えに使う（ADR 0045・0059・0060）。
+  readonly storage: StreamStorageGate;
   readonly contract?: ApiContract;
   readonly now?: () => number;
   // 本人の時間帯（自動の区切りの日付の判定。設計 07 §5 の設定と同じ値。既定は +09:00）。
   readonly utcOffset?: string;
   // 模擬の配置者の差し替え（試験用。検査に反する束を当てようとしても前の版が残ることを確かめる）。
   readonly place?: typeof placeCanvasForTurn;
+}
+
+// 保存モードの切り替えの結果（Core では storage-gate.ts の StorageGateResult がこの形を満たす）。
+export type StreamStorageMode = 'normal' | 'extended' | 'private';
+
+export interface StreamSegmentOrigin {
+  readonly segment_id: string;
+  readonly segment_generation: string;
+  readonly storage_mode: StreamStorageMode;
+}
+
+export type StreamStorageOutcome =
+  | { readonly ok: true; readonly origin: StreamSegmentOrigin }
+  | { readonly ok: false; readonly reason: string };
+
+// 流れの経路が使う保存境界の口。区切りの世代を読み、保存モードを切り替える（ADR 0060）。
+export interface StreamStorageGate {
+  readonly mode: StreamStorageMode;
+  origin(): { readonly segment_generation: string };
+  enterPrivate(): Promise<StreamStorageOutcome>;
+  exitPrivate(mode: 'normal' | 'extended'): Promise<StreamStorageOutcome>;
 }
 
 export interface StreamRoutes {
@@ -532,6 +557,10 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
   const createSessionRoute = routeOf('createSession');
   const postTurnRoute = routeOf('postTurn');
   let current: Stream | null = null;
+  // `private` から出た後に会話の作成に失敗した状態（ADR 0060）。ゲートは開いているが、端末はまだ `private` の表示の
+  // まま。この間の新しい発言は保存しない（黙って `normal` の会話を作り、記録しないはずの発言を DB へ残さない）。
+  // 次の保存モードの切り替えが成功した時点で解く。
+  let reopenPending = false;
   let creating: Promise<EnsureResult> | null = null;
   // 自動の区切りで区切りを始める処理（同時の発言で二重に区切らないよう直列にする）。
   let rotating: Promise<boolean> | null = null;
@@ -547,7 +576,13 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
   // 再送の判定を応答のキャッシュの件数で捨てると、その後の再送が 409 になる（レビュー P2）。
   const accepted = new Map<
     string,
-    { readonly session_id: string; readonly expires_at: number }
+    {
+      readonly session_id: string;
+      // 最初に受け付けたときの区切りの世代。再送はこの世代を渡す（今の世代を渡すと、private の出入りの後に
+      // request_hash が変わって 409 になる）。
+      readonly segment_generation: string;
+      readonly expires_at: number;
+    }
   >();
   // 区切り（会話）ごとの、保存を待っている発言の数と、0 になったら起こす待ち手。区切りを切り替える前に、
   // 旧区切りで保存中の発言が終わるのを待つ（PR #191 のレビュー P2）。
@@ -577,10 +612,26 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
   const acceptedIn = (
     key: string,
   ):
-    | { readonly session_id: string; readonly expires_at: number }
+    | {
+        readonly session_id: string;
+        readonly segment_generation: string;
+        readonly expires_at: number;
+      }
     | undefined => {
     const entry = accepted.get(key);
     return entry !== undefined && entry.expires_at > now() ? entry : undefined;
+  };
+
+  // 保存モードの切り替えと自動の区切りの排他（同時の切り替えで保存境界の状態と今の区切りが食い違わないようにする。
+  // ADR 0060）。1 本の鎖に並べ、前の処理が終わってから次を始める。
+  let exclusive: Promise<unknown> = Promise.resolve();
+  const withExclusive = <T>(run: () => Promise<T>): Promise<T> => {
+    const next = exclusive.then(run, run);
+    exclusive = next.then(
+      () => undefined,
+      () => undefined,
+    );
+    return next;
   };
 
   // 今の区切り。流れの最初の発言で作り（理由: stream_started）、以後は同じ区切りを使う。同時の最初の発言でも 1 つだけ。
@@ -676,101 +727,108 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
     acceptedKey: string,
     forced: 'forget_requested' | null,
   ): Promise<boolean> => {
-    rotating ??= (async (): Promise<boolean> => {
-      rotationFailure = null;
-      const started = current;
-      if (started === null) return false;
-      // 先に別の発言が区切った（または最初の区切りを作り直した）なら、今の区切りを使う。
-      if (started.sessionId !== from.sessionId) return false;
-      if (forced === null && boundaryOf(started, now()) === null) return false;
-      // 旧区切りで保存を待っている発言が終わるまで待つ（その発言の期限を要約の材料に入れる）。
-      await settledOld(started.sessionId);
-      // 待つ間に、この要求が保存を終えて受付に登録されていれば、切り替えない（再送として元の区切りで解決する）。
-      if (acceptedIn(acceptedKey) !== undefined) return false;
-      const stream = current;
-      if (stream === null) return false;
-      if (stream.sessionId !== started.sessionId) return false;
-      // 待った後に理由を決める。忘却の印は、待っている間に付くことがある（保存中の忘却の発言が終わった直後）。
-      // 呼び出し時に渡された `forced` で固定せず、この時点の印を見る（レビュー P2）。
-      const at = now();
-      const forgetNow =
-        afterForget !== null && afterForget.from === stream.sessionId;
-      const reason = forgetNow ? 'forget_requested' : boundaryOf(stream, at);
-      if (reason === null) return false;
-      const openedAt = new Date(at).toISOString();
-      const summary = nextCarriedSummary({
-        previous: stream.segment.carried_summary,
-        closing: {
-          segment_id: stream.segment.segment_id,
+    // 保存モードの切り替えと同じ排他で直列にする（切り替えと自動の区切りが重ならない。ADR 0060）。
+    if (rotating === null) {
+      rotating = withExclusive(async (): Promise<boolean> => {
+        rotationFailure = null;
+        const started = current;
+        if (started === null) return false;
+        // 記録しない区切りでは自動の区切りを起こさない（会話を作れず、すべての要求が 503 になる。ADR 0060）。
+        if (started.segment.storage_mode === 'private') return false;
+        // 先に別の発言が区切った（または最初の区切りを作り直した）なら、今の区切りを使う。
+        if (started.sessionId !== from.sessionId) return false;
+        if (forced === null && boundaryOf(started, now()) === null)
+          return false;
+        // 旧区切りで保存を待っている発言が終わるまで待つ（その発言の期限を要約の材料に入れる）。
+        await settledOld(started.sessionId);
+        // 待つ間に、この要求が保存を終えて受付に登録されていれば、切り替えない（再送として元の区切りで解決する）。
+        if (acceptedIn(acceptedKey) !== undefined) return false;
+        const stream = current;
+        if (stream === null) return false;
+        if (stream.sessionId !== started.sessionId) return false;
+        // 待つ間に発言が保存されていれば、経過はその発言から測り直す（区切りが要らなくなっていれば切らない）。
+        // 忘却の印は、待っている間に付くことがある（保存中の忘却の発言が終わった直後）。呼び出し時の `forced` で
+        // 固定せず、この時点の印を見る（PR #235 のレビュー P2）。
+        const at = now();
+        const forgetNow =
+          afterForget !== null && afterForget.from === stream.sessionId;
+        const reason = forgetNow ? 'forget_requested' : boundaryOf(stream, at);
+        if (reason === null) return false;
+        const openedAt = new Date(at).toISOString();
+        const summary = nextCarriedSummary({
+          previous: stream.segment.carried_summary,
+          closing: {
+            segment_id: stream.segment.segment_id,
+            storage_mode: stream.segment.storage_mode,
+            turn_expires_at: stream.turnExpiresAt,
+          },
+          open_reason: reason,
+          now: openedAt,
+        });
+        // 契約の型は 1 件以上の配列（[string, ...string[]]）。domain は同じ形を読み取り専用の配列で返す。
+        const carried: StreamSegment['carried_summary'] =
+          summary === null
+            ? null
+            : {
+                source_segment_ids: [...summary.source_segment_ids] as [
+                  string,
+                  ...string[],
+                ],
+                expires_at: summary.expires_at,
+              };
+        const created = await options.createSession({
+          ...request,
+          route: createSessionRoute,
+          params: {},
+          body: {
+            request_id: randomUUID(),
+            command_scope_id: stringOf(request.body, 'command_scope_id'),
+            storage_mode: stream.segment.storage_mode,
+          },
+        });
+        const body = created.body as { session_id?: unknown };
+        if (created.status !== 201 || typeof body.session_id !== 'string') {
+          rotationFailure =
+            created.status >= 400 && created.status < 600
+              ? {
+                  status: created.status,
+                  code: String(
+                    (created.body as { code?: unknown }).code ??
+                      'dependency_unavailable',
+                  ) as ApiErrorCode,
+                }
+              : { status: 503, code: 'dependency_unavailable' };
+          return false;
+        }
+        const segment: StreamSegment = {
+          segment_id: body.session_id,
           storage_mode: stream.segment.storage_mode,
-          turn_expires_at: stream.turnExpiresAt,
-        },
-        open_reason: reason,
-        now: openedAt,
+          opened_at: openedAt,
+          open_reason: reason,
+          carried_summary: carried,
+        };
+        if (
+          !contract.valid('StreamSegment', segment) ||
+          streamSegmentErrors(segment).length > 0
+        ) {
+          rotationFailure = { status: 503, code: 'dependency_unavailable' };
+          return false;
+        }
+        current = {
+          sessionId: body.session_id,
+          segment,
+          // 新しい区切りの経過は、区切りを始めた時刻から測る。
+          lastTurnAt: openedAt,
+          turnExpiresAt: [],
+        };
+        // 忘却の指示で始めた区切りだけ、印を消費する（自動の区切りで消さない。レビュー P2）。
+        if (reason === 'forget_requested' && afterForget !== null)
+          afterForget = null;
+        return true;
+      }).finally(() => {
+        rotating = null;
       });
-      // 契約の型は 1 件以上の配列（[string, ...string[]]）。domain は同じ形を読み取り専用の配列で返す。
-      const carried: StreamSegment['carried_summary'] =
-        summary === null
-          ? null
-          : {
-              source_segment_ids: [...summary.source_segment_ids] as [
-                string,
-                ...string[],
-              ],
-              expires_at: summary.expires_at,
-            };
-      const created = await options.createSession({
-        ...request,
-        route: createSessionRoute,
-        params: {},
-        body: {
-          request_id: randomUUID(),
-          command_scope_id: stringOf(request.body, 'command_scope_id'),
-          storage_mode: stream.segment.storage_mode,
-        },
-      });
-      const body = created.body as { session_id?: unknown };
-      if (created.status !== 201 || typeof body.session_id !== 'string') {
-        rotationFailure =
-          created.status >= 400 && created.status < 600
-            ? {
-                status: created.status,
-                code: String(
-                  (created.body as { code?: unknown }).code ??
-                    'dependency_unavailable',
-                ) as ApiErrorCode,
-              }
-            : { status: 503, code: 'dependency_unavailable' };
-        return false;
-      }
-      const segment: StreamSegment = {
-        segment_id: body.session_id,
-        storage_mode: stream.segment.storage_mode,
-        opened_at: openedAt,
-        open_reason: reason,
-        carried_summary: carried,
-      };
-      if (
-        !contract.valid('StreamSegment', segment) ||
-        streamSegmentErrors(segment).length > 0
-      ) {
-        rotationFailure = { status: 503, code: 'dependency_unavailable' };
-        return false;
-      }
-      current = {
-        sessionId: body.session_id,
-        segment,
-        // 新しい区切りの経過は、区切りを始めた時刻から測る。
-        lastTurnAt: openedAt,
-        turnExpiresAt: [],
-      };
-      // 忘却の指示で始めた区切りだけ、印を消費する（自動の区切りで消さない。レビュー P2）。
-      if (reason === 'forget_requested' && afterForget !== null)
-        afterForget = null;
-      return true;
-    })().finally(() => {
-      rotating = null;
-    });
+    }
     return rotating;
   };
 
@@ -860,9 +918,6 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
     const requestId = stringOf(body, 'request_id');
     if (request.device === null)
       return apiErrorResponse(401, 'unauthenticated');
-    const ensured = await ensureStream(request);
-    if (!ensured.ok) return ensured.response;
-    let stream = ensured.stream;
     // 同じ要求の再送は、区切りを選ぶ前に元の区切り（会話）で解決する。新しい区切りで送ると request_hash が変わり
     // 409 になるため（PR #191 のレビュー P1）。再送は区切りも切り替えない（経過も延ばさない）。
     // 保存側の受付レシートと同じく、接続範囲（command_scope_id）と要求 ID の組で識別する（別の接続範囲の同じ ID を
@@ -870,11 +925,21 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
     const scopeId = stringOf(body, 'command_scope_id');
     const acceptedKey = acceptedKeyOf(scopeId, requestId);
     let replay = acceptedIn(acceptedKey);
+    // 記録しない区切りから出る途中で失敗した状態では、新しい発言を保存しない（黙って `normal` の会話を作り、
+    // 端末が `private` の表示のまま発言を DB へ残さない。ADR 0060）。区切りも作らない。
+    if (replay === undefined && reopenPending)
+      return apiErrorResponse(503, 'dependency_unavailable', requestId);
+    const ensured = await ensureStream(request);
+    if (!ensured.ok) return ensured.response;
+    let stream = ensured.stream;
+    replay = acceptedIn(acceptedKey);
     // 自動の区切り（前の発言から 30 分・日付の変更）。初めての発言だけが区切りを始める。切り替えは共有の排他で
     // 行うが、**待った後はこの要求自身の再送と境界を判定し直す**（他の要求の結果を配らない。レビュー P2）。
     // 他の要求が待っていたために切り替わらなかったときは、もう一度試す。
     for (let attempt = 0; replay === undefined && attempt < 8; attempt += 1) {
       const base = current ?? stream;
+      // 記録しない区切りでは自動の区切りを起こさない（会話を作れない。ADR 0060）。
+      if (base.segment.storage_mode === 'private') break;
       if (acceptedIn(acceptedKey) !== undefined) break;
       // 忘却の指示を受けた区切りなら、時間・日付に関係なく新しい区切りを始める（要約はつながない）。
       const forced: 'forget_requested' | null =
@@ -903,8 +968,14 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
     }
     replay = acceptedIn(acceptedKey);
     // 上限まで試してまだ区切りが要る（他の要求と競合し続けた）なら、古い区切りで答えず 503 にする
-    // （区切りの理由を落とさない。レビューの任意の指摘）。
-    if (replay === undefined && boundaryOf(current ?? stream, now()) !== null)
+    // （区切りの理由を落とさない。レビューの任意の指摘）。記録しない区切りには自動の区切りが無いので除く。
+    if (
+      replay === undefined &&
+      (current ?? stream).segment.storage_mode !== 'private' &&
+      (boundaryOf(current ?? stream, now()) !== null ||
+        (afterForget !== null &&
+          afterForget.from === (current ?? stream).sessionId))
+    )
       return apiErrorResponse(503, 'dependency_unavailable', requestId);
     // 再送は、元の区切り（会話）で解決する。新しい区切りで送ると request_hash が変わり 409 になる（レビュー P1）。
     // 応答の `segment` は今の区切り（表示用）。
@@ -913,6 +984,18 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
         ? { ...(current ?? stream), sessionId: replay.session_id }
         : (current ?? stream);
     // この発言の保存が終わるまで、区切りの切り替えを待たせる（旧区切りの要約の材料を落とさない。レビュー P2）。
+    // 再送は最初に受け付けたときの由来（会話と世代）をそのまま渡す（今の世代を渡すと、private の出入りの後に
+    // request_hash が変わり 409 になる。ADR 0060）。
+    const origin =
+      replay !== undefined
+        ? {
+            segment_id: replay.session_id,
+            segment_generation: replay.segment_generation,
+          }
+        : {
+            segment_id: stream.sessionId,
+            segment_generation: options.storage.origin().segment_generation,
+          };
     const endSave = startTurnSave(stream.sessionId);
     let inner: { readonly status: number; readonly body: object };
     try {
@@ -926,6 +1009,7 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
           command_scope_id: scopeId,
           text: stringOf(body, 'text'),
           input_kind: stringOf(body, 'input_kind'),
+          origin,
         },
       });
     } finally {
@@ -940,7 +1024,8 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
     if (replay === undefined) {
       const at = now();
       accepted.set(acceptedKey, {
-        session_id: stream.sessionId,
+        session_id: origin.segment_id,
+        segment_generation: origin.segment_generation,
         expires_at: at + ACCEPTED_REQUEST_TTL_MS,
       });
       if (accepted.size >= ACCEPTED_PRUNE_THRESHOLD)
@@ -977,6 +1062,225 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
     if (!contract.valid('StreamTurnResponse', response))
       return apiErrorResponse(503, 'dependency_unavailable', requestId);
     return { status: 200, body: response };
+  };
+
+  // 保存モードの切り替えの失敗の応答。世代を書けないときは 503（入れない・出られない・切り替わらない）、
+  // 遷移の規則の拒否は 409（ADR 0059・0060）。
+  const storageModeFailure = (reason: string, requestId: string) =>
+    reason === 'persist_unavailable' ||
+    reason === 'persist_failed' ||
+    reason === 'closed'
+      ? apiErrorResponse(503, 'dependency_unavailable', requestId)
+      : apiErrorResponse(409, 'conflict', requestId);
+
+  // 区切りの始まりの理由を付けて区切りを作る（契約と domain の検査を通るものだけ。ADR 0032）。
+  const openedSegment = (
+    origin: {
+      readonly segment_id: string;
+      readonly storage_mode: StreamStorageMode;
+    },
+    openReason: StreamSegment['open_reason'],
+    carriedSummary: StreamSegment['carried_summary'],
+  ): StreamSegment | null => {
+    const segment: StreamSegment = {
+      segment_id: origin.segment_id,
+      storage_mode: origin.storage_mode,
+      opened_at: new Date(now()).toISOString(),
+      open_reason: openReason,
+      carried_summary: carriedSummary,
+    };
+    return contract.valid('StreamSegment', segment) &&
+      streamSegmentErrors(segment).length === 0
+      ? segment
+      : null;
+  };
+
+  // 出る先の保存モードで会話を作る（会話の作成は保存境界の保持者の状態を書き換えない。2a）。端末の `request_id` は
+  // 渡さない（会話の受付レシートは 7 日残るので、再起動をまたいだ再送で前の会話が返ると、由来の控えが無いまま
+  // その会話を区切りにしてしまい、以後の発言がすべて 409 になる）。切り替えの重複は `modeOps` で防ぐ。
+  const createSessionWithMode = async (
+    mode: StreamStorageMode,
+    request: ApiHandlerRequest,
+  ): Promise<
+    | { readonly ok: true; readonly sessionId: string }
+    | {
+        readonly ok: false;
+        readonly response: { status: number; body: object };
+      }
+  > => {
+    const created = await options.createSession({
+      ...request,
+      route: createSessionRoute,
+      params: {},
+      body: {
+        request_id: randomUUID(),
+        command_scope_id: stringOf(request.body, 'command_scope_id'),
+        storage_mode: mode,
+      },
+    });
+    const body = created.body as { session_id?: unknown };
+    if (created.status !== 201 || typeof body.session_id !== 'string')
+      return {
+        ok: false,
+        response: { status: created.status, body: created.body },
+      };
+    return { ok: true, sessionId: body.session_id };
+  };
+
+  // 保存モードを切り替える（U170、ADR 0060）。流れの経路を保存モードの唯一の入口・出口にし、private の出入りも
+  // ここへ寄せる。端末は会話・区切りの ID を送らない（UI-01）。成功したら区切りを開き直す。
+  // - private へ入る: ゲートの enterPrivate。書けなければ入れない（503）。区切りは要約をつながない private_started。
+  // - private から出る: 先にゲートの exitPrivate（世代を進めてファイルへ書く）。書けなければ出られない（503）。
+  //   その後に出る先の保存モードで会話を作る。区切りは private_ended。
+  // - normal ⇔ extended: 出る先の保存モードで会話を作る（会話の保存モードは DB の sessions.storage_mode）。
+  //   保存境界の保持者のモードと世代は書き換えない（会話ごとの由来。2a）。区切りは storage_mode_changed で、
+  //   要約は nextCarriedSummary の規則の範囲でだけつなぐ。
+  const switchStorageMode = async (
+    target: StreamStorageMode,
+    request: ApiHandlerRequest,
+  ): Promise<{ status: number; body: object }> => {
+    const requestId = stringOf(request.body, 'request_id');
+    // 同じモードへの切り替えは何も動かさない（区切りも世代も進めない）。
+    if (current !== null && current.segment.storage_mode === target)
+      return {
+        status: 200,
+        body: { request_id: requestId, segment: current.segment },
+      };
+    if (target === 'private') {
+      const outcome = await options.storage.enterPrivate();
+      if (!outcome.ok) return storageModeFailure(outcome.reason, requestId);
+      const segment = openedSegment(outcome.origin, 'private_started', null);
+      if (segment === null)
+        return apiErrorResponse(503, 'dependency_unavailable', requestId);
+      current = {
+        sessionId: outcome.origin.segment_id,
+        segment,
+        lastTurnAt: segment.opened_at,
+        turnExpiresAt: [],
+      };
+      reopenPending = false;
+      return { status: 200, body: { request_id: requestId, segment } };
+    }
+    // 記録しない区切りから出るときは、会話を作る前にゲートを出る（記録しない区切りの間は会話の作成が拒否される）。
+    let leftPrivate = false;
+    if (options.storage.mode === 'private') {
+      const outcome = await options.storage.exitPrivate(target);
+      if (!outcome.ok) return storageModeFailure(outcome.reason, requestId);
+      leftPrivate = true;
+    }
+    // 旧区切りで保存中の発言が終わるまで待ってから要約を確定する（その発言の保存の期限を材料に入れる。
+    // PR #191 のレビュー P2）。
+    const before = current;
+    if (before !== null) await settledOld(before.sessionId);
+    const carriedFrom = current;
+    const created = await createSessionWithMode(target, request);
+    if (!created.ok) {
+      // 記録しない区切りはもう閉じている（exitPrivate は確定済みで戻せない）。使えない区切りを残すと、private の
+      // 表示のまま保存境界が開いている状態を同じモードの要求で修復できなくなる。区切りを捨て、次の要求でゲートの
+      // 今の状態から作り直す。作り直せるまでの新しい発言は保存しない（黙って `normal` の会話を作らない）。
+      if (leftPrivate) {
+        current = null;
+        reopenPending = true;
+      }
+      return created.response;
+    }
+    let openReason: StreamSegment['open_reason'];
+    let carriedSummary: StreamSegment['carried_summary'] = null;
+    if (carriedFrom === null) {
+      openReason = 'stream_started';
+    } else if (carriedFrom.segment.storage_mode === 'private') {
+      // 記録しない会話から出る。要約はつながない（ADR 0032）。
+      openReason = 'private_ended';
+    } else {
+      // normal ⇔ extended。要約は、期限内の由来の範囲でだけつなぐ（ADR 0032 の nextCarriedSummary）。
+      openReason = 'storage_mode_changed';
+      const carried = nextCarriedSummary({
+        previous: carriedFrom.segment.carried_summary,
+        closing: {
+          segment_id: carriedFrom.segment.segment_id,
+          storage_mode: carriedFrom.segment.storage_mode,
+          turn_expires_at: carriedFrom.turnExpiresAt,
+        },
+        open_reason: openReason,
+        now: new Date(now()).toISOString(),
+      });
+      // 契約の CarriedSummary の由来は 1 件以上（空なら nextCarriedSummary は null を返す）。
+      carriedSummary =
+        carried === null
+          ? null
+          : {
+              source_segment_ids: [...carried.source_segment_ids] as [
+                string,
+                ...string[],
+              ],
+              expires_at: carried.expires_at,
+            };
+    }
+    const segment = openedSegment(
+      { segment_id: created.sessionId, storage_mode: target },
+      openReason,
+      carriedSummary,
+    );
+    if (segment === null)
+      return apiErrorResponse(503, 'dependency_unavailable', requestId);
+    current = {
+      sessionId: created.sessionId,
+      segment,
+      lastTurnAt: segment.opened_at,
+      turnExpiresAt: [],
+    };
+    reopenPending = false;
+    return { status: 200, body: { request_id: requestId, segment } };
+  };
+
+  // 保存モードの切り替えの経路（POST /v1/stream/storage-mode）。同じ request_id の再送は同じ結果を返し、内容が違えば
+  // 409（07 §3）。切り替えを二度行わない（世代を二度進めない）。切り替えは自動の区切りと同じ排他で直列にする。
+  // 控えは受付レシートと同じく接続範囲と要求 ID の組で識別し、同じ有効期間だけ保つ（件数では捨てない）。
+  const modeOps = new Map<
+    string,
+    {
+      readonly key: string;
+      readonly response: { status: number; body: object };
+      readonly expires_at: number;
+    }
+  >();
+  const postStreamStorageMode: ApiRouteHandler = (request) => {
+    if (request.device === null)
+      return Promise.resolve(apiErrorResponse(401, 'unauthenticated'));
+    const body = request.body as unknown as StorageModeChangeRequest;
+    const requestId = body.request_id;
+    const key = JSON.stringify([
+      request.device.device_id,
+      body.command_scope_id,
+      body.storage_mode,
+    ]);
+    const acceptedKey = acceptedKeyOf(body.command_scope_id, requestId);
+    const seen = modeOps.get(acceptedKey);
+    if (seen !== undefined && seen.expires_at > now())
+      return Promise.resolve(
+        seen.key === key
+          ? seen.response
+          : apiErrorResponse(409, 'conflict', requestId),
+      );
+    return withExclusive(async () => {
+      // 待つ間に同じ要求が終わっていれば、その結果を返す（切り替えを二度行わない）。
+      const again = modeOps.get(acceptedKey);
+      if (again !== undefined && again.expires_at > now())
+        return again.key === key
+          ? again.response
+          : apiErrorResponse(409, 'conflict', requestId);
+      const response = await switchStorageMode(body.storage_mode, request);
+      const at = now();
+      modeOps.set(acceptedKey, {
+        key,
+        response,
+        expires_at: at + ACCEPTED_REQUEST_TTL_MS,
+      });
+      if (modeOps.size >= ACCEPTED_PRUNE_THRESHOLD)
+        for (const [old, value] of modeOps)
+          if (value.expires_at <= at) modeOps.delete(old);
+      return response;
+    });
   };
 
   const getCanvas: ApiRouteHandler = (request) =>
@@ -1088,6 +1392,7 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
   return {
     handlers: {
       postStreamTurn,
+      postStreamStorageMode,
       getCanvas,
       postCanvasUserOp,
       postCanvasContent,

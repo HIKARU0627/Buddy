@@ -12,6 +12,7 @@ export type BuddyContract =
   | WorkContext
   | ActionReadiness
   | OperationIntent
+  | DispatchGuard
   | CommandContext
   | PreviewRequest
   | OperationPreview
@@ -125,6 +126,8 @@ export type BuddyContract =
   | DesktopCanvasView
   | StreamTurnRequest
   | StreamTurnResponse
+  | StorageModeChangeRequest
+  | StorageModeChangeResponse
   | CanvasUserOpRequest
   | CanvasUserOpResponse
   | CanvasContent
@@ -382,14 +385,32 @@ export type SessionEpoch = string;
  */
 export type AnalysisRevision = string;
 /**
- * 承認対象として確定した変更内容。ラベル変更（H01）・返信の下書き・用事の登録（ADR 0027）。content_hash はこの確定 intent 全体の JCS+SHA-256。依頼ID・表示端末・state_revisionを混ぜない。
+ * 承認対象として確定した変更内容。ラベル変更（H01）・返信の下書き・用事の登録（ADR 0027）と、送信・予定の変更・参加者のいる予定の作成・ごみ箱（ADR 0075）。content_hash はこの確定 intent 全体の JCS+SHA-256。依頼ID・表示端末・state_revisionを混ぜない。
  */
 export type OperationIntent =
-  LabelOperationIntent | DraftReplyOperationIntent | TaskOperationIntent;
+  | LabelOperationIntent
+  | DraftReplyOperationIntent
+  | TaskOperationIntent
+  | MailSendOperationIntent
+  | CalendarUpdateOperationIntent
+  | CalendarCreateWithAttendeesOperationIntent
+  | MailTrashOperationIntent;
 /**
  * 承認対象の内容版。宛先・本文・対象・影響・前提が変わったときだけ上がる（設計 07 §1、08 §1）。
  */
 export type ContentVersion = string;
+/**
+ * IANA タイムゾーン名。実在の確認は意味検査で行う（設計 07 §1）。
+ */
+export type TimeZone = string;
+/**
+ * 画面承認が必要な外部変更の 4 種類（設計 04 表、08 §1〜§4、ADR 0075）。完全削除の操作はない。
+ */
+export type ApprovalRequiredOperationKind =
+  | 'mail.send'
+  | 'calendar.event.update'
+  | 'calendar.event.create_with_attendees'
+  | 'mail.trash';
 /**
  * 処理状態の更新番号。競合検査用で、内容が同じなら ContentVersion は変えない（設計 07 §1、08 §1）。
  */
@@ -415,10 +436,16 @@ export type CommandReceipt =
       committed_state_revision: StateRevision;
     };
 /**
- * 操作の種類。確定 intent の action.kind と同じ値（ADR 0027）。経路（Read / LocalCommand / RemoteMutation）はコードの表が決める。
+ * 操作の種類。確定 intent の action.kind と同じ値（ADR 0027・0075）。経路（Read / LocalCommand / RemoteMutation）はコードの表が決める。
  */
 export type OperationKind =
-  'mail.labels.change' | 'mail.draft.create' | 'task.create';
+  | 'mail.labels.change'
+  | 'mail.draft.create'
+  | 'task.create'
+  | 'mail.send'
+  | 'calendar.event.update'
+  | 'calendar.event.create_with_attendees'
+  | 'mail.trash';
 /**
  * DB の世代。通常の再起動では維持し、バックアップ復元・新規作成で新しい値にする。等値比較だけに使う（設計 07 §1・§4、ADR 0003）。
  */
@@ -602,10 +629,6 @@ export type QuantityString = string;
  */
 export type DecimalString = string;
 /**
- * IANA タイムゾーン名。実在の確認は意味検査で行う（設計 07 §1）。
- */
-export type TimeZone = string;
-/**
  * 枠の予算保留の理由（01 いつも見える状態の「予算保留」）。limit_reached は精算済み額＋未精算の M が上限に達した、overrun_review_pending は M 超過の確認待ち、ancestor_held は祖先の枠の保留、config_invalid は設定の検査に失敗して有料処理を止めている。理由のコードを利用者に見せない。
  */
 export type BudgetHoldReason =
@@ -676,7 +699,14 @@ export type ReconcileScope =
  * 操作の工程（設計 08 §4、ADR 0027）。2 工程の操作はこの順にだけ進める。
  */
 export type OperationStepKind =
-  'apply_labels' | 'create_draft' | 'send' | 'create_task';
+  | 'apply_labels'
+  | 'create_draft'
+  | 'send'
+  | 'create_task'
+  | 'send_mail'
+  | 'update_event'
+  | 'create_event_with_attendees'
+  | 'trash_mail';
 /**
  * Outlook のアカウント種別（設計 04 接続・権限）。接続時に特定し、個人と職場・学校で使える範囲を分ける。
  */
@@ -765,6 +795,10 @@ export type StorageMode = 'normal' | 'extended' | 'private';
  * 会話の表示先の版（設計 07 §2 handoff の expected_route_revision）。
  */
 export type RouteRevision = string;
+/**
+ * 保存の区切りの世代（ADR 0045・0059）。記録しない区切りに入る・出るたびに 1 進み、Core の再起動をまたいでも戻らない（時計の状態ファイルの storage_boundary に番号だけを置く）。
+ */
+export type SegmentGeneration = string;
 /**
  * 会話そのものの操作（設計 10 §5 v0.6、質問 126）。照合表（SessionControlPhrases）と画面のボタンが同じ操作を指す。「処理を取り消す」（cancel_workflow）はここに含めない別の命令。
  */
@@ -1938,10 +1972,6 @@ export type RetentionNotice =
       items: [RetentionNoticeItem, ...RetentionNoticeItem[]];
     };
 /**
- * 保存の区切りの世代（ADR 0045・0059）。記録しない区切りに入る・出るたびに 1 進み、Core の再起動をまたいでも戻らない（時計の状態ファイルの storage_boundary に番号だけを置く）。
- */
-export type SegmentGeneration = string;
-/**
  * 区切りの保存モードの状態（設計 03 保存期限・記録しない会話の境界、ADR 0040）。モードごとに何を保存し何を禁じるかを固定の値で持ち、private では発言・要約・記憶・抽出・影モードの記録・Live の接続を持てない。端末内の音声認識（③）は使える。判定は Core のコードが持ち、クライアントは表示にだけ使う。
  */
 export type StorageModeState =
@@ -2254,6 +2284,182 @@ export interface TaskOperationIntent {
     external_recipients: [];
     reconcile_scope: 'local_transaction';
   };
+}
+/**
+ * メールの送信（mail.send、RemoteMutation、設計 04 表、ADR 0075）。宛先・CC・BCC・件名・本文は承認の対象で、送出の直前に変えない。外部の相手に届くので external_recipients を空にしない。送信は取り消せないため、結果不明は再送せず保留する。
+ */
+export interface MailSendOperationIntent {
+  schema: 'buddy.operation.v1';
+  operation_id: Id;
+  content_version: ContentVersion;
+  permission_revision: PermissionRevision;
+  provider: 'mock' | 'gmail' | 'microsoft_graph';
+  account_id: Id;
+  /**
+   * 送る下書き・返信元のメール。新規作成の送信では null。
+   */
+  target: {
+    remote_id: string;
+    source_revision: SourceRevision;
+  } | null;
+  action: {
+    kind: 'mail.send';
+    /**
+     * @minItems 1
+     */
+    to: [string, ...string[]];
+    cc: string[];
+    bcc: string[];
+    subject: string;
+    body: string;
+  };
+  effects: {
+    /**
+     * @maxItems 50
+     */
+    external_recipients: string[];
+    reconcile_scope: 'operation_marker';
+  };
+}
+/**
+ * 予定の変更（calendar.event.update、RemoteMutation、設計 04 表、ADR 0075）。対象の予定と版、カレンダー、時刻、参加者、通知の有無を承認の対象にする。参加者の有無にかかわらず毎回確認する。
+ */
+export interface CalendarUpdateOperationIntent {
+  schema: 'buddy.operation.v1';
+  operation_id: Id;
+  content_version: ContentVersion;
+  permission_revision: PermissionRevision;
+  provider: 'mock' | 'gmail' | 'microsoft_graph';
+  account_id: Id;
+  target: {
+    remote_id: string;
+    source_revision: SourceRevision;
+  };
+  action: {
+    kind: 'calendar.event.update';
+    calendar_id: string;
+    summary: string;
+    start: DateOrDateTime;
+    end: DateOrDateTime;
+    time_zone: TimeZone;
+    attendees: string[];
+    notify_attendees: boolean;
+  };
+  effects: {
+    /**
+     * @maxItems 50
+     */
+    external_recipients: string[];
+    reconcile_scope: 'exact_target';
+  };
+}
+/**
+ * 参加者のいる予定の作成（calendar.event.create_with_attendees、RemoteMutation、設計 04 表、ADR 0075）。参加者が 1 人以上いるので、自分だけの予定の自動実行とは別の種類にし、毎回画面で承認する。作成物は操作の目印で照合する。
+ */
+export interface CalendarCreateWithAttendeesOperationIntent {
+  schema: 'buddy.operation.v1';
+  operation_id: Id;
+  content_version: ContentVersion;
+  permission_revision: PermissionRevision;
+  provider: 'mock' | 'gmail' | 'microsoft_graph';
+  account_id: Id;
+  /**
+   * 参加者のいる予定の作成は新しい予定なので、既存の対象を持たない。
+   */
+  target: null;
+  action: {
+    kind: 'calendar.event.create_with_attendees';
+    calendar_id: string;
+    summary: string;
+    start: DateOrDateTime;
+    end: DateOrDateTime;
+    time_zone: TimeZone;
+    /**
+     * @minItems 1
+     */
+    attendees: [string, ...string[]];
+    notify_attendees: boolean;
+  };
+  effects: {
+    /**
+     * @minItems 1
+     * @maxItems 50
+     */
+    external_recipients: [string, ...string[]];
+    reconcile_scope: 'operation_marker';
+  };
+}
+/**
+ * メールをごみ箱へ移す（mail.trash、RemoteMutation、設計 04 表、ADR 0075）。Gmail の trash・Outlook の deleteditems への移動だけを行い、完全削除・空にする操作は作らない。外部の相手へは送らないので external_recipients は空。
+ */
+export interface MailTrashOperationIntent {
+  schema: 'buddy.operation.v1';
+  operation_id: Id;
+  content_version: ContentVersion;
+  permission_revision: PermissionRevision;
+  provider: 'mock' | 'gmail' | 'microsoft_graph';
+  account_id: Id;
+  target: {
+    remote_id: string;
+    source_revision: SourceRevision;
+  };
+  action: {
+    kind: 'mail.trash';
+  };
+  effects: {
+    /**
+     * @maxItems 0
+     */
+    external_recipients: [];
+    reconcile_scope: 'exact_target';
+  };
+}
+/**
+ * 画面承認が必要な外部変更の送出直前の照合（設計 08 §2・§3、ADR 0075）。未承認・取消済み・内容変更・宛先変更・対象変更・旧版を形式として表し、結果不明の再送を許可しない。
+ */
+export interface DispatchGuard {
+  schema: 'buddy.dispatch-guard.v1';
+  operation_id: Id;
+  operation_kind: ApprovalRequiredOperationKind;
+  content_version: ContentVersion;
+  content_hash: Hash;
+  state_revision: StateRevision;
+  /**
+   * この内容版に対する有効な画面承認。null は未承認。
+   */
+  approval: ApprovalBinding | null;
+  /**
+   * 送出の直前に読み直した対象の版。予定の変更とごみ箱では必須、送信は下書き・返信元があればその版、新規送信では null。参加者のいる予定の作成では null。
+   */
+  target: OperationTargetVersion | null;
+  /**
+   * 承認の時点で確かめた対象の版。target と食い違えば対象の変更として拒否する。
+   */
+  expected_target: OperationTargetVersion | null;
+  /**
+   * 送出の直前に読み直した宛先（送信）または参加者（予定）。ごみ箱では null。
+   */
+  recipients: string[] | null;
+  /**
+   * 承認の時点で確かめた宛先・参加者。recipients と食い違えば宛先の変更として拒否する。
+   */
+  expected_recipients: string[] | null;
+}
+/**
+ * 画面承認の記録の写し（設計 08 §1、ADR 0010・0075）。取消済みの承認を新しい内容へ流用しない。
+ */
+export interface ApprovalBinding {
+  content_version: ContentVersion;
+  content_hash: Hash;
+  state_revision: StateRevision;
+  cancelled: boolean;
+}
+/**
+ * 対象（メール・予定）の版。承認の時点と送出の直前で比べる（ADR 0075）。
+ */
+export interface OperationTargetVersion {
+  content_version: ContentVersion;
+  content_hash: Hash;
 }
 export interface CommandContext {
   request_id: Id;
@@ -4308,20 +4514,32 @@ export interface SessionCreateRequest {
   command_scope_id: Id;
   storage_mode: StorageMode;
 }
+/**
+ * 会話の作成の受付。segment_generation はこの受付の時点の区切りの世代（ADR 0045・0059）。端末は発言の由来（origin）にこの値を入れる。受付の後に世代が進んだ場合は、端末は新しい世代を受け取り直すまで発言が 409 になる。
+ */
 export interface SessionReceipt {
   request_id: Id;
   session_id: Id;
   storage_mode: StorageMode;
+  segment_generation: SegmentGeneration;
   route_revision: RouteRevision;
 }
 /**
- * 画面からの発言（設計 07 §2、10 §6）。文字入力と、端末内で文字にした声（③）だけ。Live の文字起こしはこの経路で送らない。発言から外部変更を直接実行しない。
+ * 画面からの発言（設計 07 §2、10 §6）。文字入力と、端末内で文字にした声（③）だけ。Live の文字起こしはこの経路で送らない。発言から外部変更を直接実行しない。origin は端末が見ていた区切り（会話の ID と世代）で、Core が今の区切りと照合する（ADR 0045・0059）。
  */
 export interface TurnRequest {
   request_id: Id;
   command_scope_id: Id;
   text: string;
   input_kind: 'text' | 'voice_local';
+  origin: TurnOrigin;
+}
+/**
+ * 端末が見ていた区切り（ADR 0045 の P2-1・ADR 0059）。画面からの発言の由来。会話の ID と、作成の受付で受け取った世代。
+ */
+export interface TurnOrigin {
+  segment_id: Id;
+  segment_generation: SegmentGeneration;
 }
 /**
  * 文字で返す結果（設計 10 §6A）。結果は構造化した事実の表示で、文章は雑談・相談・調査のまとめだけ。外部変更の完了は操作の状態で別に示す。
@@ -5685,6 +5903,21 @@ export interface CarriedSummary {
    */
   source_segment_ids: [Id, ...Id[]];
   expires_at: UtcTime;
+}
+/**
+ * 保存モードの切り替えの要求（U170、ADR 0060）。流れの経路（POST /v1/stream/storage-mode）が保存モードの唯一の入口・出口で、private の出入りもここへ寄せる。端末は会話・区切りの ID を送らない（UI-01。区切りは Core が選ぶ）。
+ */
+export interface StorageModeChangeRequest {
+  request_id: Id;
+  command_scope_id: Id;
+  storage_mode: StorageMode;
+}
+/**
+ * 保存モードの切り替えの結果（U170、ADR 0060）。切り替えた後の区切り（StreamSegment）を返す。private の出入りでは要約をつながず、normal ⇔ extended は nextCarriedSummary の規則の範囲でだけつなぐ。外部変更の完了ではない。
+ */
+export interface StorageModeChangeResponse {
+  request_id: Id;
+  segment: StreamSegment;
 }
 /**
  * ユーザーのキャンバスの操作の記録（UI-06、ADR 0032）。expected_canvas_revision は端末が描いている版。版が今と同じか、古くてもその物の置き場所・存在がその版より後に変わっていなければ当てる。それ以外は 409（conflict）で捨てる（自動では送り直さない）。

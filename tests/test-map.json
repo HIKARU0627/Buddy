@@ -747,7 +747,7 @@
       "status": "contract_fixture",
       "product_test": "simulated_partial",
       "t": ["T05", "T08"],
-      "product_scope": "B10-03 P3 の模擬: 既定 OFF で比較の呼出し・記録が 0、記録しない会話で呼出し 0・記録 0、300 件で止まる（同時の保存でも超えない）、保存期限は会話全文と同じ、比較の遅延・失敗が本線の応答に影響しない。 実 API・実請求・実機・実音声は未実施（B15 と本人の承認）。intent_shadow の SQLite 保存と起動時の設定は未実装。",
+      "product_scope": "B10-03 P3 の模擬: 既定 OFF で比較の呼出し・記録が 0、記録しない会話で呼出し 0・記録 0、300 件で止まる（同時の保存でも超えない）、保存期限は会話全文と同じ、比較の遅延・失敗が本線の応答に影響しない。 intent_shadow の SQLite 保存（DB worker の命令・保存側の前提・由来の辺・Core の入口）は B06-06e で実装し、起動時の設定の読み込みは B15 まで未実装（設定が無い間は既定 OFF のまま）。 実 API・実請求・実機・実音声は未実施（B15 と本人の承認）。",
       "product_evidence": [
         "tests/integration/evidence-b10-03-simulated.json#X48-b10-03"
       ]

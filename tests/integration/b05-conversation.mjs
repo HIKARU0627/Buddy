@@ -113,6 +113,9 @@ export function attachConversation(world, options = {}) {
     candidates: { mailCandidates: () => Promise.resolve([]) },
     policy: options.policy ?? TEST_TURN_POLICY,
     previews: new PreviewRegistry(),
+    storage: {
+      origin: () => ({ segment_id: SESSION, segment_generation: '1' }),
+    },
     utcOffset: '+09:00',
     now: () => NOW,
     onSessionControl: ({ device_id, action }) =>
@@ -134,6 +137,8 @@ export function attachConversation(world, options = {}) {
   });
   rig.voice.setConversation(conversation);
   const next = { index: 0, start: 0 };
+  // 画面の発言の会話（初めて typed を呼んだときに 1 つ作る。Live の会話とは別）。
+  let typedSession = null;
   const conv = {
     script,
     turns,
@@ -183,6 +188,28 @@ export function attachConversation(world, options = {}) {
     },
     // 画面の発言（HTTP の postTurn）。文字の依頼。
     async typed(text, inputKind = 'text') {
+      if (typedSession === null) {
+        const createRoute = API_ROUTES.find(
+          (entry) => entry.operationId === 'createSession',
+        );
+        const create = turns.handlers['createSession'];
+        assert(createRoute !== undefined && create !== undefined);
+        const created = await create({
+          route: createRoute,
+          device: A,
+          body: {
+            request_id: world.newId(),
+            command_scope_id: SCOPE_A,
+            storage_mode: 'normal',
+          },
+          params: {},
+          remoteAddress: '127.0.0.1',
+          query: {},
+          declaredLockState: 'unlocked',
+        });
+        assert.equal(created.status, 201);
+        typedSession = String(created.body.session_id);
+      }
       const route = API_ROUTES.find(
         (entry) => entry.operationId === 'postTurn',
       );
@@ -197,8 +224,12 @@ export function attachConversation(world, options = {}) {
           command_scope_id: SCOPE_A,
           text,
           input_kind: inputKind,
+          origin: {
+            segment_id: typedSession,
+            segment_generation: '1',
+          },
         },
-        params: { session_id: SESSION },
+        params: { session_id: typedSession },
         remoteAddress: '127.0.0.1',
         query: {},
         declaredLockState: 'unlocked',

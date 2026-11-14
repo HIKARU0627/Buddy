@@ -434,3 +434,24 @@ test('an attachment whose extraction itself was cut is recorded as truncated eve
     ['subject', 'body', 'att-1', 'att-2'],
   );
 });
+
+test('an attachment with blank text but a cut extraction is still recorded as truncated (review)', () => {
+  for (const text of ['', '   \n']) {
+    const assembled = assemble({
+      ...base,
+      attachments: [attachment('att-1', text, { extraction_truncated: true })],
+    });
+    assert.deepEqual(assembled.completeness.truncated_source_ids, ['att-1']);
+    // 送るものが無いので、ソースには入れない。
+    assert.deepEqual(
+      assembled.sources.map((source) => source.source_id),
+      ['subject', 'body'],
+    );
+  }
+  // 抽出が途中でない空の添付は、読めた（中身が空）として切詰めにしない。
+  const empty = assemble({
+    ...base,
+    attachments: [attachment('att-1', '', { extraction_truncated: false })],
+  });
+  assert.deepEqual(empty.completeness.truncated_source_ids, []);
+});

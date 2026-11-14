@@ -356,7 +356,12 @@ export function assembleExtractionInput(
   let attachmentRemaining = attachmentBudget;
   for (const attachment of attachments) {
     if (attachment.state !== 'extracted') continue;
-    if (attachment.text.trim() === '') continue;
+    if (attachment.text.trim() === '') {
+      // 空のテキストでも、抽出が途中までだった添付は読めていない範囲が残る。切詰めとして記録する（読めたことにしない）。
+      if (attachment.extraction_truncated === true)
+        truncated.push(attachment.attachment_id);
+      continue;
+    }
     // 予算が尽きて 1 文字も送れない添付は、送っていないので切詰めとして記録する（読めたことにしない）。
     if (attachmentRemaining <= 0) {
       truncated.push(attachment.attachment_id);

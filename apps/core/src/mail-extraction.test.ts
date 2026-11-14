@@ -538,3 +538,34 @@ test('a mail with nothing readable is not sent and does not reserve budget', asy
   assert.equal(analysisSourceOf(outcome).state, 'unread');
   assert.equal(ready(outcome), false);
 });
+
+test('a blank attachment whose extraction was cut keeps the set not ready even when the model returns no requests (review)', async () => {
+  const r = rig(response({ language: 'ja', requests: [], changes: [] }));
+  const outcome = await r.extract(
+    requestOf({
+      mail: mailOf('お疲れさまです。', {
+        attachments: [
+          {
+            attachment_id: 'att-1',
+            permitted: true,
+            state: 'extracted',
+            source_revision: 'a1',
+            text: '',
+            extraction_truncated: true,
+          },
+        ],
+      }),
+    }),
+  );
+  assert.equal(outcome.status, 'extraction');
+  if (
+    outcome.status === 'extraction' &&
+    outcome.extraction.status === 'extracted'
+  )
+    assert.deepEqual(
+      outcome.extraction.result.completeness.truncated_source_ids,
+      ['att-1'],
+    );
+  assert.equal(analysisSourceOf(outcome).state, 'unread');
+  assert.equal(ready(outcome), false);
+});

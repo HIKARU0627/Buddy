@@ -326,7 +326,10 @@ export function assembleExtractionInput(
   );
   const bodyBudget = textBudget - subjectTokens - attachmentBudget;
 
-  if (subject.text.trim() !== '') {
+  // 切詰めの記録は、送るソースに加えるかとは独立に付ける（件名が空白に続けて依頼文のとき、切り詰めた後が空白だけで
+  // 送れなくても、読めていない範囲が残る）。
+  if (subject.truncated) truncated.push(SUBJECT_SOURCE_ID);
+  if (subject.text.trim() !== '')
     sources.push({
       source_id: SUBJECT_SOURCE_ID,
       part: 'subject',
@@ -334,8 +337,6 @@ export function assembleExtractionInput(
       text: subject.text,
       quoted_ranges: [],
     });
-    if (subject.truncated) truncated.push(SUBJECT_SOURCE_ID);
-  }
 
   if (input.body.state === 'extracted' && input.body.text.trim() !== '') {
     const body = fit(input.body.text, bodyBudget);

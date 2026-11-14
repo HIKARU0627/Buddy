@@ -17,6 +17,8 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { DelegationResult, TurnResponse } from '@buddy/contracts';
 import {
+  DELEGATION_BACKGROUND_MS,
+  DELEGATION_BRIDGE_MS,
   EMPTY_HOLD,
   EMPTY_LIVE_TRANSCRIPT,
   HOLD_MAX_MS,
@@ -24,6 +26,8 @@ import {
   SESSION_CONTROL_TABLE,
   admitLiveInput,
   fixOutputTarget,
+  backgroundCommentary,
+  bridgeCommentary,
   fitCommentary,
   inputCommentary,
   isHeld,
@@ -239,6 +243,14 @@ interface Pending {
   revision_current: boolean;
   // 失効したら理由を持つ（null は生きている依頼）。一度入れたら戻さない。
   terminal: Terminal | null;
+  // 時間の制御（10 §5）。つなぎ（1.5 秒）と背景化（8 秒）を、それぞれ 1 回だけ。
+  notice_timer: unknown;
+  // 入力の受付の条件（同意・Live が使える・予算など）の確認が通った。通るまでは通知を言わない（後で拒否される委譲に
+  // 「確認しますね」を言わない）。
+  admitted: boolean;
+  bridge_done: boolean;
+  // 8 秒を超えて裏のジョブへ移した。結果は声でなく画面へ回す（完了は気づきと次回の文脈で伝える。B11・B10-06）。
+  backgrounded: boolean;
 }
 
 interface Context {
@@ -565,8 +577,14 @@ export class LiveConversation implements LiveConversationPort {
       is_change: null,
       revision_current: true,
       terminal: null,
+      notice_timer: null,
+      admitted: false,
+      bridge_done: false,
+      backgrounded: false,
     };
     context.pending.set(pending.workflow_id, pending);
+    // 委譲を受けた時点から、つなぎ（1.5 秒）と背景化（8 秒）を数える。
+    this.#armNotice(context, pending, DELEGATION_BRIDGE_MS);
     let conditions: Readonly<Partial<Record<InputCondition, boolean>>>;
     try {
       conditions = await this.#options.host.conditions(
@@ -602,6 +620,7 @@ export class LiveConversation implements LiveConversationPort {
       return;
     }
     pending.conditions = conditions;
+    pending.admitted = true;
     // 会話の操作として使われた発話・保留の開始は、見直しの中で扱う。
     this.#await(context, pending, sessionId);
   }
@@ -1117,7 +1136,7 @@ export class LiveConversation implements LiveConversationPort {
         revision_current: pending.revision_current,
         live_open: view.open && !context.closed,
         reply_text_requested: false,
-        backgrounded: false,
+        backgrounded: pending.backgrounded,
       },
       { ...view.epochs, outputEpoch: String(context.output_gen) },
     );
@@ -1132,6 +1151,13 @@ export class LiveConversation implements LiveConversationPort {
     commentary: Commentary,
   ): Promise<void> {
     const handle = context.handle;
+    // 受付から 8 秒を過ぎた依頼の結果は、通知のタイマーが先に動いていなくても、声でなく画面へ回す（保留が解けた直後に
+    // 結果が戻る場合など、次の見直しより先に配信されても期限を過ぎた依頼を声で返さない）。
+    if (
+      !pending.backgrounded &&
+      this.#options.monoNow() - pending.accepted_at >= DELEGATION_BACKGROUND_MS
+    )
+      pending.backgrounded = true;
     // 声で返すはずだった案内を、画面の text の本文にも使う（turn.reply_text の汎用の文に置き換えない）。
     const text = commentary.commentary_parts.join('\n');
     const route = this.#route(context, pending);
@@ -1188,6 +1214,82 @@ export class LiveConversation implements LiveConversationPort {
       );
   }
 
+  // ---- 時間の制御（10 §5。X33） -------------------------------------------------------------------------------
+
+  // つなぎ（1.5 秒）と背景化（8 秒）の期限を、依頼を受けた時刻（accepted_at）からの絶対の経過時間で判定する。
+  // タイマーが遅れて動いても期限をずらさず（遅れた分だけ背景化が遅れない）、保留で言えなかった分も、保留が解けた後の
+  // 判定で受付時刻から数え直す。
+  #armNotice(context: Context, pending: Pending, ms: number): void {
+    pending.notice_timer = this.#options.timers.set(Math.max(0, ms), () =>
+      this.#noticeDue(context, pending),
+    );
+  }
+
+  #noticeDue(context: Context, pending: Pending): void {
+    pending.notice_timer = null;
+    // 閉じた接続・失効した依頼・終わった依頼には、何も言わず、見直しもしない。
+    if (context.closed || pending.terminal !== null || pending.phase === 'done')
+      return;
+    // 受付の条件の確認が済むまでは言わない（拒否される委譲に言わない）。受付時刻は変えず、確認が通った時点で経過から判定し直す。
+    if (!pending.admitted) {
+      this.#armNotice(context, pending, LIVE_INPUT_POLL_MS);
+      return;
+    }
+    // 保留中の変更（新しい発話の確定待ち）は、結果を待つ処理ではないので言わない。ただし見直しは続け、保留が解けた
+    // 時点で受付時刻からの経過を判定し直す（解けた後に 8 秒を過ぎていれば、その時点で背景化する）。
+    if (pending.phase === 'held' || isHeld(context.hold, pending.workflow_id)) {
+      this.#armNotice(context, pending, LIVE_INPUT_POLL_MS);
+      return;
+    }
+    // 入力がまだ確定していない間（本人が話し終えていない・対象の発話の終了候補がまだ見えない）は、結果を待つ処理ではないので
+    // 言わない（本人の発話にかぶせない）。時間は受付時刻から数え続け、見直しも続ける。終了候補が見えた後の判定で、
+    // 1.5 秒を過ぎていればつなぎを 1 回、8 秒を過ぎていれば背景化だけを言う。
+    if (
+      pending.phase === 'waiting_input' &&
+      !this.#inputEnded(context, pending)
+    ) {
+      this.#armNotice(context, pending, LIVE_INPUT_POLL_MS);
+      return;
+    }
+    // 時計が戻ったときは 0（経過を数えられないので、期限を早めない）。
+    const elapsed = Math.max(0, this.#options.monoNow() - pending.accepted_at);
+    if (elapsed >= DELEGATION_BACKGROUND_MS) {
+      // 8 秒を超えた: 声で 1 回だけ伝え、裏のジョブへ移す。つなぎを言えていなくても、つなぎは言わずに背景化だけを言う。
+      // 声へ言ってから裏へ移す（移した後は結果の届け先が画面になり、声で言えなくなる）。
+      this.#speak(context, pending, backgroundCommentary());
+      pending.backgrounded = true;
+      return;
+    }
+    if (!pending.bridge_done && elapsed >= DELEGATION_BRIDGE_MS) {
+      pending.bridge_done = true;
+      this.#speak(context, pending, bridgeCommentary());
+    }
+    const due = pending.bridge_done
+      ? DELEGATION_BACKGROUND_MS
+      : DELEGATION_BRIDGE_MS;
+    this.#armNotice(context, pending, due - elapsed);
+  }
+
+  // 委譲の対象の発話について、本人が話し終えた（端末の終了候補を観測した）か。対象を決められない（offset 不明・
+  // 対象が複数・まだ断片がない）ときは、話し終えたと言えないので false。
+  #inputEnded(context: Context, pending: Pending): boolean {
+    if (pending.target_ordinal === null) return false;
+    return (
+      context.transcript.turns.find(
+        (turn) => turn.ordinal === pending.target_ordinal,
+      )?.end_candidate === true
+    );
+  }
+
+  // 声で 1 文だけ伝える。声で返せる依頼（声で依頼され、接続・世代・端末が今も有効）のときだけ。送れたら true。
+  #speak(context: Context, pending: Pending, commentary: Commentary): boolean {
+    if (this.#route(context, pending).channel !== 'voice') return false;
+    return this.#options.host.appendCommentary(
+      context.handle.live_session_id,
+      commentary.commentary_parts,
+    );
+  }
+
   // 保留中の変更を実行せずに捨てる（画面へ知らせる）。
   #dropHeld(context: Context, pending: Pending, reason: string): void {
     // 保存の命令を送信済みの依頼は破棄しない（応答を待ち、保存結果をそのまま扱う）。
@@ -1224,6 +1326,9 @@ export class LiveConversation implements LiveConversationPort {
   #finish(context: Context, pending: Pending): void {
     if (pending.timer !== null) this.#options.timers.clear(pending.timer);
     pending.timer = null;
+    if (pending.notice_timer !== null)
+      this.#options.timers.clear(pending.notice_timer);
+    pending.notice_timer = null;
     pending.phase = 'done';
     context.pending.delete(pending.workflow_id);
     context.hold = {

@@ -14,7 +14,11 @@ import type { ApiHandlerRequest } from './api-server.js';
 import { createTurnRoutes } from './api-turns.js';
 import type { TurnRoutes } from './api-turns.js';
 import { DATA_KEY_MATERIAL } from './event-test-support.js';
-import { LiveConversation, createLiveScreenSink } from './live-conversation.js';
+import {
+  LiveConversation,
+  createLiveScreenSink,
+  deliverVoiceCommentary,
+} from './live-conversation.js';
 import type { ScreenResult } from './live-conversation.js';
 import { PreviewRegistry } from './previews.js';
 import { TEST_TURN_POLICY, createMockInterpreter } from './turn-ports.js';
@@ -3044,3 +3048,78 @@ test(
     );
   },
 );
+
+// ---- B10-04 P2b: 声で返す結果の配信（追記の上限・画面へは多くても 1 回。ADR 0107） --------------------------------------
+
+const SCREEN_NOTICE = 'ほかは画面で確認してください。';
+
+// 結果の配信を、ポートの偽で動かして、追記した部分と画面へ置いた理由を返す。
+function deliver(options: {
+  readonly parts: readonly string[];
+  readonly appends?: boolean;
+  readonly valid?: boolean;
+}) {
+  const appended: (readonly string[])[] = [];
+  const shown: string[] = [];
+  deliverVoiceCommentary({
+    commentary: {
+      template_id: 'result.screen',
+      template_version: '1',
+      facts: [],
+      commentary_parts: options.parts,
+    },
+    build: (parts) => ({ commentary_parts: parts }) as never,
+    valid: () => options.valid !== false,
+    append: (parts) => {
+      appended.push(parts);
+      return options.appends !== false;
+    },
+    show: (reason) => shown.push(reason),
+  });
+  return { appended, shown };
+}
+
+test('B10-04 P2b: a result within the limits is appended as it is and never placed on the screen; when the append fails it is placed once', () => {
+  assert.deepEqual(deliver({ parts: ['あ', 'い', 'う'] }), {
+    appended: [['あ', 'い', 'う']],
+    shown: [],
+  });
+  assert.deepEqual(deliver({ parts: ['あ'], appends: false }), {
+    appended: [['あ']],
+    shown: ['sideband_unavailable'],
+  });
+  // 契約に合わない結果は追記せず、画面へ 1 回。
+  assert.deepEqual(deliver({ parts: ['あ'], valid: false }), {
+    appended: [],
+    shown: ['sideband_unavailable'],
+  });
+  // 載せられる部分が 1 つもない（空だけ）なら、追記せず画面へ 1 回。
+  assert.deepEqual(deliver({ parts: [''] }), {
+    appended: [],
+    shown: ['sideband_unavailable'],
+  });
+});
+
+test('B10-04 P2b: over the limits the rest is placed on the screen exactly once, whether or not the append succeeds, and the voice only asks to check the screen', () => {
+  const four = ['あ', 'い', 'う', 'え'];
+  // 追記が成功: 3 部に収め、最後を案内に置き換え、画面へは 1 回。
+  assert.deepEqual(deliver({ parts: four }), {
+    appended: [['あ', 'い', SCREEN_NOTICE]],
+    shown: ['commentary_overflow'],
+  });
+  // 追記が失敗（接続がこの間に閉じた・準備前）: 画面へは 1 回だけ（二重に置かない）。
+  assert.deepEqual(deliver({ parts: four, appends: false }), {
+    appended: [['あ', 'い', SCREEN_NOTICE]],
+    shown: ['commentary_overflow'],
+  });
+  // 契約に合わない結果でも 1 回だけ。
+  assert.deepEqual(deliver({ parts: four, valid: false }), {
+    appended: [],
+    shown: ['commentary_overflow'],
+  });
+  // 200 文字を超える部分がある: 切らずに載せず、案内だけが声に載る。
+  assert.deepEqual(deliver({ parts: ['あ'.repeat(201)], appends: false }), {
+    appended: [[SCREEN_NOTICE]],
+    shown: ['commentary_overflow'],
+  });
+});

@@ -22,6 +22,8 @@ export * from './canvas-content.js';
 export * from './candidate.js';
 // B11-02: 気づきの表示順・見出し・行の文言（ADR 0115）。
 export * from './candidate-order.js';
+// B11-02 P2: 時間による遷移・根拠の失効・保持の段階（ADR 0116）。
+export * from './candidate-lifecycle.js';
 export * from './candidate-text.js';
 export * from './conversation.js';
 // B04-01: 操作の種類・connector の能力・照合（ADR 0027）。

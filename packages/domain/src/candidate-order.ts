@@ -178,46 +178,91 @@ function localToUtc(local: string, zone: string): number | null {
   return reaches(low) ? low : high;
 }
 
+// 本人のタイムゾーンとして使える IANA の名前か。
+export const isCandidateZone = (zone: string): boolean =>
+  localClock(0, zone) !== null;
+
+interface ParsedDeadline {
+  readonly date: string;
+  // 並べ替えの鍵（UTC のミリ秒）。
+  readonly sortKey: number;
+  // 「いま」の現地時計を読むタイムゾーン。時刻付きの期限はその期限の zone、日付だけは本人の zone。
+  readonly clockZone: string;
+  // 過ぎたか。時刻付きは確定した UTC の時点との比較（現地の文字列の比較は夏時間の終わりで逆戻りする）。
+  readonly ended: (
+    at: number,
+    clock: { date: string; time: string },
+  ) => boolean;
+}
+
+// 期限の日付・並べ替えの鍵・過ぎたかの判定。期限が無い・一意でない・暦にないときは null。
+function parseDeadline(
+  deadline: Deadline,
+  zone: string,
+): ParsedDeadline | null {
+  if (deadline.kind === 'instant') {
+    if (!isRealLocalDateTime(deadline.local_datetime)) return null;
+    const date = deadline.local_datetime.slice(0, 10);
+    const time = deadline.local_datetime.slice(11);
+    const local = `${date}T${time.length === 5 ? `${time}:00` : time}`;
+    const sortKey = localToUtc(local, deadline.zone);
+    if (sortKey === null) return null;
+    return {
+      date,
+      sortKey,
+      clockZone: deadline.zone,
+      ended: (at) => at > sortKey,
+    };
+  }
+  if (deadline.kind === 'date') {
+    if (!isRealLocalDateTime(`${deadline.date}T00:00`)) return null;
+    const day = deadline.date;
+    const next = new Date(dateToDay(day) * DAY_MS + DAY_MS)
+      .toISOString()
+      .slice(0, 10);
+    const sortKey = localToUtc(`${next}T00:00:00`, zone);
+    if (sortKey === null) return null;
+    return {
+      date: day,
+      sortKey,
+      clockZone: zone,
+      ended: (_at, clock) => day < clock.date,
+    };
+  }
+  return null;
+}
+
+// その時刻（UTC のミリ秒）に期限が過ぎているか。時刻付きはその時刻を過ぎたとき、日付だけはその日が終わったとき。
+// 期限が無い・一意でない・暦にない、タイムゾーンが読めないときは判断せず null。
+export function candidateDeadlineEnded(
+  deadline: Deadline,
+  at: number,
+  zone: string,
+): boolean | null {
+  if (Number.isNaN(at)) return null;
+  const parsed = parseDeadline(deadline, zone);
+  if (parsed === null) return null;
+  const clock = localClock(at, parsed.clockZone);
+  return clock === null ? null : parsed.ended(at, clock);
+}
+
 function classify(
   item: CandidateOrderItem,
   now: number,
   zone: string,
 ): Classified {
   const unknown: Classified = { heading: 'unknown', sortKey: null };
-  const { deadline } = item;
-  let date: string;
-  let sortKey: number | null;
-  let instantDeadline: boolean;
-  // 過ぎたか。時刻付きは確定した UTC の時点との比較（現地の文字列の比較は夏時間の終わりで逆戻りする）。
-  if (deadline.kind === 'instant') {
-    if (!isRealLocalDateTime(deadline.local_datetime)) return unknown;
-    date = deadline.local_datetime.slice(0, 10);
-    const time = deadline.local_datetime.slice(11);
-    const local = `${date}T${time.length === 5 ? `${time}:00` : time}`;
-    sortKey = localToUtc(local, deadline.zone);
-    instantDeadline = true;
-  } else if (deadline.kind === 'date') {
-    if (!isRealLocalDateTime(`${deadline.date}T00:00`)) return unknown;
-    date = deadline.date;
-    const next = new Date(dateToDay(date) * DAY_MS + DAY_MS)
-      .toISOString()
-      .slice(0, 10);
-    sortKey = localToUtc(`${next}T00:00:00`, zone);
-    instantDeadline = false;
-  } else {
-    return unknown;
-  }
+  const parsed = parseDeadline(item.deadline, zone);
+  if (parsed === null) return unknown;
+  const { sortKey } = parsed;
   // 見出し（今日・明日・今週）は、期限の zone ではなく本人の zone の暦で決める（U287）。時刻付きの期限は、確定した時点を
   // 本人の zone の現地の日付に直す。日付だけの期限は本人の暦の日付そのもの。
   const clock = localClock(now, zone);
-  if (clock === null || sortKey === null) return unknown;
-  if (instantDeadline) {
-    const own = localClock(sortKey, zone);
-    if (own === null) return unknown;
-    date = own.date;
-  }
-  const ended = instantDeadline ? now > sortKey : date < clock.date;
-  if (ended && item.initial_import)
+  if (clock === null) return unknown;
+  const own = localClock(sortKey, zone);
+  const date = item.deadline.kind === 'instant' ? own?.date : parsed.date;
+  if (date === undefined) return unknown;
+  if (parsed.ended(now, clock) && item.initial_import)
     return { heading: 'initial_import_past', sortKey };
   // 初回取り込みでない過去の期限は、期限切れの解消（deadline_passed）までの間、今日に置く（U271）。
   if (date <= clock.date) return { heading: 'today', sortKey };

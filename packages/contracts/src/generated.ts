@@ -62,6 +62,13 @@ export type BuddyContract =
   | CandidateSnapshot
   | CandidateListResponse
   | CandidateEvidence
+  | WebSearchRequest
+  | WebSearchResponse
+  | WebFetchRequest
+  | WebFetchResult
+  | WebResearchSource
+  | WebResearchLimits
+  | WebUsagePolicy
   | SyncBatch
   | SyncScopeState
   | SyncStateResponse
@@ -3996,6 +4003,172 @@ export interface CandidateEvidence {
   excerpt: string | null;
 }
 /**
+ * 公開 Web 検索の 1 回分の要求（B12-01、ADR 0077、設計 05）。検索語は本人の質問から作る一般語だけで、メール全文・API キー・個人の予定を含めない。検索は 1 依頼 3 回まで。
+ */
+export interface WebSearchRequest {
+  schema: 'buddy.web-search.v1';
+  query_id: Id;
+  query: string;
+  language: string;
+  country: string;
+  max_results: number;
+  safesearch: 'strict';
+}
+/**
+ * 公開 Web 検索の結果（B12-01、ADR 0077）。Brave の利用条件 3(b)(i) に合わせて操作中の一時保持だけにし、3(b)(xiii) に合わせてモデルの訓練・評価に使わない。検索結果をデータベース化しない。
+ */
+export interface WebSearchResponse {
+  schema: 'buddy.web-search-result.v1';
+  provider: 'brave';
+  search_index: number;
+  query: string;
+  searched_at: UtcTime;
+  /**
+   * @maxItems 10
+   */
+  hits:
+    | []
+    | [WebSearchHit]
+    | [WebSearchHit, WebSearchHit]
+    | [WebSearchHit, WebSearchHit, WebSearchHit]
+    | [WebSearchHit, WebSearchHit, WebSearchHit, WebSearchHit]
+    | [WebSearchHit, WebSearchHit, WebSearchHit, WebSearchHit, WebSearchHit]
+    | [
+        WebSearchHit,
+        WebSearchHit,
+        WebSearchHit,
+        WebSearchHit,
+        WebSearchHit,
+        WebSearchHit,
+      ]
+    | [
+        WebSearchHit,
+        WebSearchHit,
+        WebSearchHit,
+        WebSearchHit,
+        WebSearchHit,
+        WebSearchHit,
+        WebSearchHit,
+      ]
+    | [
+        WebSearchHit,
+        WebSearchHit,
+        WebSearchHit,
+        WebSearchHit,
+        WebSearchHit,
+        WebSearchHit,
+        WebSearchHit,
+        WebSearchHit,
+      ]
+    | [
+        WebSearchHit,
+        WebSearchHit,
+        WebSearchHit,
+        WebSearchHit,
+        WebSearchHit,
+        WebSearchHit,
+        WebSearchHit,
+        WebSearchHit,
+        WebSearchHit,
+      ]
+    | [
+        WebSearchHit,
+        WebSearchHit,
+        WebSearchHit,
+        WebSearchHit,
+        WebSearchHit,
+        WebSearchHit,
+        WebSearchHit,
+        WebSearchHit,
+        WebSearchHit,
+        WebSearchHit,
+      ];
+  retention: 'transient_only';
+  model_use: 'grounding_only';
+}
+/**
+ * 検索の 1 件。snippet は検索サービスの要約で、永続保存しない。出典の抜粋は自分で取得した本文から作る（ADR 0077）。
+ */
+export interface WebSearchHit {
+  title: string | null;
+  url: string;
+  snippet: string | null;
+  page_age: UtcTime | null;
+}
+/**
+ * 自分で公開ページを取得する要求（B12-01、ADR 0077、設計 05）。HTTPS の公開ページだけを、1 ページ 2MB・15 秒・リダイレクト 3 回まで取得する。認証 Cookie を付けず、ローカル・プライベート・リンクローカルへの取得を拒否する。
+ */
+export interface WebFetchRequest {
+  schema: 'buddy.web-fetch.v1';
+  url: string;
+  max_bytes: number;
+  timeout_ms: number;
+  max_redirects: number;
+  /**
+   * @minItems 1
+   */
+  content_types: [
+    'text/html' | 'text/plain',
+    ...('text/html' | 'text/plain')[],
+  ];
+  send_cookies: false;
+}
+/**
+ * 公開ページの取得結果（B12-01、ADR 0077）。読めた本文だけを根拠の抜粋・要約に使い、検索サービスの要約だけのものと区別する。
+ */
+export interface WebFetchResult {
+  schema: 'buddy.web-fetch-result.v1';
+  requested_url: string;
+  final_url: string;
+  status: number;
+  content_type: string;
+  fetched_at: UtcTime;
+  bytes: number;
+  redirects: number;
+  readable: boolean;
+  /**
+   * 本文。実行要素を除いたテキストで、読めない形式（PDF 等）は null。
+   */
+  text: string | null;
+}
+/**
+ * 公開 Web の出典（B12-01、ADR 0077）。page_read は自分で取得した本文の抜粋・要約だけを持つ。search_summary_only は検索結果の要約を永続保存せず、抜粋・要約を null にする。
+ */
+export interface WebResearchSource {
+  schema: 'buddy.web-source.v1';
+  source_id: string;
+  /**
+   * 出典の URL。永続保存してよいかは B12-02 で決めるまで null にできる（U183）。
+   */
+  url: string | null;
+  title: string | null;
+  fetched_at: UtcTime | null;
+  basis: 'page_read' | 'search_summary_only';
+  excerpt: string | null;
+  summary: string | null;
+}
+/**
+ * 1 依頼あたりの公開 Web 調査の上限（設計 05 の初期値、ADR 0077）。品質の保証ではなく、処理と費用の上限。予算不足では範囲を減らすか保留する。
+ */
+export interface WebResearchLimits {
+  schema: 'buddy.web-research-limits.v1';
+  max_searches: 3;
+  max_pages: 5;
+  max_bytes_per_page: 2000000;
+  timeout_ms: 15000;
+  max_redirects: 3;
+}
+/**
+ * 公開 Web 調査の利用条件（B12-01、ADR 0077）。検索結果は操作中の一時保持だけにし、モデルの訓練・評価に使わない。URL の永続保存は B12-02 で決めるまで undecided。
+ */
+export interface WebUsagePolicy {
+  schema: 'buddy.web-usage.v1';
+  provider: 'brave';
+  retention: 'transient_only';
+  model_use: 'grounding_only';
+  url_storage: 'undecided' | 'allowed' | 'disallowed';
+}
+/**
  * 同期の 1 回の走査（設計 11 §1・§1A F04、03 データ表）。最初のページ取得から公開または abandoned まで、同じ取得集合で有効な走査は 1 件だけ。開始時の世代・watermark・cursor・担当世代を公開時に照合する。
  */
 export interface SyncBatch {
@@ -4882,12 +5055,28 @@ export interface ConnectionSummary {
   graph_account?: GraphAccountState | null;
 }
 /**
- * 本人が選んだ取得対象（設計 04 取得する対象、J13・J16）。新しいカレンダー・フォルダーを見つけても自動で追加しない。OAuth の権限より狭い範囲を Buddy 側で検査する。
+ * 本人が選んだ取得対象と、取得範囲を狭める設定（設計 04 取得する対象、J13・J16、D5、ADR 0087）。新しいカレンダー・フォルダーを見つけても自動で追加しない。期間とサイズの項目は設計の初期値を上限とし、上限を超える値を契約で拒否する。OAuth の権限より狭い範囲を Buddy 側で検査する。
  */
 export interface ConnectionTargets {
   calendar_ids: string[];
   mail_container_ids: string[];
   attachment_kinds: ('pdf' | 'text')[];
+  /**
+   * メールを遡る日数。設計の初期値 90 日が上限で、狭くだけできる。
+   */
+  mail_lookback_days: number;
+  /**
+   * カレンダーを遡る日数。設計の初期値 30 日が上限。
+   */
+  calendar_past_days: number;
+  /**
+   * カレンダーの先の日数。設計の初期値 90 日が上限。
+   */
+  calendar_future_days: number;
+  /**
+   * 添付 1 件のバイト数の上限。設計の初期値 10MB（10,000,000 バイト）が上限。
+   */
+  attachment_max_bytes: number;
 }
 /**
  * OAuth の開始（設計 04 接続・権限）。中枢の画面だけ。PKCE と loopback の戻り先は中枢内で処理し、/v1 の経路にしない。

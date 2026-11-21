@@ -564,6 +564,9 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
   let creating: Promise<EnsureResult> | null = null;
   // 自動の区切りで区切りを始める処理（同時の発言で二重に区切らないよう直列にする）。
   let rotating: Promise<boolean> | null = null;
+  // 忘却の指示（`memory_forget`）を受けた区切り。次の発言で新しい区切りを始め、前の要約はつながない
+  // （ADR 0032・0068。忘却の対象は期限内でも文脈・要約から外す）。
+  let afterForget: { readonly from: string } | null = null;
   // 前に当てた束（応答のキャッシュ。上限つき）と、配置を済ませた発言の ID（上限なし。1 人の流れの RAM だけ）。
   const replays = new Map<string, CanvasOpBatch | null>();
   const placed = new Set<string>();
@@ -722,6 +725,7 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
     from: Stream,
     requestId: string,
     acceptedKey: string,
+    forced: 'forget_requested' | null,
   ): Promise<boolean> => {
     // 保存モードの切り替えと同じ排他で直列にする（切り替えと自動の区切りが重ならない。ADR 0060）。
     if (rotating === null) {
@@ -733,7 +737,8 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
         if (started.segment.storage_mode === 'private') return false;
         // 先に別の発言が区切った（または最初の区切りを作り直した）なら、今の区切りを使う。
         if (started.sessionId !== from.sessionId) return false;
-        if (boundaryOf(started, now()) === null) return false;
+        if (forced === null && boundaryOf(started, now()) === null)
+          return false;
         // 旧区切りで保存を待っている発言が終わるまで待つ（その発言の期限を要約の材料に入れる）。
         await settledOld(started.sessionId);
         // 待つ間に、この要求が保存を終えて受付に登録されていれば、切り替えない（再送として元の区切りで解決する）。
@@ -742,8 +747,12 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
         if (stream === null) return false;
         if (stream.sessionId !== started.sessionId) return false;
         // 待つ間に発言が保存されていれば、経過はその発言から測り直す（区切りが要らなくなっていれば切らない）。
+        // 忘却の印は、待っている間に付くことがある（保存中の忘却の発言が終わった直後）。呼び出し時の `forced` で
+        // 固定せず、この時点の印を見る（PR #235 のレビュー P2）。
         const at = now();
-        const reason = boundaryOf(stream, at);
+        const forgetNow =
+          afterForget !== null && afterForget.from === stream.sessionId;
+        const reason = forgetNow ? 'forget_requested' : boundaryOf(stream, at);
         if (reason === null) return false;
         const openedAt = new Date(at).toISOString();
         const summary = nextCarriedSummary({
@@ -812,6 +821,9 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
           lastTurnAt: openedAt,
           turnExpiresAt: [],
         };
+        // 忘却の指示で始めた区切りだけ、印を消費する（自動の区切りで消さない。レビュー P2）。
+        if (reason === 'forget_requested' && afterForget !== null)
+          afterForget = null;
         return true;
       }).finally(() => {
         rotating = null;
@@ -929,13 +941,19 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
       // 記録しない区切りでは自動の区切りを起こさない（会話を作れない。ADR 0060）。
       if (base.segment.storage_mode === 'private') break;
       if (acceptedIn(acceptedKey) !== undefined) break;
-      if (boundaryOf(base, now()) === null) break;
+      // 忘却の指示を受けた区切りなら、時間・日付に関係なく新しい区切りを始める（要約はつながない）。
+      const forced: 'forget_requested' | null =
+        afterForget !== null && afterForget.from === base.sessionId
+          ? 'forget_requested'
+          : null;
+      if (forced === null && boundaryOf(base, now()) === null) break;
       const before = base.sessionId;
       const rotated = await rotateSegment(
         request,
         base,
         requestId,
         acceptedKey,
+        forced,
       );
       if (rotationFailure !== null) {
         const failure: {
@@ -954,7 +972,9 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
     if (
       replay === undefined &&
       (current ?? stream).segment.storage_mode !== 'private' &&
-      boundaryOf(current ?? stream, now()) !== null
+      (boundaryOf(current ?? stream, now()) !== null ||
+        (afterForget !== null &&
+          afterForget.from === (current ?? stream).sessionId))
     )
       return apiErrorResponse(503, 'dependency_unavailable', requestId);
     // 再送は、元の区切り（会話）で解決する。新しい区切りで送ると request_hash が変わり 409 になる（レビュー P1）。
@@ -1016,6 +1036,14 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
     // 応答の束のキャッシュの件数とは切り離して覚える（キャッシュから消えた後の再送でも再配置しない。そのときの束は
     // 再現できないので canvas は null）。UI-05 で発言の記録に結び付けて保存する。
     const canvas = placeTurn(turn, stringOf(body, 'expected_canvas_revision'));
+    // 忘却の指示を受け付けたら、次の発言で新しい区切りを始める（要約はつながない。ADR 0032・0068）。
+    // 聞き返し（対象や語が決まらない）では忘却は成立していないので、区切りを始めない。再送でも始めない。
+    if (
+      replay === undefined &&
+      turn.status === 'answered' &&
+      turn.result_view?.intent === 'memory_forget'
+    )
+      afterForget = { from: stream.sessionId };
     const response: StreamTurnResponse = {
       request_id: turn.request_id,
       segment: stream.segment,
@@ -1131,6 +1159,8 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
         turnExpiresAt: [],
       };
       reopenPending = false;
+      // 区切りが変わったので、忘却の印は残さない（古い区切りを指したままにしない）。
+      afterForget = null;
       return { status: 200, body: { request_id: requestId, segment } };
     }
     // 記録しない区切りから出るときは、会話を作る前にゲートを出る（記録しない区切りの間は会話の作成が拒否される）。
@@ -1145,6 +1175,11 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
     const before = current;
     if (before !== null) await settledOld(before.sessionId);
     const carriedFrom = current;
+    // 忘却の指示を受けた区切りからの切り替えでは、要約をつながない（忘却した内容を持ち込まない。ADR 0032・0068）。
+    const forgetDue =
+      afterForget !== null &&
+      carriedFrom !== null &&
+      afterForget.from === carriedFrom.sessionId;
     const created = await createSessionWithMode(target, request);
     if (!created.ok) {
       // 記録しない区切りはもう閉じている（exitPrivate は確定済みで戻せない）。使えない区切りを残すと、private の
@@ -1166,27 +1201,29 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
     } else {
       // normal ⇔ extended。要約は、期限内の由来の範囲でだけつなぐ（ADR 0032 の nextCarriedSummary）。
       openReason = 'storage_mode_changed';
-      const carried = nextCarriedSummary({
-        previous: carriedFrom.segment.carried_summary,
-        closing: {
-          segment_id: carriedFrom.segment.segment_id,
-          storage_mode: carriedFrom.segment.storage_mode,
-          turn_expires_at: carriedFrom.turnExpiresAt,
-        },
-        open_reason: openReason,
-        now: new Date(now()).toISOString(),
-      });
-      // 契約の CarriedSummary の由来は 1 件以上（空なら nextCarriedSummary は null を返す）。
-      carriedSummary =
-        carried === null
-          ? null
-          : {
-              source_segment_ids: [...carried.source_segment_ids] as [
-                string,
-                ...string[],
-              ],
-              expires_at: carried.expires_at,
-            };
+      if (!forgetDue) {
+        const carried = nextCarriedSummary({
+          previous: carriedFrom.segment.carried_summary,
+          closing: {
+            segment_id: carriedFrom.segment.segment_id,
+            storage_mode: carriedFrom.segment.storage_mode,
+            turn_expires_at: carriedFrom.turnExpiresAt,
+          },
+          open_reason: openReason,
+          now: new Date(now()).toISOString(),
+        });
+        // 契約の CarriedSummary の由来は 1 件以上（空なら nextCarriedSummary は null を返す）。
+        carriedSummary =
+          carried === null
+            ? null
+            : {
+                source_segment_ids: [...carried.source_segment_ids] as [
+                  string,
+                  ...string[],
+                ],
+                expires_at: carried.expires_at,
+              };
+      }
     }
     const segment = openedSegment(
       { segment_id: created.sessionId, storage_mode: target },
@@ -1202,6 +1239,8 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
       turnExpiresAt: [],
     };
     reopenPending = false;
+    // 区切りが変わったので、忘却の印は残さない（古い区切りを指したままにしない）。
+    afterForget = null;
     return { status: 200, body: { request_id: requestId, segment } };
   };
 

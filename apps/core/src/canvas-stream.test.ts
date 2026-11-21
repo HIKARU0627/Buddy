@@ -47,7 +47,11 @@ import {
 } from './event-test-support.js';
 import type { EventCore } from './event-test-support.js';
 import type { TestDevice } from './api-test-support.js';
-import type { ProviderEvent, ProviderReader } from './turn-ports.js';
+import type {
+  Interpreter,
+  ProviderEvent,
+  ProviderReader,
+} from './turn-ports.js';
 import { parseClockState } from './clock-state.js';
 import { CLOCK_STATE_FILE } from './paths.js';
 
@@ -150,12 +154,14 @@ async function startCanvasCore(
   t: test.TestContext,
   events?: readonly ProviderEvent[],
   clock?: () => Date,
+  interpreter?: Interpreter,
 ): Promise<EventCore> {
   return startEventCore(t, {
     previewValid: false,
     now: clock ?? (() => CLOCK),
     turns: {
       provider: mockProvider(events),
+      ...(interpreter === undefined ? {} : { interpreter }),
       candidates: {
         mailCandidates: () =>
           Promise.resolve([
@@ -1596,6 +1602,383 @@ test('UI-05: a new request that waits with a resend still opens its own segment'
     expires_at: '2026-10-12T14:59:59Z',
   });
   assert.equal(sessions, 2);
+});
+
+// 忘却の指示（memory_forget）からの区切り（UI-05 段階 2-i、ADR 0068・0032）。いまの Core の文字の発言は忘却を
+// まだ受け付けない（B06-07b）ので、発言の処理の結果を差し替えて、流れの側の規則だけを確かめる。
+const forgetUnitRig = (mode: 'answered' | 'clarified') => {
+  const canvas = new CanvasHub(contract);
+  let at = Date.parse('2026-10-05T09:00:00+09:00');
+  let sessions = 0;
+  let turns = 0;
+  const id = (n: number) =>
+    `00000000-0000-4000-8000-${n.toString(16).padStart(12, '0')}`;
+  const routes = createStreamRoutes({
+    canvas,
+    storage: plainStorage(),
+    now: () => at,
+    utcOffset: '+09:00',
+    createSession: () => {
+      sessions += 1;
+      return Promise.resolve({
+        status: 201,
+        body: { session_id: id(sessions) },
+      });
+    },
+    postTurn: (request) => {
+      turns += 1;
+      const body = request.body as Record<string, string>;
+      const forget = body['text'] === '忘れて';
+      return Promise.resolve({
+        status: 200,
+        body: {
+          request_id: body['request_id'],
+          session_id: request.params['session_id'],
+          turn_id: id(100 + turns),
+          input_id: id(200 + turns),
+          workflow_id: id(500),
+          status: forget && mode === 'clarified' ? 'clarification' : 'answered',
+          result_view: forget
+            ? {
+                workflow_id: id(500),
+                request_revision: '1',
+                intent: 'memory_forget',
+                kind:
+                  mode === 'clarified' ? 'clarification' : 'completion_line',
+                status: mode === 'clarified' ? 'confirming_input' : 'ready',
+                item_refs: [],
+                more_count: 0,
+                template_id: null,
+                template_version: null,
+              }
+            : null,
+          reply_text: null,
+        },
+      });
+    },
+  });
+  const handler = routes.handlers['postStreamTurn'];
+  assert(handler !== undefined);
+  const route = API_ROUTES.find(
+    (entry) => entry.operationId === 'postStreamTurn',
+  );
+  assert(route !== undefined);
+  const device = { device_id: id(9) } as unknown as DeviceRecord;
+  const request = (text: string): ApiHandlerRequest => ({
+    route,
+    device,
+    body: {
+      request_id: randomUUID(),
+      command_scope_id: id(400),
+      text,
+      input_kind: 'text',
+      expected_canvas_revision: '0',
+    },
+    params: {},
+    remoteAddress: '127.0.0.1',
+    query: {},
+    declaredLockState: null,
+  });
+  return {
+    handler,
+    request,
+    sessions: () => sessions,
+    advance: (ms: number) => {
+      at += ms;
+    },
+  };
+};
+
+test('UI-05: an answered forget opens a new segment without carrying the summary', async () => {
+  const rig = forgetUnitRig('answered');
+  const first = await rig.handler(rig.request('こんにちは'));
+  assert.equal(first.status, 200);
+  const a = (first.body as unknown as StreamTurnResponse).segment;
+  // 忘却の指示は、まだ同じ区切りで答える（新しい区切りは次の発言から）。
+  const forget = await rig.handler(rig.request('忘れて'));
+  assert.equal(forget.status, 200);
+  const forgotten = forget.body as unknown as StreamTurnResponse;
+  assert.equal(forgotten.result_view?.intent, 'memory_forget');
+  assert.equal(forgotten.segment.segment_id, a.segment_id);
+  // 次の発言は同じ時刻でも新しい区切り（理由は forget_requested、要約はつながない）。
+  const next = await rig.handler(rig.request('こんにちは'));
+  const b = (next.body as unknown as StreamTurnResponse).segment;
+  assert.notEqual(b.segment_id, a.segment_id);
+  assert.equal(b.open_reason, 'forget_requested');
+  assert.equal(b.carried_summary, null);
+  // その次は同じ区切り（忘却の指示を二度消費しない）。
+  const third = await rig.handler(rig.request('こんにちは'));
+  assert.equal(
+    (third.body as unknown as StreamTurnResponse).segment.segment_id,
+    b.segment_id,
+  );
+  assert.equal(rig.sessions(), 2);
+});
+
+test('UI-05: a forget that is only clarified does not open a new segment', async () => {
+  const rig = forgetUnitRig('clarified');
+  const first = await rig.handler(rig.request('こんにちは'));
+  const a = (first.body as unknown as StreamTurnResponse).segment;
+  const clarified = await rig.handler(rig.request('忘れて'));
+  assert.equal(
+    (clarified.body as unknown as StreamTurnResponse).status,
+    'clarification',
+  );
+  const next = await rig.handler(rig.request('こんにちは'));
+  assert.equal(
+    (next.body as unknown as StreamTurnResponse).segment.segment_id,
+    a.segment_id,
+  );
+  assert.equal(rig.sessions(), 1);
+});
+
+test('UI-05: a boundary that starts while a forget is being saved still starts the forget segment', async () => {
+  const canvas = new CanvasHub(contract);
+  let at = Date.parse('2026-10-05T23:59:59.500+09:00');
+  let sessions = 0;
+  let turns = 0;
+  let releaseF: (() => void) | null = null;
+  const gateF = new Promise<void>((resolve) => {
+    releaseF = resolve;
+  });
+  const id = (n: number) =>
+    `00000000-0000-4000-8000-${n.toString(16).padStart(12, '0')}`;
+  let routes: ReturnType<typeof createStreamRoutes> | null = null;
+  routes = createStreamRoutes({
+    canvas,
+    storage: plainStorage(),
+    now: () => at,
+    utcOffset: '+09:00',
+    createSession: () => {
+      sessions += 1;
+      return Promise.resolve({
+        status: 201,
+        body: { session_id: id(sessions) },
+      });
+    },
+    postTurn: async (request) => {
+      turns += 1;
+      const turn = turns;
+      const sessionId = request.params['session_id'] as string;
+      const body = request.body as Record<string, string>;
+      const forget = body['text'] === '忘れて';
+      if (forget) {
+        // 23:59:59.500 の忘却の発言。保存を保留し、その間に 0 時をまたいだ発言 X が来る。
+        await gateF;
+        routes?.recordTurn({
+          session_id: sessionId,
+          turn_id: id(100 + turn),
+          created_at: '2026-10-05T14:59:59.500Z',
+          expires_at: '2026-10-12T14:59:59.500Z',
+        });
+      } else
+        routes?.recordTurn({
+          session_id: sessionId,
+          turn_id: id(100 + turn),
+          created_at: '2026-10-05T15:00:00.100Z',
+          expires_at: '2026-10-12T15:00:00.100Z',
+        });
+      return {
+        status: 200,
+        body: {
+          request_id: body['request_id'],
+          session_id: sessionId,
+          turn_id: id(100 + turn),
+          input_id: id(200 + turn),
+          workflow_id: id(500),
+          status: 'answered',
+          result_view: forget
+            ? {
+                workflow_id: id(500),
+                request_revision: '1',
+                intent: 'memory_forget',
+                kind: 'completion_line',
+                status: 'ready',
+                item_refs: [],
+                more_count: 0,
+                template_id: null,
+                template_version: null,
+              }
+            : null,
+          reply_text: null,
+        },
+      };
+    },
+  });
+  const handler = routes.handlers['postStreamTurn'];
+  assert(handler !== undefined);
+  const route = API_ROUTES.find(
+    (entry) => entry.operationId === 'postStreamTurn',
+  );
+  assert(route !== undefined);
+  const device = { device_id: id(9) } as unknown as DeviceRecord;
+  const request = (text: string): ApiHandlerRequest => ({
+    route,
+    device,
+    body: {
+      request_id: randomUUID(),
+      command_scope_id: id(400),
+      text,
+      input_kind: 'text',
+      expected_canvas_revision: '0',
+    },
+    params: {},
+    remoteAddress: '127.0.0.1',
+    query: {},
+    declaredLockState: null,
+  });
+  const forget = handler(request('忘れて'));
+  await new Promise((resolve) => setImmediate(resolve));
+  // 0 時をまたいだ発言 X。この時点では忘却の印はまだ無く、日付の理由で切り替えを始める（F の保存を待つ）。
+  at = Date.parse('2026-10-05T15:00:00.100Z');
+  const x = handler(request('こんにちは'));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert(releaseF !== null);
+  (releaseF as () => void)();
+  const [forgetDone, xDone] = await Promise.all([forget, x]);
+  assert.equal(forgetDone.status, 200);
+  assert.equal(xDone.status, 200);
+  const xb = (xDone.body as unknown as StreamTurnResponse).segment;
+  // 待った後に印を見直すので、理由は forget_requested で、忘却した区切りの要約はつながない。
+  assert.equal(xb.open_reason, 'forget_requested');
+  assert.equal(xb.carried_summary, null);
+  assert.equal(sessions, 2);
+  // 印は消費済み（次の発言で二度切らない）。
+  const y = await handler(request('こんにちは'));
+  assert.equal(
+    (y.body as unknown as StreamTurnResponse).segment.segment_id,
+    xb.segment_id,
+  );
+});
+
+test('UI-05: a storage mode change right after a forget carries no summary', async () => {
+  const canvas = new CanvasHub(contract);
+  const at = Date.parse('2026-10-05T09:00:00+09:00');
+  let sessions = 0;
+  let turns = 0;
+  let mode: StreamStorageMode = 'normal';
+  const id = (n: number) =>
+    `00000000-0000-4000-8000-${n.toString(16).padStart(12, '0')}`;
+  const storage: StreamStorageGate = {
+    get mode() {
+      return mode;
+    },
+    origin: () => ({ segment_generation: '1' }),
+    enterPrivate: () => Promise.resolve({ ok: false, reason: 'closed' }),
+    exitPrivate: () => Promise.resolve({ ok: false, reason: 'closed' }),
+  };
+  const routes = createStreamRoutes({
+    canvas,
+    storage,
+    now: () => at,
+    utcOffset: '+09:00',
+    createSession: () => {
+      sessions += 1;
+      return Promise.resolve({
+        status: 201,
+        body: { session_id: id(sessions) },
+      });
+    },
+    postTurn: (request) => {
+      turns += 1;
+      const turn = turns;
+      const sessionId = request.params['session_id'] as string;
+      const body = request.body as Record<string, string>;
+      const forget = body['text'] === '忘れて';
+      routes.recordTurn({
+        session_id: sessionId,
+        turn_id: id(100 + turn),
+        created_at: '2026-10-05T00:00:00Z',
+        expires_at: '2026-10-12T00:00:00Z',
+      });
+      return Promise.resolve({
+        status: 200,
+        body: {
+          request_id: body['request_id'],
+          session_id: sessionId,
+          turn_id: id(100 + turn),
+          input_id: id(200 + turn),
+          workflow_id: id(500),
+          status: 'answered',
+          result_view: forget
+            ? {
+                workflow_id: id(500),
+                request_revision: '1',
+                intent: 'memory_forget',
+                kind: 'completion_line',
+                status: 'ready',
+                item_refs: [],
+                more_count: 0,
+                template_id: null,
+                template_version: null,
+              }
+            : null,
+          reply_text: null,
+        },
+      });
+    },
+  });
+  const turnHandler = routes.handlers['postStreamTurn'];
+  const modeHandler = routes.handlers['postStreamStorageMode'];
+  assert(turnHandler !== undefined);
+  assert(modeHandler !== undefined);
+  const turnRoute = API_ROUTES.find(
+    (entry) => entry.operationId === 'postStreamTurn',
+  );
+  const modeRoute = API_ROUTES.find(
+    (entry) => entry.operationId === 'postStreamStorageMode',
+  );
+  assert(turnRoute !== undefined);
+  assert(modeRoute !== undefined);
+  const device = { device_id: id(9) } as unknown as DeviceRecord;
+  const request = (text: string): ApiHandlerRequest => ({
+    route: turnRoute,
+    device,
+    body: {
+      request_id: randomUUID(),
+      command_scope_id: id(400),
+      text,
+      input_kind: 'text',
+      expected_canvas_revision: '0',
+    },
+    params: {},
+    remoteAddress: '127.0.0.1',
+    query: {},
+    declaredLockState: null,
+  });
+  const first = await turnHandler(request('こんにちは'));
+  assert.equal(first.status, 200);
+  const a = (first.body as unknown as StreamTurnResponse).segment;
+  const forget = await turnHandler(request('忘れて'));
+  assert.equal(forget.status, 200);
+  // 忘却の直後に normal → extended へ切り替える。要約はつながない。
+  mode = 'extended';
+  const switched = await modeHandler({
+    route: modeRoute,
+    device,
+    body: {
+      request_id: randomUUID(),
+      command_scope_id: id(400),
+      storage_mode: 'extended',
+    },
+    params: {},
+    remoteAddress: '127.0.0.1',
+    query: {},
+    declaredLockState: null,
+  });
+  assert.equal(switched.status, 200);
+  const switchedSegment = (
+    switched.body as { segment: StreamTurnResponse['segment'] }
+  ).segment;
+  assert.equal(switchedSegment.open_reason, 'storage_mode_changed');
+  assert.equal(switchedSegment.carried_summary, null);
+  // 印は消えている（次の発言で区切りを二度作らない）。
+  const next = await turnHandler(request('こんにちは'));
+  assert.equal(
+    (next.body as unknown as StreamTurnResponse).segment.segment_id,
+    switchedSegment.segment_id,
+  );
+  assert.notEqual(switchedSegment.segment_id, a.segment_id);
 });
 
 test('UI-05: a save that finishes out of order does not move the segment start backwards', async () => {

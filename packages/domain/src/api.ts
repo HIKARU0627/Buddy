@@ -88,6 +88,13 @@ export const ROUTE_CHECKS: Readonly<Record<string, readonly CoreCheck[]>> = {
   decideBudgetOverage: SCREEN,
   reviewBudgetOverrun: [...SCREEN, 'expected_revision'],
   settleBudgetManually: [...SCREEN, 'expected_revision'],
+  // 気づき（候補）の経路（B11-04 P2、ADR 0130）。一覧は題と期限の原文を含む読み取りなのでロック解除を求める。
+  listCandidates: [...READ, 'unlocked'],
+  // 根拠の再取得は許可範囲（取得範囲）から取り直して抄録を返すので、接続範囲を求める（postCanvasContent と同じ）。
+  // 状態は本人の操作でなく観測で変わり得るだけなので、画面操作は求めない。
+  getCandidateEvidence: COMMAND,
+  // 状態の変更（開いた・対応した・却下・スヌーズ・解決）は本人の画面操作だけ。照合は expected_state で経路の処理が行う。
+  changeCandidateState: SCREEN,
 };
 
 export interface RequestContext {

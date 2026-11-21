@@ -62,3 +62,18 @@ export function readDerivationsBySource(
     )
     .all(source.source_kind, source.source_id) as DerivationRow[];
 }
+
+// 派生物から、その由来の辺を読む（readDerivationsBySource と対。気づきの根拠の再取得で由来を引く。ADR 0130）。
+export function readDerivationsByArtifact(
+  db: SqliteDatabase,
+  artifact: {
+    readonly artifact_kind: DerivationArtifactKind;
+    readonly artifact_id: string;
+  },
+): DerivationRecord[] {
+  return db
+    .prepare(
+      `SELECT ${COLUMNS} FROM derivations WHERE artifact_kind = ? AND artifact_id = ? ORDER BY source_kind, source_id, created_at`,
+    )
+    .all(artifact.artifact_kind, artifact.artifact_id) as DerivationRow[];
+}

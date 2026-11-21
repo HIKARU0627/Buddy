@@ -210,6 +210,14 @@ test('create writes the row, the sealed title and excerpt and one lineage edge p
     assert.equal(row.closed_at, null);
     assert.equal(row.key_delete_at, null);
     assert.equal(row.content_deleted_at, null);
+    // 由来の辺（ADR 0130）。並びは source_kind・source_id の順（source_item が turn より前）。
+    assert.deepEqual(
+      (got.value as CandidateOpValues['candidate.get']).origins,
+      [
+        { source_kind: 'source_item', source_id: 'msg-1' },
+        { source_kind: 'turn', source_id: TURN },
+      ],
+    );
     // 題と抄録は封筒のまま戻る（復号は Core）。
     assert.equal(
       Buffer.from(row.title?.ciphertext ?? []).toString('hex'),
@@ -890,7 +898,7 @@ test('list returns the sealed titles in receipt order, honours the states and th
     assert.ok(got.candidate?.excerpt !== null);
     assert.deepEqual(
       run(db, { kind: 'candidate.get', candidate_id: randomUUID() }).value,
-      { candidate: null },
+      { candidate: null, origins: [] },
     );
     for (const bad of [0, 1001, 1.5]) {
       assert.deepEqual(

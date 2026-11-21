@@ -2552,6 +2552,153 @@
         }
       ]
     },
+    "listCandidates": {
+      "response": {
+        "candidates": [
+          {
+            "candidate_id": "00000000-0000-4000-8000-000000000601",
+            "kind": "mail_reply",
+            "state": "new",
+            "request_entity_id": "00000000-0000-4000-8000-000000000611",
+            "request_revision": "2",
+            "source_revision": "r1",
+            "notification_key": "1111111111111111111111111111111111111111111111111111111111111111",
+            "title": "参加可否の返信：10/7まで",
+            "deadline": {
+              "kind": "date",
+              "date": "2030-10-07",
+              "original_text": "2030年10月7日まで"
+            },
+            "initial_import": false,
+            "unread_partial": false,
+            "related_analysis": null,
+            "operation_ids": []
+          }
+        ],
+        "counts": {
+          "new": 1,
+          "seen": 0,
+          "acted": 0,
+          "dismissed": 0,
+          "snoozed": 2,
+          "resolved": 0
+        },
+        "next_cursor": null
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"],
+        ["locked", 403, "device_locked"],
+        ["lock_unknown", 403, "device_locked"]
+      ]
+    },
+    "getCandidateEvidence": {
+      "params": {
+        "candidate_id": "00000000-0000-4000-8000-000000000601"
+      },
+      "request": {
+        "request_id": "00000000-0000-4000-8000-000000009301",
+        "command_scope_id": "00000000-0000-4000-8000-000000009002"
+      },
+      "response": {
+        "candidate_id": "00000000-0000-4000-8000-000000000601",
+        "request_entity_id": "00000000-0000-4000-8000-000000000611",
+        "request_revision": "2",
+        "source": {
+          "source_id": "synthetic-message-1",
+          "source_revision": "r1",
+          "quote": "参加可否をご返信ください",
+          "start": 0,
+          "end": 12
+        },
+        "unread": false,
+        "excerpt": "参加可否をご返信ください。"
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"],
+        ["stale_scope", 410, "expired_scope"],
+        ["locked", 403, "device_locked"],
+        ["lock_unknown", 403, "device_locked"],
+        ["too_large", 413, "payload_too_large"]
+      ],
+      "accepted_contexts": ["voice_origin"],
+      "invalid_bodies": [
+        {
+          "request_id": "00000000-0000-4000-8000-000000009301"
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-000000009301",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "source_id": "synthetic-message-1"
+        }
+      ]
+    },
+    "changeCandidateState": {
+      "params": {
+        "candidate_id": "00000000-0000-4000-8000-000000000601"
+      },
+      "request": {
+        "request_id": "00000000-0000-4000-8000-000000009302",
+        "command_scope_id": "00000000-0000-4000-8000-000000009002",
+        "event": "snooze",
+        "expected_state": "seen",
+        "snooze_until": "2030-10-10T00:00:00Z"
+      },
+      "response": {
+        "candidate_id": "00000000-0000-4000-8000-000000000601",
+        "kind": "mail_reply",
+        "state": "snoozed",
+        "request_entity_id": "00000000-0000-4000-8000-000000000611",
+        "request_revision": "2",
+        "source_revision": "r1",
+        "notification_key": "1111111111111111111111111111111111111111111111111111111111111111",
+        "title": "参加可否の返信：10/7まで",
+        "deadline": {
+          "kind": "date",
+          "date": "2030-10-07",
+          "original_text": "2030年10月7日まで"
+        },
+        "initial_import": false,
+        "unread_partial": false,
+        "related_analysis": null,
+        "operation_ids": []
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"],
+        ["stale_scope", 410, "expired_scope"],
+        ["locked", 403, "device_locked"],
+        ["lock_unknown", 403, "device_locked"],
+        ["too_large", 413, "payload_too_large"],
+        ["voice_origin", 403, "screen_operation_required"]
+      ],
+      "invalid_bodies": [
+        {
+          "request_id": "00000000-0000-4000-8000-000000009302",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "event": "deadline_passed",
+          "expected_state": "new",
+          "snooze_until": null
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-000000009302",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "event": "snooze",
+          "expected_state": "new"
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-000000009302",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "event": "snooze",
+          "expected_state": "new",
+          "snooze_until": "2030-10-10T09:00:00+09:00"
+        }
+      ]
+    },
     "getConnectionTargets": {
       "params": {
         "connection_id": "00000000-0000-4000-8000-000000000014"

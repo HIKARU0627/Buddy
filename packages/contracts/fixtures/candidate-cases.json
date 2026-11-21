@@ -144,6 +144,64 @@
         "unread": true,
         "excerpt": "参加可否をご返信ください。期限は10月7日です。"
       }
+    },
+    {
+      "id": "candidate-state-dismiss",
+      "schema": "CandidateStateCommand",
+      "valid": true,
+      "value": {
+        "request_id": "00000000-0000-4000-8000-000000000621",
+        "command_scope_id": "00000000-0000-4000-8000-000000000622",
+        "event": "dismiss",
+        "expected_state": "seen",
+        "snooze_until": null
+      }
+    },
+    {
+      "id": "candidate-state-snooze",
+      "schema": "CandidateStateCommand",
+      "valid": true,
+      "value": {
+        "request_id": "00000000-0000-4000-8000-000000000623",
+        "command_scope_id": "00000000-0000-4000-8000-000000000622",
+        "event": "snooze",
+        "expected_state": "new",
+        "snooze_until": "2030-10-10T00:00:00Z"
+      }
+    },
+    {
+      "id": "candidate-state-clock-event",
+      "schema": "CandidateStateCommand",
+      "valid": false,
+      "value": {
+        "request_id": "00000000-0000-4000-8000-000000000624",
+        "command_scope_id": "00000000-0000-4000-8000-000000000622",
+        "event": "snooze_elapsed",
+        "expected_state": "snoozed",
+        "snooze_until": null
+      }
+    },
+    {
+      "id": "candidate-state-missing-snooze-until",
+      "schema": "CandidateStateCommand",
+      "valid": false,
+      "value": {
+        "request_id": "00000000-0000-4000-8000-000000000625",
+        "command_scope_id": "00000000-0000-4000-8000-000000000622",
+        "event": "snooze",
+        "expected_state": "new"
+      }
+    },
+    {
+      "id": "candidate-state-missing-scope",
+      "schema": "CandidateStateCommand",
+      "valid": false,
+      "value": {
+        "request_id": "00000000-0000-4000-8000-000000000626",
+        "event": "open",
+        "expected_state": "new",
+        "snooze_until": null
+      }
     }
   ],
   "transitions": [

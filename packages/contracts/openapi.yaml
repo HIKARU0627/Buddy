@@ -1752,6 +1752,120 @@ paths:
           $ref: '#/components/responses/RateLimited'
         '503':
           $ref: '#/components/responses/Unavailable'
+  /v1/candidates:
+    get:
+      operationId: listCandidates
+      summary: 気づきの一覧
+      description: 活動中の気づき（new・seen・acted）を domain の表示順（今日・明日の予定重複、期限の近い順、受信の新しい順）で返し、全状態の件数を添える。snoozed は一覧に出さず件数だけ数える（U270 の暫定 (a)）。題と期限の原文は封筒を開いて返し、本文・添付・件名は返さない。本人のタイムゾーンが決まっていない・封筒を開けない行があるときは一覧全体を 503 にする（黙って落とさない）。件数の上限で切れたときは next_cursor に続きの位置を入れる（設計 11 §4、ADR 0073・0130）。
+      x-buddy-core-checks:
+        - device_token
+        - home_network
+        - unlocked
+      parameters:
+        - $ref: '#/components/parameters/LockState'
+      responses:
+        '200':
+          description: 気づきの一覧と状態ごとの件数。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/CandidateListResponse
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /v1/candidates/{candidate_id}/evidence:
+    post:
+      operationId: getCandidateEvidence
+      summary: 気づきの根拠の再取得
+      description: 根拠を許可範囲から取り直し、有効なときだけ根拠の位置と保存した抄録（200 文字以内）を返す。本文全体は返さない。取り直した結果が取得範囲外・削除なら候補を resolved にして 409、新しい版・忘却・予定の重複の解消も 409（状態を読み直す）、取り直せないときは状態を変えず 503。接続範囲を本文で示すので POST にする（postCanvasContent と同じ）。存在しない候補は 422（設計 11 §4、ADR 0073・0130）。
+      x-buddy-core-checks:
+        - device_token
+        - home_network
+        - command_scope
+        - unlocked
+      parameters:
+        - $ref: '#/components/parameters/CandidateId'
+        - $ref: '#/components/parameters/LockState'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas/buddy.schema.json#/$defs/CandidateEvidenceRequest
+      responses:
+        '200':
+          description: 有効な根拠。端末のメモリーだけに置き、保存しない。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/CandidateEvidence
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/Gone'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /v1/candidates/{candidate_id}/state:
+    post:
+      operationId: changeCandidateState
+      summary: 気づきの状態の変更
+      description: 本人の画面操作で気づきの状態を 1 つ進める（open・act・dismiss・snooze・resolve）。expected_state が今の状態と違う・許されない遷移（終端・acted への act など）は 409。snooze はいまより後の snooze_until が必須で、過去の時刻・snooze 以外での指定は 422。存在しない候補は 422。成否が不明なときは 503 で、成功にも競合にも見せない（設計 11 §4、ADR 0073・0130）。
+      x-buddy-core-checks:
+        - device_token
+        - home_network
+        - command_scope
+        - unlocked
+        - screen_operation
+      parameters:
+        - $ref: '#/components/parameters/CandidateId'
+        - $ref: '#/components/parameters/InputOrigin'
+        - $ref: '#/components/parameters/LockState'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas/buddy.schema.json#/$defs/CandidateStateCommand
+      responses:
+        '200':
+          description: 変更後の気づき。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/CandidateSnapshot
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/Gone'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
 components:
   securitySchemes:
     deviceToken:
@@ -1815,6 +1929,13 @@ components:
       schema:
         $ref: ./schemas/buddy.schema.json#/$defs/Id
       description: 予算の予約の ID。
+    CandidateId:
+      name: candidate_id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/buddy.schema.json#/$defs/Id
+      description: 気づき（候補）の ID。
     Cursor:
       name: cursor
       in: query

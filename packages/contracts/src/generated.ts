@@ -62,6 +62,8 @@ export type BuddyContract =
   | CandidateSnapshot
   | CandidateListResponse
   | CandidateEvidence
+  | CandidateStateCommand
+  | CandidateEvidenceRequest
   | WebSearchRequest
   | WebSearchResponse
   | WebFetchRequest
@@ -4078,6 +4080,27 @@ export interface CandidateEvidence {
    * 表示用の抄録（200 文字以内）。本文全体ではない。
    */
   excerpt: string | null;
+}
+/**
+ * 気づきの状態の変更（設計 11 §4、ADR 0073・0130）。本人の画面操作だけが送る。時計・根拠の観測による遷移（snooze_elapsed・deadline_passed・source_out_of_scope・overlap_resolved）は受け付けない。expected_state が今の状態と違えば 409。
+ */
+export interface CandidateStateCommand {
+  request_id: Id;
+  command_scope_id: Id;
+  event: 'open' | 'act' | 'dismiss' | 'snooze' | 'resolve';
+  expected_state:
+    'new' | 'seen' | 'acted' | 'dismissed' | 'snoozed' | 'resolved';
+  /**
+   * snooze のときだけ再通知の時刻（いまより後の UTC）。ほかの操作では null。
+   */
+  snooze_until: UtcTime | null;
+}
+/**
+ * 気づきの根拠の再取得の要求（設計 11 §4、ADR 0073・0130）。許可範囲から取り直すので接続範囲を本文で示す（postCanvasContent と同じ）。
+ */
+export interface CandidateEvidenceRequest {
+  request_id: Id;
+  command_scope_id: Id;
 }
 /**
  * 公開 Web 検索の 1 回分の要求（B12-01、ADR 0077、設計 05）。検索語は本人の質問から作る一般語だけで、メール全文・API キー・個人の予定を含めない。検索は 1 依頼 3 回まで。

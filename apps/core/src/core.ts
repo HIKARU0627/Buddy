@@ -69,6 +69,7 @@ import {
 } from './api-operations.js';
 import type { PreviewCheck } from './api-operations.js';
 import { DeviceConnections } from './device-connections.js';
+import { deviceTimeZone } from './device-time-zone.js';
 import {
   TaskMigrationError,
   migrateTaskContents,
@@ -1129,15 +1130,16 @@ async function startHttps(
   // 連携の接続の一覧・取得対象の読み取りと変更（B08-02、ADR 0089）。許可版の照合は DB の現在値で行う。
   const connectionRoutes = createConnectionRoutes({ store });
   // 気づき（候補）の一覧・根拠の再取得・状態の変更（B11-04 P2、ADR 0130）。データ鍵は保持せず要求ごとに読む。
-  // 本人のタイムゾーン（IANA）の出所はまだ無い（発言の解釈は UTC からのずれだけ、予算月のタイムゾーンは別の用途）ので、
-  // 一覧・状態の変更は 503 で閉じる。根拠を取り直す connector は B08・B09 なので渡さない（根拠の経路も 503）。
+  // 本人のタイムゾーン（IANA）の出所は端末（OS）のタイムゾーン（本人の決定 2026-11-21、ADR 0131）で、要求ごとに読む。
+  // 取得不能・不正なときだけ zone が null になり、一覧・状態の変更は 503 で閉じる（黙って代替しない）。
+  // 根拠を取り直す connector は B08・B09 なので渡さない（根拠の経路は引き続き 503）。
   const candidateRoutes = createCandidateRoutes({
     store,
     dataKey: async () => {
       const result = await keyStore.loadDataKey();
       return result.ok ? result.dataKey : null;
     },
-    zone: () => null,
+    zone: () => deviceTimeZone(),
     now: () => now().toISOString(),
   });
   // 承認・取消・予算・接続の取得対象の版の照合は DB の現在値で行う。他の経路は注入した環境（なければ安全側の既定）。

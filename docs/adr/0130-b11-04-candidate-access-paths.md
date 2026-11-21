@@ -1,7 +1,7 @@
 # ADR 0130: B11-04 気づき（候補）の一覧・根拠の再取得・状態の変更の経路（P2）
 
 - 日付: 2026-11-21
-- 状態: B11-04（親 #23、Issue #271）の P2。3 つの API の経路と、その処理（`apps/core/src/api-candidates.ts`）を足した。根拠を許可範囲から取り直す実 connector、本人のタイムゾーンの出所、画面（B11-05）は未着手で、製品の配線では 3 経路とも 503 で閉じる。実メール・実 API・実機は未実施。
+- 状態: B11-04（親 #23、Issue #271）の P2。3 つの API の経路と、その処理（`apps/core/src/api-candidates.ts`）を足した。根拠を許可範囲から取り直す実 connector、画面（B11-05）は未着手。本人のタイムゾーンの出所は ADR 0131（本人の決定 2026-11-21、端末（OS））で解決し、製品の配線で `zone` を開いた（根拠の経路は connector が無いため引き続き 503）。実メール・実 API・実機は未実施。
 - 根拠: 設計 11 §4・§5B、設計 07 §2、ADR 0073（候補の契約）・0115（表示順）・0116（遷移・根拠の失効）・0118（保存）・0119（生成）・0120（保守）。原本の参照手順は `docs/design/README.md`。
 - 対象: `packages/contracts`（`CandidateEvidenceRequest`・`CandidateStateCommand`・3 パス・fixture）、`packages/domain/src/api.ts`（`ROUTE_CHECKS`）、`packages/storage`（`readDerivationsByArtifact`、`candidate.get` の `origins`）、`apps/core`（`api-candidates.ts`・`api-routes.ts`・`core.ts`）。マイグレーションは変えない。B08-06（同期の公開 transaction での解析計画の無効化・走査の公開）は main に無く、今回は触れない。
 
@@ -23,7 +23,7 @@
 | 由来の読み出し       | 根拠の取り直し先を引くため、`candidate.get` の値に由来の辺（`origins`）を足した。`derivations` を `artifact_kind='notification_candidate'` で読む（`readDerivationsByArtifact`。並びは source_kind・source_id・created_at）。候補が無いときは `{ candidate: null, origins: [] }`                                                                                                                                                                                                                                            |
 | 根拠の取り直しの口   | `fetchEvidence(candidate, origins)` を注入する（保守の `checkEvidence` と同じ扱い）。実 connector は B08・B09 の担当で、`core.ts` は渡さない                                                                                                                                                                                                                                                                                                                                                                                |
 | データ鍵             | Core はデータ鍵をメモリーに持ち続けない（`OpenedStore` は自宅の HMAC の鍵だけを持つ）ので、`dataKey` は要求ごとに鍵の保管庫から読む関数にした（`api-turns.ts` の `loadKey` と同じ）。B11-04 の作業指示の「起動時に読み込んだ dataKey を渡す」からの変更                                                                                                                                                                                                                                                                     |
-| 本人のタイムゾーン   | `startHttps` のスコープに本人の IANA タイムゾーンの出所が無い（発言の解釈・流れの区切りは UTC からのずれ `utcOffset` だけ、予算の設定の `timeZone` は予算月の用途）。端末の既定や予算月のタイムゾーンで黙って置き換えず、`zone: () => null` で配線した。一覧・状態変更・根拠の観測による遷移は 503 で閉じる                                                                                                                                                                                                                 |
+| 本人のタイムゾーン   | `startHttps` のスコープに本人の IANA タイムゾーンの出所が無い（発言の解釈・流れの区切りは UTC からのずれ `utcOffset` だけ、予算の設定の `timeZone` は予算月の用途）。端末の既定や予算月のタイムゾーンで黙って置き換えず、`zone: () => null` で配線した。一覧・状態変更・根拠の観測による遷移は 503 で閉じる（その後、出所は本人の決定 2026-11-21 で端末（OS）に決まり、ADR 0131 で `zone` を開いた）                                                                                                                        |
 
 ## 試験（模擬だけ）
 
@@ -35,7 +35,7 @@
 
 ## 残ること
 
-- 本人の IANA タイムゾーンの出所を決めて `zone` に配線すること（決まるまで 3 経路は製品で 503）。
+- 本人の IANA タイムゾーンの出所: ADR 0131 で解決（端末（OS）、要求ごとに読む。取得不能・不正なときだけ 503）。
 - `fetchEvidence` の実装（B08・B09 の connector から許可範囲で取り直す）。
 - B08-06 の公開 transaction での解析計画の無効化（main に入った後に、根拠の観測との関係を確かめる）。
 - `Snapshot` の `candidates` の充填（今回は触らない）。

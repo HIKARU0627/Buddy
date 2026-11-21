@@ -732,23 +732,23 @@
       "refs": ["11 §4"],
       "steps": [
         [
-          "INSERT INTO notification_candidates VALUES ('cand-1', NULL, NULL, NULL, 'research_done', 'key-a', NULL, NULL, 'resolved', 1000, 1000)",
+          "INSERT INTO notification_candidates (candidate_id, request_entity_id, request_revision, source_revision, kind, notification_key, title_blob_id, excerpt_blob_id, state, closed_at, key_delete_at) VALUES ('cand-1', NULL, NULL, NULL, 'research_done', 'key-a', NULL, NULL, 'resolved', 1000, 1000)",
           "check"
         ],
         [
-          "INSERT INTO notification_candidates VALUES ('cand-1', NULL, NULL, NULL, 'research_done', 'key-a', NULL, NULL, 'resolved', 1000, 8380801000)",
+          "INSERT INTO notification_candidates (candidate_id, request_entity_id, request_revision, source_revision, kind, notification_key, title_blob_id, excerpt_blob_id, state, closed_at, key_delete_at) VALUES ('cand-1', NULL, NULL, NULL, 'research_done', 'key-a', NULL, NULL, 'resolved', 1000, 8380801000)",
           "ok"
         ],
         [
-          "INSERT INTO notification_candidates VALUES ('cand-2', NULL, NULL, NULL, 'research_done', 'key-a', NULL, NULL, 'new', NULL, NULL)",
+          "INSERT INTO notification_candidates (candidate_id, request_entity_id, request_revision, source_revision, kind, notification_key, title_blob_id, excerpt_blob_id, state, closed_at, key_delete_at) VALUES ('cand-2', NULL, NULL, NULL, 'research_done', 'key-a', NULL, NULL, 'new', NULL, NULL)",
           "unique"
         ],
         [
-          "INSERT INTO notification_candidates VALUES ('cand-3', NULL, NULL, NULL, 'research_done', 'key-b', NULL, NULL, 'resolved', NULL, NULL)",
+          "INSERT INTO notification_candidates (candidate_id, request_entity_id, request_revision, source_revision, kind, notification_key, title_blob_id, excerpt_blob_id, state, closed_at, key_delete_at) VALUES ('cand-3', NULL, NULL, NULL, 'research_done', 'key-b', NULL, NULL, 'resolved', NULL, NULL)",
           "check"
         ],
         [
-          "INSERT INTO notification_candidates VALUES ('cand-4', NULL, NULL, NULL, 'research_done', 'key-c', NULL, NULL, 'dismissed', 1000, NULL)",
+          "INSERT INTO notification_candidates (candidate_id, request_entity_id, request_revision, source_revision, kind, notification_key, title_blob_id, excerpt_blob_id, state, closed_at, key_delete_at) VALUES ('cand-4', NULL, NULL, NULL, 'research_done', 'key-c', NULL, NULL, 'dismissed', 1000, NULL)",
           "check"
         ]
       ]

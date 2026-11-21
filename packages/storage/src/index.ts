@@ -39,6 +39,7 @@ export * from './forget-store.js';
 export * from './forget-ledger-file.js';
 export * from './memory-store.js';
 export * from './intent-shadow-store.js';
+export * from './candidate-store.js';
 export * from './restore-aftermath-store.js';
 export * from './restore-facts.js';
 // B06-08: バックアップの暗号・事実・スナップショット・封筒ファイル（ADR 0055）。

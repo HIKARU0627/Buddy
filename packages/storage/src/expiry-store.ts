@@ -346,6 +346,39 @@ function storedDerivedDeadline(
   }
 }
 
+// 気づきの候補は、元情報（source_item）の本文キャッシュ（24 時間）の期限に縛られない。設計 11 §4 は、本文キャッシュの
+// 期限と気づき一覧を何日も表示することを両立するため、候補が表示に必要な最小の抄録を暗号化して持つとする。元情報への
+// 辺は忘却の閉包の対象にするために残し、期限の計算には使わない。候補の期限は閉じた時刻から（candidate.sweep）。
+// 依頼エンティティ（request_entity）の辺も同じ。依頼エンティティは元情報から派生して 24 時間で期限になるので、
+// その辺を数えると、元情報の辺を外した意味がなくなる。
+const isLineageOnly = (kind: string, sourceKind: string): boolean =>
+  kind === 'notification_candidate' &&
+  (sourceKind === 'source_item' || sourceKind === 'request_entity');
+
+// 依頼エンティティが期限で消えるとき、それを参照する候補は消さず、参照だけ外す（候補の寿命は閉じた時刻から。U280）。
+// request_entity_id と request_revision は両方 NULL か両方あるかの CHECK があるので、そろえて外す。明示的な忘却は
+// 閉包で候補ごと消すので、ここは通らない。
+function detachCandidates(db: SqliteDatabase, requestEntityId: string): void {
+  db.prepare(
+    'UPDATE notification_candidates SET request_entity_id = NULL, request_revision = NULL WHERE request_entity_id = ?',
+  ).run(requestEntityId);
+}
+
+// 期限に使える由来の辺が 1 つも無い候補は、この掃除の対象にしない（由来がないものを期限切れとして消さない）。
+function candidateGovernedElsewhere(
+  db: SqliteDatabase,
+  kind: string,
+  id: string,
+): boolean {
+  if (kind !== 'notification_candidate') return false;
+  const edges = db
+    .prepare(
+      'SELECT source_kind FROM derivations WHERE artifact_kind = ? AND artifact_id = ?',
+    )
+    .all(kind, id) as { source_kind: string }[];
+  return edges.every((edge) => isLineageOnly(kind, edge.source_kind));
+}
+
 function derivedOrigins(
   db: SqliteDatabase,
   kind: string,
@@ -357,10 +390,12 @@ function derivedOrigins(
       'SELECT source_kind, source_id FROM derivations WHERE artifact_kind = ? AND artifact_id = ? ORDER BY source_kind, source_id',
     )
     .all(kind, id) as { source_kind: string; source_id: string }[];
-  return edges.map((edge) => ({
-    origin_id: `${edge.source_kind}:${edge.source_id}`,
-    expires_at: originExpiry(db, edge.source_kind, edge.source_id, visiting),
-  }));
+  return edges
+    .filter((edge) => !isLineageOnly(kind, edge.source_kind))
+    .map((edge) => ({
+      origin_id: `${edge.source_kind}:${edge.source_id}`,
+      expires_at: originExpiry(db, edge.source_kind, edge.source_id, visiting),
+    }));
 }
 
 function derivedRow(db: SqliteDatabase, kind: string, id: string): DerivedRow {
@@ -386,6 +421,14 @@ function readDerived(db: SqliteDatabase): DerivedRow[] {
   for (const artifact of artifacts) {
     // 行が先に消えた派生物の辺は、系譜の整理（pruneDeadLineage）に任せる。
     if (!derivedExists(db, artifact.artifact_kind, artifact.artifact_id))
+      continue;
+    if (
+      candidateGovernedElsewhere(
+        db,
+        artifact.artifact_kind,
+        artifact.artifact_id,
+      )
+    )
       continue;
     rows.push(derivedRow(db, artifact.artifact_kind, artifact.artifact_id));
   }
@@ -441,6 +484,7 @@ function currentRow(
   const key = parseDerivedRowId(id);
   if (key === null || !DERIVED_KINDS.includes(key.kind)) return null;
   if (!derivedExists(db, key.kind, key.artifactId)) return null;
+  if (candidateGovernedElsewhere(db, key.kind, key.artifactId)) return null;
   const hasEdges = db
     .prepare(
       'SELECT 1 FROM derivations WHERE artifact_kind = ? AND artifact_id = ?',
@@ -515,6 +559,7 @@ function deleteOne(
       'DELETE FROM derivations WHERE artifact_kind = ? AND artifact_id = ?',
     ).run(node.kind, node.id);
   } else {
+    if (key.kind === 'request_entity') detachCandidates(db, key.artifactId);
     deleteForgetNode(db, node);
   }
   pruneDeadLineage(db, [node, ...parents]);

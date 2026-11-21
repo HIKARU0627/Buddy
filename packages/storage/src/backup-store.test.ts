@@ -544,7 +544,7 @@ test('スナップショットは含めない表とその暗号文を写しか�
       assert.equal(result.facts.ledger_id, null);
       assert.equal(result.facts.recorded_ledger_key_id, null);
       assert.deepEqual(result.facts.db_blob_key_ids, ['k-test']);
-      assert.equal(result.facts.db_schema_version, 12);
+      assert.equal(result.facts.db_schema_version, 13);
       // 写しは 1 つのファイルで、journal を残さない。
       assert.deepEqual(
         readdirSync(join(dir, 'work')).filter((name) =>

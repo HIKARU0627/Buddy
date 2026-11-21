@@ -179,6 +179,12 @@
       "$ref": "#/$defs/CandidateEvidence"
     },
     {
+      "$ref": "#/$defs/CandidateStateCommand"
+    },
+    {
+      "$ref": "#/$defs/CandidateEvidenceRequest"
+    },
+    {
       "$ref": "#/$defs/WebSearchRequest"
     },
     {
@@ -6128,6 +6134,59 @@
       ],
       "additionalProperties": false,
       "description": "気づきの根拠（設計 11 §4、ADR 0073）。許可範囲から取り直した根拠の版と引用だけを返し、本文を無期限に複製しない。"
+    },
+    "CandidateEvidenceRequest": {
+      "type": "object",
+      "properties": {
+        "request_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "command_scope_id": {
+          "$ref": "#/$defs/Id"
+        }
+      },
+      "required": ["request_id", "command_scope_id"],
+      "additionalProperties": false,
+      "description": "気づきの根拠の再取得の要求（設計 11 §4、ADR 0073・0130）。許可範囲から取り直すので接続範囲を本文で示す（postCanvasContent と同じ）。"
+    },
+    "CandidateStateCommand": {
+      "type": "object",
+      "properties": {
+        "request_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "command_scope_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "event": {
+          "type": "string",
+          "enum": ["open", "act", "dismiss", "snooze", "resolve"]
+        },
+        "expected_state": {
+          "type": "string",
+          "enum": ["new", "seen", "acted", "dismissed", "snoozed", "resolved"]
+        },
+        "snooze_until": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UtcTime"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "snooze のときだけ再通知の時刻（いまより後の UTC）。ほかの操作では null。"
+        }
+      },
+      "required": [
+        "request_id",
+        "command_scope_id",
+        "event",
+        "expected_state",
+        "snooze_until"
+      ],
+      "additionalProperties": false,
+      "description": "気づきの状態の変更（設計 11 §4、ADR 0073・0130）。本人の画面操作だけが送る。時計・根拠の観測による遷移（snooze_elapsed・deadline_passed・source_out_of_scope・overlap_resolved）は受け付けない。expected_state が今の状態と違えば 409。"
     },
     "SyncBatch": {
       "type": "object",

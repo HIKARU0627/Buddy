@@ -10,6 +10,7 @@
 //   candidateDueEvent が同じ遷移を返すときだけ書く（時計の判断を呼び出し側だけに任せない）。閉じる遷移は
 //   閉じた時刻と識別子の削除日（7 日 + 90 日）を同時に書く。
 // - candidate.list / candidate.get / candidate.counts: 読み取り。題・抄録は暗号化した封筒のまま返す（復号は Core）。
+//   candidate.get は由来の辺（origins）も返す（根拠の再取得の取り直し先。ADR 0130）。
 // - candidate.sweep: 閉じた候補の保持の掃除。解決・却下から 7 日で題・抄録（封筒）を消し、97 日で識別子の行ごと消す
 //   （段階は domain の candidateRetentionPhase）。活動中の候補は消さない。元情報（source_item）の期限では消えない
 //   （期限の掃除は元情報を由来の期限に数えない。expiry-store・ADR 0118）。
@@ -28,7 +29,10 @@ import {
 import type { CandidateEvent, CandidateState, Deadline } from '@buddy/domain';
 import { writeConnectionReasons } from './connection.js';
 import type { SqliteDatabase, StoragePlatform } from './connection.js';
-import { writeDerivation } from './derivation-store.js';
+import {
+  readDerivationsByArtifact,
+  writeDerivation,
+} from './derivation-store.js';
 import { isHex64, isUuid } from './forget-store.js';
 import { isSealedBlob } from './operation-commands.js';
 import type { SealedBlobInput } from './operation-commands.js';
@@ -216,7 +220,11 @@ export interface CandidateOpValues {
     // truncated のとき、続きを読む位置（次の命令の after に渡す）。切れなければ null。
     readonly next_after: CandidateListCursor | null;
   };
-  'candidate.get': { readonly candidate: CandidateRow | null };
+  // origins は由来の辺（derivations）。候補が無いときは空。根拠の再取得で取り直す先を引く（ADR 0130）。
+  'candidate.get': {
+    readonly candidate: CandidateRow | null;
+    readonly origins: readonly CandidateOriginInput[];
+  };
   'candidate.counts': Readonly<Record<CandidateState, number>>;
   'candidate.sweep': {
     // 題・抄録を消した候補の ID。
@@ -640,7 +648,16 @@ function getCandidate(
       `SELECT ${COLUMNS} FROM notification_candidates WHERE candidate_id = ?`,
     )
     .get(candidateId) as SqlRow | undefined;
-  return { candidate: row === undefined ? null : toRow(db, row, true) };
+  if (row === undefined) return { candidate: null, origins: [] };
+  const origins = readDerivationsByArtifact(db, {
+    artifact_kind: 'notification_candidate',
+    artifact_id: candidateId,
+  }).map((edge) => ({
+    // 候補の由来は作成時に turn か source_item だけを書く（createReasons の ORIGIN_KINDS）。
+    source_kind: edge.source_kind as CandidateOriginInput['source_kind'],
+    source_id: edge.source_id,
+  }));
+  return { candidate: toRow(db, row, true), origins };
 }
 
 export function countCandidates(

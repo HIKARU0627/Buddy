@@ -211,6 +211,19 @@ export const API_ROUTES: readonly ApiRoute[] = [
     '/v1/budget/reservations/{reservation_id}/manual-settlement',
     { body: 'BudgetManualSettlement', ...SCREEN },
   ),
+  // 気づき（候補）の一覧・根拠の再取得・状態の変更（B11-04 P2、ADR 0130）。処理は api-candidates.ts。
+  route('listCandidates', 'GET', '/v1/candidates'),
+  // 根拠は許可範囲から取り直すので接続範囲を本文で示す（postCanvasContent と同じ POST）。
+  route(
+    'getCandidateEvidence',
+    'POST',
+    '/v1/candidates/{candidate_id}/evidence',
+    { body: 'CandidateEvidenceRequest' },
+  ),
+  route('changeCandidateState', 'POST', '/v1/candidates/{candidate_id}/state', {
+    body: 'CandidateStateCommand',
+    ...SCREEN,
+  }),
 ];
 
 export type RouteMatch =

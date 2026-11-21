@@ -1619,7 +1619,11 @@
             "targets": {
               "calendar_ids": ["primary"],
               "mail_container_ids": ["INBOX"],
-              "attachment_kinds": ["pdf", "text"]
+              "attachment_kinds": ["pdf", "text"],
+              "mail_lookback_days": 90,
+              "calendar_past_days": 30,
+              "calendar_future_days": 90,
+              "attachment_max_bytes": 10000000
             },
             "permission_revision": "2",
             "scope_revision": "2"
@@ -1675,7 +1679,11 @@
         "targets": {
           "calendar_ids": ["primary"],
           "mail_container_ids": ["INBOX", "Label_1"],
-          "attachment_kinds": ["pdf"]
+          "attachment_kinds": ["pdf"],
+          "mail_lookback_days": 30,
+          "calendar_past_days": 30,
+          "calendar_future_days": 90,
+          "attachment_max_bytes": 5000000
         }
       },
       "response": {
@@ -1687,7 +1695,11 @@
         "targets": {
           "calendar_ids": ["primary"],
           "mail_container_ids": ["INBOX", "Label_1"],
-          "attachment_kinds": ["pdf"]
+          "attachment_kinds": ["pdf"],
+          "mail_lookback_days": 30,
+          "calendar_past_days": 30,
+          "calendar_future_days": 90,
+          "attachment_max_bytes": 5000000
         },
         "permission_revision": "3",
         "scope_revision": "3"
@@ -1711,7 +1723,164 @@
           "targets": {
             "calendar_ids": ["primary"],
             "mail_container_ids": [],
-            "attachment_kinds": ["exe"]
+            "attachment_kinds": ["exe"],
+            "mail_lookback_days": 90,
+            "calendar_past_days": 30,
+            "calendar_future_days": 90,
+            "attachment_max_bytes": 10000000
+          }
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-000000009001",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "expected_permission_revision": "2",
+          "targets": {
+            "calendar_ids": ["primary"],
+            "mail_container_ids": ["INBOX"],
+            "attachment_kinds": ["pdf"],
+            "mail_lookback_days": 91,
+            "calendar_past_days": 30,
+            "calendar_future_days": 90,
+            "attachment_max_bytes": 10000000
+          }
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-000000009001",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "expected_permission_revision": "2",
+          "targets": {
+            "calendar_ids": ["primary"],
+            "mail_container_ids": ["INBOX"],
+            "attachment_kinds": ["pdf"],
+            "mail_lookback_days": 0,
+            "calendar_past_days": 30,
+            "calendar_future_days": 90,
+            "attachment_max_bytes": 10000000
+          }
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-000000009001",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "expected_permission_revision": "2",
+          "targets": {
+            "calendar_ids": ["primary"],
+            "mail_container_ids": ["INBOX"],
+            "attachment_kinds": ["pdf"],
+            "mail_lookback_days": 1.5,
+            "calendar_past_days": 30,
+            "calendar_future_days": 90,
+            "attachment_max_bytes": 10000000
+          }
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-000000009001",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "expected_permission_revision": "2",
+          "targets": {
+            "calendar_ids": ["primary"],
+            "mail_container_ids": ["INBOX"],
+            "attachment_kinds": ["pdf"],
+            "mail_lookback_days": 90,
+            "calendar_past_days": 31,
+            "calendar_future_days": 90,
+            "attachment_max_bytes": 10000000
+          }
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-000000009001",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "expected_permission_revision": "2",
+          "targets": {
+            "calendar_ids": ["primary"],
+            "mail_container_ids": ["INBOX"],
+            "attachment_kinds": ["pdf"],
+            "mail_lookback_days": 90,
+            "calendar_past_days": -1,
+            "calendar_future_days": 90,
+            "attachment_max_bytes": 10000000
+          }
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-000000009001",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "expected_permission_revision": "2",
+          "targets": {
+            "calendar_ids": ["primary"],
+            "mail_container_ids": ["INBOX"],
+            "attachment_kinds": ["pdf"],
+            "mail_lookback_days": 90,
+            "calendar_past_days": 30,
+            "calendar_future_days": 91,
+            "attachment_max_bytes": 10000000
+          }
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-000000009001",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "expected_permission_revision": "2",
+          "targets": {
+            "calendar_ids": ["primary"],
+            "mail_container_ids": ["INBOX"],
+            "attachment_kinds": ["pdf"],
+            "mail_lookback_days": 90,
+            "calendar_past_days": 30,
+            "calendar_future_days": 90,
+            "attachment_max_bytes": 10000001
+          }
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-000000009001",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "expected_permission_revision": "2",
+          "targets": {
+            "calendar_ids": ["primary"],
+            "mail_container_ids": ["INBOX"],
+            "attachment_kinds": ["pdf"],
+            "mail_lookback_days": 90,
+            "calendar_past_days": 30,
+            "calendar_future_days": 90,
+            "attachment_max_bytes": 0
+          }
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-000000009001",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "expected_permission_revision": "2",
+          "targets": {
+            "calendar_ids": ["primary"],
+            "mail_container_ids": ["INBOX"],
+            "attachment_kinds": ["pdf"],
+            "calendar_past_days": 30,
+            "calendar_future_days": 90,
+            "attachment_max_bytes": 10000000
+          }
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-000000009001",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "expected_permission_revision": "2",
+          "targets": {
+            "calendar_ids": ["primary"],
+            "mail_container_ids": ["INBOX"],
+            "attachment_kinds": ["pdf"],
+            "mail_lookback_days": 90,
+            "calendar_past_days": 30,
+            "calendar_future_days": 90
+          }
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-000000009001",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "expected_permission_revision": "2",
+          "targets": {
+            "calendar_ids": ["primary"],
+            "mail_container_ids": ["INBOX"],
+            "attachment_kinds": ["pdf"],
+            "mail_lookback_days": 90,
+            "calendar_past_days": 30,
+            "calendar_future_days": 90,
+            "attachment_max_bytes": 10000000,
+            "unlimited": true
           }
         }
       ]
@@ -1734,7 +1903,11 @@
         "targets": {
           "calendar_ids": [],
           "mail_container_ids": [],
-          "attachment_kinds": []
+          "attachment_kinds": [],
+          "mail_lookback_days": 90,
+          "calendar_past_days": 30,
+          "calendar_future_days": 90,
+          "attachment_max_bytes": 10000000
         },
         "permission_revision": "4",
         "scope_revision": "4"
@@ -2392,7 +2565,11 @@
         "targets": {
           "calendar_ids": ["primary"],
           "mail_container_ids": ["INBOX"],
-          "attachment_kinds": ["pdf", "text"]
+          "attachment_kinds": ["pdf", "text"],
+          "mail_lookback_days": 90,
+          "calendar_past_days": 30,
+          "calendar_future_days": 90,
+          "attachment_max_bytes": 10000000
         },
         "permission_revision": "2",
         "scope_revision": "2"

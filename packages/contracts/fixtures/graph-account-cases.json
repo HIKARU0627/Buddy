@@ -15,7 +15,11 @@
         "targets": {
           "calendar_ids": [],
           "mail_container_ids": ["inbox"],
-          "attachment_kinds": ["pdf", "text"]
+          "attachment_kinds": ["pdf", "text"],
+          "mail_lookback_days": 90,
+          "calendar_past_days": 30,
+          "calendar_future_days": 90,
+          "attachment_max_bytes": 10000000
         },
         "permission_revision": "1",
         "scope_revision": "1",
@@ -40,7 +44,11 @@
         "targets": {
           "calendar_ids": [],
           "mail_container_ids": ["inbox"],
-          "attachment_kinds": []
+          "attachment_kinds": [],
+          "mail_lookback_days": 90,
+          "calendar_past_days": 30,
+          "calendar_future_days": 90,
+          "attachment_max_bytes": 10000000
         },
         "permission_revision": "1",
         "scope_revision": "1",
@@ -65,7 +73,11 @@
         "targets": {
           "calendar_ids": [],
           "mail_container_ids": [],
-          "attachment_kinds": []
+          "attachment_kinds": [],
+          "mail_lookback_days": 90,
+          "calendar_past_days": 30,
+          "calendar_future_days": 90,
+          "attachment_max_bytes": 10000000
         },
         "permission_revision": "1",
         "scope_revision": "1",
@@ -91,7 +103,11 @@
         "targets": {
           "calendar_ids": [],
           "mail_container_ids": [],
-          "attachment_kinds": []
+          "attachment_kinds": [],
+          "mail_lookback_days": 90,
+          "calendar_past_days": 30,
+          "calendar_future_days": 90,
+          "attachment_max_bytes": 10000000
         },
         "permission_revision": "1",
         "scope_revision": "1"
@@ -111,7 +127,11 @@
         "targets": {
           "calendar_ids": [],
           "mail_container_ids": ["INBOX"],
-          "attachment_kinds": []
+          "attachment_kinds": [],
+          "mail_lookback_days": 90,
+          "calendar_past_days": 30,
+          "calendar_future_days": 90,
+          "attachment_max_bytes": 10000000
         },
         "permission_revision": "1",
         "scope_revision": "1",
@@ -137,7 +157,11 @@
         "targets": {
           "calendar_ids": [],
           "mail_container_ids": ["inbox"],
-          "attachment_kinds": []
+          "attachment_kinds": [],
+          "mail_lookback_days": 90,
+          "calendar_past_days": 30,
+          "calendar_future_days": 90,
+          "attachment_max_bytes": 10000000
         },
         "permission_revision": "1",
         "scope_revision": "1",

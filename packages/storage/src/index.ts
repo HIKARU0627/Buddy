@@ -23,6 +23,7 @@ export * from './pairing-store.js';
 export * from './snapshot-store.js';
 export * from './event-store.js';
 // B03-03: 自宅の登録値と端末ごとの最新の報告（ADR 0022）。
+export * from './connection-targets-store.js';
 export * from './home-network-store.js';
 export * from './conversation-store.js';
 // B07-03: 予算の受付・精算・超過の承認・利用状況・予算月の保存（ADR 0036、マイグレーション 0006）。
@@ -38,7 +39,9 @@ export * from './forget-store.js';
 export * from './forget-ledger-file.js';
 export * from './memory-store.js';
 export * from './intent-shadow-store.js';
+export * from './candidate-store.js';
 export * from './restore-aftermath-store.js';
+export * from './restore-facts.js';
 // B06-08: バックアップの暗号・事実・スナップショット・封筒ファイル（ADR 0055）。
 export * from './backup-crypto.js';
 export * from './backup-facts.js';

@@ -29,6 +29,46 @@ export function endsWithQuestion(utterance: string): boolean {
 // 委譲の状態。前面で待つ間だけ無音に数えない。8 秒で裏へ移したら通知を解除して通常の判定に戻る（10 §5A-7、X55）。
 export type DelegationPhase = 'none' | 'foreground' | 'background';
 
+// 中枢が端末へ伝える委譲の状態（VoiceEvent の event_type。ADR 0109、U253）。前面で結果を待つ間は processing、8 秒を超えて
+// 裏へ移したら backgrounded、待つ委譲がなくなったら finished。端末は古い世代・別の接続のイベントを捨てる。
+export type DelegationPhaseEventType =
+  'delegation_processing' | 'delegation_backgrounded' | 'delegation_finished';
+
+export function delegationPhaseEventType(
+  phase: DelegationPhase,
+): DelegationPhaseEventType {
+  return phase === 'foreground'
+    ? 'delegation_processing'
+    : phase === 'background'
+      ? 'delegation_backgrounded'
+      : 'delegation_finished';
+}
+
+// イベントの種類から状態を読む。委譲の状態でないイベントは null（読み取れない値は状態を変えない側に倒す）。
+export function delegationPhaseOfEvent(
+  eventType: string,
+): DelegationPhase | null {
+  switch (eventType) {
+    case 'delegation_processing':
+      return 'foreground';
+    case 'delegation_backgrounded':
+      return 'background';
+    case 'delegation_finished':
+      return 'none';
+    default:
+      return null;
+  }
+}
+
+// 1 つの接続の委譲の状態。前面で結果を待つ依頼が 1 つでもあれば前面（無音で閉じない側）、なければ裏のものがあれば裏、
+// どちらもなければ none。迷うときは前面（待ち続ける側）へ倒す。
+export function aggregateDelegationPhase(
+  items: readonly { readonly backgrounded: boolean }[],
+): DelegationPhase {
+  if (items.length === 0) return 'none';
+  return items.some((item) => !item.backgrounded) ? 'foreground' : 'background';
+}
+
 export interface SilenceInput {
   // 端末の VAD が本人の発話を検知している。
   readonly user_speaking: boolean;

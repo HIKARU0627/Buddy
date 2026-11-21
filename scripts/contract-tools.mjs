@@ -407,6 +407,77 @@ function localTimeKey(value) {
   return `${date}T${time.split(':').slice(0, 2).join(':')}:${second}`;
 }
 
+// 取得先がローカル・プライベート・リンクローカルでないか（設計 05、ADR 0077）。
+// domain の privateWebTargetReason と同じ規則。接続ごと・各リダイレクトの後の判定は B12-04 が domain を使う。
+function ipv4Private(parts) {
+  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part)))
+    return true;
+  const [a, b, c] = parts;
+  if (a === 0 || a === 10 || a === 127) return true;
+  if (a === 100 && b >= 64 && b <= 127) return true;
+  if (a === 169 && b === 254) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 192 && b === 168) return true;
+  if (a === 192 && b === 0 && (c === 0 || c === 2)) return true;
+  if (a === 198 && (b === 18 || b === 19)) return true;
+  if (a === 198 && b === 51 && c === 100) return true;
+  if (a === 203 && b === 0 && c === 113) return true;
+  if (a >= 224) return true;
+  return false;
+}
+
+function ipv6Private(host) {
+  if (host === '::' || host === '::1') return true;
+  const mapped = /^::ffff:(.+)$/u.exec(host);
+  if (mapped) {
+    const tail = mapped[1];
+    if (tail.includes('.'))
+      return ipv4Private(tail.split('.').map((part) => Number(part)));
+    const hex = /^([0-9a-f]{1,4}):([0-9a-f]{1,4})$/u.exec(tail);
+    if (hex) {
+      const high = Number.parseInt(hex[1], 16);
+      const low = Number.parseInt(hex[2], 16);
+      return ipv4Private([high >> 8, high & 255, low >> 8, low & 255]);
+    }
+    return true;
+  }
+  const first = Number.parseInt(host.split(':')[0], 16);
+  if (Number.isNaN(first)) return false;
+  // fc00::/7（ULA）・fe80::/10（リンクローカル）・fec0::/10（サイトローカル）・ff00::/8（マルチキャスト）。
+  if (
+    (first >= 0xfc00 && first <= 0xfdff) ||
+    (first >= 0xfe80 && first <= 0xfeff) ||
+    (first >= 0xff00 && first <= 0xffff)
+  )
+    return true;
+  // 2001:db8::/32（文書用）。
+  const parts = host.split(':');
+  return first === 0x2001 && parts[1] === 'db8';
+}
+
+function isPrivateWebTarget(value) {
+  // domain の privateWebTargetReason と同じく、曖昧な authority は拒否する。
+  const authority = /^https:\/\/([^/?#]+)/iu.exec(value)?.[1] ?? '';
+  if (/[\\%@\s]/u.test(authority) || !/^[\x21-\x7e]+$/u.test(authority))
+    return true;
+  let host;
+  try {
+    host = new URL(value).hostname.toLowerCase();
+  } catch {
+    return true;
+  }
+  host = host.replace(/\.$/u, '');
+  if (host === 'localhost' || host.endsWith('.localhost')) return true;
+  if (host.startsWith('[') && host.endsWith(']')) {
+    const address = host.slice(1, -1);
+    if (address.includes(':')) return ipv6Private(address);
+  }
+  if (host.endsWith('.local') || host.endsWith('.internal')) return true;
+  if (host.includes(':')) return ipv6Private(host);
+  if (!/^\d{1,3}(?:\.\d{1,3}){3}$/u.test(host)) return false;
+  return ipv4Private(host.split('.').map((part) => Number(part)));
+}
+
 export function semanticErrors(name, value) {
   const errors = [];
   if (name === 'CreditObservation') {
@@ -948,6 +1019,86 @@ export function semanticErrors(name, value) {
     if (!add.length && !remove.length) errors.push('empty_change');
     if (add.some((label) => remove.includes(label)))
       errors.push('conflicting_labels');
+  }
+  // 公開 Web 調査の取得先と出典（B12-01、ADR 0077）。
+  // ローカル・プライベート・リンクローカルへの取得を拒否する（設計 05）。
+  if (name === 'WebFetchRequest' && isPrivateWebTarget(value.url))
+    errors.push('private_target');
+  if (name === 'WebFetchResult') {
+    if (value.readable && value.text === null) errors.push('missing_text');
+    if (!value.readable && value.text !== null) errors.push('unreadable_text');
+  }
+  if (name === 'WebResearchSource') {
+    if (value.basis === 'page_read') {
+      if (value.fetched_at === null) errors.push('missing_fetched_at');
+      if (value.excerpt === null && value.summary === null)
+        errors.push('missing_page_evidence');
+    } else {
+      if (value.fetched_at !== null) errors.push('summary_source_fetched');
+      if (value.excerpt !== null) errors.push('summary_source_excerpt_stored');
+      if (value.summary !== null) errors.push('summary_source_summary_stored');
+    }
+  }
+  // 公開 Web 調査の検索語の検査・永続の出典・状態（B12-02 P1、ADR 0125〜0127）。
+  // URL の保存の可否は WebUsagePolicy.url_storage との組み合わせなので、domain の試験が確かめる。
+  if (name === 'WebQueryScreening') {
+    if (value.outcome === 'passed') {
+      if (value.rejected_reasons.length > 0) errors.push('passed_with_reasons');
+      if (value.screened_query === null) errors.push('passed_without_query');
+    } else {
+      if (value.rejected_reasons.length === 0)
+        errors.push('rejected_without_reasons');
+      if (value.screened_query !== null) errors.push('rejected_query_stored');
+    }
+  }
+  if (
+    name === 'WebSourceRecord' &&
+    (value.excerpt ?? '').trim() === '' &&
+    (value.summary ?? '').trim() === ''
+  )
+    errors.push('missing_page_evidence');
+  // 公開 Web 調査の試行の記録（B12-02 P2、ADR 0128・0129）。上限・順序・検索との関係は domain の試験が確かめる。
+  if (name === 'WebSearchAttempt') {
+    if (value.outcome === 'hits' && value.hit_count < 1)
+      errors.push('hits_without_hit');
+    if (value.outcome === 'zero_hits' && value.hit_count !== 0)
+      errors.push('zero_hits_with_hit');
+    if (value.outcome === 'zero_hits' && value.failure_cause !== null)
+      errors.push('zero_hits_with_failure_cause');
+    if (value.outcome === 'failed' && value.hit_count !== 0)
+      errors.push('failed_with_hit');
+    if (value.outcome === 'failed' && value.failure_cause === null)
+      errors.push('failed_without_cause');
+  }
+  if (name === 'WebPageAttempt') {
+    if (value.outcome === 'read' && value.source_id === null)
+      errors.push('read_without_source');
+    if (value.outcome !== 'read' && value.source_id !== null)
+      errors.push('source_without_read');
+  }
+  if (name === 'WebResearchStatus') {
+    const terminal = ['completed', 'no_results', 'failed', 'canceled'];
+    const stopped = [...terminal.filter((s) => s !== 'completed'), 'held'];
+    if (value.state === 'completed') {
+      if (value.result === null) errors.push('completed_without_result');
+      if (value.stop !== null) errors.push('completed_with_stop');
+      if (value.result !== null && value.result.sources.length === 0)
+        errors.push('completed_without_source');
+    } else {
+      if (value.result !== null) errors.push('result_without_completion');
+      if (value.transient_links !== null)
+        errors.push('transient_links_without_completion');
+      if (stopped.includes(value.state)) {
+        if (value.stop === null) errors.push('stop_missing');
+        else if (value.stop.kind !== value.state)
+          errors.push('stop_kind_mismatch');
+      } else if (value.stop !== null) errors.push('stop_in_progress');
+    }
+    const finishes = terminal.includes(value.state);
+    if (finishes && value.finished_at === null)
+      errors.push('finished_at_missing');
+    if (!finishes && value.finished_at !== null)
+      errors.push('finished_at_unexpected');
   }
   // 宛先と CC に同じ相手を重ねない（ADR 0027）。
   if (

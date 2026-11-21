@@ -23,6 +23,11 @@ import type {
   HomeNetworkOp,
   HomeNetworkOpResult,
 } from './home-network-store.js';
+// B08-02: 連携の接続の取得対象（ADR 0088）。
+import type {
+  ConnectionTargetsOp,
+  ConnectionTargetsOpResult,
+} from './connection-targets-store.js';
 // B04-03: 会話・発言・依頼・入力スナップショット（ADR 0029）。
 import type {
   ConversationOp,
@@ -46,6 +51,12 @@ import type {
   IntentShadowOpKind,
   IntentShadowOpResult,
 } from './intent-shadow-store.js';
+// B11-03: 気づき（候補）の作成・状態の遷移・一覧（ADR 0118）。
+import type {
+  CandidateOp,
+  CandidateOpKind,
+  CandidateOpResult,
+} from './candidate-store.js';
 
 // 故障注入の対象（操作の命令・予算の命令・音声の命令の種類）。
 export type DbFaultKind =
@@ -54,7 +65,8 @@ export type DbFaultKind =
   | VoiceOpKind
   | RetentionOpKind
   | MemoryOpKind
-  | IntentShadowOpKind;
+  | IntentShadowOpKind
+  | CandidateOpKind;
 
 // 故障注入の試験用。製品の起動では渡さない。指定した種類の命令で一度だけ起こす。
 export interface DbWorkerFaults {
@@ -125,6 +137,12 @@ export type MainToWorker =
   | { readonly type: 'pairing'; readonly id: number; readonly op: PairingOp }
   // 自宅の登録・報告と、自宅判定の不成立による接続範囲の失効（ADR 0022）。
   | { readonly type: 'home'; readonly id: number; readonly op: HomeNetworkOp }
+  // 連携の接続の取得対象の読み取りと変更（B08-02、ADR 0088）。
+  | {
+      readonly type: 'connection_targets';
+      readonly id: number;
+      readonly op: ConnectionTargetsOp;
+    }
   // 会話・発言・依頼・入力スナップショットの命令と照会（ADR 0029）。
   | {
       readonly type: 'conversation';
@@ -148,6 +166,12 @@ export type MainToWorker =
       readonly type: 'intent_shadow';
       readonly id: number;
       readonly op: IntentShadowOp;
+    }
+  // 気づき（候補）の作成・状態の遷移・一覧（ADR 0118）。
+  | {
+      readonly type: 'candidate';
+      readonly id: number;
+      readonly op: CandidateOp;
     };
 
 export interface WorkerTimings extends StoreTimings {
@@ -208,6 +232,12 @@ export type WorkerToMain =
       readonly halted: boolean;
     }
   | {
+      readonly type: 'connection_targets_result';
+      readonly id: number;
+      readonly result: ConnectionTargetsOpResult;
+      readonly halted: boolean;
+    }
+  | {
       readonly type: 'conversation_result';
       readonly id: number;
       readonly result: ConversationOpResult;
@@ -241,6 +271,12 @@ export type WorkerToMain =
       readonly type: 'intent_shadow_result';
       readonly id: number;
       readonly result: IntentShadowOpResult;
+      readonly halted: boolean;
+    }
+  | {
+      readonly type: 'candidate_result';
+      readonly id: number;
+      readonly result: CandidateOpResult;
       readonly halted: boolean;
     };
 

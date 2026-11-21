@@ -330,6 +330,19 @@ async function tempRefusal(
   return partialTempContained(text, exported) ? null : 'ledger_file_invalid';
 }
 
+// 書きかけの一時ファイル（.forget-ledger-*.tmp）を DB の台帳と照合し、確かめられない理由を返す。
+// 復旧の CLI も、本体を退避する前にこれを使う（Core の起動時の同期と同じ材料で判定する）。
+export async function ledgerTempsRefusal(
+  path: string,
+  exported: ForgetLedgerExport,
+): Promise<LedgerFileRefusal | null> {
+  for (const temp of await staleTemps(path)) {
+    const refusal = await tempRefusal(temp, exported);
+    if (refusal !== null) return refusal;
+  }
+  return null;
+}
+
 // 台帳のファイル・書きかけの一時ファイルが 1 つでもあるか（確かめられなければ、ある側に倒す）。0012 より前の台帳の行が
 // ある DB に系譜を新しく付けてよいかの判定に使う（U119。ファイルがあれば、その系譜を確かめずに新しい ID を出さない）。
 export async function ledgerFileTraceExists(path: string): Promise<boolean> {

@@ -32,10 +32,12 @@ import {
   advanceEpoch,
   assessStop,
   classifyEpoch,
+  delegationPhaseOfEvent,
   planReplyModeChange,
   retainPendingVoiceRequests,
   voiceRequestErrors,
   type AudioReason,
+  type DelegationPhase,
   type DesktopIoState,
   type DesktopIpcRejectReason,
   type DesktopIpcSender,
@@ -117,6 +119,9 @@ export interface VoiceControllerOptions {
   // 本人の「ちょっと待って」（中枢の音声イベント silence_extension・文字の応答の session_control）。次の 1 つの無音の区間だけ
   // 猶予をこの値（ms）にする。無音の判定は main だけが行う（ADR 0041）。
   readonly onSilenceExtension?: (ms: number) => void;
+  // 中枢が知らせた委譲の状態が変わった（前面・裏・なし。VoiceEvent の delegation_processing・delegation_backgrounded・
+  // delegation_finished）。前面の間は、無音の判定（observeSilence の delegation 入力）が会話を閉じない（U253、ADR 0109）。
+  readonly onDelegationPhase?: (phase: DelegationPhase) => void;
 }
 
 interface PendingVoiceRequest {
@@ -206,6 +211,8 @@ export class VoiceController {
   #session: string | null = null;
   readonly #pending = new Map<string, PendingVoiceRequest>();
   #live: LiveSession | null = null;
+  // 今の接続について中枢が知らせた委譲の状態。接続を開くたびに none から始め、接続がないときは none として扱う。
+  #delegationPhase: DelegationPhase = 'none';
   // 音声を外部へ送っている（送っているかもしれない）。開始の命令から、閉じる・停止の ACK か強制終了まで。
   #external = false;
   // 「続ける」の途中（同意の確認・リース・接続を待っている）。
@@ -237,6 +244,11 @@ export class VoiceController {
   }
 
   // 試験用。
+  // 無音の判定に渡す委譲の状態。接続がなければ none。前面の間は無音に数えない（domain の observeSilence）。
+  get delegationPhase(): DelegationPhase {
+    return this.#live === null ? 'none' : this.#delegationPhase;
+  }
+
   get generation(): number {
     return this.#generation;
   }
@@ -526,6 +538,7 @@ export class VoiceController {
       purpose: 'conversation',
       phase: 'starting',
     };
+    this.#delegationPhase = 'none';
     // 開始の命令を出した時点から、音声を外部へ送っているかもしれない（印を先に出す）。
     this.#external = true;
     this.#retain();
@@ -656,6 +669,15 @@ export class VoiceController {
     if (event.event_type === 'silence_extension') {
       if (event.silence_extension_ms !== undefined)
         this.#options.onSilenceExtension?.(event.silence_extension_ms);
+      return;
+    }
+    // 委譲の状態。今の接続のイベントだけ（上で世代を確かめ済み）。変わったときだけ知らせる。
+    const phase = delegationPhaseOfEvent(event.event_type);
+    if (phase !== null) {
+      if (phase !== this.#delegationPhase) {
+        this.#delegationPhase = phase;
+        this.#options.onDelegationPhase?.(phase);
+      }
       return;
     }
     const control = event.audio_control;

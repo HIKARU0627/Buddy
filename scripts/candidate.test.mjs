@@ -34,6 +34,8 @@ test('candidate states match the snapshot enum', () => {
       'resolve',
       'snooze_elapsed',
       'deadline_passed',
+      'source_out_of_scope',
+      'overlap_resolved',
     ],
   );
 });

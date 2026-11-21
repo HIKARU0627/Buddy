@@ -154,6 +154,7 @@ export function voiceHarness(options: HarnessOptions = {}) {
   const liveIds: string[] = [];
   const replySaved: ReplyModeValue[] = [];
   const silence: number[] = [];
+  const phases: string[] = [];
   let consentRecord: LocalVoiceConsent | null = options.consent ?? null;
   let epoch = 0n;
   // 必ず代入する（下の DesktopDeviceController の通知から参照する）。
@@ -331,6 +332,9 @@ export function voiceHarness(options: HarnessOptions = {}) {
     onSilenceExtension: (ms) => {
       silence.push(ms);
     },
+    onDelegationPhase: (phase) => {
+      phases.push(phase);
+    },
     onChange: () => {
       if (voice === null) return;
       device.setVoice({
@@ -367,6 +371,7 @@ export function voiceHarness(options: HarnessOptions = {}) {
     liveIds,
     replySaved,
     silence,
+    phases,
     deviceId: context.deviceId,
     logs,
     notifications,

@@ -307,3 +307,27 @@ test('Windows・Linux の中枢は KeyStore を持たず、ネイティブモジ
   );
   assert.equal(loads, 0);
 });
+
+test('importDataKey: restores a data key only when the item is empty, and never overwrites different material', async () => {
+  const empty = createMockKeyStore();
+  const material = Buffer.alloc(32, 0x5a);
+  const imported = await empty.importDataKey(material);
+  assert.equal(imported.ok, true);
+  assert.ok(imported.ok && imported.dataKey.key.equals(material));
+  assert.equal(imported.ok && imported.created, false);
+  // 同じ素材なら何もしない。違う素材は上書きしない。
+  assert.equal((await empty.importDataKey(material)).ok, true);
+  const conflict = await empty.importDataKey(Buffer.alloc(32, 0x5b));
+  assert.deepEqual(conflict, {
+    ok: false,
+    backend: 'mock',
+    reason: 'data_key_exists',
+  });
+  assert.ok(expectKey(await empty.loadDataKey()).key.equals(material));
+  // 長さが違う素材は置かない。
+  assert.deepEqual(await createMockKeyStore().importDataKey(Buffer.alloc(31)), {
+    ok: false,
+    backend: 'mock',
+    reason: 'data_key_length_invalid',
+  });
+});

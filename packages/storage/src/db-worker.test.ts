@@ -33,6 +33,7 @@ import {
   openSeededDatabase,
   prepareCommand,
   resultCommand,
+  sealedIntent,
   withTempDir,
 } from './operation-test-support.js';
 import type { OperationTransitionCase } from './operation-test-support.js';
@@ -246,7 +247,7 @@ test('the client sees the received ACK before the durable result and records tim
   await withClient(
     async (_path, client) => {
       assert.equal(client.storeGeneration, STORE_GENERATION);
-      assert.equal(client.schemaVersion, 12);
+      assert.equal(client.schemaVersion, 13);
       const order: string[] = [];
       const submission = client.submit(createCommand('op-1'));
       const received = submission.received.then((value) => {
@@ -534,6 +535,130 @@ test('the worker refuses to start when the durability settings do not read back'
         error instanceof StorageError &&
         error.reason === 'database_path_not_absolute',
     );
+  });
+});
+
+// 気づき（候補）の作成・状態の遷移・一覧が、クライアントと worker の間を通る（B11-03、ADR 0118）。
+// 作成は 1 回だけ書かれ、同じ識別子の再送は duplicate、閉じた候補は動かせず、一覧と件数が読める。
+test('the candidate create, transition, list and counts round-trip through the worker', async () => {
+  await withTempDir(async (dir) => {
+    const path = databasePath(dir);
+    seed(path);
+    const db = openWriteConnection(path, { platform: 'macos' });
+    try {
+      applyMigrations(db);
+      db.prepare(
+        "INSERT INTO sync_scopes (scope_id, connection_id, scope_revision, active_generation, executor_generation) VALUES ('sc-1', 'c-1', 0, 0, 0)",
+      ).run();
+      db.prepare(
+        "INSERT INTO source_items (provider, account_id, remote_id, source_revision, scope_id, published_generation, fetched_at, body_blob_id) VALUES ('google', 'acct-1', 'msg-1', 'rev-1', 'sc-1', 0, 1000, NULL)",
+      ).run();
+    } finally {
+      db.close();
+    }
+    const client = await start(path);
+    try {
+      const input = {
+        candidate_id: 'a1000000-0000-4000-8000-000000000001',
+        candidate_kind: 'mail_reply' as const,
+        notification_key: 'a'.repeat(64),
+        request_entity_id: null,
+        request_revision: null,
+        source_revision: 'rev-1',
+        deadline: { kind: 'date' as const, date: '2031-01-10' },
+        initial_import: false,
+        unread_partial: false,
+        related_analysis: null,
+        received_at: '2030-12-31T12:00:00Z',
+        created_at: '2031-01-01T00:00:00Z',
+        title: sealedIntent(),
+        excerpt: null,
+        origins: [{ source_kind: 'source_item' as const, source_id: 'msg-1' }],
+      };
+      const created = await client.candidate({
+        kind: 'candidate.create',
+        input,
+      });
+      assert.deepEqual(created, {
+        ok: true,
+        value: { result: 'created', candidate_id: input.candidate_id },
+      });
+      const again = await client.candidate({
+        kind: 'candidate.create',
+        input: {
+          ...input,
+          candidate_id: 'a1000000-0000-4000-8000-000000000002',
+        },
+      });
+      assert.deepEqual(again, {
+        ok: true,
+        value: {
+          result: 'duplicate',
+          candidate_id: input.candidate_id,
+          state: 'new',
+        },
+      });
+      const moved = await client.candidate({
+        kind: 'candidate.transition',
+        input: {
+          candidate_id: input.candidate_id,
+          event: 'dismiss',
+          expected_state: 'new',
+          zone: 'Asia/Tokyo',
+          snooze_until: null,
+          now: '2031-01-01T01:00:00Z',
+        },
+      });
+      assert.deepEqual(moved, {
+        ok: true,
+        value: {
+          candidate_id: input.candidate_id,
+          from: 'new',
+          to: 'dismissed',
+          state_changed_at: 1_924_995_600_000,
+        },
+      });
+      const stuck = await client.candidate({
+        kind: 'candidate.transition',
+        input: {
+          candidate_id: input.candidate_id,
+          event: 'open',
+          expected_state: 'dismissed',
+          zone: 'Asia/Tokyo',
+          snooze_until: null,
+          now: '2031-01-01T02:00:00Z',
+        },
+      });
+      assert.deepEqual(stuck, {
+        ok: false,
+        outcome: 'rejected',
+        reasons: ['transition_not_allowed'],
+      });
+      const counts = await client.candidate({ kind: 'candidate.counts' });
+      assert.deepEqual(counts, {
+        ok: true,
+        value: {
+          new: 0,
+          seen: 0,
+          acted: 0,
+          dismissed: 1,
+          snoozed: 0,
+          resolved: 0,
+        },
+      });
+      const list = await client.candidate({
+        kind: 'candidate.list',
+        limit: 10,
+      });
+      assert.equal(list.ok, true);
+      if (list.ok)
+        assert.deepEqual(
+          list.value.candidates.map((candidate) => candidate.candidate_id),
+          [input.candidate_id],
+        );
+    } finally {
+      await client.close();
+    }
   });
 });
 

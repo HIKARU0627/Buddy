@@ -4,13 +4,27 @@
 
 import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
-import type { MemorySource } from '@buddy/domain';
+import type { ForgetGraph, ForgetNode, MemorySource } from '@buddy/domain';
 import type {
   DbCommand,
   ForgetApplyValue,
   ForgetLedgerExport,
+  LedgerChainEntry,
   MemoryOp,
+} from './index.js';
+import {
+  LEDGER_ZERO_HASH,
+  applyRestoreLedger,
+  exportForgetLedger,
+  ledgerEntryHash,
+  openWriteConnection,
+  readLedgerId,
+  restoreClosure,
+  restoreSourceHmac,
 } from './index.js';
 import {
   DIRECTIVE,
@@ -40,6 +54,7 @@ import {
   edge,
   forgetM,
   forgetOther,
+  insertMemory,
   memoryOp,
   ok,
   planFor,
@@ -717,4 +732,204 @@ test('forget: a directive made from an unrelated turn stays, with its text and i
       1,
     );
   });
+});
+
+test('restore ledger: a newer ledger entry applied to an older DB deletes the closure and keeps the chain hash', async () => {
+  await withWorld((db) => {
+    const dir = mkdtempSync(join(tmpdir(), 'buddy-restore-ledger-'));
+    const copyPath = join(dir, 'copy.sqlite');
+    // 気づき N2 を、忘れる記憶 M ではなく、台帳で「除外する由来」になる発言 T_SRC から作る（規則 B/C）。
+    db.prepare(
+      "INSERT INTO notification_candidates (candidate_id, request_entity_id, request_revision, source_revision, kind, notification_key, title_blob_id, excerpt_blob_id, state, closed_at, key_delete_at) VALUES ('n-2', NULL, NULL, NULL, 'mail_reply', 'nk-2', NULL, NULL, 'new', NULL, NULL)",
+    ).run();
+    edge(db, 'notification_candidate', 'n-2', 'turn', T_SRC);
+    db.exec(`VACUUM INTO '${copyPath.replace(/'/gu, "''")}'`);
+    try {
+      value<ForgetApplyValue>(forgetM(db));
+      const exported = exportForgetLedger(db);
+      assert.equal(exported.entries.length, 1);
+      const ledgerKey = Buffer.alloc(32, 0x42);
+      const base = exported.entries[0]?.entry;
+      assert.ok(base !== undefined);
+      // 除外する由来 T_SRC の HMAC を、実際に使う鍵で作り直した台帳 1 件（通常の忘却の台帳と同じ形）。
+      const entry = {
+        ...base,
+        blocked_source_hmacs: [
+          restoreSourceHmac(ledgerKey)({
+            source_kind: 'turn',
+            source_id: T_SRC,
+          }),
+        ],
+        blocked_content_keys: [],
+      };
+      const custom: LedgerChainEntry = {
+        entry,
+        previous_hash: LEDGER_ZERO_HASH,
+        entry_hash: ledgerEntryHash(entry, LEDGER_ZERO_HASH),
+      };
+      const copy = openWriteConnection(copyPath, { platform: 'macos' });
+      try {
+        assert.equal(readLedgerId(copy), null);
+        // 台帳の対象の記憶が既に消えていても（期限切れの削除など）、残った派生物は閉包で消える。
+        copy.prepare('DELETE FROM memory_sources WHERE memory_id = ?').run(M);
+        copy.prepare('DELETE FROM memories WHERE memory_id = ?').run(M);
+        // 発言の実体は期限切れで消え、系譜の辺（n-2 -> T_SRC）だけが残った状態。
+        copy.prepare('DELETE FROM turns WHERE turn_id = ?').run(T_SRC);
+        const applied = applyRestoreLedger(copy, {
+          entries: [custom],
+          ledger_hmac_key: ledgerKey,
+          ledger_id: LEDGER_ID,
+          now: NOW_1 + 1000,
+        });
+        assert.equal(applied.applied_generations.length, 1);
+        assert.equal(applied.forgotten_applied, entry.forgotten.length);
+        // 忘れた記憶・そこから作った記憶・気づき・指示の発言は戻らない。
+        assert.equal(
+          count(copy, 'SELECT count(*) FROM memories WHERE memory_id = ?', M),
+          0,
+        );
+        assert.equal(
+          count(copy, 'SELECT count(*) FROM memories WHERE memory_id = ?', M2),
+          0,
+        );
+        assert.equal(
+          count(
+            copy,
+            "SELECT count(*) FROM notification_candidates WHERE candidate_id = 'n-1'",
+          ),
+          0,
+        );
+        assert.equal(
+          count(copy, 'SELECT count(*) FROM turns WHERE turn_id = ?', T_INST),
+          0,
+        );
+        // 発言の実体は既に消えているが、系譜の辺から除外する由来として照合し、気づき N2 は消えている。
+        assert.equal(
+          count(copy, 'SELECT count(*) FROM turns WHERE turn_id = ?', T_SRC),
+          0,
+        );
+        assert.equal(
+          count(
+            copy,
+            "SELECT count(*) FROM notification_candidates WHERE candidate_id = 'n-2'",
+          ),
+          0,
+        );
+        // 台帳は与えられた連鎖のまま（hash を書き換えない）。
+        assert.equal(readLedgerId(copy), LEDGER_ID);
+        const after = exportForgetLedger(copy);
+        assert.equal(after.head.forgetting_generation, '1');
+        assert.equal(after.head.entry_hash, custom.entry_hash);
+      } finally {
+        copy.close();
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+test('restore ledger: does not promote derived forgotten memories to new origins', async () => {
+  await withWorld((db) => {
+    const M4 = '14141414-1414-4141-8141-141414141414';
+    const M5 = '15151515-1515-4151-8151-151515151515';
+    // T_SRC/T_OTHER -> M4、T_OTHER -> M5。M1（M）を忘れると、M4 は T_SRC の除外由来で消えるが M5 は残る。
+    insertMemory(db, M4, 'd4'.repeat(32), [
+      { source_kind: 'turn', source_id: T_SRC },
+      { source_kind: 'turn', source_id: T_OTHER },
+    ]);
+    insertMemory(db, M5, 'd5'.repeat(32), [
+      { source_kind: 'turn', source_id: T_OTHER },
+    ]);
+    const dir = mkdtempSync(join(tmpdir(), 'buddy-restore-ledger-'));
+    const copyPath = join(dir, 'copy.sqlite');
+    db.exec(`VACUUM INTO '${copyPath.replace(/'/gu, "''")}'`);
+    try {
+      value<ForgetApplyValue>(forgetM(db));
+      const exported = exportForgetLedger(db);
+      const ledgerKey = Buffer.alloc(32, 0x42);
+      const base = exported.entries[0]?.entry;
+      assert.ok(base !== undefined);
+      const entry = {
+        ...base,
+        blocked_source_hmacs: [
+          restoreSourceHmac(ledgerKey)({
+            source_kind: 'turn',
+            source_id: T_SRC,
+          }),
+        ],
+        blocked_content_keys: [],
+      };
+      const custom: LedgerChainEntry = {
+        entry,
+        previous_hash: LEDGER_ZERO_HASH,
+        entry_hash: ledgerEntryHash(entry, LEDGER_ZERO_HASH),
+      };
+      const copy = openWriteConnection(copyPath, { platform: 'macos' });
+      try {
+        // 元の対象 M は既に消えている（期限削除など）。台帳の forgotten の全件を新しい起点にしない。
+        copy.prepare('DELETE FROM memory_sources WHERE memory_id = ?').run(M);
+        copy.prepare('DELETE FROM memories WHERE memory_id = ?').run(M);
+        applyRestoreLedger(copy, {
+          entries: [custom],
+          ledger_hmac_key: ledgerKey,
+          ledger_id: LEDGER_ID,
+          now: NOW_1 + 1000,
+        });
+        assert.equal(
+          count(copy, 'SELECT count(*) FROM memories WHERE memory_id = ?', M4),
+          0,
+        );
+        // T_OTHER は M4 の由来だが、M4 を新しい起点にしないので、T_OTHER から作った M5 は残る。
+        assert.equal(
+          count(copy, 'SELECT count(*) FROM memories WHERE memory_id = ?', M5),
+          1,
+        );
+        assert.equal(
+          count(copy, 'SELECT count(*) FROM turns WHERE turn_id = ?', T_OTHER),
+          1,
+        );
+      } finally {
+        copy.close();
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+test('restore closure: an excluded origin in a scope does not make other turns in that scope origins', () => {
+  const graph: ForgetGraph = {
+    edges: [
+      {
+        artifact: { kind: 'memory', id: 'm1' },
+        source: { kind: 'turn', id: 't1' },
+      },
+      {
+        artifact: { kind: 'memory', id: 'm2' },
+        source: { kind: 'turn', id: 't2' },
+      },
+    ],
+    unattributed: [
+      {
+        artifact: { kind: 'session_summary', id: 's1' },
+        scope: { kind: 'session', id: 's1' },
+      },
+    ],
+    turn_sessions: [
+      { turn_id: 't1', session_id: 's1' },
+      { turn_id: 't2', session_id: 's1' },
+    ],
+    memories: [],
+    operations: [],
+  };
+  const forgotten: readonly ForgetNode[] = [{ kind: 'memory', id: 'm1' }];
+  const origins: readonly ForgetNode[] = [{ kind: 'turn', id: 't1' }];
+  const closure = restoreClosure(graph, forgotten, origins);
+  assert.equal(closure.doomed.has('memory\u0000m1'), true);
+  assert.equal(closure.doomed.has('session_summary\u0000s1'), true);
+  // 同じ会話の T2 は新しい除外由来にならないので、T2 から作った M2 は残る。
+  assert.equal(closure.doomed.has('memory\u0000m2'), false);
+  assert.equal(closure.origins.has('turn\u0000t2'), false);
+  assert.equal(closure.origins.has('turn\u0000t1'), true);
 });

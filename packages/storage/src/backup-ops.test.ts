@@ -27,7 +27,7 @@ test('backup.facts: 新しい DB の事実（世代 0・系譜なし・鍵の記
     const db = openSeededDatabase(databasePath(dir));
     try {
       const facts = value<BackupFacts>(memoryOp(db, { kind: 'backup.facts' }));
-      assert.equal(facts.db_schema_version, 12);
+      assert.equal(facts.db_schema_version, 13);
       assert.equal(facts.forgetting_generation, '0');
       assert.equal(facts.ledger_head_hash, '0'.repeat(64));
       assert.equal(facts.ledger_id, null);

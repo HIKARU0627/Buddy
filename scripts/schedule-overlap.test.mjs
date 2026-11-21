@@ -1,0 +1,649 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import {
+  calendarOccurrenceRef,
+  candidateDueEvent,
+  findScheduleOverlaps,
+  orderCandidates,
+  scheduleOverlapDeadline,
+} from '../packages/domain/dist/index.js';
+
+// B11-02 P3: 予定の重複の判定（ADR 0117、設計 04 予定重複、T05 の境界）。
+// 期待値は手で数えた。日本時間（UTC+9、夏時間なし）の 2030-10-09（水）の予定で、時刻は UTC で書く。
+const ZONE = 'Asia/Tokyo';
+const WINDOW = { start: '2030-01-01T00:00:00Z', end: '2031-01-01T00:00:00Z' };
+
+const ev = (id, start, end, over = {}) => ({
+  calendar_id: 'cal-a',
+  event_id: id,
+  ical_uid: `uid-${id}`,
+  recurrence_id: null,
+  status: 'confirmed',
+  response: 'none',
+  busy: true,
+  time: { kind: 'timed', start, end },
+  ...over,
+});
+const day = (id, start_date, end_date, over = {}) =>
+  ev(id, '', '', { time: { kind: 'all_day', start_date, end_date }, ...over });
+const run = (events, window = WINDOW, zone = ZONE) => {
+  const result = findScheduleOverlaps(events, window, zone);
+  assert.equal(result.ok, true);
+  return result;
+};
+const periodsOf = (result) =>
+  result.overlaps.map((o) =>
+    o.period.kind === 'timed'
+      ? `${o.period.start}/${o.period.end}`
+      : `${o.period.start_date}..${o.period.end_date}`,
+  );
+
+test('the interval includes its start and excludes its end', () => {
+  // 終了と次の開始が同時なら重複にしない。
+  const touching = run([
+    ev('a', '2030-10-09T01:00:00Z', '2030-10-09T02:00:00Z'),
+    ev('b', '2030-10-09T02:00:00Z', '2030-10-09T03:00:00Z'),
+  ]);
+  assert.deepEqual(touching.overlaps, []);
+  // 1 秒でも重なれば重複で、時間帯はその 1 秒。
+  const oneSecond = run([
+    ev('a', '2030-10-09T01:00:00Z', '2030-10-09T02:00:00Z'),
+    ev('b', '2030-10-09T01:59:59Z', '2030-10-09T03:00:00Z'),
+  ]);
+  assert.deepEqual(periodsOf(oneSecond), [
+    '2030-10-09T01:59:59Z/2030-10-09T02:00:00Z',
+  ]);
+  assert.deepEqual(oneSecond.overlaps[0].refs, ['ical:uid-a#', 'ical:uid-b#']);
+  assert.equal(oneSecond.overlaps[0].identity, 'distinct');
+});
+
+test('a contained event overlaps for its whole length, and identical times overlap fully', () => {
+  const contained = run([
+    ev('outer', '2030-10-09T01:00:00Z', '2030-10-09T05:00:00Z'),
+    ev('inner', '2030-10-09T02:00:00Z', '2030-10-09T03:00:00Z'),
+  ]);
+  assert.deepEqual(periodsOf(contained), [
+    '2030-10-09T02:00:00Z/2030-10-09T03:00:00Z',
+  ]);
+  const same = run([
+    ev('a', '2030-10-09T01:00:00Z', '2030-10-09T02:00:00Z'),
+    ev('b', '2030-10-09T01:00:00Z', '2030-10-09T02:00:00Z'),
+  ]);
+  assert.deepEqual(periodsOf(same), [
+    '2030-10-09T01:00:00Z/2030-10-09T02:00:00Z',
+  ]);
+});
+
+test('three events give one pair for each real overlap, not for events that only touch', () => {
+  const result = run([
+    ev('a', '2030-10-09T01:00:00Z', '2030-10-09T02:00:00Z'),
+    ev('b', '2030-10-09T01:30:00Z', '2030-10-09T02:30:00Z'),
+    ev('c', '2030-10-09T02:00:00Z', '2030-10-09T03:00:00Z'),
+  ]);
+  assert.deepEqual(
+    result.overlaps.map((o) => [
+      o.refs[0],
+      o.refs[1],
+      periodsOf({ overlaps: [o] })[0],
+    ]),
+    [
+      [
+        'ical:uid-a#',
+        'ical:uid-b#',
+        '2030-10-09T01:30:00Z/2030-10-09T02:00:00Z',
+      ],
+      [
+        'ical:uid-b#',
+        'ical:uid-c#',
+        '2030-10-09T02:00:00Z/2030-10-09T02:30:00Z',
+      ],
+    ],
+  );
+});
+
+test('the same event held in two calendars is not an overlap with itself', () => {
+  const copy = ev('p-copy', '2030-10-09T01:00:00Z', '2030-10-09T02:00:00Z', {
+    calendar_id: 'cal-b',
+    ical_uid: 'uid-p',
+  });
+  const original = ev('p', '2030-10-09T01:00:00Z', '2030-10-09T02:00:00Z', {
+    ical_uid: 'uid-p',
+  });
+  assert.deepEqual(run([original, copy]).overlaps, []);
+  // 片方の写しの時刻が古いなど、時間帯が食い違っても、同じ予定どうしは重複にしない。
+  const stale = ev('p-stale', '2030-10-09T01:30:00Z', '2030-10-09T02:30:00Z', {
+    calendar_id: 'cal-b',
+    ical_uid: 'uid-p',
+  });
+  assert.deepEqual(run([original, stale]).overlaps, []);
+  // 食い違う写しは、第三の予定との重複にも使わない（同じ予定の組から複数の候補・識別子を作らない）。理由付きで除く。
+  const third = ev('q', '2030-10-09T01:45:00Z', '2030-10-09T03:00:00Z');
+  for (const input of [
+    [original, stale, third],
+    [third, stale, original],
+    [stale, third, original],
+  ]) {
+    const result = run(input);
+    assert.deepEqual(result.overlaps, []);
+    assert.deepEqual(
+      result.excluded.map((e) => [e.calendar_id, e.event_id, e.reason]),
+      [
+        ['cal-a', 'p', 'copies_disagree'],
+        ['cal-b', 'p-stale', 'copies_disagree'],
+      ],
+    );
+  }
+  // 写しの時間帯がそろえば、第三の予定との重複は 1 件になる。
+  const synced = { ...stale, time: original.time };
+  const converged = run([original, synced, third]);
+  assert.equal(converged.overlaps.length, 1);
+  assert.deepEqual(converged.excluded, []);
+  // 別の予定と重なるときは、写しが 2 つあっても 1 件だけ。
+  const other = ev('y', '2030-10-09T01:30:00Z', '2030-10-09T02:30:00Z');
+  const result = run([copy, original, other]);
+  assert.equal(result.overlaps.length, 1);
+  assert.deepEqual(result.overlaps[0].refs, ['ical:uid-p#', 'ical:uid-y#']);
+  // 畳んだ写しは ID の昇順で先頭の 1 つを示す。
+  assert.deepEqual(result.overlaps[0].events[0], {
+    calendar_id: 'cal-a',
+    event_id: 'p',
+  });
+});
+
+test('a recurring event is compared by occurrence, not as a whole series', () => {
+  const week1 = ev('s1', '2030-10-09T01:00:00Z', '2030-10-09T02:00:00Z', {
+    ical_uid: 'uid-s',
+    recurrence_id: '2030-10-09T01:00:00Z',
+  });
+  const week2 = ev('s2', '2030-10-16T01:00:00Z', '2030-10-16T02:00:00Z', {
+    ical_uid: 'uid-s',
+    recurrence_id: '2030-10-16T01:00:00Z',
+  });
+  const other = ev('z', '2030-10-16T01:30:00Z', '2030-10-16T02:30:00Z');
+  const result = run([week1, week2, other]);
+  assert.equal(result.overlaps.length, 1);
+  assert.deepEqual(result.overlaps[0].refs, [
+    'ical:uid-s#2030-10-16T01%3A00%3A00Z',
+    'ical:uid-z#',
+  ]);
+  // 同じ繰り返しの別の回どうしでも、時間が重なれば別々の予定として重複する（動かした回）。
+  const moved = ev('s3', '2030-10-09T01:30:00Z', '2030-10-09T02:30:00Z', {
+    ical_uid: 'uid-s',
+    recurrence_id: '2030-10-10T01:00:00Z',
+  });
+  const pair = run([week1, moved]);
+  assert.equal(pair.overlaps.length, 1);
+  assert.equal(pair.overlaps[0].identity, 'distinct');
+});
+
+test('an event without an iCalUID is shown as an unconfirmed overlap, not dropped', () => {
+  const noUid = ev('a', '2030-10-09T01:00:00Z', '2030-10-09T02:00:00Z', {
+    ical_uid: null,
+  });
+  const other = ev('b', '2030-10-09T01:00:00Z', '2030-10-09T02:00:00Z');
+  const result = run([noUid, other]);
+  assert.equal(result.overlaps.length, 1);
+  assert.equal(result.overlaps[0].identity, 'unconfirmed');
+  assert.deepEqual(result.overlaps[0].refs, ['ical:uid-b#', 'id:cal-a/a#']);
+  // 同じカレンダーと ID の写しは、iCalUID が無くても同じ予定。
+  const dup = ev('a', '2030-10-09T01:00:00Z', '2030-10-09T02:00:00Z', {
+    ical_uid: null,
+  });
+  assert.deepEqual(run([noUid, dup]).overlaps, []);
+});
+
+test('cancelled, declined and free-time events are excluded with a reason', () => {
+  const base = ev('base', '2030-10-09T01:00:00Z', '2030-10-09T02:00:00Z');
+  const t = ['2030-10-09T01:00:00Z', '2030-10-09T02:00:00Z'];
+  const result = run([
+    base,
+    ev('cancelled', ...t, { status: 'cancelled' }),
+    ev('declined', ...t, { response: 'declined' }),
+    ev('free', ...t, { busy: false }),
+  ]);
+  assert.deepEqual(result.overlaps, []);
+  assert.deepEqual(
+    result.excluded.map((e) => [e.event_id, e.reason]),
+    [
+      ['cancelled', 'cancelled'],
+      ['declined', 'declined'],
+      ['free', 'free_time'],
+    ],
+  );
+  // 仮の予定・未回答・仮の出欠は除かない。
+  const kept = run([
+    base,
+    ev('tentative-status', ...t, { status: 'tentative' }),
+    ev('tentative-reply', ...t, { response: 'tentative' }),
+    ev('needs-action', ...t, { response: 'needs_action' }),
+  ]);
+  assert.equal(kept.overlaps.length, 6); // 4 つの総当たり
+  assert.equal(kept.excluded.length, 0);
+});
+
+test('events whose times cannot be read are excluded, never guessed', () => {
+  const base = ev('base', '2030-10-09T01:00:00Z', '2030-10-09T02:00:00Z');
+  const result = run([
+    base,
+    ev('backwards', '2030-10-09T02:00:00Z', '2030-10-09T01:00:00Z'),
+    ev('empty', '2030-10-09T01:30:00Z', '2030-10-09T01:30:00Z'),
+    ev('local', '2030-10-09T10:00:00', '2030-10-09T11:00:00'),
+    ev('offset', '2030-10-09T10:00:00+09:00', '2030-10-09T11:00:00+09:00'),
+    ev('nodate', '', ''),
+    day('bad-day', '2030-02-30', '2030-03-01'),
+    day('reverse-day', '2030-10-10', '2030-10-09'),
+    day('empty-day', '2030-10-09', '2030-10-09'),
+  ]);
+  assert.deepEqual(result.overlaps, []);
+  assert.deepEqual(
+    result.excluded.map((e) => [e.event_id, e.reason]),
+    [
+      ['backwards', 'time_invalid'],
+      ['bad-day', 'time_invalid'],
+      ['empty', 'time_invalid'],
+      ['empty-day', 'time_invalid'],
+      ['local', 'time_invalid'],
+      ['nodate', 'time_invalid'],
+      ['offset', 'time_invalid'],
+      ['reverse-day', 'time_invalid'],
+    ],
+  );
+});
+
+test('an all-day event keeps its dates and covers the local day of the user', () => {
+  // 日本時間の 10/09 は 2030-10-08T15:00Z から 2030-10-09T15:00Z まで。
+  const allDay = day('ad', '2030-10-09', '2030-10-10');
+  const inside = ev('t1', '2030-10-09T01:00:00Z', '2030-10-09T02:00:00Z');
+  const acrossEnd = ev('t2', '2030-10-09T14:30:00Z', '2030-10-09T15:30:00Z');
+  const afterEnd = ev('t3', '2030-10-09T15:00:00Z', '2030-10-09T16:00:00Z');
+  const acrossStart = ev('t0', '2030-10-08T14:30:00Z', '2030-10-08T15:30:00Z');
+  const result = run([allDay, inside, acrossEnd, acrossStart]);
+  assert.deepEqual(periodsOf(result), [
+    '2030-10-08T15:00:00Z/2030-10-08T15:30:00Z',
+    '2030-10-09T01:00:00Z/2030-10-09T02:00:00Z',
+    '2030-10-09T14:30:00Z/2030-10-09T15:00:00Z',
+  ]);
+  // 日の終わりちょうどに始まる予定は重ならない。同じ予定でも UTC の本人なら、UTC の日付で比べる。
+  assert.deepEqual(run([allDay, afterEnd], WINDOW, ZONE).overlaps, []);
+  const utc = run([allDay, afterEnd], WINDOW, 'UTC');
+  assert.deepEqual(periodsOf(utc), [
+    '2030-10-09T15:00:00Z/2030-10-09T16:00:00Z',
+  ]);
+});
+
+test('a free all-day event is excluded and two busy all-day events overlap by dates', () => {
+  const free = day('free-day', '2030-10-09', '2030-10-10', { busy: false });
+  const timed = ev('t', '2030-10-09T01:00:00Z', '2030-10-09T02:00:00Z');
+  const freeResult = run([free, timed]);
+  assert.deepEqual(freeResult.overlaps, []);
+  assert.deepEqual(
+    freeResult.excluded.map((e) => e.reason),
+    ['free_time'],
+  );
+  // 日付どうし: 10/09〜10/10 の終わりと 10/10〜10/11 の始まりが重なる日は 10/10 の 1 日。
+  const result = run([
+    day('a', '2030-10-09', '2030-10-11'),
+    day('b', '2030-10-10', '2030-10-12'),
+  ]);
+  assert.deepEqual(result.overlaps[0].period, {
+    kind: 'all_day',
+    start_date: '2030-10-10',
+    end_date: '2030-10-11',
+  });
+  // 終了の日付は含まないので、隣り合う日は重複にしない。
+  assert.deepEqual(
+    run([
+      day('a', '2030-10-09', '2030-10-10'),
+      day('b', '2030-10-10', '2030-10-11'),
+    ]).overlaps,
+    [],
+  );
+});
+
+test('an all-day event follows the length of the day in a zone with daylight saving time', () => {
+  // ニューヨークの 2030-03-10 は夏時間の開始日で 23 時間。0 時は 05:00Z、翌日の 0 時は 04:00Z。
+  const NY = 'America/New_York';
+  const allDay = day('ad', '2030-03-10', '2030-03-11');
+  const early = ev('e', '2030-03-10T04:30:00Z', '2030-03-10T05:30:00Z');
+  const late = ev('l', '2030-03-11T03:30:00Z', '2030-03-11T05:00:00Z');
+  const after = ev('a', '2030-03-11T04:00:00Z', '2030-03-11T05:00:00Z');
+  const result = run([allDay, early, late], WINDOW, NY);
+  assert.deepEqual(periodsOf(result), [
+    '2030-03-10T05:00:00Z/2030-03-10T05:30:00Z',
+    '2030-03-11T03:30:00Z/2030-03-11T04:00:00Z',
+  ]);
+  // 翌日の 0 時（04:00Z）ちょうどに始まる予定は重ならない。
+  assert.deepEqual(run([allDay, after], WINDOW, NY).overlaps, []);
+});
+
+test('only overlaps that meet the window are returned, and they are not cut to it', () => {
+  const window = { start: '2030-10-01T00:00:00Z', end: '2030-11-01T00:00:00Z' };
+  const at = (a, b) => [a, b];
+  const pair = (prefix, [s1, e1], [s2, e2]) => [
+    ev(`${prefix}1`, s1, e1),
+    ev(`${prefix}2`, s2, e2),
+  ];
+  const events = [
+    // 期間の前で終わる（ちょうど始まりで終わるものも含めない）
+    ...pair(
+      'before',
+      at('2030-09-30T23:00:00Z', '2030-10-01T00:00:00Z'),
+      at('2030-09-30T23:30:00Z', '2030-10-01T00:00:00Z'),
+    ),
+    // 期間の始まりをまたぐ
+    ...pair(
+      'across-start',
+      at('2030-09-30T23:00:00Z', '2030-10-01T01:00:00Z'),
+      at('2030-09-30T23:30:00Z', '2030-10-01T00:30:00Z'),
+    ),
+    // 期間の終わりに始まる（終わりは含まない）
+    ...pair(
+      'at-end',
+      at('2030-11-01T00:00:00Z', '2030-11-01T01:00:00Z'),
+      at('2030-11-01T00:00:00Z', '2030-11-01T02:00:00Z'),
+    ),
+    // 期間の終わりの 1 秒前に始まる
+    ...pair(
+      'last-second',
+      at('2030-10-31T23:59:59Z', '2030-11-01T01:00:00Z'),
+      at('2030-10-31T23:59:59Z', '2030-11-01T02:00:00Z'),
+    ),
+  ];
+  assert.deepEqual(periodsOf(run(events, window)), [
+    '2030-09-30T23:30:00Z/2030-10-01T00:30:00Z',
+    '2030-10-31T23:59:59Z/2030-11-01T01:00:00Z',
+  ]);
+});
+
+test('the result does not depend on the order of the input', () => {
+  const events = [
+    ev('a', '2030-10-09T01:00:00Z', '2030-10-09T02:00:00Z'),
+    ev('b', '2030-10-09T01:30:00Z', '2030-10-09T02:30:00Z'),
+    ev('c', '2030-10-09T01:45:00Z', '2030-10-09T03:00:00Z', {
+      calendar_id: 'cal-z',
+    }),
+    ev('d', '2030-10-09T09:00:00Z', '2030-10-09T09:30:00Z'),
+  ];
+  const expected = run(events);
+  assert.equal(expected.overlaps.length, 3);
+  for (const order of [
+    [3, 2, 1, 0],
+    [1, 3, 0, 2],
+    [2, 0, 3, 1],
+  ])
+    assert.deepEqual(run(order.map((i) => events[i])), expected);
+  const copy = structuredClone(events);
+  run(events);
+  assert.deepEqual(events, copy);
+});
+
+test('a bad window or zone is refused', () => {
+  const bad = (window, zone = ZONE) => findScheduleOverlaps([], window, zone);
+  assert.deepEqual(bad({ start: WINDOW.end, end: WINDOW.start }), {
+    ok: false,
+    reason: 'window_invalid',
+  });
+  assert.deepEqual(bad({ start: WINDOW.start, end: WINDOW.start }), {
+    ok: false,
+    reason: 'window_invalid',
+  });
+  assert.deepEqual(bad({ start: 'x', end: WINDOW.end }), {
+    ok: false,
+    reason: 'window_invalid',
+  });
+  assert.deepEqual(bad(WINDOW, 'Not/AZone'), {
+    ok: false,
+    reason: 'zone_invalid',
+  });
+  assert.deepEqual(bad(WINDOW, ''), { ok: false, reason: 'zone_invalid' });
+});
+
+test('the deadline of an overlap candidate is its start in the zone of the user, and sorts first today', () => {
+  const [overlap] = run([
+    ev('a', '2030-10-09T09:00:00Z', '2030-10-09T10:00:00Z'),
+    ev('b', '2030-10-09T09:30:00Z', '2030-10-09T10:30:00Z'),
+  ]).overlaps;
+  assert.deepEqual(scheduleOverlapDeadline(overlap, ZONE), {
+    kind: 'instant',
+    local_datetime: '2030-10-09T18:30:00',
+    zone: ZONE,
+    original_text: '予定の重複',
+  });
+  const [dayOverlap] = run([
+    day('a', '2030-10-10', '2030-10-12'),
+    day('b', '2030-10-11', '2030-10-13'),
+  ]).overlaps;
+  assert.deepEqual(scheduleOverlapDeadline(dayOverlap, ZONE), {
+    kind: 'date',
+    date: '2030-10-11',
+    original_text: '予定の重複',
+  });
+  // 基準 2030-10-09 12:00 JST。今日の予定の重複は、今日のより早いメールの期限よりも先に出る。
+  const ordered = orderCandidates(
+    [
+      {
+        candidate_id: 'mail',
+        kind: 'mail_deadline',
+        deadline: {
+          kind: 'instant',
+          local_datetime: '2030-10-09T12:30',
+          zone: ZONE,
+          original_text: 'x',
+        },
+        initial_import: false,
+        received_at: '2030-10-08T00:00:00Z',
+      },
+      {
+        candidate_id: 'overlap',
+        kind: 'schedule_overlap',
+        deadline: scheduleOverlapDeadline(overlap, ZONE),
+        initial_import: false,
+        received_at: '2030-10-08T00:00:00Z',
+      },
+    ],
+    { now: '2030-10-09T03:00:00Z', zone: ZONE },
+  );
+  assert.deepEqual(
+    ordered.groups.map((g) => [g.heading, g.items.map((i) => i.candidate_id)]),
+    [['today', ['overlap', 'mail']]],
+  );
+});
+
+test('occurrences of a recurring event without an iCalUID are different events', () => {
+  // iCalUID が無くても、繰り返しの回の識別が違えば別の予定。同じ予定の IDで重なる別の回を見落とさない。
+  const first = ev('series', '2030-10-09T01:00:00Z', '2030-10-09T02:00:00Z', {
+    ical_uid: null,
+    recurrence_id: '2030-10-09T01:00:00Z',
+  });
+  const moved = ev('series', '2030-10-09T01:30:00Z', '2030-10-09T02:30:00Z', {
+    ical_uid: null,
+    recurrence_id: '2030-10-10T01:00:00Z',
+  });
+  const result = run([first, moved]);
+  assert.equal(result.overlaps.length, 1);
+  assert.deepEqual(result.overlaps[0].refs, [
+    'id:cal-a/series#2030-10-09T01%3A00%3A00Z',
+    'id:cal-a/series#2030-10-10T01%3A00%3A00Z',
+  ]);
+  assert.equal(result.overlaps[0].identity, 'unconfirmed');
+  // 同じ回の写し（同じ参照・同じ時間帯）は 1 つに畳まれ、重複にならない。
+  assert.deepEqual(run([first, { ...first }]).overlaps, []);
+});
+
+test('identifiers that contain the separators never collapse into the same reference', () => {
+  // 連結だけなら、どちらも "ical:a#b#c" になる組。符号化して別の参照にする。
+  const first = ev('e1', '2030-10-09T01:00:00Z', '2030-10-09T02:00:00Z', {
+    ical_uid: 'a#b',
+    recurrence_id: 'c',
+  });
+  const second = ev('e2', '2030-10-09T01:30:00Z', '2030-10-09T02:30:00Z', {
+    ical_uid: 'a',
+    recurrence_id: 'b#c',
+  });
+  const result = run([first, second]);
+  assert.equal(result.overlaps.length, 1);
+  assert.deepEqual(result.overlaps[0].refs, ['ical:a#b%23c', 'ical:a%23b#c']);
+  // 区切りの / を含むカレンダー ID と予定 ID の組も混ざらない。
+  const x = ev('y', '2030-10-09T01:00:00Z', '2030-10-09T02:00:00Z', {
+    calendar_id: 'c/d',
+    ical_uid: null,
+  });
+  const y = ev('z', '2030-10-09T01:30:00Z', '2030-10-09T02:30:00Z', {
+    calendar_id: 'c',
+    event_id: 'd/z',
+    ical_uid: null,
+  });
+  assert.equal(run([x, y]).overlaps.length, 1);
+  // '@' は %40 になり、参照に生のメールアドレスの形は残らない。
+  const google = ev('g', '2030-10-09T01:00:00Z', '2030-10-09T02:00:00Z', {
+    ical_uid: 'abc123@example.com',
+  });
+  assert.ok(
+    !run([google, first]).overlaps.some((o) =>
+      o.refs.some((r) => r.includes('@')),
+    ),
+  );
+  assert.equal(
+    run([google, first]).overlaps[0]?.refs.find((r) => r.includes('example')),
+    'ical:abc123%40example.com#',
+  );
+});
+
+test('an overlap that starts in the hour that happens twice becomes the later one, so it is never resolved early', () => {
+  // ニューヨークの 2030-11-03 01:30 は 05:30Z（EDT）と 06:30Z（EST）の 2 回ある。どちらの開始も現地時刻は同じ 01:30:00 で、
+  // 契約の期限は現地時刻とタイムゾーンだけなので区別できない（U285）。後の回として扱い、早く解決しない側へ倒す。
+  const NY = 'America/New_York';
+  const deadlineOf = (start, end) => {
+    const found = run(
+      [ev('a', start, end), ev('b', start, '2030-11-03T08:00:00Z')],
+      WINDOW,
+      NY,
+    );
+    return scheduleOverlapDeadline(found.overlaps[0], NY);
+  };
+  for (const start of ['2030-11-03T05:30:00Z', '2030-11-03T06:30:00Z'])
+    assert.deepEqual(
+      deadlineOf(start, '2030-11-03T09:00:00Z'),
+      {
+        kind: 'instant',
+        local_datetime: '2030-11-03T01:30:00',
+        zone: NY,
+        original_text: '予定の重複',
+      },
+      start,
+    );
+  const deadline = deadlineOf('2030-11-03T05:30:00Z', '2030-11-03T09:00:00Z');
+  // 先の回の 05:45Z（01:45 EDT）でも期限を過ぎたとは見なさない。2 回目の 01:30（06:30Z）の後だけ過ぎる。
+  const candidate = (now) =>
+    candidateDueEvent(
+      {
+        state: 'new',
+        deadline,
+        initial_import: false,
+        created_at: '2030-11-01T00:00:00Z',
+        snooze_until: null,
+      },
+      now,
+      NY,
+    ).event;
+  assert.equal(candidate('2030-11-03T05:45:00Z'), null);
+  assert.equal(candidate('2030-11-03T06:15:00Z'), null);
+  assert.equal(candidate('2030-11-03T06:30:01Z'), 'deadline_passed');
+});
+
+test('the same recurring occurrence written with or without milliseconds is one event', () => {
+  const series = (id, calendar, recurrence, start, end, uid = 'uid-series') =>
+    ev(id, start, end, {
+      calendar_id: calendar,
+      ical_uid: uid,
+      recurrence_id: recurrence,
+    });
+  const a = series(
+    'p',
+    'cal-a',
+    '2030-10-09T01:00:00Z',
+    '2030-10-09T01:00:00Z',
+    '2030-10-09T02:00:00Z',
+  );
+  const b = series(
+    'p2',
+    'cal-b',
+    '2030-10-09T01:00:00.000Z',
+    '2030-10-09T01:00:00Z',
+    '2030-10-09T02:00:00Z',
+  );
+  // 同じ回の写しは自分自身と重複しない。
+  assert.deepEqual(run([a, b]).overlaps, []);
+  // 第三の予定との組も 1 件で、参照は書き方に依らず同じ。
+  const third = ev('q', '2030-10-09T01:30:00Z', '2030-10-09T02:30:00Z');
+  const result = run([a, b, third]);
+  assert.equal(result.overlaps.length, 1);
+  assert.deepEqual(result.overlaps[0].refs, [
+    'ical:uid-q#',
+    'ical:uid-series#2030-10-09T01%3A00%3A00Z',
+  ]);
+  assert.deepEqual(run([b, third, a]), result);
+  // 終日の回の日付は、時刻の回と区別する。読めない識別はそのまま。
+  assert.equal(
+    calendarOccurrenceRef(
+      series(
+        'd',
+        'cal-a',
+        '2030-10-09',
+        '2030-10-09T01:00:00Z',
+        '2030-10-09T02:00:00Z',
+      ),
+    ),
+    'ical:uid-series#2030-10-09',
+  );
+  assert.equal(
+    calendarOccurrenceRef(
+      series(
+        'd',
+        'cal-a',
+        'weekly-3',
+        '2030-10-09T01:00:00Z',
+        '2030-10-09T02:00:00Z',
+      ),
+    ),
+    'ical:uid-series#weekly-3',
+  );
+});
+
+test('a start inside a second is rounded up for the deadline, so the candidate is never resolved before the overlap starts', () => {
+  const found = run([
+    ev('a', '2030-10-09T01:00:00Z', '2030-10-09T03:00:00Z'),
+    ev('b', '2030-10-09T01:30:00.500Z', '2030-10-09T02:30:00Z'),
+  ]);
+  const [overlap] = found.overlaps;
+  assert.equal(overlap.period.start, '2030-10-09T01:30:00.500Z');
+  const deadline = scheduleOverlapDeadline(overlap, ZONE);
+  // 10:30:00.500 JST は秒精度で 10:30:01 へ切り上げる（切り下げの 10:30:00 ではない）。
+  assert.equal(deadline.local_datetime, '2030-10-09T10:30:01');
+  const eventAt = (now) =>
+    candidateDueEvent(
+      {
+        state: 'new',
+        deadline,
+        initial_import: false,
+        created_at: '2030-10-01T00:00:00Z',
+        snooze_until: null,
+      },
+      now,
+      ZONE,
+    ).event;
+  assert.equal(eventAt('2030-10-09T01:30:00.400Z'), null); // 開始の直前
+  assert.equal(eventAt('2030-10-09T01:30:00.500Z'), null); // 開始の時点
+  assert.equal(eventAt('2030-10-09T01:30:00.900Z'), null); // 開始の直後（切り下げなら過ぎたことになる）
+  assert.equal(eventAt('2030-10-09T01:30:01.000Z'), null); // 丸めた秒ちょうどは過ぎていない
+  assert.equal(eventAt('2030-10-09T01:30:01.100Z'), 'deadline_passed');
+  // 秒ちょうどの開始は丸めない。
+  const exact = run([
+    ev('a', '2030-10-09T01:00:00Z', '2030-10-09T03:00:00Z'),
+    ev('b', '2030-10-09T01:30:00Z', '2030-10-09T02:30:00Z'),
+  ]);
+  assert.equal(
+    scheduleOverlapDeadline(exact.overlaps[0], ZONE).local_datetime,
+    '2030-10-09T10:30:00',
+  );
+});

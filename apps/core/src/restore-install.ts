@@ -104,6 +104,8 @@ export interface InstallRestoredDatabaseOptions {
   readonly removeStaleEndpoint?: () => Promise<void>;
   readonly now?: () => Date;
   readonly fs?: RestoreInstallFs;
+  // 呼び出し側（restore run）が既に Core のロックを持っている。その場合はロックを取り直さず、解放もしない。
+  readonly alreadyLocked?: boolean;
 }
 
 interface Journal {
@@ -306,18 +308,21 @@ export async function installRestoredDatabase(
 ): Promise<void> {
   const fs = options.fs ?? nodeRestoreInstallFs;
   const coreInstanceId = randomUUID();
-  await acquireLock({
-    dataDir: options.dataDir,
-    endpoint: options.endpoint,
-    record: {
-      pid: process.pid,
-      core_instance_id: coreInstanceId,
-      started_at: (options.now?.() ?? new Date()).toISOString(),
-    },
-    isPidAlive: options.isPidAlive ?? defaultIsPidAlive,
-    probeTimeoutMs: options.probeTimeoutMs ?? 1000,
-    removeStaleEndpoint: options.removeStaleEndpoint ?? (async () => undefined),
-  });
+  const heldByCaller = options.alreadyLocked === true;
+  if (!heldByCaller)
+    await acquireLock({
+      dataDir: options.dataDir,
+      endpoint: options.endpoint,
+      record: {
+        pid: process.pid,
+        core_instance_id: coreInstanceId,
+        started_at: (options.now?.() ?? new Date()).toISOString(),
+      },
+      isPidAlive: options.isPidAlive ?? defaultIsPidAlive,
+      probeTimeoutMs: options.probeTimeoutMs ?? 1000,
+      removeStaleEndpoint:
+        options.removeStaleEndpoint ?? (async () => undefined),
+    });
   try {
     // 前の差し替えが途中で止まっていれば、先に終えるか戻す（記録を 2 つ重ねない）。
     await recoverRestoreInstall(options.dataDir, fs);
@@ -374,6 +379,6 @@ export async function installRestoredDatabase(
       await recoverRestoreInstall(options.dataDir, fs).catch(() => undefined);
     }
   } finally {
-    await releaseLock(options.dataDir, coreInstanceId);
+    if (!heldByCaller) await releaseLock(options.dataDir, coreInstanceId);
   }
 }

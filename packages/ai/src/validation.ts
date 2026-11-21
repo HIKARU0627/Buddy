@@ -11,8 +11,9 @@ export interface SchemaValidator {
   valid(value: unknown): boolean;
 }
 
-export interface SemanticValidator {
-  errors(value: WireResponse): readonly string[];
+// 出力の型 T は呼出しの種類ごとの WireResponse（意図の判定）や ExtractionWire（メールの抽出）。既定は意図の判定。
+export interface SemanticValidator<T = WireResponse> {
+  errors(value: T): readonly string[];
 }
 
 // 失敗の内訳。ModelOutcome の kind より細かく、ログ・診断・試験で原因を区別する。
@@ -27,18 +28,25 @@ export type OutputFailureDetail =
   | 'provider_refused'
   | 'provider_truncated';
 
-export interface OutputValidationOptions {
+export interface OutputValidationOptions<T = WireResponse> {
   readonly profile_id: string;
   readonly schema: SchemaValidator;
-  readonly semantics?: SemanticValidator;
+  readonly semantics?: SemanticValidator<T>;
   // profile の出力上限（思考を含む）。null は上限なし（ローカルなど）。
   readonly output_limit_tokens: number | null;
   // 文字数での安全上の上限（省略は文字数を見ない）。
   readonly max_output_chars?: number;
 }
 
-export interface ValidatedModelOutput {
-  readonly outcome: ModelOutcome;
+// 契約の ModelOutcome の成功の value だけを T に置き換えた形（T = WireResponse なら ModelOutcome と同じ）。
+export type ModelOutcomeOf<T> =
+  | Exclude<ModelOutcome, { readonly kind: 'ok' }>
+  | (Omit<Extract<ModelOutcome, { readonly kind: 'ok' }>, 'value'> & {
+      readonly value: T;
+    });
+
+export interface ValidatedModelOutput<T = WireResponse> {
+  readonly outcome: ModelOutcomeOf<T>;
   // 受理したときは null。失敗のときは原因の内訳。
   readonly detail: OutputFailureDetail | null;
   // 意味検証の理由（診断用。契約の ModelOutcome には入れない）。
@@ -47,22 +55,22 @@ export interface ValidatedModelOutput {
 
 type FailureKind = Exclude<ModelOutcome['kind'], 'ok'>;
 
-const failed = (
+const failed = <T>(
   kind: FailureKind,
   retryable: boolean,
   usage: ModelUsage | null,
   detail: OutputFailureDetail,
   reasons: readonly string[] = [],
-): ValidatedModelOutput => ({
+): ValidatedModelOutput<T> => ({
   outcome: { kind, retryable, usage },
   detail,
   reasons,
 });
 
-export function modelOutcomeFromAdapter(
+export function modelOutcomeFromAdapter<T = WireResponse>(
   result: AdapterResult,
-  options: OutputValidationOptions,
-): ValidatedModelOutput {
+  options: OutputValidationOptions<T>,
+): ValidatedModelOutput<T> {
   if (result.kind !== 'response') {
     if (result.kind === 'timeout')
       return {
@@ -119,7 +127,7 @@ export function modelOutcomeFromAdapter(
   }
   if (!options.schema.valid(value))
     return failed('invalid_schema', false, result.usage, 'schema');
-  const reasons = options.semantics?.errors(value as WireResponse) ?? [];
+  const reasons = options.semantics?.errors(value as T) ?? [];
   if (reasons.length > 0)
     return failed(
       'invalid_semantics',
@@ -131,7 +139,7 @@ export function modelOutcomeFromAdapter(
   return {
     outcome: {
       kind: 'ok',
-      value: value as WireResponse,
+      value: value as T,
       profile_id: options.profile_id,
       usage: observedUsage,
       retryable: false,

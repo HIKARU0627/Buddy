@@ -4215,7 +4215,7 @@ export interface WebResearchSource {
   schema: 'buddy.web-source.v1';
   source_id: string;
   /**
-   * 出典の URL。永続保存してよいかは B12-02 で決めるまで null にできる（U183）。
+   * 出典の URL（その場の表示用）。本人決定 A（2026-11-14、ADR 0126）により検索結果の URL は永続保存しない。保存する出典は WebSourceRecord で、その url は WebUsagePolicy.url_storage が allowed のときだけ非 null にできる（U183・U290）。
    */
   url: string | null;
   title: string | null;
@@ -4236,7 +4236,7 @@ export interface WebResearchLimits {
   max_redirects: 3;
 }
 /**
- * 公開 Web 調査の利用条件（B12-01、ADR 0077）。検索結果は操作中の一時保持だけにし、モデルの訓練・評価に使わない。URL の永続保存は B12-02 で決めるまで undecided。
+ * 公開 Web 調査の利用条件（B12-01、ADR 0077）。検索結果は操作中の一時保持だけにし、モデルの訓練・評価に使わない。URL は永続保存しない（本人決定 A、2026-11-14、ADR 0126）ので url_storage は disallowed とし、allowed にしない。決定前の undecided も disallowed と同じく URL を持てない扱い。
  */
 export interface WebUsagePolicy {
   schema: 'buddy.web-usage.v1';

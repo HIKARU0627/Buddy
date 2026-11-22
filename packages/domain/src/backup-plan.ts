@@ -120,6 +120,12 @@ export const BACKUP_INCLUDED_TABLES: readonly string[] = [
   'evaluation_results',
   'home_networks',
   'tasks',
+  // 公開 Web 調査の受付・状態・試行・出典（0014、B12-05）。完了の結果と出典は本人の記録なので含める
+  // （保持は workflow_result の 7 日で、復元の後も research.recover が期限で消す。URL は保存していない）。
+  'research_jobs',
+  'research_screenings',
+  'research_attempts',
+  'research_sources',
 ];
 
 const has = (record: object, key: string): boolean =>

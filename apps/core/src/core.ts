@@ -12,7 +12,7 @@
 //   → ソケット・ロックの解放 → stopped。ロックは DB を閉じた後に返す（同じ DB の書き手を一つに保つ）。
 // Electron には依存せず、クライアントの終了は Core の状態に影響しない。
 
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { chmod, rm } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
@@ -29,6 +29,8 @@ import type {
   StoreBindingResult,
   StoreGenerationSource,
 } from '@buddy/storage';
+import { webResearchNotificationParts } from '@buddy/domain';
+import type { ResearchJobRecord } from '@buddy/storage';
 import {
   UNAVAILABLE_TAILSCALE_STATUS,
   createUnsupportedBackupKeyStore,
@@ -142,6 +144,15 @@ import type { SyncExecutor, SyncExecutorOptions } from './sync-executor.js';
 import { createGraphSyncExecutor } from './graph-sync-executor.js';
 import type { GraphSyncExecutorOptions } from './graph-sync-executor.js';
 import { createProviderSyncExecutor } from './provider-sync-executor.js';
+import { createResearchExecutor } from './research-executor.js';
+import type {
+  ResearchExecutor,
+  ResearchFetchPort,
+  ResearchSearchPort,
+  ResearchSummarizePort,
+} from './research-executor.js';
+import { persistCandidateDrafts } from './candidate-intake.js';
+import type { BackgroundJobAcceptor } from './turn-ports.js';
 import { createSyncScheduler } from './sync-scheduler.js';
 import type { SyncScheduler, SyncSchedulerTarget } from './sync-scheduler.js';
 import { EventFeed } from './event-feed.js';
@@ -331,6 +342,16 @@ export interface StartCoreOptions {
   // 同期の走査（B08-06、ADR 0137）。実行器は常に作り、掃除のゲートを渡す。周期の起動は scheduler を
   // 渡したときだけ動かす（CLI の start が有効にする）。
   readonly sync?: CoreSyncOptions;
+  // 公開 Web 調査（B12-05、ADR 0141）。検索・取得・要約の口を渡したときだけ、受付器と実行器を作り、
+  // 起動時の回復（再開・再通知・孤児の取消）を回す。実アダプターは B12-03・B12-04 で、渡されなければ
+  // 調査の受付は従来どおり閉じたまま（受け付けだけを先に生かすことはない。ADR 0135）。
+  readonly research?: CoreResearchOptions;
+}
+
+export interface CoreResearchOptions {
+  readonly search: ResearchSearchPort;
+  readonly fetch: ResearchFetchPort;
+  readonly summarize: ResearchSummarizePort;
 }
 
 export interface CoreSyncOptions {
@@ -429,6 +450,8 @@ export interface CoreHandle {
   readonly syncExecutor: SyncExecutor;
   // 同期の周期起動（B08-06、ADR 0137）。scheduler を有効にしなければ null。
   readonly syncScheduler: SyncScheduler | null;
+  // 公開 Web 調査の実行器（B12-05、ADR 0141）。research の口を渡さなければ null（受付も閉じたまま）。
+  readonly researchExecutor: ResearchExecutor | null;
   // 保存境界の保持者（記録しない会話のゲート。ADR 0045・0059）。今の保存モード・区切りの世代・由来の照合を持つ。
   readonly storage: StorageModeGate;
   readonly state: LifecycleState;
@@ -682,6 +705,7 @@ export async function startCore(
     executor: SyncExecutor;
     scheduler: SyncScheduler | null;
   } | null = null;
+  let researchRun: ResearchExecutor | null = null;
   let voice: VoiceControl | null = null;
   let control: ControlServer;
   let shutdown: Promise<void> | null = null;
@@ -728,6 +752,10 @@ export async function startCore(
     // 再起動した Core と封筒・状態ファイルを取り合わないようにする（上限を過ぎたら待たずに進む）。
     await step(async () => {
       await backup?.close();
+    });
+    // 実行中の調査の終わりを待つ（調査は再開可能な形で保存されるので、待ち切れなくても次の起動で回復する）。
+    await step(async () => {
+      await researchRun?.drain();
     });
     retention?.close();
     // 入る・出るを受けなくし、合わせ直せていない世代の書き込みが残っていれば最後に試す。
@@ -853,6 +881,74 @@ export async function startCore(
       syncScheduler.start();
     }
     syncRun = { executor: syncExecutor, scheduler: syncScheduler };
+    // 公開 Web 調査の受付と実行器（B12-05、ADR 0141）。口が渡されたときだけ作る。完了の知らせは
+    // 候補（research_done）の作成で、識別子は kind・workflow_id・完了の版（domain が正本）。
+    // データ鍵は保持せず、知らせるたびに鍵の保管庫から読み直す（候補の経路と同じ）。
+    // 起動時の回復は、排他ロックで旧 Core の終了が担保された後に回す（HTTPS の受付より前）。
+    if (options.research !== undefined) {
+      const researchStore = opened.store;
+      researchRun = createResearchExecutor({
+        store: researchStore,
+        search: options.research.search,
+        fetch: options.research.fetch,
+        summarize: options.research.summarize,
+        retention: {
+          ready: async () => {
+            await retention?.idle();
+          },
+          gate: () => (retention as RetentionSweeper).gate(),
+          lease: () => (retention as RetentionSweeper).lease(),
+        },
+        log,
+        notify: async (record: ResearchJobRecord) => {
+          const parts = webResearchNotificationParts(record.status, {
+            url_storage: 'disallowed',
+          });
+          if (parts === null) return;
+          const keyResult = await options.keyStore.loadDataKey();
+          if (!keyResult.ok) throw new Error('data_key_unavailable');
+          const summary = record.status.result?.summary ?? '';
+          const results = await persistCandidateDrafts(
+            {
+              client: researchStore,
+              dataKey: keyResult.dataKey,
+              sha256Hex: (material: string) =>
+                createHash('sha256').update(material, 'utf8').digest('hex'),
+              newId: () => randomUUID(),
+              now: () => now().toISOString(),
+            },
+            [
+              {
+                candidate_kind: 'research_done',
+                key_parts: parts,
+                title: '調査の完了',
+                deadline: { kind: 'none' },
+                excerpt: [...summary].slice(0, 200).join(''),
+                request_entity_id: null,
+                request_revision: null,
+                source_revision: null,
+                initial_import: false,
+                unread_partial: (record.status.result?.unread_count ?? 0) > 0,
+                related_analysis: null,
+                received_at: record.status.finished_at ?? now().toISOString(),
+                origins:
+                  record.turn_id === null
+                    ? []
+                    : [{ source_kind: 'turn', source_id: record.turn_id }],
+              },
+            ],
+          );
+          const outcome = results[0]?.outcome;
+          if (outcome === 'rejected' || outcome === 'unknown')
+            throw new Error(`candidate_${outcome}`);
+        },
+      });
+      const recovered = await researchRun.recover();
+      if (recovered.orphans_canceled > 0 || recovered.expired > 0)
+        log(
+          `調査の回復: 孤児の取消 ${recovered.orphans_canceled} 件・保持を過ぎた削除 ${recovered.expired} 件。`,
+        );
+    }
     const startedBudget = await startBudgetGate(
       dataDir,
       options,
@@ -933,6 +1029,7 @@ export async function startCore(
         budget,
         retention,
         storageGate,
+        researchRun?.acceptor,
       );
       api = started.api;
       streams = started.streams;
@@ -1001,6 +1098,7 @@ export async function startCore(
     if (budgetTimer !== null) clearInterval(budgetTimer);
     backupScheduler?.stop();
     syncRun?.scheduler?.stop();
+    await researchRun?.drain().catch(() => undefined);
     retention?.close();
     feed?.close();
     await api?.close(0).catch(() => undefined);
@@ -1046,6 +1144,7 @@ export async function startCore(
     syncScheduler: (
       syncRun as { executor: SyncExecutor; scheduler: SyncScheduler | null }
     ).scheduler,
+    researchExecutor: researchRun,
     storage: storageGate as StorageModeGate,
     pairing,
     get state() {
@@ -1072,6 +1171,8 @@ async function startHttps(
   budget: BudgetGate,
   retention: RetentionSweeper | null,
   storage: StorageModeGate,
+  // 公開 Web 調査の受付器（B12-05、ADR 0141）。口が無ければ undefined で、調査は未対応のまま。
+  researchAcceptor?: BackgroundJobAcceptor,
 ): Promise<{
   readonly api: ApiServer;
   readonly info: CoreHttpsInfo;
@@ -1315,6 +1416,9 @@ async function startHttps(
   const turns = createTurnRoutes({
     store: watched,
     keyStore,
+    ...(researchAcceptor === undefined
+      ? {}
+      : { backgroundJobs: researchAcceptor }),
     interpreter: turnOptions.interpreter ?? createMockInterpreter(),
     provider: turnOptions.provider ?? null,
     candidates: turnOptions.candidates ?? {

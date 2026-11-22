@@ -59,6 +59,8 @@ import type {
 } from './candidate-store.js';
 // B08-05: 同期の走査の保存（設計 11 §1A）。
 import type { SyncOp, SyncOpResult } from './sync-store.js';
+// B12-05: 公開 Web 調査の受付・保存（設計 05・10 §5）。
+import type { ResearchOp, ResearchOpResult } from './research-store.js';
 
 // 故障注入の対象（操作の命令・予算の命令・音声の命令の種類）。
 export type DbFaultKind =
@@ -176,7 +178,9 @@ export type MainToWorker =
       readonly op: CandidateOp;
     }
   // 同期の走査の開始・仮置き・検証・公開・破棄と照会（B08-05、設計 11 §1A）。
-  | { readonly type: 'sync'; readonly id: number; readonly op: SyncOp };
+  | { readonly type: 'sync'; readonly id: number; readonly op: SyncOp }
+  // 公開 Web 調査の受付・進捗・遷移・回復と照会（B12-05、設計 05・10 §5）。
+  | { readonly type: 'research'; readonly id: number; readonly op: ResearchOp };
 
 export interface WorkerTimings extends StoreTimings {
   // Core main が送ってから worker が処理を始めるまで（IPC と待ち行列の待ち）。
@@ -287,6 +291,12 @@ export type WorkerToMain =
       readonly type: 'sync_result';
       readonly id: number;
       readonly result: SyncOpResult;
+      readonly halted: boolean;
+    }
+  | {
+      readonly type: 'research_result';
+      readonly id: number;
+      readonly result: ResearchOpResult;
       readonly halted: boolean;
     };
 

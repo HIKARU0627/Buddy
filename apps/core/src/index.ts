@@ -64,6 +64,21 @@ export type {
 } from './graph-sync-executor.js';
 export { createProviderSyncExecutor } from './provider-sync-executor.js';
 export type { ProviderSyncExecutorOptions } from './provider-sync-executor.js';
+// B12-05: 公開 Web 調査の受付と実行器（設計 05・10 §5、ADR 0141）。実アダプターは B12-03・B12-04。
+export { createResearchExecutor } from './research-executor.js';
+export type {
+  ResearchExecutor,
+  ResearchExecutorOptions,
+  ResearchFetchOutcome,
+  ResearchFetchPort,
+  ResearchRecoverSummary,
+  ResearchRunOutcome,
+  ResearchSearchHit,
+  ResearchSearchOutcome,
+  ResearchSearchPort,
+  ResearchSummarizeOutcome,
+  ResearchSummarizePort,
+} from './research-executor.js';
 // B08-06: 同期の周期起動（設計 11 §1、ADR 0137）。起動時の回復と全量照合、60 秒ポーリング＋ジッター。
 export { createSyncScheduler } from './sync-scheduler.js';
 export type {

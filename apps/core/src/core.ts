@@ -139,6 +139,9 @@ import { createOperationRunner } from './operation-runner.js';
 import type { OperationRunner } from './operation-runner.js';
 import { createSyncExecutor } from './sync-executor.js';
 import type { SyncExecutor, SyncExecutorOptions } from './sync-executor.js';
+import { createGraphSyncExecutor } from './graph-sync-executor.js';
+import type { GraphSyncExecutorOptions } from './graph-sync-executor.js';
+import { createProviderSyncExecutor } from './provider-sync-executor.js';
 import { createSyncScheduler } from './sync-scheduler.js';
 import type { SyncScheduler, SyncSchedulerTarget } from './sync-scheduler.js';
 import { EventFeed } from './event-feed.js';
@@ -331,8 +334,10 @@ export interface StartCoreOptions {
 }
 
 export interface CoreSyncOptions {
-  // 接続ごとのアクセストークンの出所。接続の作成（B03-04）が用意する。省略した接続は走査しない。
+  // 接続ごとのアクセストークンの出所（Google）。接続の作成（B03-04）が用意する。省略した接続は走査しない。
   readonly tokenSourceFor?: SyncExecutorOptions['tokenSourceFor'];
+  // 接続ごとのアクセストークンの出所（Microsoft Graph、B09-04）。接続の作成（B03-04）が用意する。
+  readonly graphTokenSourceFor?: GraphSyncExecutorOptions['tokenSourceFor'];
   // 接続ごとの走査対象（account_id・資源種別）。接続の作成（B03-04）が持つ値。省略した接続は走査しない。
   readonly targetsFor?: (
     connection: ConnectionRecord,
@@ -798,11 +803,12 @@ export async function startCore(
       now: () => now().getTime(),
       log,
     });
-    // 同期の走査の実行器（B08-05）と周期起動（B08-06）。走査は外部の読み取りなので、掃除のゲートを渡す
-    // （ADR 0053・0136）。実行器は常に作るが、周期の起動は scheduler を有効にしたときだけ動かす。
+    // 同期の走査の実行器（B08-05・B09-04）と周期起動（B08-06）。走査は外部の読み取りなので、掃除のゲートを渡す
+    // （ADR 0053・0136）。実行器は provider ごとに作り、scheduler と CoreHandle には provider で振り分ける
+    // 実行器を渡す（ADR 0138）。実行器は常に作るが、周期の起動は scheduler を有効にしたときだけ動かす。
     // 対象（account_id・資源種別）とトークンの出所は接続の作成（B03-04）が用意するもので、渡されなければ
     // 実行器は呼ばれない。起動時の回復は、排他ロックで旧 Core の終了が担保された後に scheduler が行う。
-    const syncExecutor = createSyncExecutor({
+    const googleSyncExecutor = createSyncExecutor({
       store: opened.store,
       ...(options.sync?.tokenSourceFor === undefined
         ? {}
@@ -814,6 +820,24 @@ export async function startCore(
         gate: () => (retention as RetentionSweeper).gate(),
         lease: () => (retention as RetentionSweeper).lease(),
       },
+    });
+    const graphSyncExecutor = createGraphSyncExecutor({
+      store: opened.store,
+      ...(options.sync?.graphTokenSourceFor === undefined
+        ? {}
+        : { tokenSourceFor: options.sync.graphTokenSourceFor }),
+      retention: {
+        ready: async () => {
+          await retention?.idle();
+        },
+        gate: () => (retention as RetentionSweeper).gate(),
+        lease: () => (retention as RetentionSweeper).lease(),
+      },
+    });
+    const syncExecutor = createProviderSyncExecutor({
+      store: opened.store,
+      google: googleSyncExecutor,
+      microsoft: graphSyncExecutor,
     });
     let syncScheduler: SyncScheduler | null = null;
     if (options.sync?.scheduler !== undefined) {

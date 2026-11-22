@@ -1,4 +1,4 @@
-// Microsoft Graph（Outlook）の読み取り connector（B09-02、ADR 0134）。
+// Microsoft Graph（Outlook）の読み取り connector（B09-02、ADR 0134。添付の列挙・取得は B09-03、ADR 0140）。
 // 読み取りだけを持ち、状態を変える要求（カテゴリの付与・移動・送信）は作らない（ADR 0072: カテゴリは display_only）。
 // - 委任トークンは取得関数の注入で受け取り、保持・記録しない。Authorization ヘッダーにだけ使う。
 // - すべての要求（nextLink を含む）に Prefer: IdType="ImmutableId" を付ける（設計 04）。基本キーは immutable_id で、
@@ -51,6 +51,8 @@ const FOLDER_SELECT =
   'id,displayName,parentFolderId,totalItemCount,unreadItemCount';
 const ACCOUNT_SELECT = 'id,displayName,mail,userPrincipalName';
 const CATEGORY_SELECT = 'id,displayName,color';
+// 添付の列挙の最小集合。内容（contentBytes）は含めない（一覧では返らず、個別取得でだけ取る。設計 04）。
+const ATTACHMENT_SELECT = 'id,name,contentType,size,isInline';
 
 // フィルターに入れる日時（ISO 8601 の日時。式の注入を防ぐため、この形だけを受け付ける）。
 const DATE_TIME =
@@ -158,6 +160,36 @@ export interface GraphMasterCategory {
   readonly color: string | null;
 }
 
+// 添付の種別（'@odata.type'）。バイト列として内容を個別取得できるのは 'file' だけ。
+// 'item' は埋め込まれたアイテム（メール等）、'reference' はリンクで、どちらも contentBytes を持たない。
+export type GraphAttachmentType = 'file' | 'item' | 'reference' | 'unknown';
+
+export interface GraphMailAttachment {
+  readonly attachment_id: string;
+  /** ファイル名。名前の無い添付（インライン等）は空文字列で、添付として扱うかは呼び出し側が決める。 */
+  readonly name: string;
+  /** MIME（contentType）。読めなければ null。 */
+  readonly content_type: string | null;
+  /** provider が申告するサイズ。読めなければ null（取得可否の判定はサイズ不明を取らない）。 */
+  readonly size_bytes: number | null;
+  readonly is_inline: boolean;
+  readonly type: GraphAttachmentType;
+}
+
+export interface GraphMailAttachmentList {
+  readonly attachments: readonly GraphMailAttachment[];
+  /** id の無い・空の項目の数。同一と断定できないので attachments に入れない（QA23 と同じ扱い）。 */
+  readonly skipped_without_id: number;
+  readonly pages: number;
+}
+
+// 添付 1 件の内容の取得結果（B09-03）。data は contentBytes を復号したバイト列で、申告サイズと
+// 一致することを検証済み。'item'・'reference' 等、バイト列で取れない添付は data が null。
+export interface GraphMailAttachmentContent {
+  readonly data: Uint8Array | null;
+  readonly size_bytes: number | null;
+}
+
 export interface GraphMessageQuery {
   /** receivedDateTime ge の条件（ISO 8601 の日時）。 */
   readonly receivedSince?: string;
@@ -199,6 +231,16 @@ export interface GraphMailConnector {
   ): Promise<GraphReadResult<GraphMessageList>>;
   /** connector 固有の読み取り（能力の reads に種別が無い）。表示用（display_only）。 */
   listCategories(): Promise<GraphReadResult<readonly GraphMasterCategory[]>>;
+  /** メッセージの添付を列挙する（内容は含めない。B09-03）。 */
+  listAttachments(
+    messageId: string,
+  ): Promise<GraphReadResult<GraphMailAttachmentList>>;
+  /** 添付 1 件の内容を取得する（B09-03、設計 04: 選択した種類・サイズだけを個別に取得する）。
+   *  取得してよい添付かの判定は呼び出し側（domain の checkAttachment を通したものだけを渡す）。 */
+  getAttachment(
+    messageId: string,
+    attachmentId: string,
+  ): Promise<GraphReadResult<GraphMailAttachmentContent>>;
 }
 
 /** テナントからアカウント種別を判定する。未取得・空は null（断定しない）。模擬の判定規則（実 API は B15）。 */
@@ -503,6 +545,76 @@ export function createGraphMailConnector(
     };
   };
 
+  const attachmentTypeOf = (value: unknown): GraphAttachmentType => {
+    switch (value) {
+      case '#microsoft.graph.fileAttachment':
+        return 'file';
+      case '#microsoft.graph.itemAttachment':
+        return 'item';
+      case '#microsoft.graph.referenceAttachment':
+        return 'reference';
+      default:
+        return 'unknown';
+    }
+  };
+
+  const parseAttachment = (raw: unknown): ItemParse<GraphMailAttachment> => {
+    // id の無い・空の項目は同一と断定できないので数えるだけにする（メッセージと同じ扱い）。
+    if (!isRecord(raw)) return 'skip';
+    const id = raw['id'];
+    if (typeof id !== 'string' || id.length === 0) return 'skip';
+    const name = raw['name'];
+    return {
+      item: {
+        attachment_id: id,
+        name: typeof name === 'string' ? name : '',
+        content_type: textOrNull(raw['contentType']),
+        size_bytes: countOrNull(raw['size']),
+        is_inline: raw['isInline'] === true,
+        type: attachmentTypeOf(raw['@odata.type']),
+      },
+    };
+  };
+
+  // contentBytes の厳密な復号（標準 base64。Graph は base64url ではない）。余分な文字や書き換えを
+  // 受け付けず、符号化し直して一致するものだけを通す（緩い復号で壊れたバイト列を「取得できた」としない）。
+  const decodeBase64 = (value: string): Uint8Array | null => {
+    if (!/^[A-Za-z0-9+/]+={0,2}$/u.test(value)) return null;
+    const bytes = Buffer.from(value, 'base64');
+    if (
+      bytes.toString('base64').replace(/=+$/u, '') !== value.replace(/=+$/u, '')
+    )
+      return null;
+    return new Uint8Array(bytes);
+  };
+
+  // 添付 1 件の応答を内容へ写す。file なのに contentBytes が無い・復号できない・申告サイズと
+  // 実バイト数が一致しない応答は不正として拒否する（Gmail の attachments.get と同じ検証）。
+  const parseAttachmentContent = (
+    body: unknown,
+  ): GraphReadResult<GraphMailAttachmentContent> => {
+    const invalid: GraphReadResult<GraphMailAttachmentContent> = {
+      kind: 'unavailable',
+      reason: 'invalid_response',
+    };
+    if (!isRecord(body)) return invalid;
+    const type = attachmentTypeOf(body['@odata.type']);
+    const size = countOrNull(body['size']);
+    const contentBytes = body['contentBytes'];
+    if (typeof contentBytes === 'string' && contentBytes.length > 0) {
+      const bytes = decodeBase64(contentBytes);
+      if (bytes === null) return invalid;
+      if (size === null || bytes.length !== size) return invalid;
+      // バイト列が届いているのに 'item'・'reference' と名乗る応答は形が矛盾するので信用しない。
+      if (type === 'item' || type === 'reference') return invalid;
+      return { kind: 'ok', value: { data: bytes, size_bytes: size } };
+    }
+    // contentBytes が無い。'file' は内容が本体なので不正。'item'・'reference'・種別不明は
+    // バイト列では取れない添付として、内容なしで返す（失敗ではなく「取れない」）。
+    if (type === 'file') return invalid;
+    return { kind: 'ok', value: { data: null, size_bytes: size } };
+  };
+
   function messagesUrl(
     folderId: string,
     query: Omit<GraphMessageQuery, 'cursor'>,
@@ -618,6 +730,42 @@ export function createGraphMailConnector(
       return result.kind === 'ok'
         ? { kind: 'ok', value: result.value.items }
         : result;
+    },
+
+    async listAttachments(messageId) {
+      if (typeof messageId !== 'string' || messageId.length === 0)
+        throw new TypeError('messageId は空でない文字列で渡してください。');
+      const result = await readAll(
+        buildUrl(`/me/messages/${encodeURIComponent(messageId)}/attachments`, {
+          $select: ATTACHMENT_SELECT,
+          $top: '100',
+        }),
+        parseAttachment,
+      );
+      if (result.kind !== 'ok') return result;
+      return {
+        kind: 'ok',
+        value: {
+          attachments: result.value.items,
+          skipped_without_id: result.value.skipped,
+          pages: result.value.pages,
+        },
+      };
+    },
+
+    async getAttachment(messageId, attachmentId) {
+      if (typeof messageId !== 'string' || messageId.length === 0)
+        throw new TypeError('messageId は空でない文字列で渡してください。');
+      if (typeof attachmentId !== 'string' || attachmentId.length === 0)
+        throw new TypeError('attachmentId は空でない文字列で渡してください。');
+      const result = await get(
+        buildUrl(
+          `/me/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}`,
+          {},
+        ),
+      );
+      if (!('ok' in result)) return result;
+      return parseAttachmentContent(result.body);
     },
   };
 }

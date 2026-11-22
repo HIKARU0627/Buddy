@@ -905,6 +905,218 @@ test(
   },
 );
 
+// 合成の添付（Graph の応答の形）。
+function rawAttachment(id: string | undefined, extra = {}) {
+  return {
+    ...(id === undefined ? {} : { id }),
+    '@odata.type': '#microsoft.graph.fileAttachment',
+    name: 'doc.pdf',
+    contentType: 'application/pdf',
+    size: 100,
+    isInline: false,
+    ...extra,
+  };
+}
+
+test(
+  '添付の列挙: nextLink を辿り、種別・サイズ・名前を写し、id の無い項目は数えるだけにする',
+  OPTIONS,
+  async () => {
+    const next = `${BASE}/me/messages/msg-1/attachments?%24skip=5`;
+    const { connector, calls } = setup([
+      ok({
+        value: [
+          rawAttachment('att-1'),
+          rawAttachment('att-2', {
+            '@odata.type': '#microsoft.graph.itemAttachment',
+            name: '埋め込みメール',
+            contentType: null,
+            size: 200,
+          }),
+          rawAttachment(undefined),
+          rawAttachment('att-3', { name: undefined, size: 10 }),
+          rawAttachment('att-4', {
+            '@odata.type': '#microsoft.graph.referenceAttachment',
+            name: '共有リンク',
+            contentType: null,
+            size: null,
+          }),
+        ],
+        '@odata.nextLink': next,
+      }),
+      ok({
+        value: [
+          rawAttachment('att-5', {
+            name: 'note.txt',
+            contentType: 'text/plain',
+            size: 5,
+          }),
+        ],
+      }),
+    ]);
+    assert.deepEqual(await connector.listAttachments('msg-1'), {
+      kind: 'ok',
+      value: {
+        attachments: [
+          {
+            attachment_id: 'att-1',
+            name: 'doc.pdf',
+            content_type: 'application/pdf',
+            size_bytes: 100,
+            is_inline: false,
+            type: 'file',
+          },
+          {
+            attachment_id: 'att-2',
+            name: '埋め込みメール',
+            content_type: null,
+            size_bytes: 200,
+            is_inline: false,
+            type: 'item',
+          },
+          {
+            attachment_id: 'att-3',
+            name: '',
+            content_type: 'application/pdf',
+            size_bytes: 10,
+            is_inline: false,
+            type: 'file',
+          },
+          {
+            attachment_id: 'att-4',
+            name: '共有リンク',
+            content_type: null,
+            size_bytes: null,
+            is_inline: false,
+            type: 'reference',
+          },
+          {
+            attachment_id: 'att-5',
+            name: 'note.txt',
+            content_type: 'text/plain',
+            size_bytes: 5,
+            is_inline: false,
+            type: 'file',
+          },
+        ],
+        skipped_without_id: 1,
+        pages: 2,
+      },
+    });
+    assert.equal(calls.length, 2);
+    // 一覧では内容（contentBytes）を要求しない（最小の select）。
+    assert.equal(
+      calls[0]!.url,
+      'https://graph.microsoft.com/v1.0/me/messages/msg-1/attachments?%24select=id%2Cname%2CcontentType%2Csize%2CisInline&%24top=100',
+    );
+    assert.equal(calls[1]!.url, next);
+  },
+);
+
+test(
+  '添付の個別取得: contentBytes を復号し、申告サイズと一致するものだけを返す',
+  OPTIONS,
+  async () => {
+    const { connector, calls } = setup([
+      ok(
+        rawAttachment('att-1', {
+          name: 'note.txt',
+          contentType: 'text/plain',
+          size: 5,
+          contentBytes: 'aGVsbG8=',
+        }),
+      ),
+    ]);
+    const result = await connector.getAttachment('msg-1', 'att-1');
+    assert(result.kind === 'ok');
+    assert.equal(result.value.size_bytes, 5);
+    assert.deepEqual(
+      result.value.data,
+      new Uint8Array([104, 101, 108, 108, 111]),
+    );
+    assert.equal(
+      calls[0]!.url,
+      'https://graph.microsoft.com/v1.0/me/messages/msg-1/attachments/att-1',
+    );
+  },
+);
+
+test(
+  '添付の個別取得: 申告サイズと実バイト数が違う・base64 でない・file なのに内容が無い応答は invalid_response',
+  OPTIONS,
+  async () => {
+    const mismatch = setup([
+      ok(rawAttachment('att-1', { size: 4, contentBytes: 'aGVsbG8=' })),
+    ]);
+    assert.deepEqual(await mismatch.connector.getAttachment('msg-1', 'att-1'), {
+      kind: 'unavailable',
+      reason: 'invalid_response',
+    });
+    const notBase64 = setup([
+      ok(rawAttachment('att-1', { size: 5, contentBytes: 'aGVs bG8=' })),
+    ]);
+    assert.deepEqual(
+      await notBase64.connector.getAttachment('msg-1', 'att-1'),
+      { kind: 'unavailable', reason: 'invalid_response' },
+    );
+    const noContent = setup([ok(rawAttachment('att-1'))]);
+    assert.deepEqual(
+      await noContent.connector.getAttachment('msg-1', 'att-1'),
+      {
+        kind: 'unavailable',
+        reason: 'invalid_response',
+      },
+    );
+  },
+);
+
+test(
+  '添付の個別取得: item・reference は内容なし（data: null）で返し、失敗にしない',
+  OPTIONS,
+  async () => {
+    const item = setup([
+      ok(
+        rawAttachment('att-2', {
+          '@odata.type': '#microsoft.graph.itemAttachment',
+          name: '埋め込みメール',
+          contentType: null,
+          size: 200,
+        }),
+      ),
+    ]);
+    assert.deepEqual(await item.connector.getAttachment('msg-1', 'att-2'), {
+      kind: 'ok',
+      value: { data: null, size_bytes: 200 },
+    });
+  },
+);
+
+test(
+  '添付の読み取り: 拒否と認証切れは結果型のまま返し、成功扱いにしない',
+  OPTIONS,
+  async () => {
+    const denied = setup([
+      status(403, {
+        error: { code: 'ErrorAccessDenied', message: '（合成）拒否' },
+      }),
+    ]);
+    assert.deepEqual(await denied.connector.getAttachment('msg-1', 'att-1'), {
+      kind: 'rejected',
+      status: 403,
+      reason: 'insufficient_permission',
+      code: 'ErrorAccessDenied',
+    });
+    const expired = setup([
+      status(401, { error: { code: 'InvalidAuthenticationToken' } }),
+    ]);
+    assert.deepEqual(await expired.connector.listAttachments('msg-1'), {
+      kind: 'authentication_expired',
+      status: 401,
+      code: 'InvalidAuthenticationToken',
+    });
+  },
+);
+
 // 最後に実行する（node:test はファイル内の試験を順に実行する）。
 test(
   '差分取得なし: この試験ファイルで送ったどの要求にも /delta・$deltatoken が無い',

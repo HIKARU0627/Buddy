@@ -46,6 +46,16 @@ export {
 } from './preflight.js';
 export type { KeyProtectionMode, PreflightCheck } from './preflight.js';
 export { CoreStartError, startCore } from './core.js';
+// B08-05: 同期の走査の実行器（設計 11 §1・§1A、ADR 0136）。周期の起動は B08-06 のゲートが呼ぶ。
+export { createSyncExecutor } from './sync-executor.js';
+export type {
+  SyncExecutor,
+  SyncExecutorOptions,
+  SyncResourceKind,
+  SyncScanKind,
+  SyncScanOutcome,
+  SyncScanRequest,
+} from './sync-executor.js';
 // B07-04: 予算の門と設定ファイルの読み込み（ADR 0037）。
 export { BudgetGate } from './budget-gate.js';
 export type {

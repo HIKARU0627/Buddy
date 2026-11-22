@@ -390,13 +390,14 @@ test('changing the selection abandons the old scans, follows the new scope revis
       assert.deepEqual(scopeRow(db, 's-cal'), {
         scope_revision: 2,
         active_scan_id: null,
-        pending_full: 0,
+        // 変更のたびに全量照合を必ず要求する（U207 の決定 (b)、B08-05、ADR 0136）。
+        pending_full: 1,
         pending_incremental: 1,
       });
       assert.deepEqual(scopeRow(db, 's-idle'), {
         scope_revision: 2,
         active_scan_id: null,
-        pending_full: 0,
+        pending_full: 1,
         pending_incremental: 0,
       });
       // 別の接続の取得集合と走査は変えない。

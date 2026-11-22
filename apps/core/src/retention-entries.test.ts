@@ -81,6 +81,13 @@ const ENTRIES: Readonly<Record<string, readonly Entry[]>> = {
   'mock-mail-ports.ts': [
     { kind: 'wiring', reason: '模擬のポートの実装（試験・模擬起動用）' },
   ],
+  'sync-executor.ts': [
+    {
+      kind: 'gated',
+      what: '同期の走査（接続先からのメール・予定の読み取りと公開）',
+      anchors: ['options.retention.ready()', 'options.retention.lease()'],
+    },
+  ],
 };
 
 async function sourceFiles(): Promise<string[]> {

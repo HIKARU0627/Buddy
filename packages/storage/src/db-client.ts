@@ -78,6 +78,16 @@ import { RETENTION_WRITE_OPS } from './retention-store.js';
 import { MEMORY_WRITE_OPS } from './memory-store.js';
 import { INTENT_SHADOW_WRITE_OPS } from './intent-shadow-store.js';
 import { CANDIDATE_WRITE_OPS } from './candidate-store.js';
+import { SYNC_WRITE_OPS } from './sync-store.js';
+import type {
+  SyncBeginValue,
+  SyncBatchValue,
+  SyncOp,
+  SyncOpResult,
+  SyncPublishValue,
+  SyncPublishedItem,
+  SyncScopeSnapshot,
+} from './sync-store.js';
 import type {
   CandidateOp,
   CandidateOpKind,
@@ -305,6 +315,17 @@ interface PendingCandidate {
   readonly resolve: (result: CandidateOpResult) => void;
 }
 
+interface PendingSync {
+  readonly kind: 'sync';
+  readonly op: SyncOp;
+  readonly timer: NodeJS.Timeout;
+  readonly resolve: (result: SyncOpResult) => void;
+}
+
+export type SyncOpOutcome<T> =
+  | { readonly ok: true; readonly value: T }
+  | Extract<SyncOpResult, { ok: false }>;
+
 export type CandidateOpOutcome<K extends CandidateOpKind> =
   | { readonly ok: true; readonly value: CandidateOpValues[K] }
   | Extract<CandidateOpResult, { ok: false }>;
@@ -375,6 +396,7 @@ export class DbWorkerClient {
     | PendingMemory
     | PendingIntentShadow
     | PendingCandidate
+    | PendingSync
   >();
   #issued = new WeakSet<DispatchPermit>();
   #consumed = new WeakSet<DispatchPermit>();
@@ -925,6 +947,54 @@ export class DbWorkerClient {
     }) as Promise<CandidateOpOutcome<K>>;
   }
 
+  // 同期の走査の命令と照会（B08-05、設計 11 §1A）。扱いは candidate と同じ。
+  sync(
+    op: Extract<SyncOp, { kind: 'sync.get_scope' }>,
+  ): Promise<SyncOpOutcome<SyncScopeSnapshot | null>>;
+  sync(
+    op: Extract<SyncOp, { kind: 'sync.list_scopes' }>,
+  ): Promise<SyncOpOutcome<readonly SyncScopeSnapshot[]>>;
+  sync(
+    op: Extract<SyncOp, { kind: 'sync.list_published' }>,
+  ): Promise<SyncOpOutcome<readonly SyncPublishedItem[]>>;
+  sync(
+    op: Extract<SyncOp, { kind: 'sync.begin' }>,
+  ): Promise<SyncOpOutcome<SyncBeginValue>>;
+  sync(
+    op: Extract<SyncOp, { kind: 'sync.stage_page' }>,
+  ): Promise<SyncOpOutcome<SyncBatchValue>>;
+  sync(
+    op: Extract<SyncOp, { kind: 'sync.validate' }>,
+  ): Promise<SyncOpOutcome<SyncBatchValue>>;
+  sync(
+    op: Extract<SyncOp, { kind: 'sync.publish' }>,
+  ): Promise<SyncOpOutcome<SyncPublishValue>>;
+  sync(
+    op: Extract<SyncOp, { kind: 'sync.abandon' }>,
+  ): Promise<SyncOpOutcome<SyncBatchValue>>;
+  sync(op: SyncOp): Promise<SyncOpResult> {
+    return new Promise<SyncOpResult>((resolve) => {
+      if (this.#state !== 'running') {
+        resolve({
+          ok: false,
+          outcome: 'rejected',
+          reasons: [
+            this.#state === 'closed' ? 'worker_closed' : 'worker_unavailable',
+          ],
+        });
+        return;
+      }
+      const id = this.#nextId++;
+      const timer = setTimeout(
+        () => this.#break('worker_timeout'),
+        this.#responseTimeoutMs,
+      );
+      this.#pending.set(id, { kind: 'sync', op, timer, resolve });
+      const message: MainToWorker = { type: 'sync', id, op };
+      this.#worker.postMessage(message);
+    });
+  }
+
   // 許可がこのクライアントの現在の世代で作られ、まだ使っておらず、worker が動いているか。
   isDispatchPermitCurrent(permit: DispatchPermit): boolean {
     return (
@@ -1074,6 +1144,14 @@ export class DbWorkerClient {
           outcome: CANDIDATE_WRITE_OPS.has(pending.op.kind)
             ? 'unknown'
             : 'rejected',
+          reasons: [reason],
+        });
+        continue;
+      }
+      if (pending.kind === 'sync') {
+        pending.resolve({
+          ok: false,
+          outcome: SYNC_WRITE_OPS.has(pending.op.kind) ? 'unknown' : 'rejected',
           reasons: [reason],
         });
         continue;
@@ -1260,6 +1338,18 @@ export class DbWorkerClient {
     if (message.type === 'intent_shadow_result') {
       const pending = this.#pending.get(message.id);
       if (pending?.kind !== 'intent_shadow') return;
+      clearTimeout(pending.timer);
+      this.#pending.delete(message.id);
+      if (message.halted && this.#state === 'running') {
+        this.#state = 'broken';
+        this.#brokenReason = 'worker_halted';
+      }
+      pending.resolve(message.result);
+      return;
+    }
+    if (message.type === 'sync_result') {
+      const pending = this.#pending.get(message.id);
+      if (pending?.kind !== 'sync') return;
       clearTimeout(pending.timer);
       this.#pending.delete(message.id);
       if (message.halted && this.#state === 'running') {

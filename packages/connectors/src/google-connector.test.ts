@@ -580,6 +580,190 @@ test('能力: 読み取りだけを宣言し、規則に合う', () => {
   assert.equal(connector.capability, GOOGLE_READ_CAPABILITY);
 });
 
+test('Calendar listEventsPage: pageToken を伝え、1 ページだけ読んで nextPageToken を返す', async () => {
+  const { connector, urls, requests } = setup([
+    json({
+      items: [
+        {
+          id: 'ev-1',
+          status: 'confirmed',
+          summary: '合成の予定 1',
+          start: { dateTime: '2026-11-03T10:00:00+09:00' },
+          end: { dateTime: '2026-11-03T11:00:00+09:00' },
+        },
+      ],
+      nextPageToken: 'p-next',
+    }),
+    // 2 ページ目以降は読まないので、台本に置いても消費されない。
+    json({ items: [{ id: 'ev-2', status: 'confirmed' }] }),
+  ]);
+
+  const page = await connector.calendar.listEventsPage({
+    ...WINDOW,
+    pageToken: 'cursor-1',
+  });
+
+  assert.deepEqual(page, {
+    items: [
+      {
+        id: 'ev-1',
+        status: 'confirmed',
+        summary: '合成の予定 1',
+        start: { dateTime: '2026-11-03T10:00:00+09:00' },
+        end: { dateTime: '2026-11-03T11:00:00+09:00' },
+      },
+    ],
+    nextPageToken: 'p-next',
+  });
+  // ページ版は次ページを自動で追わない（要求は 1 回だけ）。
+  assert.equal(requests.length, 1);
+  const [first] = urls();
+  assert.equal(first?.pathname, '/calendar/v3/calendars/primary/events');
+  assert.equal(first?.searchParams.get('pageToken'), 'cursor-1');
+  assert.equal(first?.searchParams.get('timeMin'), '2026-11-01T00:00:00+09:00');
+  assert.equal(first?.searchParams.get('timeMax'), '2026-12-01T00:00:00+09:00');
+  assert.equal(first?.searchParams.get('maxResults'), '250');
+});
+
+test('Calendar listEventsPage: items が 0 件でも nextPageToken を返す', async () => {
+  const { connector, requests } = setup([
+    json({ items: [], nextPageToken: 'still-more' }),
+  ]);
+
+  const page = await connector.calendar.listEventsPage(WINDOW);
+
+  assert.deepEqual(page, { items: [], nextPageToken: 'still-more' });
+  assert.equal(requests.length, 1);
+});
+
+test('Calendar listEventsPage: 最終ページは nextPageToken を含まない', async () => {
+  const { connector } = setup([
+    json({ items: [{ id: 'ev-9', status: 'cancelled' }] }),
+  ]);
+
+  const page = await connector.calendar.listEventsPage({
+    ...WINDOW,
+    pageToken: 'last-cursor',
+  });
+
+  assert.deepEqual(page, { items: [{ id: 'ev-9', status: 'cancelled' }] });
+});
+
+test('Gmail listMessageIdsPage: pageToken を伝え、1 ページだけ読んで nextPageToken を返す', async () => {
+  const { connector, urls, requests } = setup([
+    json({
+      messages: [
+        { id: 'm1', threadId: 't1' },
+        { id: 'm2', threadId: 't1' },
+      ],
+      nextPageToken: 'n-next',
+    }),
+    json({ messages: [{ id: 'm3', threadId: 't3' }] }),
+  ]);
+
+  const page = await connector.gmail.listMessageIdsPage({
+    labelIds: ['INBOX', 'Label_7'],
+    afterEpochSeconds: 1700000000,
+    pageToken: 'cursor-9',
+  });
+
+  assert.deepEqual(page, {
+    items: [
+      { id: 'm1', threadId: 't1' },
+      { id: 'm2', threadId: 't1' },
+    ],
+    nextPageToken: 'n-next',
+  });
+  assert.equal(requests.length, 1);
+  const [first] = urls();
+  assert.equal(first?.pathname, '/gmail/v1/users/me/messages');
+  assert.equal(first?.searchParams.get('pageToken'), 'cursor-9');
+  assert.deepEqual(first?.searchParams.getAll('labelIds'), [
+    'INBOX',
+    'Label_7',
+  ]);
+  assert.equal(first?.searchParams.get('q'), 'after:1700000000');
+  assert.equal(first?.searchParams.get('maxResults'), '500');
+});
+
+test('Gmail listMessageIdsPage: messages が省略された 0 件でも nextPageToken を返す', async () => {
+  const { connector, requests } = setup([json({ nextPageToken: 'n-more' })]);
+
+  const page = await connector.gmail.listMessageIdsPage({
+    labelIds: ['INBOX'],
+    afterEpochSeconds: 1700000000,
+  });
+
+  assert.deepEqual(page, { items: [], nextPageToken: 'n-more' });
+  assert.equal(requests.length, 1);
+});
+
+test('Gmail listHistoryPage: そのページの historyId と nextPageToken を返し、pageToken を伝える', async () => {
+  const { connector, urls, requests } = setup([
+    json({
+      history: [
+        {
+          id: '101',
+          messagesAdded: [{ message: { id: 'm5', threadId: 't5' } }],
+        },
+      ],
+      historyId: '150',
+      nextPageToken: 'h-next',
+    }),
+    json({ history: [], historyId: '160' }),
+  ]);
+
+  const page = await connector.gmail.listHistoryPage({
+    startHistoryId: '100',
+    labelId: 'INBOX',
+    pageToken: 'h-cursor',
+  });
+
+  assert.deepEqual(page, {
+    items: [
+      {
+        id: '101',
+        addedMessageIds: ['m5'],
+        deletedMessageIds: [],
+        labelsAdded: [],
+        labelsRemoved: [],
+      },
+    ],
+    nextPageToken: 'h-next',
+    historyId: '150',
+  });
+  assert.equal(requests.length, 1);
+  const [first] = urls();
+  assert.equal(first?.pathname, '/gmail/v1/users/me/history');
+  assert.equal(first?.searchParams.get('pageToken'), 'h-cursor');
+  assert.equal(first?.searchParams.get('startHistoryId'), '100');
+  assert.equal(first?.searchParams.get('labelId'), 'INBOX');
+});
+
+test('Gmail listHistoryPage: history が 0 件でもそのページの historyId を返す', async () => {
+  const { connector } = setup([json({ historyId: '160' })]);
+
+  const page = await connector.gmail.listHistoryPage({
+    startHistoryId: '100',
+  });
+
+  assert.deepEqual(page, { items: [], historyId: '160' });
+});
+
+test('Gmail listHistoryPage: 404 は期限切れの専用エラーにする', async () => {
+  const { connector, requests } = setup([status(404), json({})]);
+
+  await assert.rejects(
+    connector.gmail.listHistoryPage({ startHistoryId: '1' }),
+    (error: unknown) => {
+      assert.ok(error instanceof GoogleHistoryExpiredError);
+      assertNoToken(error);
+      return true;
+    },
+  );
+  assert.equal(requests.length, 1);
+});
+
 test('同じ nextPageToken が繰り返し返ると invalid_response で止まる', async () => {
   const { connector, requests } = setup([
     json({ items: [], nextPageToken: 'loop' }),

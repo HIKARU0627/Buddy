@@ -70,6 +70,12 @@ export interface GoogleGmailReader {
     readonly labelIds: readonly string[];
     readonly afterEpochSeconds: number;
   }): Promise<readonly GoogleGmailMessageRef[]>;
+  // ページ単位の読み取り（B08-05）。page_cursor の保存・再開は呼び出し側（Core の走査実行器）が持つ。
+  listMessageIdsPage(request: {
+    readonly labelIds: readonly string[];
+    readonly afterEpochSeconds: number;
+    readonly pageToken?: string;
+  }): Promise<GooglePage<GoogleGmailMessageRef>>;
   getMessage(request: {
     readonly id: string;
     readonly format: GoogleGmailMessageFormat;
@@ -78,6 +84,12 @@ export interface GoogleGmailReader {
     readonly startHistoryId: string;
     readonly labelId?: string;
   }): Promise<GoogleHistoryResult>;
+  // ページ単位の読み取り（B08-05）。historyId はそのページの応答の値で、最終ページの値が次の起点になる。
+  listHistoryPage(request: {
+    readonly startHistoryId: string;
+    readonly labelId?: string;
+    readonly pageToken?: string;
+  }): Promise<GooglePage<GoogleHistoryEntry> & { readonly historyId: string }>;
 }
 
 // history の startHistoryId が期限切れ（404）。呼び出し側は全量の読み直しに切り替える。
@@ -245,19 +257,63 @@ function toHistoryEntry(value: unknown): GoogleHistoryEntry {
   };
 }
 
+function toHistoryPage(
+  body: unknown,
+): GooglePage<GoogleHistoryEntry> & { readonly historyId: string } {
+  if (!isRecord(body)) throw invalidResponse();
+  return {
+    items: optionalArray(body, 'history').map(toHistoryEntry),
+    ...readNextPageToken(body),
+    // そのページの応答の historyId。呼び出し側は最終ページの値を次の起点にする。
+    historyId: requiredString(body, 'historyId'),
+  };
+}
+
 export function createGoogleGmailReader(
   client: GoogleHttpClient,
 ): GoogleGmailReader {
+  const listMessageIdsPage: GoogleGmailReader['listMessageIdsPage'] = async (
+    request,
+  ) =>
+    toMessageRefsPage(
+      await client.getJson('/gmail/v1/users/me/messages', {
+        labelIds: request.labelIds,
+        q: `after:${request.afterEpochSeconds}`,
+        maxResults: MESSAGES_PAGE_SIZE,
+        pageToken: request.pageToken,
+      }),
+    );
+
+  const listHistoryPage: GoogleGmailReader['listHistoryPage'] = async (
+    request,
+  ) => {
+    let body: unknown;
+    try {
+      body = await client.getJson('/gmail/v1/users/me/history', {
+        startHistoryId: request.startHistoryId,
+        historyTypes: HISTORY_TYPES,
+        labelId: request.labelId,
+        pageToken: request.pageToken,
+      });
+    } catch (error) {
+      if (
+        error instanceof GoogleApiError &&
+        error.kind === 'http_error' &&
+        error.status === 404
+      ) {
+        throw new GoogleHistoryExpiredError();
+      }
+      throw error;
+    }
+    return toHistoryPage(body);
+  };
+
   return {
+    listMessageIdsPage,
     async listMessageIds(request) {
       return collectPages(async (pageToken) =>
-        toMessageRefsPage(
-          await client.getJson('/gmail/v1/users/me/messages', {
-            labelIds: request.labelIds,
-            q: `after:${request.afterEpochSeconds}`,
-            maxResults: MESSAGES_PAGE_SIZE,
-            pageToken,
-          }),
+        listMessageIdsPage(
+          pageToken === undefined ? request : { ...request, pageToken },
         ),
       );
     },
@@ -271,36 +327,19 @@ export function createGoogleGmailReader(
       );
     },
 
+    listHistoryPage,
     async listHistory(request) {
       // 閉包の中で書き換えるので、変数の絞り込みに頼らずオブジェクトに置く。
       const last: { historyId?: string } = {};
-      let entries: readonly GoogleHistoryEntry[];
-      try {
-        entries = await collectPages(async (pageToken) => {
-          const body = await client.getJson('/gmail/v1/users/me/history', {
-            startHistoryId: request.startHistoryId,
-            historyTypes: HISTORY_TYPES,
-            labelId: request.labelId,
-            pageToken,
-          });
-          if (!isRecord(body)) throw invalidResponse();
-          // 最後の応答の historyId を次回の起点にする。
-          last.historyId = requiredString(body, 'historyId');
-          return {
-            items: optionalArray(body, 'history').map(toHistoryEntry),
-            ...readNextPageToken(body),
-          };
-        });
-      } catch (error) {
-        if (
-          error instanceof GoogleApiError &&
-          error.kind === 'http_error' &&
-          error.status === 404
-        ) {
-          throw new GoogleHistoryExpiredError();
-        }
-        throw error;
-      }
+      // 404 → GoogleHistoryExpiredError の変換は listHistoryPage が持つ。
+      const entries = await collectPages(async (pageToken) => {
+        const page = await listHistoryPage(
+          pageToken === undefined ? request : { ...request, pageToken },
+        );
+        // 最後の応答の historyId を次回の起点にする。
+        last.historyId = page.historyId;
+        return page;
+      });
       const { historyId } = last;
       if (historyId === undefined) throw invalidResponse();
       return { historyId, entries };

@@ -42,6 +42,10 @@ export interface GoogleCalendarReader {
   listEvents(
     request: ListCalendarEventsRequest,
   ): Promise<readonly GoogleCalendarEvent[]>;
+  // ページ単位の読み取り（B08-05）。page_cursor の保存・再開は呼び出し側（Core の走査実行器）が持つ。
+  listEventsPage(
+    request: ListCalendarEventsRequest & { readonly pageToken?: string },
+  ): Promise<GooglePage<GoogleCalendarEvent>>;
 }
 
 const CALENDAR_PAGE_SIZE = '250';
@@ -123,22 +127,30 @@ function toEventsPage(body: unknown): GooglePage<GoogleCalendarEvent> {
 export function createGoogleCalendarReader(
   client: GoogleHttpClient,
 ): GoogleCalendarReader {
+  const listEventsPage: GoogleCalendarReader['listEventsPage'] = async (
+    request,
+  ) => {
+    const path = `/calendar/v3/calendars/${encodeURIComponent(
+      request.calendarId,
+    )}/events`;
+    return toEventsPage(
+      await client.getJson(path, {
+        singleEvents: 'true',
+        showDeleted: 'true',
+        timeMin: request.timeMin,
+        timeMax: request.timeMax,
+        updatedMin: request.updatedMin,
+        maxResults: CALENDAR_PAGE_SIZE,
+        pageToken: request.pageToken,
+      }),
+    );
+  };
   return {
+    listEventsPage,
     async listEvents(request) {
-      const path = `/calendar/v3/calendars/${encodeURIComponent(
-        request.calendarId,
-      )}/events`;
       return collectPages(async (pageToken) =>
-        toEventsPage(
-          await client.getJson(path, {
-            singleEvents: 'true',
-            showDeleted: 'true',
-            timeMin: request.timeMin,
-            timeMax: request.timeMax,
-            updatedMin: request.updatedMin,
-            maxResults: CALENDAR_PAGE_SIZE,
-            pageToken,
-          }),
+        listEventsPage(
+          pageToken === undefined ? request : { ...request, pageToken },
         ),
       );
     },

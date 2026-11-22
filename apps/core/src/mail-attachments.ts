@@ -244,9 +244,8 @@ export function createMailAttachmentLoader(
       // 取得・抽出が終わるまで貸し出しを持つ。ゲートが閉じている・貸し出しが取れないときは取得せず、
       // 許可した添付を未読（failed）にする（読めたことにしない）。
       let release: (() => void) | null = null;
-      let mayFetch = true;
+      let mayFetch = options.retention === undefined;
       if (options.retention !== undefined) {
-        mayFetch = false;
         for (let attempt = 0; release === null && attempt < 3; attempt += 1) {
           await options.retention.ready();
           const gate = options.retention.gate();

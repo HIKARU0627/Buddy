@@ -23,6 +23,8 @@ import type { ScreenResult } from './live-conversation.js';
 import { PreviewRegistry } from './previews.js';
 import { TEST_TURN_POLICY, createMockInterpreter } from './turn-ports.js';
 import type {
+  BackgroundJobAcceptance,
+  BackgroundJobAcceptor,
   Interpreter,
   InterpretationContext,
   InterpreterReply,
@@ -189,6 +191,8 @@ async function withConversation(
     // つなぎの期限のタイマー（1500 ms）の登録を、この時間だけ遅らせる（イベントループの混雑・サスペンドで通知のタイマーが
     // 遅れて動く状況の模擬）。他のタイマーは変えない。
     readonly firstNoticeDelayMs?: number;
+    // 裏のジョブの受付器（U254、ADR 0135）。省略は受付なし（製品の起動と同じ）。
+    readonly backgroundJobs?: BackgroundJobAcceptor;
   } = {},
 ): Promise<void> {
   await withRig(async (rig) => {
@@ -213,6 +217,9 @@ async function withConversation(
       now: () => NOW,
       onSessionControl: ({ device_id, action }) =>
         rig.voice.applySessionControlForDevice(device_id, action),
+      ...(options.backgroundJobs === undefined
+        ? {}
+        : { backgroundJobs: options.backgroundJobs }),
     });
     // 画面の発言の会話を 1 つ作る（postTurn は会話ごとの由来の控えを必要とする）。
     const createRoute = API_ROUTES.find(
@@ -3774,5 +3781,171 @@ test(
         },
       },
     );
+  },
+);
+
+// ---- B10-04 P5: 調査を最初から裏のジョブへ回す口（U254。ADR 0135） ----------------------------------------------------
+//
+// 製品の起動（core.ts）は受付器を渡さない。ここでは偽の受付器を注入し、受け付けたときだけ受付の文を 1 回だけ声に載せ、
+// つなぎ・背景化の文を重ねず、結果の画面回し（ScreenResult）を作らないことを確かめる。実行器（B12）は未実装で、模擬だけ。
+
+const RESEARCH_SPOKEN = '合成の話題について調べて';
+const ACCEPTED_SENTENCE = '受け付けました。終わったら知らせます。';
+
+// 偽の受付器。dedupe_key ごとに最初の受付の ID を返す（同じ鍵では新しいジョブを作らない）。
+class FakeAcceptor implements BackgroundJobAcceptor {
+  readonly calls: BackgroundJobAcceptance[] = [];
+  readonly jobs = new Map<string, string>();
+  acceptResearch(job: BackgroundJobAcceptance) {
+    this.calls.push({ ...job });
+    const first = this.jobs.get(job.dedupe_key) ?? job.workflow_id;
+    this.jobs.set(job.dedupe_key, first);
+    return Promise.resolve({ kind: 'accepted' as const, workflow_id: first });
+  }
+}
+
+const workflowRowsOf = (rig: Rig) =>
+  rows<{ workflow_id: string; state: string }>(
+    rig,
+    'SELECT workflow_id, state FROM workflows ORDER BY rowid',
+  );
+
+test(
+  'U254: a delegated research accepted by the background job is answered once with the acceptance sentence, with no bridge, no background notice and no screen result',
+  TIMEOUT,
+  async () => {
+    const acceptor = new FakeAcceptor();
+    await withConversation(
+      async (c) => {
+        await speak(c, { text: RESEARCH_SPOKEN });
+        await delegate(c, 'd1', 800);
+        await c.rig.clock.advance(500);
+        await waitUntil(
+          c.rig,
+          'the acceptance',
+          () => c.sb.commentary.length === 1,
+        );
+        assert.deepEqual(c.sb.commentary, [[ACCEPTED_SENTENCE]]);
+        // つなぎ（1.5 秒）・背景化（8 秒）の時刻を過ぎても、受け付けた依頼に重ねて言わない。
+        await beat(c, 10_000);
+        assert.deepEqual(c.sb.commentary, [[ACCEPTED_SENTENCE]]);
+        assert.deepEqual(c.shown, []);
+        assert.equal(c.conversation.pendingCount, 0);
+        // 受付器は 1 回だけ呼ばれ、記録した依頼の ID と受付の ID は同じ。状態は executing、操作は作らない。
+        assert.equal(acceptor.calls.length, 1);
+        const call = acceptor.calls[0] as BackgroundJobAcceptance;
+        assert.equal(call.intent, 'research');
+        assert.equal(call.query, '合成の話題');
+        assert.equal(call.session_id, SESSION);
+        assert.deepEqual(workflowRowsOf(c.rig), [
+          { workflow_id: call.workflow_id, state: 'executing' },
+        ]);
+        assert.deepEqual(operations(c.rig), []);
+        // 同じ委譲の再送は、もう一度扱わない（受付も文も増えない）。
+        await delegate(c, 'd1', 800);
+        await beat(c, 2000);
+        assert.equal(acceptor.calls.length, 1);
+        assert.deepEqual(c.sb.commentary, [[ACCEPTED_SENTENCE]]);
+      },
+      { backgroundJobs: acceptor },
+    );
+  },
+);
+
+test(
+  'U254: closing the live after the acceptance appends nothing more to it, and makes no screen result',
+  TIMEOUT,
+  async () => {
+    const acceptor = new FakeAcceptor();
+    await withConversation(
+      async (c) => {
+        await speak(c, { text: RESEARCH_SPOKEN });
+        await delegate(c, 'd1', 800);
+        await c.rig.clock.advance(500);
+        await waitUntil(
+          c.rig,
+          'the acceptance',
+          () => c.sb.commentary.length === 1,
+        );
+        const closed = await c.rig.voice.closeLiveSession(A, c.liveId, {
+          request_id: uuid(0x7a),
+          command_scope_id: SCOPE_A,
+          reason: 'silence',
+          audio_epoch: c.rig.voice.liveRecord(c.liveId)?.audio_epoch as string,
+        });
+        assert.equal(closed.status, 202);
+        await c.rig.clock.advance(10_000);
+        await c.rig.wait();
+        assert.deepEqual(c.sb.commentary, [[ACCEPTED_SENTENCE]]);
+        assert.deepEqual(c.shown, []);
+        assert.equal(acceptor.calls.length, 1);
+      },
+      { backgroundJobs: acceptor },
+    );
+  },
+);
+
+test(
+  'U254: a research accepted after the live was closed appends nothing to the closed live and makes no screen result; the job stays accepted',
+  TIMEOUT,
+  async () => {
+    const acceptor = new FakeAcceptor();
+    const slow = gate();
+    await withConversation(
+      async (c) => {
+        await speak(c, { text: RESEARCH_SPOKEN });
+        await delegate(c, 'd1', 800);
+        await c.rig.clock.advance(400);
+        await waitUntil(
+          c.rig,
+          'the interpretation',
+          () => c.script.calls.length === 1,
+        );
+        // つなぎの前（1.5 秒の手前）に閉じる。
+        const closed = await c.rig.voice.closeLiveSession(A, c.liveId, {
+          request_id: uuid(0x7b),
+          command_scope_id: SCOPE_A,
+          reason: 'silence',
+          audio_epoch: c.rig.voice.liveRecord(c.liveId)?.audio_epoch as string,
+        });
+        assert.equal(closed.status, 202);
+        slow.release();
+        await waitUntil(c.rig, 'the commit', () => c.commits.length === 1);
+        await c.rig.clock.advance(10_000);
+        await c.rig.wait();
+        assert.deepEqual(c.commits, ['ok']);
+        assert.deepEqual(c.sb.commentary, []);
+        assert.deepEqual(c.shown, []);
+        assert.equal(acceptor.calls.length, 1);
+        assert.deepEqual(
+          workflowRowsOf(c.rig).map((row) => row.state),
+          ['executing'],
+        );
+      },
+      {
+        backgroundJobs: acceptor,
+        prepare: (script) => {
+          script.gates.set(RESEARCH_SPOKEN, slow.promise);
+        },
+      },
+    );
+  },
+);
+
+test(
+  'U254: without an acceptor a delegated research is still answered "not supported" and nothing is accepted',
+  TIMEOUT,
+  async () => {
+    await withConversation(async (c) => {
+      await speak(c, { text: RESEARCH_SPOKEN });
+      await delegate(c, 'd1', 800);
+      await c.rig.clock.advance(500);
+      await waitUntil(c.rig, 'the answer', () => c.sb.commentary.length === 1);
+      assert.deepEqual(c.sb.commentary, [
+        ['その依頼にはまだ対応していません。'],
+      ]);
+      assert.deepEqual(workflowStates(c.rig), ['clarifying']);
+      assert.deepEqual(c.shown, []);
+    });
   },
 );

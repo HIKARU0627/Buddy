@@ -259,6 +259,37 @@ export interface CandidateSource {
   mailCandidates(): Promise<readonly MailCandidate[]>;
 }
 
+// --- 裏のジョブの受付（設計 10 §5「裏のジョブ」、contract-map U254、ADR 0135） ---
+
+// 裏のジョブへ渡す受付の項目。最小限にし、発言の全文・本人の情報は渡さない（query は解釈が抜き出した調べる対象だけ）。
+export interface BackgroundJobAcceptance {
+  // Core が提案する依頼の ID。受付器は同じ dedupe_key の最初の受付の ID を返す（提案と違うことがある）。
+  readonly workflow_id: string;
+  readonly intent: 'research';
+  readonly query: string;
+  readonly session_id: string;
+  // 同じ要求の再送・同時の重複を見分ける値（Core が接続範囲と request_id から決める command_id）。
+  readonly dedupe_key: string;
+}
+
+export type BackgroundJobAcceptResult =
+  | { readonly kind: 'accepted'; readonly workflow_id: string }
+  | { readonly kind: 'unavailable' };
+
+// 裏のジョブの受付の差し込み口。実行器（B12）の受付・保存（B12-05）が実装する。Core は受け付けた結果だけを見て、
+// 受付の文（「受け付けました。終わったら知らせます。」）を返す。受付器がない・使えないときは受付の文を使わない。
+//
+// 契約（実装が守ること）:
+// - 冪等: 同じ dedupe_key の再呼び出しは新しいジョブを作らず、最初の受付の workflow_id で accepted を返す。
+// - 受け付けていない（保存できていない・上限・停止中など）のに accepted を返してはならない。分からないときは
+//   unavailable を返す（Core は「今は進められません」の聞き返しにし、受付の文を出さない）。
+// - 例外は unavailable と同じに扱う（Core は自動で再送しない）。
+export interface BackgroundJobAcceptor {
+  acceptResearch(
+    job: BackgroundJobAcceptance,
+  ): Promise<BackgroundJobAcceptResult>;
+}
+
 // --- 試験用の方針表 ---
 
 export interface TurnPolicy {
@@ -304,6 +335,7 @@ const EMPTY_ARGS = {
 // - 「用事を登録して」→ create_task（題名なし。必須の不足で聞き返し）
 // - 「mail-001 に「本文」と返信の下書きを保存して」→ draft_reply（対象は候補の対応から、本文つき。B04-07）
 // - 「mail-001 に返信の下書きを保存して」→ draft_reply（本文なし。聞き返し）
+// - 「<query>について調べて」→ research（query つき。裏のジョブの受付、ADR 0135）
 export function createMockInterpreter(): Interpreter {
   return {
     interpret(context) {
@@ -357,6 +389,13 @@ export function createMockInterpreter(): Interpreter {
           kind: 'intent',
           intent: 'create_task',
           args: { ...EMPTY_ARGS },
+        });
+      const research = /^(.+)について調べて$/u.exec(text);
+      if (research !== null)
+        return Promise.resolve({
+          kind: 'intent',
+          intent: 'research',
+          args: { ...EMPTY_ARGS, query: research[1] as string },
         });
       return Promise.resolve({ kind: 'unclear' });
     },

@@ -16,9 +16,14 @@ import type { RequestEnvironment } from './api-environment.js';
 import { createOperationRoutes } from './api-operations.js';
 import type { OperationRouteStore } from './api-operations.js';
 import { createTurnRoutes, scheduleOverlaps } from './api-turns.js';
-import type { TurnRouteStore } from './api-turns.js';
+import type { TurnRouteStore, TurnRoutes } from './api-turns.js';
 import type { EventFeed } from './event-feed.js';
-import { TEST_TURN_POLICY } from './turn-ports.js';
+import { TEST_TURN_POLICY, createMockInterpreter } from './turn-ports.js';
+import { API_ROUTES } from './api-routes.js';
+import type { ApiHandlerRequest } from './api-server.js';
+import { withBudgetStore } from './budget-test-support.js';
+import type { BudgetHarness } from './budget-test-support.js';
+import { A, DEV_A, SCOPE_A } from './voice-rig-test-support.js';
 import { DeviceConnections } from './device-connections.js';
 import { PreviewRegistry } from './previews.js';
 import {
@@ -35,6 +40,8 @@ import {
 import type { EventCore } from './event-test-support.js';
 import type { TestDevice } from './api-test-support.js';
 import type {
+  BackgroundJobAcceptance,
+  BackgroundJobAcceptor,
   Interpreter,
   ProviderConnection,
   ProviderEvent,
@@ -1605,5 +1612,316 @@ test(
       assert.equal(response.status, 200, `${intent}: ${response.text}`);
       assert(!response.text.includes('予定を作りました'), intent);
     }
+  },
+);
+
+// ---- B10-04 P5: 調査を最初から裏のジョブへ回す口（U254。ADR 0135） ----------------------------------------------------
+//
+// 製品の起動（core.ts）は受付器を渡さないので、ここでは createTurnRoutes を一時ディレクトリの DB worker に直接つなぎ、
+// 偽の受付器を注入したときだけ受付が働くことを確かめる。期待値（文・状態・件数）は手で書いた値。模擬の試験だけで、
+// 実行器（B12）・実 API・実請求・実機は未実施。
+
+const ACCEPTED_SENTENCE = '受け付けました。終わったら知らせます。';
+const BLOCKED_SENTENCE =
+  '今は進められません。少し待ってからもう一度お願いします。';
+const MISSING_OTHER_SENTENCE =
+  '足りない情報があります。もう少し詳しく教えてください。';
+const RESEARCH_TEXT = '合成の話題について調べて';
+
+// 偽の受付器。dedupe_key ごとに最初の受付の ID を覚え、同じ鍵の再呼び出しには新しいジョブを作らずその ID を返す。
+class FakeAcceptor implements BackgroundJobAcceptor {
+  readonly calls: BackgroundJobAcceptance[] = [];
+  readonly jobs = new Map<string, string>();
+  mode: 'accept' | 'unavailable' | 'throw' = 'accept';
+  acceptResearch(job: BackgroundJobAcceptance) {
+    this.calls.push({ ...job });
+    if (this.mode === 'throw')
+      return Promise.reject(new Error('synthetic failure'));
+    if (this.mode === 'unavailable')
+      return Promise.resolve({ kind: 'unavailable' as const });
+    const first = this.jobs.get(job.dedupe_key) ?? job.workflow_id;
+    this.jobs.set(job.dedupe_key, first);
+    return Promise.resolve({ kind: 'accepted' as const, workflow_id: first });
+  }
+}
+
+interface ResearchRig {
+  readonly harness: BudgetHarness;
+  readonly routes: TurnRoutes;
+  readonly sessionId: string;
+}
+
+async function withResearchRoutes(
+  options: {
+    readonly acceptor?: BackgroundJobAcceptor;
+    readonly interpreter?: Interpreter;
+  },
+  body: (rig: ResearchRig) => Promise<void>,
+): Promise<void> {
+  await withBudgetStore(async (harness) => {
+    harness.sql((db) => {
+      db.prepare(
+        `INSERT INTO devices VALUES (?, '合成の端末', 'macos', 0, X'${'a'.repeat(64)}', 1000, NULL, NULL)`,
+      ).run(DEV_A);
+    });
+    const routes = createTurnRoutes({
+      store: harness.store,
+      keyStore: {
+        loadDataKey: () =>
+          Promise.resolve({ ok: true as const, dataKey: DATA_KEY_MATERIAL }),
+      },
+      interpreter: options.interpreter ?? createMockInterpreter(),
+      provider: null,
+      candidates: { mailCandidates: () => Promise.resolve([]) },
+      policy: TEST_TURN_POLICY,
+      previews: new PreviewRegistry(),
+      storage: {
+        mode: 'normal',
+        origin: () => ({ segment_id: 'gate', segment_generation: '1' }),
+      },
+      utcOffset: '+09:00',
+      now: () => CLOCK.getTime(),
+      ...(options.acceptor === undefined
+        ? {}
+        : { backgroundJobs: options.acceptor }),
+    });
+    const route = API_ROUTES.find(
+      (entry) => entry.operationId === 'createSession',
+    );
+    assert(route !== undefined);
+    const created = await routes.handlers['createSession']?.({
+      route,
+      device: A,
+      body: {
+        request_id: randomUUID(),
+        command_scope_id: SCOPE_A,
+        storage_mode: 'normal',
+      },
+      params: {},
+      remoteAddress: '127.0.0.1',
+      query: {},
+      declaredLockState: 'unlocked',
+    });
+    assert.equal(created?.status, 201, JSON.stringify(created?.body));
+    const sessionId = String(
+      (created?.body as { session_id?: unknown }).session_id,
+    );
+    await body({ harness, routes, sessionId });
+  });
+}
+
+const researchTurn = async (
+  rig: ResearchRig,
+  text: string,
+  requestId: string = randomUUID(),
+) => {
+  const route = API_ROUTES.find((entry) => entry.operationId === 'postTurn');
+  assert(route !== undefined);
+  const request: ApiHandlerRequest = {
+    route,
+    device: A,
+    body: {
+      request_id: requestId,
+      command_scope_id: SCOPE_A,
+      text,
+      input_kind: 'text',
+      origin: { segment_id: rig.sessionId, segment_generation: '1' },
+    },
+    params: { session_id: rig.sessionId },
+    remoteAddress: '127.0.0.1',
+    query: {},
+    declaredLockState: 'unlocked',
+  };
+  const response = await rig.routes.handlers['postTurn']?.(request);
+  assert(response !== undefined);
+  assert.equal(response.status, 200, JSON.stringify(response.body));
+  assert(
+    contract.valid('TurnResponse', response.body),
+    JSON.stringify(response.body),
+  );
+  return response.body as Record<string, unknown>;
+};
+
+interface WorkflowRow {
+  readonly workflow_id: string;
+  readonly state: string;
+}
+const WORKFLOW_ROWS = 'SELECT workflow_id, state FROM workflows ORDER BY rowid';
+const workflowRows = (rig: ResearchRig): WorkflowRow[] =>
+  rig.harness.sql((db) => db.prepare(WORKFLOW_ROWS).all() as WorkflowRow[]);
+const OPERATION_COUNT = 'SELECT count(*) FROM operations';
+const operationCount = (rig: ResearchRig): number =>
+  rig.harness.sql((db) => db.prepare(OPERATION_COUNT).pluck().get() as number);
+
+test(
+  'U254: with a background job acceptor, research is accepted in the background with the fixed acceptance sentence and saved as an executing workflow',
+  { timeout: 60_000 },
+  async () => {
+    const acceptor = new FakeAcceptor();
+    await withResearchRoutes({ acceptor }, async (rig) => {
+      const body = await researchTurn(rig, RESEARCH_TEXT);
+      assert.equal(body['status'], 'background');
+      assert.equal(body['reply_text'], ACCEPTED_SENTENCE);
+      const view = body['result_view'] as Record<string, unknown>;
+      assert.equal(view['kind'], 'accepted_line');
+      assert.equal(view['status'], 'preparing');
+      assert.equal(view['intent'], 'research');
+      assert.deepEqual(view['item_refs'], []);
+      assert.equal(view['more_count'], 0);
+      // 受付器へ渡したのは最小限の項目だけ（発言の全文は渡さない）。
+      assert.equal(acceptor.calls.length, 1);
+      const call = acceptor.calls[0] as BackgroundJobAcceptance;
+      assert.deepEqual(Object.keys(call).sort(), [
+        'dedupe_key',
+        'intent',
+        'query',
+        'session_id',
+        'workflow_id',
+      ]);
+      assert.equal(call.intent, 'research');
+      assert.equal(call.query, '合成の話題');
+      assert.equal(call.session_id, rig.sessionId);
+      // 記録した依頼・応答の ID は受付器が返した ID と同じ。状態は executing。操作は作らない。
+      assert.equal(body['workflow_id'], call.workflow_id);
+      assert.equal(view['workflow_id'], call.workflow_id);
+      assert.deepEqual(workflowRows(rig), [
+        { workflow_id: call.workflow_id, state: 'executing' },
+      ]);
+      assert.equal(operationCount(rig), 0);
+    });
+  },
+);
+
+test(
+  'U254: a resend of the same request returns the same stored response and does not call the acceptor again; concurrent resends make one job',
+  { timeout: 60_000 },
+  async () => {
+    const acceptor = new FakeAcceptor();
+    await withResearchRoutes({ acceptor }, async (rig) => {
+      const requestId = randomUUID();
+      const first = await researchTurn(rig, RESEARCH_TEXT, requestId);
+      const again = await researchTurn(rig, RESEARCH_TEXT, requestId);
+      assert.deepEqual(again, first);
+      assert.equal(acceptor.calls.length, 1);
+      // 同時の再送: 受付器が呼ばれても同じ dedupe_key で、ジョブは 1 つ、応答はすべて同じ、依頼も 1 つ。
+      const concurrentId = randomUUID();
+      const responses = await Promise.all([
+        researchTurn(rig, RESEARCH_TEXT, concurrentId),
+        researchTurn(rig, RESEARCH_TEXT, concurrentId),
+        researchTurn(rig, RESEARCH_TEXT, concurrentId),
+      ]);
+      for (const response of responses)
+        assert.deepEqual(response, responses[0]);
+      const concurrentCalls = acceptor.calls.slice(1);
+      assert(concurrentCalls.length >= 1);
+      assert.equal(
+        new Set(concurrentCalls.map((call) => call.dedupe_key)).size,
+        1,
+      );
+      assert.notEqual(
+        concurrentCalls[0]?.dedupe_key,
+        acceptor.calls[0]?.dedupe_key,
+      );
+      assert.equal(acceptor.jobs.size, 2);
+      assert.deepEqual(
+        workflowRows(rig).map((row) => row.state),
+        ['executing', 'executing'],
+      );
+    });
+  },
+);
+
+test(
+  'U254: when the acceptor is unavailable or fails, research is a "cannot proceed now" clarification without the acceptance sentence or an executing workflow',
+  { timeout: 60_000 },
+  async () => {
+    const acceptor = new FakeAcceptor();
+    await withResearchRoutes({ acceptor }, async (rig) => {
+      for (const mode of ['unavailable', 'throw'] as const) {
+        acceptor.mode = mode;
+        const body = await researchTurn(rig, RESEARCH_TEXT);
+        assert.equal(body['status'], 'clarification', mode);
+        assert.equal(body['reply_text'], BLOCKED_SENTENCE, mode);
+        assert(!JSON.stringify(body).includes(ACCEPTED_SENTENCE), mode);
+        assert.equal(
+          (body['result_view'] as Record<string, unknown>)['kind'],
+          'clarification',
+          mode,
+        );
+      }
+      // 聞き返しの依頼だけが残る（実行中の依頼は作らない）。
+      assert.deepEqual(
+        workflowRows(rig).map((row) => row.state),
+        ['clarifying', 'clarifying'],
+      );
+      assert.equal(operationCount(rig), 0);
+    });
+  },
+);
+
+test(
+  'U254: an acceptor that answers accepted with a malformed workflow id is not trusted',
+  { timeout: 60_000 },
+  async () => {
+    const acceptor: BackgroundJobAcceptor = {
+      acceptResearch: () =>
+        Promise.resolve({ kind: 'accepted', workflow_id: 'not-a-uuid' }),
+    };
+    await withResearchRoutes({ acceptor }, async (rig) => {
+      const body = await researchTurn(rig, RESEARCH_TEXT);
+      assert.equal(body['status'], 'clarification');
+      assert.equal(body['reply_text'], BLOCKED_SENTENCE);
+      assert.deepEqual(
+        workflowRows(rig).map((row) => row.state),
+        ['clarifying'],
+      );
+    });
+  },
+);
+
+test(
+  'U254: without an acceptor (the product wiring today) research stays "not supported", as before',
+  { timeout: 60_000 },
+  async () => {
+    await withResearchRoutes({}, async (rig) => {
+      const body = await researchTurn(rig, RESEARCH_TEXT);
+      assert.equal(body['status'], 'clarification');
+      assert.equal(body['reply_text'], UNSUPPORTED_SENTENCE);
+      assert.deepEqual(
+        workflowRows(rig).map((row) => row.state),
+        ['clarifying'],
+      );
+    });
+  },
+);
+
+test(
+  'U254: research without a query asks for the missing information and never calls the acceptor',
+  { timeout: 60_000 },
+  async () => {
+    const acceptor = new FakeAcceptor();
+    const state = {
+      intent: 'research',
+      reply_text: undefined as string | null | undefined,
+      args: { query: null } as Record<string, unknown>,
+    };
+    await withResearchRoutes(
+      { acceptor, interpreter: replyingInterpreter(state) },
+      async (rig) => {
+        // null は意図表の必須の不足、空白だけは受付の前の検査で、どちらも足りない情報の聞き返し（空文字は契約で弾かれる）。
+        for (const query of [null, '   ']) {
+          state.args = { query };
+          const body = await researchTurn(rig, '合成の発言');
+          assert.equal(body['status'], 'clarification', String(query));
+          assert.equal(
+            body['reply_text'],
+            MISSING_OTHER_SENTENCE,
+            String(query),
+          );
+        }
+        assert.equal(acceptor.calls.length, 0);
+        assert(workflowRows(rig).every((row) => row.state === 'clarifying'));
+      },
+    );
   },
 );

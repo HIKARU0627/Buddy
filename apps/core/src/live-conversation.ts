@@ -27,6 +27,7 @@ import {
   SESSION_CONTROL_TABLE,
   admitLiveInput,
   fixOutputTarget,
+  acceptedCommentary,
   backgroundCommentary,
   bridgeCommentary,
   fitCommentary,
@@ -1108,6 +1109,9 @@ export class LiveConversation implements LiveConversationPort {
 
   #commentaryOf(turn: TurnResponse, fullText: boolean): Commentary {
     if (fullText) return inputCommentary('full_text');
+    // 裏のジョブが受け付けた依頼（U254、ADR 0135）。受け付けた事実だけを言う（commitLive が background を返すのは
+    // 受付器が accepted を返したときだけ）。
+    if (turn.status === 'background') return acceptedCommentary();
     const view = turn.result_view;
     if (turn.status === 'clarification' || view === null)
       return resultCommentary({
@@ -1170,8 +1174,18 @@ export class LiveConversation implements LiveConversationPort {
     // 声で返すはずだった案内を、画面の text の本文にも使う（turn.reply_text の汎用の文に置き換えない）。
     const text = commentary.commentary_parts.join('\n');
     const route = this.#route(context, pending);
+    // 終える（つなぎ・背景化のタイマーを止める）。受け付けた依頼に、この後つなぎや背景化の文を重ねない。
     this.#finish(context, pending);
     if (route.channel === 'discard') return;
+    // 裏のジョブが受け付けた依頼（U254、ADR 0135）: 結果はまだないので画面へ回す結果は作らない。声で返せるときだけ
+    // 受付の文を 1 回だけ追記する。声で返せない（閉じた接続・背景化済み・世代違い）ときは何も足さない（ジョブは受付済みで、
+    // 完了は後続の工程が気づき・次回の文脈で知らせる）。
+    if (turn.status === 'background') {
+      const parts = fitCommentary(commentary).parts;
+      if (route.channel === 'voice' && parts.length > 0)
+        this.#options.host.appendCommentary(handle.live_session_id, parts);
+      return;
+    }
     if (route.channel === 'voice') {
       deliverVoiceCommentary({
         commentary,

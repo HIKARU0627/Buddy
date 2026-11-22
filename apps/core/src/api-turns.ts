@@ -20,6 +20,7 @@ import {
   INTENT_POLICIES,
   RETENTION_RULES,
   SESSION_CONTROL_TABLE,
+  acceptedCommentary,
   assessReadiness,
   checkIntentArgs,
   REPLY_TEXT_INTENTS,
@@ -65,6 +66,7 @@ import type { PreviewRegistry } from './previews.js';
 import type { JsonObject } from './strict-json.js';
 import { canRead, canWrite, replyFields } from './turn-ports.js';
 import type {
+  BackgroundJobAcceptor,
   CandidateSource,
   InterpretationContext,
   Interpreter,
@@ -144,6 +146,9 @@ export interface TurnRoutesOptions {
     // 掃除が動いている・待っている・ゲートが閉じているときは null。返された関数を呼ぶまで、新しい掃除は本体に入らない。
     readonly lease: () => (() => void) | null;
   };
+  // 裏のジョブの受付（調査を最初から裏へ回す口。U254、ADR 0135）。省略は受付なしで、調査は従来どおり「未対応」の
+  // 聞き返しになる。製品の起動（core.ts）はまだ渡さない（実行器の受付・保存は B12-05）。
+  readonly backgroundJobs?: BackgroundJobAcceptor;
 }
 
 const stringOf = (body: JsonObject | null, key: string): string => {
@@ -164,6 +169,9 @@ function derivedId(...parts: readonly string[]): string {
 }
 
 const OFFSET = /^([+-])([01][0-9]|2[0-3]):([0-5][0-9])$/u;
+// 契約の Id（小文字の UUID）の形。差し込み口が返す ID を信用する前に確かめる。
+const UUID_FORM =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
 
 // 契約の UtcTime（UTC の RFC 3339。端数の 0 は付けない。domain の deleteAt と同じ表し方）。
 const utcTime = (ms: number): string =>
@@ -268,7 +276,24 @@ export type TurnPlan =
       readonly operation_kind: string;
       readonly content: Readonly<Record<string, unknown>>;
       readonly permission_revision: string;
+    }
+  // 裏のジョブが受け付けた調査（U254、ADR 0135）。workflow_id は受付器が返した値（同じ要求の再送では最初の受付の ID）。
+  // 実行・承認の対象は作らない。結果は後続（B12 の実行器・B11 の気づき）が届ける。
+  | {
+      readonly kind: 'accepted';
+      readonly intent: 'research';
+      readonly workflow_id: string;
     };
+
+// 裏のジョブの受付の文脈（planFrom に渡す）。dedupe_key は要求の command_id、workflow_id は Core が提案する依頼の ID。
+interface IntakeContext {
+  readonly dedupe_key: string;
+  readonly session_id: string;
+  readonly workflow_id: string;
+}
+
+// 受付の文（コードの定型文。domain の acceptedCommentary と同じ文で、モデルの文ではない）。
+const ACCEPTED_TEXT = acceptedCommentary().commentary_parts.join('');
 
 // 発言の入力の時点に控える、連携の口座と許可の版（Core のメモリーにある最後に確かめた値）。
 type InputPermission = {
@@ -862,10 +887,56 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
   // input: 発言を受けた時点（解釈の前）に控えた口座と許可の版。解釈の間に許可の版が変わっても、確定の直前の
   // 読み直しとの比較で気づける。evidence は入力の確かさ（文字入力は submitted_text、Live の方式 C は
   // live_policy_observed）。方式 C の入力は 4 操作でも readiness が全文の確定へ戻す。
+  // 調査（research）を裏のジョブへ回す（U254、ADR 0135）。受付器が受け付けたときだけ accepted にする。受付器がない
+  // 製品の起動では従来どおり「未対応」。確定前の入力（unverified）からは受け付けない（費用のかかる裏のジョブを、確定して
+  // いない文字起こしから始めない）。保存期限の掃除のゲートが閉じている間も受け付けない（検索の入口。ADR 0053）。
+  const planResearch = async (
+    args: ArgValues,
+    evidence: InputEvidence,
+    intake: IntakeContext,
+  ): Promise<TurnPlan> => {
+    const query = typeof args.query === 'string' ? args.query.trim() : '';
+    if (query.length === 0) return clarify('missing_other', 'research');
+    const acceptor = options.backgroundJobs;
+    if (acceptor === undefined) return clarify('unsupported', 'research');
+    if (evidence === 'unverified') return clarify('blocked', 'research');
+    if (options.retention !== undefined) {
+      await options.retention.ready();
+      const gate = options.retention.gate();
+      if (!gate.search || !gate.cloud_send || !gate.auto_use)
+        return clarify('blocked', 'research');
+    }
+    // 受付器の返す値は差し込み口の値なので、形を確かめるまで信用しない。
+    let reply: unknown;
+    try {
+      reply = await acceptor.acceptResearch({
+        workflow_id: intake.workflow_id,
+        intent: 'research',
+        query,
+        session_id: intake.session_id,
+        dedupe_key: intake.dedupe_key,
+      });
+    } catch {
+      // 例外は受け付けていない側に倒す（受付の文を出さない。自動で再送しない）。
+      return clarify('blocked', 'research');
+    }
+    // accepted で、ID が契約の Id の形のときだけ受け付けたと扱う。
+    const acceptedId =
+      typeof reply === 'object' &&
+      reply !== null &&
+      (reply as { readonly kind?: unknown }).kind === 'accepted'
+        ? (reply as { readonly workflow_id?: unknown }).workflow_id
+        : null;
+    if (typeof acceptedId !== 'string' || !UUID_FORM.test(acceptedId))
+      return clarify('blocked', 'research');
+    return { kind: 'accepted', intent: 'research', workflow_id: acceptedId };
+  };
+
   const planFrom = async (
     result: InterpretedTurn,
     input: InputPermission,
     evidence: InputEvidence,
+    intake: IntakeContext,
   ): Promise<{
     readonly plan: TurnPlan;
     readonly permissionAtInput: string | null;
@@ -898,6 +969,12 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
           permissionAtInput: null,
         };
     }
+    // 調査は参照（route: read）なので、上の方式 C の全文の確定の判定には当たらない。
+    if (intent === 'research')
+      return {
+        plan: await planResearch(args, evidence, intake),
+        permissionAtInput: null,
+      };
     if (!PROVIDER_INTENTS.includes(intent))
       return {
         plan:
@@ -1082,6 +1159,8 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     if (plan.kind === 'session_control') return null;
     if (plan.kind === 'read' || plan.kind === 'reply') return 'done';
     if (plan.kind === 'operation') return 'ready';
+    // 裏のジョブが受け付けた依頼は実行中（表の executing。ADR 0135）。
+    if (plan.kind === 'accepted') return 'executing';
     return plan.intent === null ? null : 'clarifying';
   };
 
@@ -1198,8 +1277,14 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
       expires_at: utcTime(expiresAt),
     };
     const state = workflowState(plan);
+    // 受け付けた調査は、受付器が返した ID で依頼を記録する（受付器と Core の依頼の ID を一致させる）。Live では提案した
+    // ID（args.workflowId）と同じ値が返る想定だが、受付器の返した ID を正とする（同じ dedupe_key の最初の受付の ID）。
     const workflowId =
-      state === null ? null : (args.workflowId ?? randomUUID());
+      state === null
+        ? null
+        : plan.kind === 'accepted'
+          ? plan.workflow_id
+          : (args.workflowId ?? randomUUID());
     const view = (
       intent: IntentName,
       kind: string,
@@ -1221,7 +1306,7 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
             template_version: null,
           };
     const responseOf = (
-      status: 'answered' | 'clarification' | 'session_control',
+      status: 'answered' | 'clarification' | 'session_control' | 'background',
       resultView: object | null,
       replyText: string | null,
       sessionControl: SessionControlAction | null = null,
@@ -1237,6 +1322,8 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
       // 会話の操作のときだけ（それ以外は項目を持たない）。
       ...(sessionControl === null ? {} : { session_control: sessionControl }),
     });
+    // 受け付けた調査の受付の文はコードの定型文（acceptedCommentary と同じ文）で、モデルの文ではないので、保存する応答にも
+    // 残す（同じ要求の再送でも同じ応答）。
     const responseBody =
       plan.kind === 'session_control'
         ? responseOf('session_control', null, null, plan.action)
@@ -1254,25 +1341,31 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
                 view(plan.intent, 'speech_bubble', 'ready', []),
                 plan.text,
               )
-            : plan.kind === 'read'
+            : plan.kind === 'accepted'
               ? responseOf(
-                  'answered',
-                  view(
-                    plan.intent,
-                    'schedule_cards',
-                    plan.overlaps ? 'needs_review' : 'ready',
-                    plan.items,
-                    plan.more,
-                  ),
-                  null,
+                  'background',
+                  view(plan.intent, 'accepted_line', 'preparing', []),
+                  ACCEPTED_TEXT,
                 )
-              : responseOf(
-                  'answered',
-                  view(plan.intent, 'approval_link', 'needs_review', [
-                    { kind: 'operation', id: plan.operation_id },
-                  ]),
-                  null,
-                );
+              : plan.kind === 'read'
+                ? responseOf(
+                    'answered',
+                    view(
+                      plan.intent,
+                      'schedule_cards',
+                      plan.overlaps ? 'needs_review' : 'ready',
+                      plan.items,
+                      plan.more,
+                    ),
+                    null,
+                  )
+                : responseOf(
+                    'answered',
+                    view(plan.intent, 'approval_link', 'needs_review', [
+                      { kind: 'operation', id: plan.operation_id },
+                    ]),
+                    null,
+                  );
     // 送出の直前の再検査（新しい発話の開始による保留）。保存の直前に同期で確かめる（この後に await があるのは DB への
     // 送信だけで、保留は保存の命令を送る前に決める）。
     if (args.precommit !== undefined && !args.precommit())
@@ -1398,6 +1491,12 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
             interpreted ?? { kind: 'plan', plan: clarify('unclear', null) },
             input,
             'submitted_text',
+            // 裏のジョブの受付は要求の command_id で重複を見分ける（同じ request_id の同時の再送でもジョブは 1 つ）。
+            {
+              dedupe_key: ref.command_id,
+              session_id: sessionId,
+              workflow_id: randomUUID(),
+            },
           );
     const done = await recordTurn({
       requestId,
@@ -1517,6 +1616,12 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
         interpreted,
         permission,
         live.outcome === 'sealed' ? 'live_policy_observed' : 'unverified',
+        // Live が選んだ依頼の ID を提案し、記録する依頼と裏のジョブの ID をそろえる。
+        {
+          dedupe_key: ref.command_id,
+          session_id: live.session_id,
+          workflow_id: live.workflow_id,
+        },
       );
     const outcome: TurnInputRecord = {
       kind: 'voice_live',

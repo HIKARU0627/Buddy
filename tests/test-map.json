@@ -1292,18 +1292,26 @@
       "phases": ["B08", "B09", "B13"],
       "contract_fixtures": [],
       "status": "specified",
-      "product_test": "not_run",
+      "product_test": "simulated_partial",
       "targets": ["P08"],
-      "related": []
+      "related": [],
+      "product_evidence": [
+        "tests/integration/evidence-b09-02-simulated.json#QA22-b09-02"
+      ],
+      "product_scope": "B09-02: アカウント種別（personal / work_or_school）の判定だけ。カレンダーの本人所有（primary・dataOwner）と管理権限の区別は、カレンダー連携と B13 の判定表で扱う。実 API は未実施（B15）。"
     },
     {
       "id": "QA23",
       "phases": ["B08", "B09", "B13"],
       "contract_fixtures": [],
       "status": "specified",
-      "product_test": "not_run",
+      "product_test": "simulated",
       "targets": ["P08"],
-      "related": ["X37"]
+      "related": ["X37"],
+      "product_evidence": [
+        "tests/integration/evidence-b09-02-simulated.json#QA23-b09-02"
+      ],
+      "product_scope": "B09-02: 読み取り connector の識別子の扱い。フォルダー移動で immutable id を変えず、id の無い項目を同一と断定しない。実 API は未実施（B15）。"
     },
     {
       "id": "QA24",

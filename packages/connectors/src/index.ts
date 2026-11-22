@@ -69,3 +69,33 @@ export {
   type FaultPoint,
   type FaultSpec,
 } from './fault-injector.js';
+// Microsoft Graph（Outlook）の読み取り connector（B09-02、ADR 0134）。読み取りだけで、差分取得は実装しない。
+export {
+  GRAPH_ACCOUNT_KINDS,
+  GRAPH_CONNECTOR_CAPABILITY,
+  GRAPH_DEFAULT_BASE_URL,
+  GRAPH_MAX_PAGES,
+  GRAPH_PERSONAL_TENANT_ID,
+  GRAPH_REJECTION_REASONS,
+  classifyGraphError,
+  createGraphMailConnector,
+  graphAccountKindForTenant,
+  type GraphAccount,
+  type GraphAccountKind,
+  type GraphMailConnector,
+  type GraphMailConnectorOptions,
+  type GraphMailFolder,
+  type GraphMailMessage,
+  type GraphMasterCategory,
+  type GraphMessageList,
+  type GraphMessagePage,
+  type GraphMessageQuery,
+  type GraphReadFailure,
+  type GraphReadResult,
+  type GraphRejectionReason,
+} from './adapter/graph-mail-connector.js';
+export type {
+  GraphHttpCall,
+  GraphHttpOutcome,
+  GraphTransport,
+} from './adapter/graph-transport.js';

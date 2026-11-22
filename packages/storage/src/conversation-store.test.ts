@@ -326,6 +326,58 @@ test(
   },
 );
 
+// 裏のジョブが受け付けた依頼（調査の受付、ADR 0135）。表の CHECK にある executing を、保存の検証も通す。
+// 操作は ready の依頼からだけ作る（executing の依頼に操作は付けない）。知らない状態は従来どおり形の検査で断る。
+test(
+  'a turn whose workflow was accepted by a background job is recorded as executing, without an operation',
+  { timeout: 30_000 },
+  async () => {
+    await withStore((db) => {
+      const sessionId = randomUUID();
+      ok(op(db, createSession(sessionId)));
+      const workflowId = randomUUID();
+      const accepted = {
+        ...turn(sessionId, { workflow: null }),
+        workflow: { workflow_id: workflowId, state: 'executing' as const },
+      };
+      assert.equal(ok(op(db, accepted))['replayed'], false);
+      assert.deepEqual(
+        db
+          .prepare(
+            'SELECT current_request_revision AS rev, state FROM workflows WHERE workflow_id = ?',
+          )
+          .get(workflowId),
+        { rev: 1, state: 'executing' },
+      );
+      assert.equal(count(db, 'operations'), 0);
+      // executing の依頼に操作は付けない。
+      assert.deepEqual(
+        rejectedWith(
+          op(db, {
+            ...turn(sessionId, { operation: randomUUID() }),
+            workflow: { workflow_id: randomUUID(), state: 'executing' },
+          }),
+        ),
+        ['operation_without_workflow'],
+      );
+      // 表にない状態・保存の型にない状態は断る（何も書かない）。
+      const before = count(db, 'workflows');
+      for (const state of ['running', 'cancelled'])
+        assert.deepEqual(
+          rejectedWith(
+            op(db, {
+              ...turn(sessionId, { workflow: null }),
+              workflow: { workflow_id: randomUUID(), state: state as never },
+            }),
+          ),
+          ['workflow_invalid'],
+          state,
+        );
+      assert.equal(count(db, 'workflows'), before);
+    });
+  },
+);
+
 let clock = 10_000;
 const run = (db: SqliteDatabase, command: DbCommand): StoreOutcome => {
   clock += 10;

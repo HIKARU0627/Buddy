@@ -25,7 +25,8 @@ const RECEIPT_TTL_MS = RETENTION_RULES['command_receipt']?.ms ?? 0;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
 const HASH = /^[0-9a-f]{64}$/u;
 
-export type WorkflowState = 'clarifying' | 'ready' | 'done';
+// executing は裏のジョブが受け付けた依頼（調査の受付。ADR 0135）。表（0001 の workflows.state）には既にある値。
+export type WorkflowState = 'clarifying' | 'ready' | 'executing' | 'done';
 
 // 端末の要求の受付（07 §3）。command_id は Core が接続範囲と request_id から決める値。
 export interface ConversationRequestRef {
@@ -255,7 +256,9 @@ export function conversationOpShapeReasons(op: ConversationOp): string[] {
         workflow !== null &&
         (typeof workflow !== 'object' ||
           !isUuid(workflow.workflow_id) ||
-          !['clarifying', 'ready', 'done'].includes(workflow.state))
+          !['clarifying', 'ready', 'executing', 'done'].includes(
+            workflow.state,
+          ))
       )
         reasons.push('workflow_invalid');
       const operation = op.operation;

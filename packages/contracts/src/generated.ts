@@ -1202,6 +1202,26 @@ export type DesktopIpcRequest =
           | 'reply_in_voice'
           | 'reply_in_text';
       };
+    }
+  | {
+      channel: 'desktop.candidates_list';
+      request_id: Id;
+      payload: null;
+    }
+  | {
+      channel: 'desktop.candidate_state';
+      request_id: Id;
+      payload: {
+        ref: Id;
+        /**
+         * 開く（open）・今回は扱わない（dismiss）・本人の指定した時刻に再通知（snooze）。
+         */
+        event: 'open' | 'dismiss' | 'snooze';
+        /**
+         * snooze のときだけ再通知の時刻（UTC。画面が本人のタイムゾーンで解釈した日時を直したもの）。ほかの操作では null。
+         */
+        snooze_until: UtcTime | null;
+      };
     };
 export type DesktopHubHost = string;
 export type DesktopHubHost1 = string;
@@ -1359,6 +1379,12 @@ export type DesktopIpcResponse =
         | 'desktop.voice_control';
       outcome: 'ok';
       voice: DesktopVoiceView;
+    }
+  | {
+      request_id: Id;
+      channel: 'desktop.candidates_list' | 'desktop.candidate_state';
+      outcome: 'ok';
+      candidates: DesktopCandidateView;
     }
   | {
       request_id: Id | null;
@@ -1599,7 +1625,7 @@ export type DesktopVoiceView =
       reply_mode: 'voice' | 'text';
     };
 /**
- * UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014・0025）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。中枢との接続・ペアリングは用途別のチャネルだけで、要求の宛先・本文を Renderer が決められない。音声レンダラーの IPC（B05）は別に定める。 発言・承認表示の準備・承認・取消・照合は用途別のチャネルで、操作は main が持つ参照（ref）で指す（B04-05、ADR 0031）。 キャンバスを前に出す（canvas_summon）は状態の層と入力バーからだけ使う（UI-02、ADR 0032）。状態の層のパネルを出す・しまう（status_panel）は状態の層からだけ使う（UI-04、ADR 0032）。キャンバスのユーザーの操作（canvas_user_op）はキャンバスの窓からだけ、キャンバスが前に出ている間だけ使う（UI-06、ADR 0032）。 予算の確認（超過枠の承認・見送り budget_overage_decide、M 超過の確認 budget_overrun_review、不明な費用の手での精算 budget_manual_settle）は状態の層からだけ使う。承認・確認・精算は main の OS の確認ダイアログを 1 回だけ挟み、画面が持つのは main が作る参照（ref）だけ（B07-05、ADR 0039）。 音声（B05-06、ADR 0050）: 音声の状態の取得（get_voice）・呼びかけなしで音声の会話を始める「続ける」（voice_continue）・外部への送信の同意の取り消し（voice_consent_revoke）は状態の層からだけ使う。外部への送信の同意は main の OS の確認ダイアログで 1 回だけ取り、画面は同意を作れない。音声レンダラーへの IPC は VoiceRendererRequest で、このチャネルとは別。
+ * UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014・0025）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。中枢との接続・ペアリングは用途別のチャネルだけで、要求の宛先・本文を Renderer が決められない。音声レンダラーの IPC（B05）は別に定める。 発言・承認表示の準備・承認・取消・照合は用途別のチャネルで、操作は main が持つ参照（ref）で指す（B04-05、ADR 0031）。 キャンバスを前に出す（canvas_summon）は状態の層と入力バーからだけ使う（UI-02、ADR 0032）。状態の層のパネルを出す・しまう（status_panel）は状態の層からだけ使う（UI-04、ADR 0032）。キャンバスのユーザーの操作（canvas_user_op）はキャンバスの窓からだけ、キャンバスが前に出ている間だけ使う（UI-06、ADR 0032）。 予算の確認（超過枠の承認・見送り budget_overage_decide、M 超過の確認 budget_overrun_review、不明な費用の手での精算 budget_manual_settle）は状態の層からだけ使う。承認・確認・精算は main の OS の確認ダイアログを 1 回だけ挟み、画面が持つのは main が作る参照（ref）だけ（B07-05、ADR 0039）。 音声（B05-06、ADR 0050）: 音声の状態の取得（get_voice）・呼びかけなしで音声の会話を始める「続ける」（voice_continue）・外部への送信の同意の取り消し（voice_consent_revoke）は状態の層からだけ使う。外部への送信の同意は main の OS の確認ダイアログで 1 回だけ取り、画面は同意を作れない。音声レンダラーへの IPC は VoiceRendererRequest で、このチャネルとは別。 気づき（B11-05、ADR 0132）: 一覧の取得（candidates_list）と状態の変更（candidate_state。開く・今回は扱わない・再通知）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バーは使えない。候補は main が作る参照（ref）で指し、候補 ID・expected_state・接続範囲は main が持つ。
  */
 export type DesktopIpcChannel =
   | 'desktop.get_state'
@@ -1636,7 +1662,9 @@ export type DesktopIpcChannel =
   | 'desktop.get_voice'
   | 'desktop.voice_continue'
   | 'desktop.voice_consent_revoke'
-  | 'desktop.voice_control';
+  | 'desktop.voice_control'
+  | 'desktop.candidates_list'
+  | 'desktop.candidate_state';
 /**
  * main から UI レンダラーへの通知（設計 10 §1、07 §2、ADR 0014）。本文・端末 ID・認証情報を含めない。
  */
@@ -4049,12 +4077,20 @@ export interface CandidateSnapshot {
   operation_ids: Id[];
 }
 /**
- * 気づきの一覧（設計 11 §4、ADR 0073）。表示順は domain が決める。本文・添付の内容は含めない。
+ * 気づきの一覧（設計 11 §4、ADR 0073・0132）。表示順は domain が決める。見出しそのものは含めず、見出しを分けるのに要る本人のタイムゾーンと並べた時刻を返す。本文・添付の内容は含めない。
  */
 export interface CandidateListResponse {
   candidates: CandidateSnapshot[];
   counts: CandidateStateCounts;
   next_cursor: EventCursor | null;
+  /**
+   * IANA タイムゾーン名。実在の確認は意味検査で行う（設計 07 §1）。
+   */
+  zone: string;
+  /**
+   * UTC の RFC 3339 表現。区切りは大文字の T と Z だけ。JavaScript の Date で扱えないうるう秒は拒否する。元の地域時間と終日は別に扱う。
+   */
+  as_of: string;
 }
 /**
  * 気づきの状態ごとの件数（設計 11 §4、ADR 0073）。一覧の見出しと端末のバッジに使う。
@@ -6111,6 +6147,66 @@ export interface CanvasContentSource {
 export interface CanvasContentPlain {
   component: 'text';
   text: CanvasContentBody;
+}
+/**
+ * 気づきの画面に出す値（B11-05、ADR 0132。設計 01 気づき、11 §4）。見出しは画面が domain の orderCandidates で zone と fetched_at から分ける。
+ */
+export interface DesktopCandidateView {
+  /**
+   * 取得の状態。loaded は直近の読み取りが成功、stale は直近の読み取りに失敗して前に読めた値を出している、unavailable はこの世代でまだ読めていない（「候補なし」と区別する）。
+   */
+  fetch: 'loaded' | 'stale' | 'unavailable';
+  /**
+   * 最後に読めた一覧を中枢が並べた時刻（CandidateListResponse の as_of）。見出しの基準時刻にも使う。読めていなければ null。
+   */
+  fetched_at: UtcTime | null;
+  /**
+   * 最後に読めた一覧で中枢が使った本人のタイムゾーン。見出しと再通知の日時の解釈に使う（端末の OS のタイムゾーンで代用しない）。読めていなければ null。
+   */
+  zone: TimeZone | null;
+  counts: CandidateStateCounts | null;
+  entries: DesktopCandidateEntry[];
+  /**
+   * 件数の上限で一覧が切れた（中枢の next_cursor があった）。
+   */
+  truncated: boolean;
+  /**
+   * main が付ける一覧の通し番号。画面はこれより小さい番号の応答を反映しない（ADR 0026 と同じ）。
+   */
+  list_seq: number;
+}
+/**
+ * 気づきの一覧の 1 行の表示用の値（B11-05、ADR 0132）。候補 ID・通知キー・依頼の版・根拠の版・期待する状態は main の中にだけ持ち、画面へ渡さない。
+ */
+export interface DesktopCandidateEntry {
+  /**
+   * B00初版のランダムUUID v4。認証情報ではない。
+   */
+  ref: string;
+  /**
+   * 中枢が並べた順（0 から）。画面は見出しの中をこの順に並べる。
+   */
+  position: number;
+  kind: 'schedule_overlap' | 'mail_deadline' | 'mail_reply' | 'research_done';
+  state: 'new' | 'seen' | 'acted' | 'dismissed' | 'snoozed' | 'resolved';
+  /**
+   * 題（中枢の検査済み）。本文・件名・差出人は含めない。
+   */
+  title: string;
+  deadline: Deadline;
+  initial_import: boolean;
+  /**
+   * 本文・添付の一部は未読。
+   */
+  unread_partial: boolean;
+  /**
+   * 自動実行の操作が結び付いている（CandidateSnapshot の operation_ids が空でない）。操作 ID そのものは渡さない。
+   */
+  has_operations: boolean;
+  /**
+   * この候補への状態の変更の結果が分からない。次に一覧を読み直せるまで操作させない（自動では送り直さない）。
+   */
+  delivery_unknown: boolean;
 }
 /**
  * 画面へ渡すキャンバスの今の記述（ADR 0032）。main が中枢から取り、形式（CanvasDocument）と意味（domain）の検査を通してから、参照を不透明な参照に置き換えて渡す。ロック・切断・世代の変化では渡した記述を捨てる（canvas を null にして通知する）。

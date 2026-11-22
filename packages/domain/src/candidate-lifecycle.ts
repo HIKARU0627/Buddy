@@ -4,12 +4,16 @@
 
 import {
   candidateDeadlineEnded,
+  candidateLocalToUtc,
   type CandidateOrderItem,
 } from './candidate-order.js';
 import {
+  candidateDateToDay,
+  candidateLocalClock,
   isCandidateZone,
   parseCandidateUtc as parseUtc,
 } from './candidate-time.js';
+import { isRealLocalDateTime } from './local-time.js';
 import {
   CANDIDATE_CONTENT_RETENTION_DAYS,
   CANDIDATE_IDENTIFIER_RETENTION_DAYS,
@@ -86,6 +90,55 @@ export function checkSnoozeUntil(now: string, until: string): SnoozeCheck {
   return untilMillis > nowMillis
     ? { ok: true }
     : { ok: false, reason: 'not_in_future' };
+}
+
+// 本人が選ぶ再通知の時刻（設計 01 気づき「本人指定の再通知」、ADR 0132）。明日・来週は、いまの本人のタイムゾーンでの
+// 時刻と同じ時刻（日付だけを 1 日・7 日進める）。日時の指定は本人のタイムゾーンの現地の日時（YYYY-MM-DDTHH:MM[:SS]）。
+export type CandidateSnoozeChoice =
+  | { readonly kind: 'tomorrow' }
+  | { readonly kind: 'next_week' }
+  | { readonly kind: 'at'; readonly local_datetime: string };
+
+export type CandidateSnoozeResult =
+  | { readonly ok: true; readonly until: string }
+  | {
+      readonly ok: false;
+      readonly reason:
+        'now_invalid' | 'zone_invalid' | 'until_invalid' | 'not_in_future';
+    };
+
+const dayToDate = (day: number): string =>
+  new Date(day * DAY_MS).toISOString().slice(0, 10);
+
+// 再通知の時刻（UTC）を本人のタイムゾーンで決める。端末の既定のタイムゾーンで置き換えない。夏時間で 2 回ある時刻は後の回、
+// 存在しない時刻は直後の時刻（期限の解釈と同じ）。結果は checkSnoozeUntil（いまより後）に従う。
+export function candidateSnoozeUntil(
+  choice: CandidateSnoozeChoice,
+  now: string,
+  zone: string,
+): CandidateSnoozeResult {
+  const nowMillis = parseUtc(now);
+  if (nowMillis === null) return { ok: false, reason: 'now_invalid' };
+  if (!isCandidateZone(zone)) return { ok: false, reason: 'zone_invalid' };
+  let local: string;
+  if (choice.kind === 'at') {
+    if (!isRealLocalDateTime(choice.local_datetime))
+      return { ok: false, reason: 'until_invalid' };
+    local =
+      choice.local_datetime.length === 16
+        ? `${choice.local_datetime}:00`
+        : choice.local_datetime;
+  } else {
+    const clock = candidateLocalClock(nowMillis, zone);
+    if (clock === null) return { ok: false, reason: 'zone_invalid' };
+    const days = choice.kind === 'tomorrow' ? 1 : 7;
+    local = `${dayToDate(candidateDateToDay(clock.date) + days)}T${clock.time}`;
+  }
+  const millis = candidateLocalToUtc(local, zone);
+  if (millis === null) return { ok: false, reason: 'until_invalid' };
+  const until = new Date(millis).toISOString().replace('.000Z', 'Z');
+  const check = checkSnoozeUntil(now, until);
+  return check.ok ? { ok: true, until } : check;
 }
 
 // --- 根拠の失効 ---

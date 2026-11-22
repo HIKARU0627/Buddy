@@ -55,7 +55,9 @@
           "snoozed": 0,
           "resolved": 0
         },
-        "next_cursor": null
+        "next_cursor": null,
+        "zone": "Asia/Tokyo",
+        "as_of": "2030-10-06T03:00:00Z"
       }
     },
     {
@@ -64,7 +66,46 @@
       "valid": false,
       "value": {
         "candidates": [],
-        "next_cursor": null
+        "next_cursor": null,
+        "zone": "Asia/Tokyo",
+        "as_of": "2030-10-06T03:00:00Z"
+      }
+    },
+    {
+      "id": "candidate-list-missing-zone",
+      "schema": "CandidateListResponse",
+      "valid": false,
+      "value": {
+        "candidates": [],
+        "counts": {
+          "new": 0,
+          "seen": 0,
+          "acted": 0,
+          "dismissed": 0,
+          "snoozed": 0,
+          "resolved": 0
+        },
+        "next_cursor": null,
+        "as_of": "2030-10-06T03:00:00Z"
+      }
+    },
+    {
+      "id": "candidate-list-local-as-of",
+      "schema": "CandidateListResponse",
+      "valid": false,
+      "value": {
+        "candidates": [],
+        "counts": {
+          "new": 0,
+          "seen": 0,
+          "acted": 0,
+          "dismissed": 0,
+          "snoozed": 0,
+          "resolved": 0
+        },
+        "next_cursor": null,
+        "zone": "Asia/Tokyo",
+        "as_of": "2030-10-06T12:00:00+09:00"
       }
     },
     {

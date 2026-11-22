@@ -74,6 +74,7 @@ import type {
 } from './hub-transport.js';
 import { BudgetBridge } from './budget-bridge.js';
 import type { BudgetConfirmRequest } from './budget-bridge.js';
+import { CandidateBridge } from './candidate-bridge.js';
 import { CanvasBridge } from './canvas-bridge.js';
 import { OperationBridge } from './operation-bridge.js';
 import type {
@@ -123,6 +124,12 @@ export const CANVAS_CHANNELS: readonly DesktopIpcChannel[] = [
   'desktop.canvas_user_op',
   // 物の中身（本文）を求める（UI-07）。読み取りだけ。後ろにある間も描いている物の中身を取る（メールの本文を開くときだけ前面）。
   'desktop.canvas_content',
+];
+
+// 気づきの一覧と状態の変更のチャネル（B11-05、ADR 0132）。登録済みでロック解除済みの端末なら、中枢の画面の端末でなくても使える。
+export const CANDIDATE_CHANNELS: readonly DesktopIpcChannel[] = [
+  'desktop.candidates_list',
+  'desktop.candidate_state',
 ];
 
 // 中枢の画面のこのマシンの指紋の読み取り（main だけが持つ。画面へは伏せた表示だけを出す）。
@@ -356,6 +363,8 @@ export class DesktopCoreLink {
   readonly #budget: BudgetBridge;
   // 予算の利用状況を読み直す次の時刻の timer（接続している間だけ。ロック・切断で止める）。
   #budgetPoll: (() => void) | null = null;
+  // 気づきの一覧と状態の変更（参照だけを画面へ渡す。B11-05、ADR 0132）。
+  readonly #candidates: CandidateBridge;
 
   constructor(options: DesktopCoreLinkOptions) {
     this.#options = options;
@@ -386,6 +395,13 @@ export class DesktopCoreLink {
       },
       now: () => options.clock.now(),
       changed: () => options.onChange(),
+      log: (code) => this.#log(code),
+    });
+    this.#candidates = new CandidateBridge({
+      contract: options.contract,
+      connection: () => this.#connection,
+      newRef: () => options.clock.newRequestId(),
+      now: () => options.clock.now(),
       log: (code) => this.#log(code),
     });
     this.#canvas = new CanvasBridge({
@@ -1104,6 +1120,56 @@ export class DesktopCoreLink {
       if (raw.channel !== 'desktop.operation_preview') return outcome;
     }
     return this.#withinGeneration(generation, outcome);
+  }
+
+  // 気づきの一覧と状態の変更（B11-05、ADR 0132）。一覧はロック解除済み、状態の変更はロック解除済みの画面操作（前面）。
+  // 状態の変更は外部へ送らない記録の操作なので、入出力の停止中も受け付ける。ロック・切断をまたいだ一覧は渡さない。
+  async handleCandidateIpc(
+    ipcChannel: string,
+    raw: unknown,
+    sender: DesktopIpcSender,
+    ioState: DesktopIoState,
+  ): Promise<ConnectionIpcOutcome> {
+    const contract = this.#options.contract;
+    if (
+      !contract.isRequest(raw) ||
+      raw.channel !== ipcChannel ||
+      (raw.channel !== 'desktop.candidates_list' &&
+        raw.channel !== 'desktop.candidate_state')
+    )
+      return this.#reject(
+        echoRequestId(raw),
+        echoChannel(raw, ipcChannel),
+        'invalid_request',
+      );
+    const admission = admitDesktopRequest(raw.channel, null, ioState, sender);
+    if (!admission.ok)
+      return this.#reject(raw.request_id, raw.channel, admission.reason);
+    const connection = this.#connection;
+    if (
+      connection === null ||
+      this.#registration !== 'registered' ||
+      connection.state.phase !== 'live'
+    )
+      return this.#reject(raw.request_id, raw.channel, 'not_connected');
+    const generation = this.#viewGeneration;
+    const result =
+      raw.channel === 'desktop.candidates_list'
+        ? await this.#candidates.list()
+        : await this.#candidates.change(
+            raw.payload.ref,
+            raw.payload.event,
+            raw.payload.snooze_until,
+          );
+    return this.#withinGeneration(
+      generation,
+      this.#operationOutcome(
+        raw.request_id,
+        raw.channel,
+        result,
+        (candidates) => ({ candidates }),
+      ),
+    );
   }
 
   // キャンバスのユーザーの操作（UI-06、ADR 0032）。受付の規則は ロック解除済み・前面（画面操作）→ キャンバスが前に出ている
@@ -1983,6 +2049,7 @@ export class DesktopCoreLink {
     this.#operations.reset();
     this.#budget.reset();
     this.#cancelBudgetPoll();
+    this.#candidates.reset();
     this.#canvas.reset();
     this.#confirmAbort?.abort();
     this.#confirmAbort = null;

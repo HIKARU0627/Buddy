@@ -24817,5 +24817,304 @@
       "channel": "desktop.get_voice",
       "outcome": "ok"
     }
+  },
+  {
+    "id": "desktop-ipc-candidates-list",
+    "schema": "DesktopIpcRequest",
+    "valid": true,
+    "value": {
+      "channel": "desktop.candidates_list",
+      "request_id": "00000000-0000-4000-8000-000000000c80",
+      "payload": null
+    }
+  },
+  {
+    "id": "desktop-ipc-candidates-list-with-filter",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.candidates_list",
+      "request_id": "00000000-0000-4000-8000-000000000c80",
+      "payload": { "states": ["new"] }
+    }
+  },
+  {
+    "id": "desktop-ipc-candidate-open",
+    "schema": "DesktopIpcRequest",
+    "valid": true,
+    "value": {
+      "channel": "desktop.candidate_state",
+      "request_id": "00000000-0000-4000-8000-000000000c80",
+      "payload": {
+        "ref": "00000000-0000-4000-8000-000000000c70",
+        "event": "open",
+        "snooze_until": null
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-candidate-snooze",
+    "schema": "DesktopIpcRequest",
+    "valid": true,
+    "value": {
+      "channel": "desktop.candidate_state",
+      "request_id": "00000000-0000-4000-8000-000000000c80",
+      "payload": {
+        "ref": "00000000-0000-4000-8000-000000000c70",
+        "event": "snooze",
+        "snooze_until": "2030-10-07T00:00:00Z"
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-candidate-snooze-local-time",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.candidate_state",
+      "request_id": "00000000-0000-4000-8000-000000000c80",
+      "payload": {
+        "ref": "00000000-0000-4000-8000-000000000c70",
+        "event": "snooze",
+        "snooze_until": "2030-10-07T09:00:00+09:00"
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-candidate-resolve-not-offered",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.candidate_state",
+      "request_id": "00000000-0000-4000-8000-000000000c80",
+      "payload": {
+        "ref": "00000000-0000-4000-8000-000000000c70",
+        "event": "resolve",
+        "snooze_until": null
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-candidate-with-candidate-id",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.candidate_state",
+      "request_id": "00000000-0000-4000-8000-000000000c80",
+      "payload": {
+        "ref": "00000000-0000-4000-8000-000000000c70",
+        "event": "dismiss",
+        "snooze_until": null,
+        "candidate_id": "00000000-0000-4000-8000-000000000601"
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-candidate-with-expected-state",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.candidate_state",
+      "request_id": "00000000-0000-4000-8000-000000000c80",
+      "payload": {
+        "ref": "00000000-0000-4000-8000-000000000c70",
+        "event": "dismiss",
+        "snooze_until": null,
+        "expected_state": "new"
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-candidates-view",
+    "schema": "DesktopIpcResponse",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000c80",
+      "channel": "desktop.candidates_list",
+      "outcome": "ok",
+      "candidates": {
+        "fetch": "loaded",
+        "fetched_at": "2030-10-06T03:00:00Z",
+        "zone": "Asia/Tokyo",
+        "counts": {
+          "new": 1,
+          "seen": 0,
+          "acted": 0,
+          "dismissed": 0,
+          "snoozed": 0,
+          "resolved": 0
+        },
+        "entries": [
+          {
+            "ref": "00000000-0000-4000-8000-000000000c70",
+            "position": 0,
+            "kind": "mail_reply",
+            "state": "new",
+            "title": "参加可否の返信：10/7まで",
+            "deadline": {
+              "kind": "date",
+              "date": "2030-10-07",
+              "original_text": "2030年10月7日まで"
+            },
+            "initial_import": false,
+            "unread_partial": true,
+            "has_operations": false,
+            "delivery_unknown": false
+          }
+        ],
+        "truncated": false,
+        "list_seq": 1
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-candidates-view-unavailable",
+    "schema": "DesktopIpcResponse",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000c80",
+      "channel": "desktop.candidates_list",
+      "outcome": "ok",
+      "candidates": {
+        "fetch": "unavailable",
+        "fetched_at": null,
+        "zone": null,
+        "counts": null,
+        "entries": [],
+        "truncated": false,
+        "list_seq": 1
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-candidates-view-with-candidate-id",
+    "schema": "DesktopIpcResponse",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000c80",
+      "channel": "desktop.candidate_state",
+      "outcome": "ok",
+      "candidates": {
+        "fetch": "loaded",
+        "fetched_at": "2030-10-06T03:00:00Z",
+        "zone": "Asia/Tokyo",
+        "counts": {
+          "new": 1,
+          "seen": 0,
+          "acted": 0,
+          "dismissed": 0,
+          "snoozed": 0,
+          "resolved": 0
+        },
+        "entries": [
+          {
+            "ref": "00000000-0000-4000-8000-000000000c70",
+            "position": 0,
+            "kind": "mail_reply",
+            "state": "new",
+            "title": "参加可否の返信：10/7まで",
+            "deadline": {
+              "kind": "date",
+              "date": "2030-10-07",
+              "original_text": "2030年10月7日まで"
+            },
+            "initial_import": false,
+            "unread_partial": true,
+            "has_operations": false,
+            "delivery_unknown": false,
+            "candidate_id": "00000000-0000-4000-8000-000000000601"
+          }
+        ],
+        "truncated": false,
+        "list_seq": 1
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-candidates-view-with-sender",
+    "schema": "DesktopIpcResponse",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000c80",
+      "channel": "desktop.candidates_list",
+      "outcome": "ok",
+      "candidates": {
+        "fetch": "loaded",
+        "fetched_at": "2030-10-06T03:00:00Z",
+        "zone": "Asia/Tokyo",
+        "counts": {
+          "new": 1,
+          "seen": 0,
+          "acted": 0,
+          "dismissed": 0,
+          "snoozed": 0,
+          "resolved": 0
+        },
+        "entries": [
+          {
+            "ref": "00000000-0000-4000-8000-000000000c70",
+            "position": 0,
+            "kind": "mail_reply",
+            "state": "new",
+            "title": "参加可否の返信：10/7まで",
+            "deadline": {
+              "kind": "date",
+              "date": "2030-10-07",
+              "original_text": "2030年10月7日まで"
+            },
+            "initial_import": false,
+            "unread_partial": true,
+            "has_operations": false,
+            "delivery_unknown": false,
+            "sender": "synthetic@example.invalid"
+          }
+        ],
+        "truncated": false,
+        "list_seq": 1
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-candidates-view-unknown-fetch",
+    "schema": "DesktopIpcResponse",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000c80",
+      "channel": "desktop.candidates_list",
+      "outcome": "ok",
+      "candidates": {
+        "fetch": "empty",
+        "fetched_at": "2030-10-06T03:00:00Z",
+        "zone": "Asia/Tokyo",
+        "counts": {
+          "new": 1,
+          "seen": 0,
+          "acted": 0,
+          "dismissed": 0,
+          "snoozed": 0,
+          "resolved": 0
+        },
+        "entries": [
+          {
+            "ref": "00000000-0000-4000-8000-000000000c70",
+            "position": 0,
+            "kind": "mail_reply",
+            "state": "new",
+            "title": "参加可否の返信：10/7まで",
+            "deadline": {
+              "kind": "date",
+              "date": "2030-10-07",
+              "original_text": "2030年10月7日まで"
+            },
+            "initial_import": false,
+            "unread_partial": true,
+            "has_operations": false,
+            "delivery_unknown": false
+          }
+        ],
+        "truncated": false,
+        "list_seq": 1
+      }
+    }
   }
 ]

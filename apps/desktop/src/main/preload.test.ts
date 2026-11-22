@@ -146,15 +146,24 @@ test('requests go only to the contract channels', async () => {
       'desktop.voice_consent_revoke',
       // B05-05: 音声の会話の操作（読み上げの停止・会話の終了・返し方の切り替え。状態の層だけ）。
       'desktop.voice_control',
+      // B11-05: 気づきの一覧・状態の変更（従来の窓と状態の層。ADR 0132）。
+      'desktop.candidates_list',
+      'desktop.candidate_state',
     ],
   );
-  for (const channel of channels) {
+  // 気づきの一覧・状態の変更（B11-05）は従来の窓（標準の端末画面）でも使う。
+  const legacy = [
+    ...channels,
+    'desktop.candidates_list',
+    'desktop.candidate_state',
+  ];
+  for (const channel of legacy) {
     const request = { channel, request_id: 'r', payload: null };
     assert.deepEqual(await api.invoke(request), { ok: channel });
   }
   assert.deepEqual(
     invoked.map(([channel]) => channel),
-    channels,
+    legacy,
   );
   for (const bad of [
     // 従来の窓（役割の引数なし）はキャンバスを前に出さない・状態の層のパネルを使わない。
@@ -186,7 +195,7 @@ test('requests go only to the contract channels', async () => {
     'desktop.get_state',
   ])
     await assert.rejects(api.invoke(bad), /desktop_unknown_channel/u);
-  assert.equal(invoked.length, channels.length);
+  assert.equal(invoked.length, legacy.length);
 });
 
 test('notifications pass only the body, never the Electron event', () => {
@@ -277,6 +286,9 @@ const EXPECTED_ROLE_CHANNELS: Readonly<Record<string, readonly string[]>> = {
     'desktop.voice_continue',
     'desktop.voice_consent_revoke',
     'desktop.voice_control',
+    // 気づきの一覧・状態の変更（B11-05、ADR 0132）。
+    'desktop.candidates_list',
+    'desktop.candidate_state',
   ],
 };
 const EXPECTED_ROLE_NOTIFICATIONS: Readonly<Record<string, readonly string[]>> =

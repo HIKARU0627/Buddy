@@ -3,6 +3,7 @@
 // 経路の検査（端末トークン・自宅判定・接続範囲・ロック解除・画面の操作）は api-server の admission が先に行う。
 // ここは検査を通った要求の処理で、状態の遷移の正本は保存層（candidate-store.ts）と domain の candidateTransition。
 // - 一覧は new・seen・acted だけを出す（snoozed は件数だけ。U270 の暫定 (a)）。並びは domain の orderCandidates。
+//   並べたときの本人のタイムゾーンと時刻（zone・as_of）を応答に付ける（画面が見出しを分ける。ADR 0132）。
 //   題の封筒を開けない行があれば一覧全体を 503 にする（黙って落とさない）。
 // - 根拠の再取得は注入された fetchEvidence（B08・B09 の connector）で許可範囲から取り直し、domain の evidenceDecision で
 //   状態と応答を決める。有効なときだけ根拠の位置と保存済みの抄録を返し、本文全体は返さない。
@@ -360,6 +361,10 @@ export function createCandidateRoutes(
       ),
       counts,
       next_cursor: nextCursor,
+      // 見出し（今日・明日など）を画面が分けるのに要る、並べたときの本人のタイムゾーンと時刻（ADR 0132）。
+      // 画面は端末の OS のタイムゾーン・時計で代用しない。
+      zone,
+      as_of: now,
     };
     return { status: 200, body };
   };

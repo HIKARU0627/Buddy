@@ -285,6 +285,9 @@ test('the list follows the display order: overlaps first today, then nearest dea
       initialPast,
     ]);
     assert.equal(response.body['next_cursor'], null);
+    // 並べたときの本人のタイムゾーンと時刻（画面が見出しを分ける。ADR 0132）。
+    assert.equal(response.body['zone'], 'Asia/Tokyo');
+    assert.equal(response.body['as_of'], '2030-10-09T03:00:00Z');
     assert.deepEqual(response.body['counts'], {
       new: 9,
       seen: 0,
@@ -437,6 +440,8 @@ test('the list stops at the page cap with an opaque cursor, and fails closed on 
           resolved: 0,
         },
         next_cursor: null,
+        zone: 'Asia/Tokyo',
+        as_of: '2030-10-09T03:00:00Z',
       });
     });
   });

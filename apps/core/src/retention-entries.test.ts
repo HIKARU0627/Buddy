@@ -95,6 +95,13 @@ const ENTRIES: Readonly<Record<string, readonly Entry[]>> = {
       anchors: ['options.retention.ready()', 'options.retention.lease()'],
     },
   ],
+  'mail-attachments.ts': [
+    {
+      kind: 'gated',
+      what: 'メール添付の取得（接続先からの添付の読み取りと抽出。B08-04）',
+      anchors: ['options.retention.ready()', 'options.retention.lease()'],
+    },
+  ],
 };
 
 async function sourceFiles(): Promise<string[]> {

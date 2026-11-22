@@ -43,7 +43,11 @@ export {
 } from './adapter/google-calendar.js';
 export {
   createGoogleGmailReader,
+  decodeBase64Url,
   GoogleHistoryExpiredError,
+  listAttachmentParts,
+  type GoogleGmailAttachment,
+  type GoogleGmailAttachmentPart,
   type GoogleGmailHeader,
   type GoogleGmailMessage,
   type GoogleGmailMessageFormat,

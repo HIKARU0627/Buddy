@@ -1,13 +1,13 @@
 # @buddy/connectors
 
-外部サービス（メール・予定）への接続の置き場です。現在は B04 の縦断試作のための **模擬 provider**（合成のメール・予定）、**故障注入の装置**、Core 側の**アダプター**だけを置きます。Gmail・Microsoft Graph などの実装は B08・B09 で、実メール・実予定は使いません（[ADR 0028](../../docs/adr/0028-b04-mock-provider.md)）。
+外部サービス（メール・予定）への接続の置き場です。B04 の縦断試作のための **模擬 provider**（合成のメール・予定）、**故障注入の装置**、Core 側の**アダプター**と、B09-02 の **Microsoft Graph の読み取り connector**（模擬 transport でだけ検証）を置きます。Gmail などの実装は B08 で、試験に実メール・実予定は使いません（[ADR 0028](../../docs/adr/0028-b04-mock-provider.md)）。
 
 ## 出口
 
-| 出口                        | 内容                                                                                                 | 使える場所                        |
-| --------------------------- | ---------------------------------------------------------------------------------------------------- | --------------------------------- |
-| `@buddy/connectors`         | アダプター（`createMockMailConnector`）、能力の最小の型、故障注入（`FaultInjector`・`FAULT_POINTS`） | Core                              |
-| `@buddy/connectors/testing` | 模擬 provider の起動（`createMockProvider`）と、真の結果を見る `truth`、合成データの定数             | 試験装置だけ（Core には渡さない） |
+| 出口                        | 内容                                                                                                                             | 使える場所                        |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- |
+| `@buddy/connectors`         | アダプター（`createMockMailConnector`・`createGraphMailConnector`）、能力の最小の型、故障注入（`FaultInjector`・`FAULT_POINTS`） | Core                              |
+| `@buddy/connectors/testing` | 模擬 provider の起動（`createMockProvider`）と、真の結果を見る `truth`、合成データの定数                                         | 試験装置だけ（Core には渡さない） |
 
 `src/adapter/**` と `src/index.ts` は静的 import だけで、`provider/`・`testing` を読み込めません。Core（apps/core・packages/storage）の製品コードも `@buddy/connectors/testing` を静的・動的のどちらでも読み込めず、試験（`*.test.ts`・`*-test-support.ts`）だけが例外です（ESLint。検査は `scripts/tooling.test.mjs`）。
 
@@ -46,6 +46,18 @@
 - 読み取り: `readPermission`・`readTarget`・`listEvents`・`lookupDrafts`（状態を変えない）。
 - 書込み: `changeLabels`・`createDraft`・`sendDraft`。**1 回だけ送り、HTTP の自動再送は 0 回**（keep-alive も使わない）。結果は `applied`・`rejected`（4xx。適用されていない）・`not_sent`（接続できない）・`unknown`（時間切れ・切断・5xx・形の違う応答。再送するかは Core の状態機械が決める）。
 - `capability`: 最小の能力の型（暫定。connector の能力の型は #81 で domain に置く予定で、できたら `src/adapter/capability.ts` を差し替える）。
+
+## Microsoft Graph の読み取り connector（B09-02）
+
+`createGraphMailConnector({ accessToken, transport, baseUrl, timeoutMs, tenantId, timeoutSignal, maxPages })`（[ADR 0134](../../docs/adr/0134-b09-02-graph-read-connector.md)）。
+
+- **読み取り専用**: `readAccount`・`listMailFolders`・`listMessagesPage`（1 ページ）・`listMessages`（全ページ）・`listCategories`（表示用）。カテゴリの付与・移動・送信は作らない（`capability.writes` は空）。
+- **差分取得なし**: Graph の delta（`/delta`・`$deltatoken`）は使わず、フォルダーごとの `receivedDateTime`・`lastModifiedDateTime` の条件で読む（ポーリング）。
+- **トークンを保持しない**: 委任トークンは取得関数の注入で受け取り、要求ごとに `Authorization` ヘッダーにだけ使う。結果・例外にトークン・応答本文を載せない。
+- すべての要求に `Prefer: IdType="ImmutableId"`。基本キーは `immutable_id`、所属フォルダーは `folder_id`。id の無い項目は `skipped_without_id` に数える。
+- 拒否（403 など）は `rejected`（理由: `insufficient_permission`・`organization_policy`・`admin_consent_required`・`tenant_restriction`・`unknown`）で返し、成功扱いにしない。通信・応答の失敗は結果型で返す。
+- transport は注入できる（既定は `node:https` で 1 回だけ送る Graph 専用の薄い実装。B08-03 の HTTP の土台が入ったら差し替えられる）。
+- 検証は**模擬 transport だけ**。実 API・OAuth の実接続は未実施（B15）。
 
 ## 試験
 

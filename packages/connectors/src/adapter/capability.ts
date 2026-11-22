@@ -21,7 +21,8 @@ export interface MinimalWriteCapability {
 }
 
 export interface MinimalConnectorCapability {
-  readonly provider: 'mock';
+  /** mock は模擬 provider、microsoft は Graph の読み取り connector（B09-02。fixture の provider 値と同じ）。 */
+  readonly provider: 'mock' | 'microsoft';
   readonly reads: readonly MinimalReadCapability[];
   readonly writes: readonly MinimalWriteCapability[];
 }

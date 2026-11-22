@@ -9,6 +9,8 @@ import {
   GoogleApiError,
   GoogleHistoryExpiredError,
   GoogleTransportFailure,
+  listAttachmentParts,
+  type GoogleGmailPart,
   type GoogleHttpTransportRequest,
   type GoogleHttpTransportResponse,
 } from './index.js';
@@ -780,4 +782,175 @@ test('同じ nextPageToken が繰り返し返ると invalid_response で止ま�
     },
   );
   assert.equal(requests.length, 2);
+});
+
+// ---- B08-04: 添付の取得（attachments.get）と添付パートの列挙 ----
+
+test('Gmail 添付: attachments.get で取得し、base64url をバイト列へ戻す', async () => {
+  // "%PDF" の 4 バイト（base64url では JVBERg）。
+  const { connector, urls, requests } = setup([
+    json({ size: 4, data: 'JVBERg' }),
+  ]);
+
+  const attachment = await connector.gmail.getAttachment({
+    messageId: 'msg-1',
+    attachmentId: 'att-1',
+  });
+
+  assert.equal(attachment.size, 4);
+  assert.deepEqual([...attachment.data], [0x25, 0x50, 0x44, 0x46]);
+  assert.equal(requests.length, 1);
+  assert.equal(
+    urls()[0]?.pathname,
+    '/gmail/v1/users/me/messages/msg-1/attachments/att-1',
+  );
+});
+
+test('Gmail 添付: 申告サイズと実際のバイト数が違う応答は invalid_response', async () => {
+  const { connector } = setup([json({ size: 5, data: 'JVBERg' })]);
+
+  await assert.rejects(
+    connector.gmail.getAttachment({ messageId: 'msg-1', attachmentId: 'a' }),
+    (error: unknown) => {
+      assert.ok(error instanceof GoogleApiError);
+      assert.equal(error.kind, 'invalid_response');
+      return true;
+    },
+  );
+});
+
+test('Gmail 添付: base64url でない data は invalid_response', async () => {
+  // '+' を含む標準 base64 の形は受け付けない。
+  const { connector } = setup([json({ size: 4, data: 'JVBE+g==' })]);
+
+  await assert.rejects(
+    connector.gmail.getAttachment({ messageId: 'msg-1', attachmentId: 'a' }),
+    (error: unknown) => {
+      assert.ok(error instanceof GoogleApiError);
+      assert.equal(error.kind, 'invalid_response');
+      return true;
+    },
+  );
+});
+
+test('Gmail 添付: data が無い・size が負の応答は invalid_response', async () => {
+  const noData = setup([json({ size: 4 })]);
+  await assert.rejects(
+    noData.connector.gmail.getAttachment({
+      messageId: 'msg-1',
+      attachmentId: 'a',
+    }),
+    (error: unknown) =>
+      error instanceof GoogleApiError && error.kind === 'invalid_response',
+  );
+
+  const badSize = setup([json({ size: -1, data: 'JVBERg' })]);
+  await assert.rejects(
+    badSize.connector.gmail.getAttachment({
+      messageId: 'msg-1',
+      attachmentId: 'a',
+    }),
+    (error: unknown) =>
+      error instanceof GoogleApiError && error.kind === 'invalid_response',
+  );
+});
+
+test('添付パートの列挙: ファイル名のあるパートだけを出現順に拾い、添付メールの内側はたどらない', () => {
+  const payload: GoogleGmailPart = {
+    mimeType: 'multipart/mixed',
+    headers: [],
+    bodySize: 0,
+    parts: [
+      {
+        partId: '0',
+        mimeType: 'text/plain',
+        headers: [],
+        bodySize: 12,
+        bodyData: 'aGVsbG8gdGV4dA',
+        parts: [],
+      },
+      {
+        partId: '1',
+        mimeType: 'application/pdf',
+        filename: 'doc.pdf',
+        headers: [{ name: 'Content-Type', value: 'application/pdf' }],
+        bodySize: 123,
+        bodyAttachmentId: 'ATT-1',
+        parts: [],
+      },
+      {
+        partId: '2',
+        mimeType: 'message/rfc822',
+        filename: 'forwarded.eml',
+        headers: [],
+        bodySize: 999,
+        bodyAttachmentId: 'ATT-2',
+        parts: [
+          {
+            partId: '2.1',
+            mimeType: 'application/pdf',
+            filename: 'inner.pdf',
+            headers: [],
+            bodySize: 5,
+            bodyAttachmentId: 'ATT-INNER',
+            parts: [],
+          },
+        ],
+      },
+      {
+        partId: '3',
+        mimeType: 'text/csv',
+        filename: 'data.csv',
+        headers: [
+          { name: 'Content-Type', value: 'text/csv; charset=shift_jis' },
+        ],
+        bodySize: 7,
+        bodyData: 'YSxiCjEsMg',
+        parts: [],
+      },
+    ],
+  };
+
+  const parts = listAttachmentParts(payload);
+
+  assert.deepEqual(parts, [
+    {
+      partId: '1',
+      attachmentId: 'ATT-1',
+      inlineData: null,
+      filename: 'doc.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: 123,
+      contentType: 'application/pdf',
+    },
+    {
+      partId: '2',
+      attachmentId: 'ATT-2',
+      inlineData: null,
+      filename: 'forwarded.eml',
+      mimeType: 'message/rfc822',
+      sizeBytes: 999,
+      contentType: null,
+    },
+    {
+      partId: '3',
+      attachmentId: null,
+      inlineData: 'YSxiCjEsMg',
+      filename: 'data.csv',
+      mimeType: 'text/csv',
+      sizeBytes: 7,
+      contentType: 'text/csv; charset=shift_jis',
+    },
+  ]);
+});
+
+test('添付パートの列挙: 添付が無い payload では空になる', () => {
+  const parts = listAttachmentParts({
+    mimeType: 'text/plain',
+    headers: [],
+    bodySize: 3,
+    bodyData: 'aGk',
+    parts: [],
+  });
+  assert.deepEqual(parts, []);
 });

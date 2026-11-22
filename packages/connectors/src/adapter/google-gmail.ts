@@ -63,6 +63,32 @@ export interface GoogleHistoryResult {
   readonly entries: readonly GoogleHistoryEntry[];
 }
 
+// attachments.get の結果。data は base64url をバイト列へ戻したもの。size は API が申告する復号後のバイト数で、
+// 実際のバイト数と一致しない応答は不正として拒否する（呼び出し側は data.length を使う）。
+export interface GoogleGmailAttachment {
+  readonly size: number;
+  readonly data: Uint8Array;
+}
+
+// payload の木から拾った添付パート（B08-04）。ファイル名を持つ末端のパートだけを添付として扱う。
+// 本文パート（ファイル名なし）や、入れ物の multipart パートは含めない。取得してよいかの判定は domain の
+// fetch-scope（checkAttachment）が正本で、ここは構造の列挙だけを行う。
+export interface GoogleGmailAttachmentPart {
+  // メッセージ内での位置（partId）。応答に無い場合は null。
+  readonly partId: string | null;
+  // attachments.get に使う識別子。インラインでデータが届いている場合は null になることがある。
+  readonly attachmentId: string | null;
+  // format=full で小さな添付が本文と一緒に届いた場合のデータ（base64url）。無ければ null。
+  readonly inlineData: string | null;
+  readonly filename: string;
+  // パートの MIME。応答に無い場合は空文字列（種類を決められず、取得対象にならない）。
+  readonly mimeType: string;
+  // provider が申告するサイズ（body.size）。分からない場合は null（checkAttachment はサイズ不明を取らない）。
+  readonly sizeBytes: number | null;
+  // Content-Type の charset など、抽出に要るヘッダーだけを残す。
+  readonly contentType: string | null;
+}
+
 export type GoogleGmailMessageFormat = 'minimal' | 'metadata' | 'full';
 
 export interface GoogleGmailReader {
@@ -80,6 +106,12 @@ export interface GoogleGmailReader {
     readonly id: string;
     readonly format: GoogleGmailMessageFormat;
   }): Promise<GoogleGmailMessage>;
+  // 添付 1 件の内容の取得（B08-04、設計 04 J16）。取得してよい添付かの判定は呼び出し側（domain の
+  // checkAttachment を通したものだけを渡す）。RAW 全体取得は使わない。
+  getAttachment(request: {
+    readonly messageId: string;
+    readonly attachmentId: string;
+  }): Promise<GoogleGmailAttachment>;
   listHistory(request: {
     readonly startHistoryId: string;
     readonly labelId?: string;
@@ -231,6 +263,58 @@ function toMessage(body: unknown): GoogleGmailMessage {
   return message;
 }
 
+// base64url の厳密な復号。余分な文字や書き換えを受け付けず、符号化し直して一致するものだけを通す
+// （緩い復号で壊れたバイト列を「取得できた」としない）。添付の data と、インラインの body.data の両方で使う。
+export function decodeBase64Url(value: string): Uint8Array | null {
+  if (!/^[A-Za-z0-9_-]+={0,2}$/.test(value)) return null;
+  const bytes = Buffer.from(value, 'base64url');
+  if (bytes.toString('base64url') !== value.replace(/=+$/, '')) return null;
+  return new Uint8Array(bytes);
+}
+
+function toAttachment(body: unknown): GoogleGmailAttachment {
+  if (!isRecord(body)) throw invalidResponse();
+  const size = body['size'];
+  if (typeof size !== 'number' || !Number.isSafeInteger(size) || size < 0)
+    throw invalidResponse();
+  const data = body['data'];
+  if (typeof data !== 'string' || data.length === 0) throw invalidResponse();
+  const bytes = decodeBase64Url(data);
+  if (bytes === null || bytes.length !== size) throw invalidResponse();
+  return { size, data: bytes };
+}
+
+// payload の木から添付パートを列挙する（B08-04）。ファイル名が空でないパートを添付とし、その中はたどらない
+// （添付されたメール（message/rfc822）の中の添付を、このメールの添付として扱わない）。
+// ファイル名を持たない入れ物のパート（multipart）はたどるだけで含めない。
+// 並びは木の出現順（抽出入力の添付の並びと source の対応を安定させる）。
+export function listAttachmentParts(
+  payload: GoogleGmailPart,
+): readonly GoogleGmailAttachmentPart[] {
+  const found: GoogleGmailAttachmentPart[] = [];
+  const walk = (part: GoogleGmailPart): void => {
+    const filename = part.filename ?? '';
+    if (filename !== '') {
+      const contentTypeHeader = part.headers.find(
+        (header) => header.name.toLowerCase() === 'content-type',
+      );
+      found.push({
+        partId: part.partId ?? null,
+        attachmentId: part.bodyAttachmentId ?? null,
+        inlineData: part.bodyData ?? null,
+        filename,
+        mimeType: part.mimeType ?? '',
+        sizeBytes: part.bodySize,
+        contentType: contentTypeHeader?.value ?? null,
+      });
+      return;
+    }
+    for (const child of part.parts) walk(child);
+  };
+  walk(payload);
+  return found;
+}
+
 function messageIdOf(value: unknown): string {
   if (!isRecord(value)) throw invalidResponse();
   const message = value['message'];
@@ -323,6 +407,15 @@ export function createGoogleGmailReader(
         await client.getJson(
           `/gmail/v1/users/me/messages/${encodeURIComponent(request.id)}`,
           { format: request.format },
+        ),
+      );
+    },
+
+    async getAttachment(request) {
+      return toAttachment(
+        await client.getJson(
+          `/gmail/v1/users/me/messages/${encodeURIComponent(request.messageId)}/attachments/${encodeURIComponent(request.attachmentId)}`,
+          {},
         ),
       );
     },

@@ -391,7 +391,11 @@ importers:
         specifier: 3.0.1
         version: 3.0.1(ajv@8.20.0)
 
-  packages/connectors: {}
+  packages/connectors:
+    dependencies:
+      '@buddy/domain':
+        specifier: workspace:*
+        version: link:../domain
 
   packages/contracts: {}
 

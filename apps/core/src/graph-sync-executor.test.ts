@@ -119,6 +119,12 @@ function buildFakeConnector(fake: FakeConnector): GraphMailConnector {
     async listCategories() {
       throw new Error('unused');
     },
+    async listAttachments() {
+      throw new Error('unused');
+    },
+    async getAttachment() {
+      throw new Error('unused');
+    },
   };
 }
 

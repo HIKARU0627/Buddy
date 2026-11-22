@@ -98,7 +98,14 @@ const ENTRIES: Readonly<Record<string, readonly Entry[]>> = {
   'mail-attachments.ts': [
     {
       kind: 'gated',
-      what: 'メール添付の取得（接続先からの添付の読み取りと抽出。B08-04）',
+      what: '添付の取得（Gmail からの添付の読み取りと抽出。B08-04）',
+      anchors: ['options.retention.ready()', 'options.retention.lease()'],
+    },
+  ],
+  'graph-mail-attachments.ts': [
+    {
+      kind: 'gated',
+      what: '添付の取得（Outlook／Graph からの添付の読み取りと抽出。B09-03）',
       anchors: ['options.retention.ready()', 'options.retention.lease()'],
     },
   ],

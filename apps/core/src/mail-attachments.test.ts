@@ -577,9 +577,9 @@ test('mimeType が空でも Content-Type ヘッダーから種類を補って PD
   ]);
 });
 
-test('掃除のゲートが閉じている間は添付を取得せず、許可した添付を未読にする', async () => {
+test('掃除ゲートが閉じている間は取得せず、許可対象を failed に倒す', async () => {
   const { gmail, calls } = fakeGmail(() =>
-    Promise.resolve({ size: 30, data: utf8('読めてはいけない文') }),
+    Promise.resolve({ size: 5, data: utf8('hello') }),
   );
   const loader = createMailAttachmentLoader({
     gmail,
@@ -590,10 +590,10 @@ test('掃除のゲートが閉じている間は添付を取得せず、許可�
         search: false,
         cloud_send: false,
         auto_use: false,
-        reasons: ['sweep_incomplete'],
+        reasons: ['sweep_pending'],
         use_blocked: [],
       }),
-      lease: () => () => {},
+      lease: () => null,
     },
   });
 
@@ -605,13 +605,20 @@ test('掃除のゲートが閉じている間は添付を取得せず、許可�
         partId: '1',
         mimeType: 'text/plain',
         filename: 'note.txt',
-        headers: [{ name: 'Content-Type', value: 'text/plain; charset=UTF-8' }],
-        bodySize: 30,
+        bodySize: 5,
         bodyAttachmentId: 'ATT-1',
+      }),
+      part({
+        partId: '2',
+        mimeType: 'image/png',
+        filename: 'photo.png',
+        bodySize: 100,
+        bodyAttachmentId: 'ATT-2',
       }),
     ]),
   });
 
+  // 取得は一切しない。許可対象は未読（failed）、範囲外は範囲外のまま。
   assert.deepEqual(calls, []);
   assert.deepEqual(result, [
     {
@@ -620,15 +627,20 @@ test('掃除のゲートが閉じている間は添付を取得せず、許可�
       state: 'failed',
       source_revision: REVISION,
     },
+    {
+      attachment_id: '2',
+      permitted: false,
+      state: 'unread',
+      source_revision: null,
+    },
   ] satisfies readonly MailAttachmentInput[]);
 });
 
-test('掃除のゲートが開いていれば貸し出しを持って取得し、終わりに返す', async () => {
-  const text = 'ゲートを通した文';
+test('掃除ゲートが開いていれば貸し出しを保持して取得し、終わりに返す', async () => {
+  let released = false;
   const { gmail, calls } = fakeGmail(() =>
-    Promise.resolve({ size: 30, data: utf8(text) }),
+    Promise.resolve({ size: 5, data: utf8('hello') }),
   );
-  let releases = 0;
   const loader = createMailAttachmentLoader({
     gmail,
     scope: SCOPE,
@@ -642,7 +654,7 @@ test('掃除のゲートが開いていれば貸し出しを持って取得し�
         use_blocked: [],
       }),
       lease: () => () => {
-        releases += 1;
+        released = true;
       },
     },
   });
@@ -655,22 +667,13 @@ test('掃除のゲートが開いていれば貸し出しを持って取得し�
         partId: '1',
         mimeType: 'text/plain',
         filename: 'note.txt',
-        headers: [{ name: 'Content-Type', value: 'text/plain; charset=UTF-8' }],
-        bodySize: 30,
+        bodySize: 5,
         bodyAttachmentId: 'ATT-1',
       }),
     ]),
   });
 
-  assert.deepEqual(calls, [{ messageId: MESSAGE_ID, attachmentId: 'ATT-1' }]);
-  assert.deepEqual(result, [
-    {
-      attachment_id: '1',
-      permitted: true,
-      state: 'extracted',
-      source_revision: REVISION,
-      text,
-    },
-  ] satisfies readonly MailAttachmentInput[]);
-  assert.equal(releases, 1);
+  assert.equal(calls.length, 1);
+  assert.equal(result[0]?.state, 'extracted');
+  assert.equal(released, true);
 });

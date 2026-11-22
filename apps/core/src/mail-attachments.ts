@@ -16,8 +16,11 @@
 //   ここは Gmail のメッセージ 1 通分の部品として閉じる。
 import type { MailAttachmentInput } from '@buddy/ai';
 import { checkAttachment, classifyAttachment } from '@buddy/domain';
-import type { FetchScope } from '@buddy/domain';
-import type { StartupGateDecision } from '@buddy/domain';
+import type {
+  AttachmentKind,
+  FetchScope,
+  StartupGateDecision,
+} from '@buddy/domain';
 import { decodeBase64Url, listAttachmentParts } from '@buddy/connectors';
 import type {
   GoogleGmailAttachmentPart,
@@ -33,11 +36,11 @@ export interface MailAttachmentLoaderOptions {
   // PDF のテキスト抽出（試験で差し替える）。省略時は unpdf（pdfjs の Node 向けラッパー）。
   readonly extractPdfText?: (data: Uint8Array) => Promise<string>;
   // 保存期限の掃除のゲート（ADR 0053・0058）。省略時は通さない（試験・模擬用）。
-  // 製品の配線（B10・B11 の後続）が RetentionSweeper の ready／gate／lease を渡す。
+  // 製品では core.ts が RetentionSweeper の ready／gate／lease を渡す。
   readonly retention?: {
     readonly ready: () => Promise<void>;
     readonly gate: () => StartupGateDecision;
-    // ゲートの確認から取得・抽出の終わりまでを掃除の本体と直列にする貸し出し。取れないときは null。
+    // ゲートの確認から抽出の終わりまでを掃除の本体と直列にする貸し出し。取れないときは null。
     readonly lease: () => (() => void) | null;
   };
 }
@@ -108,11 +111,31 @@ function decodeTextBytes(
   return text.startsWith('\uFEFF') ? text.slice(1) : text;
 }
 
+// 取得した添付のバイト列からテキストを取り出す（provider 非依存。Graph 用の loader も使う）。
+// 取れなければ null（呼び出し側が failed＝未読に写す）。テキスト系は charset を見て復号し、
+// PDF は抽出器（既定は unpdf）で取り、テキストが無い（画像だけ・暗号化など）ものは null。
+export async function extractMailAttachmentText(input: {
+  readonly kind: AttachmentKind;
+  readonly data: Uint8Array;
+  // charset の宣言を含む Content-Type。PDF では使わない。
+  readonly contentType: string | null;
+  // PDF のテキスト抽出（試験で差し替える）。undefined なら unpdf。
+  readonly extractPdfText: ((data: Uint8Array) => Promise<string>) | undefined;
+}): Promise<string | null> {
+  if (input.kind === 'text')
+    return decodeTextBytes(input.data, input.contentType);
+  let pdfText: string;
+  try {
+    pdfText = await (input.extractPdfText ?? defaultExtractPdfText)(input.data);
+  } catch {
+    return null;
+  }
+  return pdfText.trim() === '' ? null : pdfText;
+}
+
 export function createMailAttachmentLoader(
   options: MailAttachmentLoaderOptions,
 ): MailAttachmentLoader {
-  const extractPdfText = options.extractPdfText ?? defaultExtractPdfText;
-
   // 許可した添付 1 件のバイト列を得る。取得できなければ null（理由は持たない。失敗は failed に写す）。
   const fetchBytes = async (
     messageId: string,
@@ -200,30 +223,14 @@ export function createMailAttachmentLoader(
         results.push(failed);
         continue;
       }
-      if (classified.kind === 'text') {
-        const text = decodeTextBytes(data, part.contentType);
-        if (text === null) {
-          results.push(failed);
-          continue;
-        }
-        results.push({
-          attachment_id: attachmentId,
-          permitted: true,
-          state: 'extracted',
-          source_revision: request.messageRevision,
-          text,
-        });
-        continue;
-      }
-      // PDF。テキストが取れない（画像だけ・暗号化など）ものは未読（failed）にする。
-      let pdfText: string;
-      try {
-        pdfText = await extractPdfText(data);
-      } catch {
-        results.push(failed);
-        continue;
-      }
-      if (pdfText.trim() === '') {
+      // 抽出は provider 非依存の共通処理。取れなければ未読（failed）にする。
+      const text = await extractMailAttachmentText({
+        kind: classified.kind,
+        data,
+        contentType: part.contentType,
+        extractPdfText: options.extractPdfText,
+      });
+      if (text === null) {
         results.push(failed);
         continue;
       }
@@ -232,7 +239,7 @@ export function createMailAttachmentLoader(
         permitted: true,
         state: 'extracted',
         source_revision: request.messageRevision,
-        text: pdfText,
+        text,
       });
     }
     return results;

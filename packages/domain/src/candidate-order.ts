@@ -120,6 +120,13 @@ function localToUtc(local: string, zone: string): number | null {
   return reaches(low) ? low : high;
 }
 
+// 現地の日時の UTC 時刻（ミリ秒）。規則は localToUtc と同じ（2 回ある時刻は後の回、隙間の時刻は直後）。再通知の時刻の
+// 解釈（candidateSnoozeUntil）が使う。
+export const candidateLocalToUtc = (
+  local: string,
+  zone: string,
+): number | null => localToUtc(local, zone);
+
 interface ParsedDeadline {
   readonly date: string;
   // 並べ替えの鍵（UTC のミリ秒）。

@@ -38,6 +38,7 @@ import type {
   TlsKeyStore,
 } from '@buddy/platform';
 import { createCandidateRoutes } from './api-candidates.js';
+import { createCandidateListRefresh } from './candidate-list-refresh.js';
 import {
   CONNECTION_REVISION_CHECKED_ROUTES,
   createConnectionRoutes,
@@ -1142,6 +1143,34 @@ async function startHttps(
     zone: () => deviceTimeZone(),
     now: () => now().toISOString(),
   });
+  // 一覧を開くたびの状態の見直し（B11-05、ADR 0132）。一覧の前に保守の時間による遷移と保持の掃除を回す（根拠の再確認は
+  // connector が無いので渡さない）。時計は掃除のゲート（retention.gate()）の理由のうち時計のもの（clock_*: 巻き戻り・
+  // 時計の状態ファイルの欠け・不正・読めない時刻）で確かめ、該当すれば保守を保留して一覧だけ返す。掃除の進み具合
+  // （sweep_*）は候補の保守の可否に関わらないので見ない（clockStatus() のように掃除の完了を待たず、一覧を遅らせない）。
+  // 掃除の仕組みが無い組み立て（試験）は、時計の状態ファイルが無いときの掃除と同じく今の時刻をそのまま使う。
+  // 保守の失敗・スキップは一覧の応答を止めない。zone が null なら保守を回さず、一覧が 503 で閉じる。
+  const candidateRefresh = createCandidateListRefresh({
+    client: store,
+    zone: () => deviceTimeZone(),
+    clock: async () => {
+      const at = now().toISOString();
+      if (retention === null) return { ok: true, now: at } as const;
+      const held = retention
+        .gate()
+        .reasons.filter((reason) => reason.startsWith('clock_'))
+        .sort();
+      return held.length > 0
+        ? ({ ok: false, reason: held.join('+') } as const)
+        : ({ ok: true, now: at } as const);
+    },
+    log,
+  });
+  const candidateHandlers = {
+    ...candidateRoutes.handlers,
+    listCandidates: candidateRefresh.wrap(
+      candidateRoutes.handlers.listCandidates,
+    ),
+  };
   // 承認・取消・予算・接続の取得対象の版の照合は DB の現在値で行う。他の経路は注入した環境（なければ安全側の既定）。
   const environment: RequestEnvironment = {
     ...base,
@@ -1331,7 +1360,7 @@ async function startHttps(
     stream.handlers,
     budgetRoutes.handlers,
     connectionRoutes.handlers,
-    candidateRoutes.handlers,
+    candidateHandlers,
     voiceRoutes.handlers,
   ].flatMap((handlers) => Object.keys(handlers));
   if (new Set(handlerKeys).size !== handlerKeys.length)
@@ -1355,7 +1384,7 @@ async function startHttps(
         ...stream.handlers,
         ...budgetRoutes.handlers,
         ...connectionRoutes.handlers,
-        ...candidateRoutes.handlers,
+        ...candidateHandlers,
         ...voiceRoutes.handlers,
       },
       eventStream: streams,

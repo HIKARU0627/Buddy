@@ -36,6 +36,7 @@ import { createDesktopContract, loadContractSchema } from '../contract.js';
 import type { DesktopCanvasDisplaySettings } from '@buddy/contracts';
 import {
   ADMIN_CHANNELS,
+  CANDIDATE_CHANNELS,
   CANVAS_CHANNELS,
   CONNECTION_CHANNELS,
   OPERATION_CHANNELS,
@@ -679,6 +680,11 @@ function registerIpc(): void {
       if (OPERATION_CHANNELS.includes(channel))
         return link
           .handleOperationIpc(channel, raw, sender, controller.state)
+          .then((outcome) => outcome.response);
+      // 気づきの一覧と状態の変更（B11-05、ADR 0132）。候補 ID・期待する状態は main が持ち、画面は参照だけ。
+      if (CANDIDATE_CHANNELS.includes(channel))
+        return link
+          .handleCandidateIpc(channel, raw, sender, controller.state)
           .then((outcome) => outcome.response);
       // キャンバスの物のユーザーの操作（UI-06）。キャンバスの窓だけ・前に出ている間だけ（core-link が確かめる）。
       if (CANVAS_CHANNELS.includes(channel))

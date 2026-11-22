@@ -4,6 +4,7 @@ import {
   CANDIDATE_STATES,
   candidateDueEvent,
   candidateRetentionPhase,
+  candidateSnoozeUntil,
   candidateTransition,
   checkSnoozeUntil,
   evidenceDecision,
@@ -316,5 +317,81 @@ test('a deadline on a local time that happens twice is passed only after the lat
   assert.equal(
     candidateDueEvent(snoozed, '2030-11-03T06:30:01Z', NY).event,
     'deadline_passed',
+  );
+});
+
+// B11-05: 本人の選ぶ再通知の時刻（ADR 0132）。本人のタイムゾーンで解釈する。期待値は手で数えた。
+test('a snooze chosen by the person is read in their time zone and must be in the future', () => {
+  // 2030-10-09（水）12:00 JST の明日・来週は同じ 12:00 JST。
+  assert.deepEqual(candidateSnoozeUntil({ kind: 'tomorrow' }, NOW, ZONE), {
+    ok: true,
+    until: '2030-10-10T03:00:00Z',
+  });
+  assert.deepEqual(candidateSnoozeUntil({ kind: 'next_week' }, NOW, ZONE), {
+    ok: true,
+    until: '2030-10-16T03:00:00Z',
+  });
+  // 日時の指定は本人のタイムゾーンの現地の日時（秒を省いた入力も読む）。
+  assert.deepEqual(
+    candidateSnoozeUntil(
+      { kind: 'at', local_datetime: '2030-10-09T18:30' },
+      NOW,
+      ZONE,
+    ),
+    { ok: true, until: '2030-10-09T09:30:00Z' },
+  );
+  // 同じ入力でもタイムゾーンが違えば別の時刻（端末の既定で置き換えない）。
+  assert.deepEqual(
+    candidateSnoozeUntil(
+      { kind: 'at', local_datetime: '2030-10-09T18:30:00' },
+      NOW,
+      'Europe/London',
+    ),
+    { ok: true, until: '2030-10-09T17:30:00Z' },
+  );
+  // いまちょうど・過去は拒否（checkSnoozeUntil に従う）。
+  for (const local of ['2030-10-09T12:00', '2030-10-09T11:59'])
+    assert.deepEqual(
+      candidateSnoozeUntil({ kind: 'at', local_datetime: local }, NOW, ZONE),
+      { ok: false, reason: 'not_in_future' },
+      local,
+    );
+  // 暦にない日時・形の違う入力・UTC の時刻は拒否。
+  for (const local of [
+    '2030-02-30T10:00',
+    '2030-10-10T24:00',
+    '2030-10-10',
+    '2030-10-10T10:00:00Z',
+  ])
+    assert.deepEqual(
+      candidateSnoozeUntil({ kind: 'at', local_datetime: local }, NOW, ZONE),
+      { ok: false, reason: 'until_invalid' },
+      local,
+    );
+  assert.deepEqual(
+    candidateSnoozeUntil({ kind: 'tomorrow' }, NOW, 'Not/AZone'),
+    { ok: false, reason: 'zone_invalid' },
+  );
+  assert.deepEqual(candidateSnoozeUntil({ kind: 'tomorrow' }, 'x', ZONE), {
+    ok: false,
+    reason: 'now_invalid',
+  });
+});
+
+test('a snooze across a daylight saving change keeps the local time (later turn, or just after a gap)', () => {
+  const NY = 'America/New_York';
+  // 2030-11-02 01:30 EDT（05:30Z）の明日 01:30 は 11-03 に 2 回ある（EDT 05:30Z・EST 06:30Z）。後の回にする。
+  assert.deepEqual(
+    candidateSnoozeUntil({ kind: 'tomorrow' }, '2030-11-02T05:30:00Z', NY),
+    { ok: true, until: '2030-11-03T06:30:00Z' },
+  );
+  // 2030-03-10 02:30 は存在しない（02:00 EST → 03:00 EDT）。直後の 03:00 EDT（07:00Z）。
+  assert.deepEqual(
+    candidateSnoozeUntil(
+      { kind: 'at', local_datetime: '2030-03-10T02:30' },
+      '2030-03-01T00:00:00Z',
+      NY,
+    ),
+    { ok: true, until: '2030-03-10T07:00:00Z' },
   );
 });

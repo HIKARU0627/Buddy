@@ -27,6 +27,8 @@ import { useDesktopState, useNow } from './state/use-desktop-state.js';
 import { useHomeState } from './state/use-home-state.js';
 import { useHubState } from './state/use-hub-state.js';
 import { useWorkState } from './state/use-work-state.js';
+import { useCandidateState } from './state/use-candidate-state.js';
+import { CandidatesPanel } from './screens/candidates/CandidatesPanel.js';
 import { WorkPanel } from './screens/work/WorkPanel.js';
 import { StopShortcutMark } from './components/StopShortcutMark.js';
 import {
@@ -84,6 +86,8 @@ function ConnectedApp({ api }: { readonly api: BuddyDesktopApi }) {
     workLive,
     connection?.operations ?? NO_OPERATIONS,
   );
+  // 気づき（B11-05、ADR 0132）。会話と同じく、ロック解除済みで中枢に接続している間だけ内容を持つ（切断・ロックで捨てる）。
+  const candidates = useCandidateState(api, workLive);
   if (connection !== null && needsPairing(connection))
     return (
       <PairingScreen
@@ -115,13 +119,21 @@ function ConnectedApp({ api }: { readonly api: BuddyDesktopApi }) {
       }
       work={
         workShown && connection !== null ? (
-          <WorkPanel
-            state={work.state}
-            actions={work.actions}
-            operations={connection.operations}
-            link={connection.link === 'connected' ? 'connected' : 'other'}
-            stopped={stopped}
-          />
+          <>
+            <WorkPanel
+              state={work.state}
+              actions={work.actions}
+              operations={connection.operations}
+              link={connection.link === 'connected' ? 'connected' : 'other'}
+              stopped={stopped}
+            />
+            {/* 切断中も欄を出し、取得できていないことを示す（「気づきはありません」と言わない。設計 01）。 */}
+            <CandidatesPanel
+              state={candidates.state}
+              actions={candidates.actions}
+              now={now}
+            />
+          </>
         ) : undefined
       }
       hub={

@@ -6072,11 +6072,19 @@
               "type": "null"
             }
           ]
+        },
+        "zone": {
+          "$ref": "#/$defs/TimeZone",
+          "description": "Core が並べるのに使った本人のタイムゾーン（ADR 0131）。画面は見出し（今日・明日など）をこの値で分け、端末の OS のタイムゾーンで代用しない（ADR 0132）。"
+        },
+        "as_of": {
+          "$ref": "#/$defs/UtcTime",
+          "description": "Core が一覧を並べた時刻（UTC）。画面の見出しの基準時刻（ADR 0132）。"
         }
       },
-      "required": ["candidates", "counts", "next_cursor"],
+      "required": ["candidates", "counts", "next_cursor", "zone", "as_of"],
       "additionalProperties": false,
-      "description": "気づきの一覧（設計 11 §4、ADR 0073）。表示順は domain が決める。本文・添付の内容は含めない。"
+      "description": "気づきの一覧（設計 11 §4、ADR 0073・0132）。表示順は domain が決める。見出しそのものは含めず、見出しを分けるのに要る本人のタイムゾーンと並べた時刻を返す。本文・添付の内容は含めない。"
     },
     "CandidateEvidence": {
       "type": "object",
@@ -12396,9 +12404,11 @@
         "desktop.get_voice",
         "desktop.voice_continue",
         "desktop.voice_consent_revoke",
-        "desktop.voice_control"
+        "desktop.voice_control",
+        "desktop.candidates_list",
+        "desktop.candidate_state"
       ],
-      "description": "UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014・0025）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。中枢との接続・ペアリングは用途別のチャネルだけで、要求の宛先・本文を Renderer が決められない。音声レンダラーの IPC（B05）は別に定める。 発言・承認表示の準備・承認・取消・照合は用途別のチャネルで、操作は main が持つ参照（ref）で指す（B04-05、ADR 0031）。 キャンバスを前に出す（canvas_summon）は状態の層と入力バーからだけ使う（UI-02、ADR 0032）。状態の層のパネルを出す・しまう（status_panel）は状態の層からだけ使う（UI-04、ADR 0032）。キャンバスのユーザーの操作（canvas_user_op）はキャンバスの窓からだけ、キャンバスが前に出ている間だけ使う（UI-06、ADR 0032）。 予算の確認（超過枠の承認・見送り budget_overage_decide、M 超過の確認 budget_overrun_review、不明な費用の手での精算 budget_manual_settle）は状態の層からだけ使う。承認・確認・精算は main の OS の確認ダイアログを 1 回だけ挟み、画面が持つのは main が作る参照（ref）だけ（B07-05、ADR 0039）。 音声（B05-06、ADR 0050）: 音声の状態の取得（get_voice）・呼びかけなしで音声の会話を始める「続ける」（voice_continue）・外部への送信の同意の取り消し（voice_consent_revoke）は状態の層からだけ使う。外部への送信の同意は main の OS の確認ダイアログで 1 回だけ取り、画面は同意を作れない。音声レンダラーへの IPC は VoiceRendererRequest で、このチャネルとは別。"
+      "description": "UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014・0025）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。中枢との接続・ペアリングは用途別のチャネルだけで、要求の宛先・本文を Renderer が決められない。音声レンダラーの IPC（B05）は別に定める。 発言・承認表示の準備・承認・取消・照合は用途別のチャネルで、操作は main が持つ参照（ref）で指す（B04-05、ADR 0031）。 キャンバスを前に出す（canvas_summon）は状態の層と入力バーからだけ使う（UI-02、ADR 0032）。状態の層のパネルを出す・しまう（status_panel）は状態の層からだけ使う（UI-04、ADR 0032）。キャンバスのユーザーの操作（canvas_user_op）はキャンバスの窓からだけ、キャンバスが前に出ている間だけ使う（UI-06、ADR 0032）。 予算の確認（超過枠の承認・見送り budget_overage_decide、M 超過の確認 budget_overrun_review、不明な費用の手での精算 budget_manual_settle）は状態の層からだけ使う。承認・確認・精算は main の OS の確認ダイアログを 1 回だけ挟み、画面が持つのは main が作る参照（ref）だけ（B07-05、ADR 0039）。 音声（B05-06、ADR 0050）: 音声の状態の取得（get_voice）・呼びかけなしで音声の会話を始める「続ける」（voice_continue）・外部への送信の同意の取り消し（voice_consent_revoke）は状態の層からだけ使う。外部への送信の同意は main の OS の確認ダイアログで 1 回だけ取り、画面は同意を作れない。音声レンダラーへの IPC は VoiceRendererRequest で、このチャネルとは別。 気づき（B11-05、ADR 0132）: 一覧の取得（candidates_list）と状態の変更（candidate_state。開く・今回は扱わない・再通知）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バーは使えない。候補は main が作る参照（ref）で指し、候補 ID・expected_state・接続範囲は main が持つ。"
     },
     "DesktopIpcRequest": {
       "oneOf": [
@@ -13237,6 +13247,65 @@
           "required": ["channel", "request_id", "payload"],
           "additionalProperties": false,
           "description": "音声の会話の操作（B05-05、ADR 0052）。読み上げの停止（再生だけ止める。接続・収音は保つ）・会話の終了（接続を閉じる）・返し方の切り替え（声で返す／文字で返す。声から文字へは接続をすぐ閉じる）。会話の操作の照合表と同じ処理をボタンから行う。ロック解除済みの画面操作だけ。状態の層だけが使える。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "channel": {
+              "type": "string",
+              "const": "desktop.candidates_list"
+            },
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "payload": {
+              "type": "null"
+            }
+          },
+          "required": ["channel", "request_id", "payload"],
+          "additionalProperties": false,
+          "description": "気づきの一覧を中枢から読み直す（B11-05、ADR 0132）。ロック解除済みのときだけ（内容なので、前面は求めない）。中枢は一覧の前に時間による遷移と保持の掃除を回す。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "channel": {
+              "type": "string",
+              "const": "desktop.candidate_state"
+            },
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "ref": {
+                  "$ref": "#/$defs/Id"
+                },
+                "event": {
+                  "type": "string",
+                  "enum": ["open", "dismiss", "snooze"],
+                  "description": "開く（open）・今回は扱わない（dismiss）・本人の指定した時刻に再通知（snooze）。"
+                },
+                "snooze_until": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/UtcTime"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "snooze のときだけ再通知の時刻（UTC。画面が本人のタイムゾーンで解釈した日時を直したもの）。ほかの操作では null。"
+                }
+              },
+              "required": ["ref", "event", "snooze_until"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["channel", "request_id", "payload"],
+          "additionalProperties": false,
+          "description": "気づきの状態を 1 つ進める（B11-05、ADR 0132）。ref は直前の一覧で main が渡した参照（候補 ID ではない）。main は一覧で読んだ状態を expected_state にして中枢へ送り、記録できたら一覧を読み直して返す。状態が変わっていた（409）なら読み直して preview_stale、結果が分からなければ自動では送り直さず outcome_unknown。ロック解除済みの画面操作だけ。外部へは送らない記録の操作なので、入出力の停止中も受け付ける。"
         }
       ],
       "description": "UI レンダラーから main への要求（設計 10 §1、07 §2、02 停止、ADR 0014）。main は受け取ったら最初にこの定義で検査し、未知のチャネル・未知の項目・型違いは invalid_request で拒否する。引数のない要求の payload は null。端末 ID は名乗れず、送信元は main が webContents から判定する。"
@@ -14488,6 +14557,28 @@
           "type": "object",
           "properties": {
             "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "channel": {
+              "type": "string",
+              "enum": ["desktop.candidates_list", "desktop.candidate_state"]
+            },
+            "outcome": {
+              "type": "string",
+              "const": "ok"
+            },
+            "candidates": {
+              "$ref": "#/$defs/DesktopCandidateView"
+            }
+          },
+          "required": ["request_id", "channel", "outcome", "candidates"],
+          "additionalProperties": false,
+          "description": "受け付けた。気づきの一覧の表示用の値を返す（状態の変更の後は読み直した一覧。読み直せなかったときは fetch が stale）。B11-05、ADR 0132。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "request_id": {
               "anyOf": [
                 {
                   "$ref": "#/$defs/Id"
@@ -14787,6 +14878,139 @@
       ],
       "additionalProperties": false,
       "description": "画面に出す操作（B04-05、ADR 0031）。ref は main が操作ごとに作る参照で、操作 ID・内容版・hash・provider の受領 ID を含めない。allowed_actions は表示補助で、実行時の認可ではない。"
+    },
+    "DesktopCandidateEntry": {
+      "type": "object",
+      "properties": {
+        "ref": {
+          "$ref": "#/$defs/Id",
+          "description": "main が作る参照（候補 ID ではない）。同じ候補のあいだ変えず、世代（ロック・切断）が進んだら捨てる。"
+        },
+        "position": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "中枢が並べた順（0 から）。画面は見出しの中をこの順に並べる。"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "schedule_overlap",
+            "mail_deadline",
+            "mail_reply",
+            "research_done"
+          ]
+        },
+        "state": {
+          "type": "string",
+          "enum": ["new", "seen", "acted", "dismissed", "snoozed", "resolved"]
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60,
+          "description": "題（中枢の検査済み）。本文・件名・差出人は含めない。"
+        },
+        "deadline": {
+          "$ref": "#/$defs/Deadline"
+        },
+        "initial_import": {
+          "type": "boolean"
+        },
+        "unread_partial": {
+          "type": "boolean",
+          "description": "本文・添付の一部は未読。"
+        },
+        "has_operations": {
+          "type": "boolean",
+          "description": "自動実行の操作が結び付いている（CandidateSnapshot の operation_ids が空でない）。操作 ID そのものは渡さない。"
+        },
+        "delivery_unknown": {
+          "type": "boolean",
+          "description": "この候補への状態の変更の結果が分からない。次に一覧を読み直せるまで操作させない（自動では送り直さない）。"
+        }
+      },
+      "required": [
+        "ref",
+        "position",
+        "kind",
+        "state",
+        "title",
+        "deadline",
+        "initial_import",
+        "unread_partial",
+        "has_operations",
+        "delivery_unknown"
+      ],
+      "additionalProperties": false,
+      "description": "気づきの一覧の 1 行の表示用の値（B11-05、ADR 0132）。候補 ID・通知キー・依頼の版・根拠の版・期待する状態は main の中にだけ持ち、画面へ渡さない。"
+    },
+    "DesktopCandidateView": {
+      "type": "object",
+      "properties": {
+        "fetch": {
+          "type": "string",
+          "enum": ["loaded", "stale", "unavailable"],
+          "description": "取得の状態。loaded は直近の読み取りが成功、stale は直近の読み取りに失敗して前に読めた値を出している、unavailable はこの世代でまだ読めていない（「候補なし」と区別する）。"
+        },
+        "fetched_at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UtcTime"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "最後に読めた一覧を中枢が並べた時刻（CandidateListResponse の as_of）。見出しの基準時刻にも使う。読めていなければ null。"
+        },
+        "zone": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeZone"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "最後に読めた一覧で中枢が使った本人のタイムゾーン。見出しと再通知の日時の解釈に使う（端末の OS のタイムゾーンで代用しない）。読めていなければ null。"
+        },
+        "counts": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CandidateStateCounts"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "entries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DesktopCandidateEntry"
+          }
+        },
+        "truncated": {
+          "type": "boolean",
+          "description": "件数の上限で一覧が切れた（中枢の next_cursor があった）。"
+        },
+        "list_seq": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "main が付ける一覧の通し番号。画面はこれより小さい番号の応答を反映しない（ADR 0026 と同じ）。"
+        }
+      },
+      "required": [
+        "fetch",
+        "fetched_at",
+        "zone",
+        "counts",
+        "entries",
+        "truncated",
+        "list_seq"
+      ],
+      "additionalProperties": false,
+      "description": "気づきの画面に出す値（B11-05、ADR 0132。設計 01 気づき、11 §4）。見出しは画面が domain の orderCandidates で zone と fetched_at から分ける。"
     },
     "DesktopBudgetEntry": {
       "type": "object",

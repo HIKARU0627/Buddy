@@ -97,8 +97,21 @@ test('client quit, local IO stop and hub stop are separate; no token, device ID,
     'DesktopHomeView',
     'DesktopHomeObservation',
     'DesktopSsidHint',
+    // 気づき（B11-05、ADR 0132）。候補 ID・接続範囲・期待する状態は main の中にだけ持つ。
+    'DesktopCandidateView',
+    'DesktopCandidateEntry',
   ])
     walk(defs[name], name);
+  for (const field of [
+    'candidate_id',
+    'expected_state',
+    'notification_key',
+    'request_entity_id',
+    'operation_ids',
+  ]) {
+    assert(!(field in defs.DesktopCandidateEntry.properties), field);
+    assert(!(field in defs.DesktopCandidateView.properties), field);
+  }
   // 入出力停止は local だけで、範囲を指定できない。
   const stop = fixture('desktop-ipc-io-stop');
   for (const scope of ['local', 'guest', 'global'])

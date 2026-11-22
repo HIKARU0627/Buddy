@@ -1,1 +1,69 @@
-{"command":"node --test packages/connectors/dist/graph-mail-connector.test.js scripts/graph-mail-connector.test.mjs","description":"B09-02 の模擬結果。Microsoft Graph の読み取り connector（フォルダー・メッセージの列挙とページング、カテゴリ一覧、アカウント種別の判定、組織拒否の判別）を、差し替え可能な模擬 transport と合成の応答で確かめた。実 API・実アカウント・OAuth の実接続は未実施（B15 と本人の承認まで扱わない）。同期の実行器は B09-04、添付は B09-03、接続画面は B09-05。","records":[{"approvals":0,"case_id":"QA22-b09-02","commit":"f2c0f45848aa94a1cbdbf873d9e666579a73727f","contract_version":"1.0.0","db_version":"none","deviation":"模擬のみ。アカウント種別の判定（テナントの対応）だけを記録し、カレンダーの本人所有（primary・dataOwner）の判定は B09-02 の対象外。実 API・実アカウント・組織の拒否の実測は未実施で、合格扱いにしない。","environment":{"devices":[],"hub":"プロセス内の模擬 transport（要求を記録し合成の応答を返す）。実 provider へは接続しない。","os":"Linux / Node.js v24.22.1"},"fault_point":"graph_account_kind","final_state":"personal_tenant_is_personal,other_tenant_is_work_or_school,unknown_tenant_is_null","kind":"simulated","observed_at":"2026-11-22T13:23:08.000Z","outcome":"matched_expectation","provider_requests":0,"provider_state_changes":0,"seed":null,"voice_stop_ms":null},{"approvals":0,"case_id":"QA23-b09-02","commit":"f2c0f45848aa94a1cbdbf873d9e666579a73727f","contract_version":"1.0.0","db_version":"none","deviation":"模擬のみ。フォルダー移動で immutable id が変わらないこと、id の無い項目を同一と断定せず skipped_without_id に数えること、差分取得（delta）を使わないことを記録する。実 API での ID の振る舞い（archive 移動・export/import）は未実施で、合格扱いにしない。","environment":{"devices":[],"hub":"プロセス内の模擬 transport（要求を記録し合成の応答を返す）。実 provider へは接続しない。","os":"Linux / Node.js v24.22.1"},"fault_point":"graph_message_identity","final_state":"folder_move_keeps_immutable_id,missing_id_is_skipped_without_id,no_delta_requests","kind":"simulated","observed_at":"2026-11-22T13:23:08.000Z","outcome":"matched_expectation","provider_requests":0,"provider_state_changes":0,"seed":null,"voice_stop_ms":null}],"source_sha256":[{"path":"packages/connectors/src/adapter/graph-mail-connector.ts","sha256":"bf4a3a4299ac1dcc70a1249579726953f44bdebff04c1f8a6c57aa1fc12b703f"},{"path":"packages/connectors/src/adapter/graph-transport.ts","sha256":"1e134f72014bd2080ea59d148971075800ab5089d985dc937f6b24c556689708"},{"path":"packages/connectors/src/graph-mail-connector.test.ts","sha256":"bbad0f3410471f0439e96fc4e8689eb9b1bb1220057bf3a19433488cd42cb2d1"},{"path":"scripts/graph-mail-connector.test.mjs","sha256":"3e72f14f7822b750c4e7c9b81d83aa8d6a2b0329e7aea6aef17e51c54b3f1718"}],"status":"recorded"}
+{
+  "command": "node --test packages/connectors/dist/graph-mail-connector.test.js scripts/graph-mail-connector.test.mjs",
+  "description": "B09-02 の模擬結果。Microsoft Graph の読み取り connector（フォルダー・メッセージの列挙とページング、カテゴリ一覧、アカウント種別の判定、組織拒否の判別）を、差し替え可能な模擬 transport と合成の応答で確かめた。実 API・実アカウント・OAuth の実接続は未実施（B15 と本人の承認まで扱わない）。同期の実行器は B09-04、添付は B09-03、接続画面は B09-05。",
+  "records": [
+    {
+      "approvals": 0,
+      "case_id": "QA22-b09-02",
+      "commit": "f2c0f45848aa94a1cbdbf873d9e666579a73727f",
+      "contract_version": "1.0.0",
+      "db_version": "none",
+      "deviation": "模擬のみ。アカウント種別の判定（テナントの対応）だけを記録し、カレンダーの本人所有（primary・dataOwner）の判定は B09-02 の対象外。実 API・実アカウント・組織の拒否の実測は未実施で、合格扱いにしない。",
+      "environment": {
+        "devices": [],
+        "hub": "プロセス内の模擬 transport（要求を記録し合成の応答を返す）。実 provider へは接続しない。",
+        "os": "Linux / Node.js v24.22.1"
+      },
+      "fault_point": "graph_account_kind",
+      "final_state": "personal_tenant_is_personal,other_tenant_is_work_or_school,unknown_tenant_is_null",
+      "kind": "simulated",
+      "observed_at": "2026-11-22T13:23:08.000Z",
+      "outcome": "matched_expectation",
+      "provider_requests": 0,
+      "provider_state_changes": 0,
+      "seed": null,
+      "voice_stop_ms": null
+    },
+    {
+      "approvals": 0,
+      "case_id": "QA23-b09-02",
+      "commit": "f2c0f45848aa94a1cbdbf873d9e666579a73727f",
+      "contract_version": "1.0.0",
+      "db_version": "none",
+      "deviation": "模擬のみ。フォルダー移動で immutable id が変わらないこと、id の無い項目を同一と断定せず skipped_without_id に数えること、差分取得（delta）を使わないことを記録する。実 API での ID の振る舞い（archive 移動・export/import）は未実施で、合格扱いにしない。",
+      "environment": {
+        "devices": [],
+        "hub": "プロセス内の模擬 transport（要求を記録し合成の応答を返す）。実 provider へは接続しない。",
+        "os": "Linux / Node.js v24.22.1"
+      },
+      "fault_point": "graph_message_identity",
+      "final_state": "folder_move_keeps_immutable_id,missing_id_is_skipped_without_id,no_delta_requests",
+      "kind": "simulated",
+      "observed_at": "2026-11-22T13:23:08.000Z",
+      "outcome": "matched_expectation",
+      "provider_requests": 0,
+      "provider_state_changes": 0,
+      "seed": null,
+      "voice_stop_ms": null
+    }
+  ],
+  "source_sha256": [
+    {
+      "path": "packages/connectors/src/adapter/graph-mail-connector.ts",
+      "sha256": "bf4a3a4299ac1dcc70a1249579726953f44bdebff04c1f8a6c57aa1fc12b703f"
+    },
+    {
+      "path": "packages/connectors/src/adapter/graph-transport.ts",
+      "sha256": "1e134f72014bd2080ea59d148971075800ab5089d985dc937f6b24c556689708"
+    },
+    {
+      "path": "packages/connectors/src/graph-mail-connector.test.ts",
+      "sha256": "bbad0f3410471f0439e96fc4e8689eb9b1bb1220057bf3a19433488cd42cb2d1"
+    },
+    {
+      "path": "scripts/graph-mail-connector.test.mjs",
+      "sha256": "3e72f14f7822b750c4e7c9b81d83aa8d6a2b0329e7aea6aef17e51c54b3f1718"
+    }
+  ],
+  "status": "recorded"
+}

@@ -7,7 +7,8 @@
 //   読み、取得させない（選択外は取得しない）。期間とサイズは設計の初期値（上限）を表示用に返すだけで、選択を足さない。
 // - 変更は許可版（permission_revision）の一致を条件にする（compare-and-swap）。選択に変更があれば許可版と取得範囲の版を
 //   1 つずつ上げ、同じ接続の取得集合（sync_scopes）の scope_revision を新しい版へ揃え、有効な走査を abandoned にする
-//   （11 §1A、domain の abandonScan と同じく、走査の種類に応じて pending_* を立てる）。変更がなければ何も書かない。
+//   （11 §1A、domain の abandonScan と同じく、走査の種類に応じて pending_* を立てる）。変更があれば、その接続の
+//   全取得集合に pending_full を立てる（U207 の決定 (b)、B08-05、ADR 0136）。変更がなければ何も書かない。
 // - 接続の作成・切断・OAuth のトークンはここでは扱わない（B03-04）。切断済みの接続の取得対象は変えない。
 // 結果の理由にはコードだけを入れ、SQL・パス・取得対象の値を入れない。
 
@@ -332,8 +333,10 @@ function applyUpdate(
        WHERE scope_id = ? AND active_scan_id = ?`,
     ).run(batch.kind, batch.kind, batch.scope_id, batch.scan_id);
   }
+  // 変更のたびに全量照合を必ず要求する（U207 の決定 (b)、B08-05、ADR 0136）。新しく選んだフォルダー／ラベルの
+  // 過去分は増分では届かないので、その接続の全取得集合に pending_full を立てる。
   db.prepare(
-    'UPDATE sync_scopes SET scope_revision = ? WHERE connection_id = ?',
+    'UPDATE sync_scopes SET scope_revision = ?, pending_full = 1 WHERE connection_id = ?',
   ).run(scopeRevision, op.connection_id);
   const connection = readConnection(db, op.connection_id);
   if (connection === null)

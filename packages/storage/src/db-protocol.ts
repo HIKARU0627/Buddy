@@ -57,6 +57,8 @@ import type {
   CandidateOpKind,
   CandidateOpResult,
 } from './candidate-store.js';
+// B08-05: 同期の走査の保存（設計 11 §1A）。
+import type { SyncOp, SyncOpResult } from './sync-store.js';
 
 // 故障注入の対象（操作の命令・予算の命令・音声の命令の種類）。
 export type DbFaultKind =
@@ -172,7 +174,9 @@ export type MainToWorker =
       readonly type: 'candidate';
       readonly id: number;
       readonly op: CandidateOp;
-    };
+    }
+  // 同期の走査の開始・仮置き・検証・公開・破棄と照会（B08-05、設計 11 §1A）。
+  | { readonly type: 'sync'; readonly id: number; readonly op: SyncOp };
 
 export interface WorkerTimings extends StoreTimings {
   // Core main が送ってから worker が処理を始めるまで（IPC と待ち行列の待ち）。
@@ -277,6 +281,12 @@ export type WorkerToMain =
       readonly type: 'candidate_result';
       readonly id: number;
       readonly result: CandidateOpResult;
+      readonly halted: boolean;
+    }
+  | {
+      readonly type: 'sync_result';
+      readonly id: number;
+      readonly result: SyncOpResult;
       readonly halted: boolean;
     };
 

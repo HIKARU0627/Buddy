@@ -398,3 +398,72 @@ test('a change abandons the running scan of that connection only', async (t) => 
     status: 'fetching',
   });
 });
+
+test('the sync state returns the stored scope, the active batch and the retry defaults without any token', async (t) => {
+  const h = await start(t);
+  h.sql((db) => {
+    db.prepare(
+      `INSERT INTO sync_scopes (scope_id, connection_id, scope_revision, active_scan_id, active_generation, committed_watermark, provider_cursor, executor_generation, last_incremental_completed_at, last_full_reconciled_at, pending_incremental, pending_full, analysis_plan_complete_generation)
+       VALUES ('00000000-0000-4000-8000-000000000402', ?, 2, '00000000-0000-4000-8000-000000000403', 3, 1000, 'h100', 1, NULL, 2000, 0, 1, NULL)`,
+    ).run(CONNECTION);
+    db.prepare(
+      `INSERT INTO sync_batches (scan_id, scope_id, scope_revision, kind, base_generation, base_watermark, base_provider_cursor, scan_started_at, window_start, window_end, query_fingerprint, executor_generation, status, page_cursor, diff_count, delete_at)
+       VALUES ('00000000-0000-4000-8000-000000000403', '00000000-0000-4000-8000-000000000402', 2, 'full', 3, 1000, 'h100', 3000, 0, 4000, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 1, 'fetching', 'tok-1', NULL, 999999)`,
+    ).run();
+  });
+  const response = await get(h, `/v1/connections/${CONNECTION}/sync`);
+  assert.equal(response.status, 200, response.text);
+  assert(contract.valid('SyncStateResponse', response.json), response.text);
+  assert.deepEqual(response.json, {
+    connection_id: CONNECTION,
+    provider: 'google',
+    scope_revision: '2',
+    state: {
+      scope_id: '00000000-0000-4000-8000-000000000402',
+      scope_revision: '2',
+      active_scan_id: '00000000-0000-4000-8000-000000000403',
+      active_generation: '3',
+      committed_watermark: '1970-01-01T00:00:01.000Z',
+      provider_cursor: 'h100',
+      executor_generation: '1',
+      last_incremental_completed_at: null,
+      last_full_reconciled_at: '1970-01-01T00:00:02.000Z',
+      pending_incremental: false,
+      pending_full: true,
+      analysis_plan_complete_generation: null,
+    },
+    active_batch: {
+      scan_id: '00000000-0000-4000-8000-000000000403',
+      scope_id: '00000000-0000-4000-8000-000000000402',
+      scope_revision: '2',
+      kind: 'full',
+      status: 'fetching',
+      scan_started_at: '1970-01-01T00:00:03.000Z',
+      window_start: '1970-01-01T00:00:00.000Z',
+      window_end: '1970-01-01T00:00:04.000Z',
+      query_fingerprint:
+        'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      base_generation: '3',
+      base_watermark: '1970-01-01T00:00:01.000Z',
+      base_provider_cursor: 'h100',
+      executor_generation: '1',
+      page_cursor: 'tok-1',
+      diff_count: null,
+    },
+    retry: {
+      read_timeout_ms: 15000,
+      read_max_attempts: 3,
+      read_base_delay_ms: [2000, 10000],
+      read_max_total_wait_ms: 120000,
+      read_failure_threshold: 3,
+      write_automatic_retries: 0,
+    },
+    last_attempt_at: '1970-01-01T00:00:03.000Z',
+  });
+  // 取得集合が無い接続は状態を作らず 503、存在しない接続は 422。
+  const noScope = await get(h, `/v1/connections/${OTHER}/sync`);
+  assert.equal(noScope.status, 503);
+  assert.equal(noScope.json?.['code'], 'dependency_unavailable');
+  const unknown = await get(h, `/v1/connections/${UNKNOWN}/sync`);
+  assert.equal(unknown.status, 422);
+});

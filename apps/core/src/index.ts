@@ -56,6 +56,14 @@ export type {
   SyncScanOutcome,
   SyncScanRequest,
 } from './sync-executor.js';
+// B09-04: Outlook（Graph）の同期の走査の実行器と、provider で振り分ける実行器（設計 11 §1、ADR 0138）。
+export { createGraphSyncExecutor } from './graph-sync-executor.js';
+export type {
+  GraphAccessTokenSource,
+  GraphSyncExecutorOptions,
+} from './graph-sync-executor.js';
+export { createProviderSyncExecutor } from './provider-sync-executor.js';
+export type { ProviderSyncExecutorOptions } from './provider-sync-executor.js';
 // B08-06: 同期の周期起動（設計 11 §1、ADR 0137）。起動時の回復と全量照合、60 秒ポーリング＋ジッター。
 export { createSyncScheduler } from './sync-scheduler.js';
 export type {

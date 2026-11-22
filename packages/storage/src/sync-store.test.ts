@@ -735,3 +735,130 @@ test(
     });
   },
 );
+
+test('recover with no active scan only advances the executor generation', async () => {
+  await withTempDir((dir) => {
+    const db = openSeededDatabase(databasePath(dir));
+    try {
+      seedScope(db);
+      const snap = value<SyncScopeSnapshot>(
+        run(db, { kind: 'sync.recover', scope_id: 's-1' }),
+      );
+      assert.equal(snap.scope.executor_generation, '3');
+      assert.equal(snap.scope.active_scan_id, null);
+      assert.equal(snap.scope.active_generation, '5');
+      assert.equal(snap.scope.committed_watermark, WM);
+      assert.equal(snap.scope.provider_cursor, 'cur-1');
+      assert.equal(snap.scope.pending_incremental, false);
+      assert.equal(snap.scope.pending_full, false);
+      assert.equal(snap.active_batch, null);
+      // もう一度回復すると、さらに 1 つ進む。
+      const again = value<SyncScopeSnapshot>(
+        run(db, { kind: 'sync.recover', scope_id: 's-1' }),
+      );
+      assert.equal(again.scope.executor_generation, '4');
+      assert.deepEqual(
+        reasons(run(db, { kind: 'sync.recover', scope_id: 'nope' })),
+        ['scope_not_found'],
+      );
+    } finally {
+      db.close();
+    }
+  });
+});
+
+test('recover abandons the scan left by the old executor and rejects its late pages', async () => {
+  await withTempDir((dir) => {
+    const db = openSeededDatabase(databasePath(dir));
+    try {
+      seedScope(db);
+      value<SyncBeginValue>(run(db, begin('scan-1')));
+      const staged = run(db, {
+        kind: 'sync.stage_page',
+        scan_id: 'scan-1',
+        page_no: 0,
+        items: [{ remote_id: 'r-1', source_revision: 'v1', change: 'upsert' }],
+        next_page_cursor: 'tok-1',
+      });
+      assert.equal(staged.ok, true);
+      assert.equal(stagingCount(db, 'scan-1'), 1);
+
+      const snap = value<SyncScopeSnapshot>(
+        run(db, { kind: 'sync.recover', scope_id: 's-1' }),
+      );
+      assert.equal(snap.scope.executor_generation, '3');
+      assert.equal(snap.scope.active_scan_id, null);
+      assert.equal(snap.scope.pending_incremental, true);
+      assert.equal(snap.scope.pending_full, false);
+      assert.equal(snap.active_batch, null);
+      assert.equal(batchStatus(db, 'scan-1'), 'abandoned');
+      assert.equal(stagingCount(db, 'scan-1'), 0);
+
+      // 旧担当の遅着は保存も公開もしない（有効な走査でない・担当世代が違う）。
+      assert.deepEqual(
+        reasons(
+          run(db, {
+            kind: 'sync.stage_page',
+            scan_id: 'scan-1',
+            page_no: 1,
+            items: [],
+            next_page_cursor: null,
+          }),
+        ),
+        ['batch_not_active'],
+      );
+      const publishReasons = reasons(run(db, publish('scan-1')));
+      assert.ok(publishReasons.includes('executor_changed'));
+      assert.ok(publishReasons.includes('stale_scan'));
+
+      // 回復の後は、新しい担当世代で新しい走査を始められる。
+      const restarted = value<SyncBeginValue>(
+        run(db, begin('scan-2', 'incremental', T2)),
+      );
+      assert.equal(restarted.outcome, 'started');
+      assert.equal(restarted.batch?.executor_generation, '3');
+    } finally {
+      db.close();
+    }
+  });
+});
+
+test('recover of a full scan re-queues a full reconciliation', async () => {
+  await withTempDir((dir) => {
+    const db = openSeededDatabase(databasePath(dir));
+    try {
+      seedScope(db);
+      value<SyncBeginValue>(run(db, begin('scan-1', 'full')));
+      const snap = value<SyncScopeSnapshot>(
+        run(db, { kind: 'sync.recover', scope_id: 's-1' }),
+      );
+      assert.equal(snap.scope.pending_full, true);
+      assert.equal(snap.scope.pending_incremental, false);
+      assert.equal(batchStatus(db, 'scan-1'), 'abandoned');
+    } finally {
+      db.close();
+    }
+  });
+});
+
+test('recover writes nothing when the worker is halted', async () => {
+  await withTempDir((dir) => {
+    const db = openSeededDatabase(databasePath(dir));
+    try {
+      seedScope(db);
+      value<SyncBeginValue>(run(db, begin('scan-1')));
+      assert.deepEqual(
+        reasons(run(db, { kind: 'sync.recover', scope_id: 's-1' }, true)),
+        ['worker_halted'],
+      );
+      const snap = value<SyncScopeSnapshot>(
+        run(db, { kind: 'sync.get_scope', scope_id: 's-1' }),
+      );
+      assert.equal(snap.scope.executor_generation, '2');
+      assert.equal(snap.scope.active_scan_id, 'scan-1');
+      assert.equal(batchStatus(db, 'scan-1'), 'fetching');
+    } finally {
+      db.close();
+    }
+  });
+});

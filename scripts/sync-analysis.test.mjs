@@ -11,6 +11,7 @@ import {
   publishScan,
   requestScan,
   resolveEntityState,
+  restartExecutor,
   scanCurrentReasons,
   toDeadline,
 } from '../packages/domain/dist/index.js';
@@ -87,6 +88,68 @@ test('sync scans are exclusive and publish only through compare-and-swap', async
         );
     }
   }
+});
+
+// 再起動の回復（設計 11 §1A、B08-06）。期待値は §1A の文から手で書いた。
+test('restart recovery advances the executor generation and abandons the old scan', () => {
+  const baseScope = {
+    scopeId: 'scope-1',
+    scopeRevision: '3',
+    activeScanId: null,
+    activeGeneration: '5',
+    committedWatermark: '2026-01-01T00:00:00.000Z',
+    providerCursor: 'cur-1',
+    executorGeneration: '2',
+    lastIncrementalCompletedAt: null,
+    lastFullReconciledAt: null,
+    pendingIncremental: false,
+    pendingFull: false,
+    analysisPlanCompleteGeneration: null,
+  };
+  // 有効な走査が無いときは、世代だけが 1 つ進む。
+  const idle = restartExecutor(baseScope, null);
+  assert.equal(idle.scope.executorGeneration, '3');
+  assert.equal(idle.scope.activeScanId, null);
+  assert.equal(idle.scope.pendingIncremental, false);
+  assert.equal(idle.scope.pendingFull, false);
+  assert.equal(idle.batch, null);
+
+  // 増分の走査が残っていたら abandoned になり、増分の pending が立つ。世代は 1 つ進む。
+  const incrementalBatch = {
+    scanId: 'scan-1',
+    scopeId: 'scope-1',
+    scopeRevision: '3',
+    kind: 'incremental',
+    status: 'fetching',
+    scanStartedAt: '2026-01-02T00:00:00.000Z',
+    baseGeneration: '5',
+    baseWatermark: '2026-01-01T00:00:00.000Z',
+    baseProviderCursor: 'cur-1',
+    executorGeneration: '2',
+  };
+  const recovered = restartExecutor(
+    { ...baseScope, activeScanId: 'scan-1' },
+    incrementalBatch,
+  );
+  assert.equal(recovered.scope.executorGeneration, '3');
+  assert.equal(recovered.scope.activeScanId, null);
+  assert.equal(recovered.scope.pendingIncremental, true);
+  assert.equal(recovered.scope.pendingFull, false);
+  assert.equal(recovered.batch.status, 'abandoned');
+  // 回復後の旧走査の遅着は、有効な走査でないことと担当世代の不一致で拒否される。
+  assert.deepEqual(scanCurrentReasons(recovered.scope, incrementalBatch), [
+    'stale_scan',
+    'executor_changed',
+  ]);
+
+  // 全量の走査が残っていたら、全量の pending だけが立つ（放棄の規則は元の種類だけを積み直す）。
+  const full = restartExecutor(
+    { ...baseScope, activeScanId: 'scan-2' },
+    { ...incrementalBatch, scanId: 'scan-2', kind: 'full', status: 'staged' },
+  );
+  assert.equal(full.scope.pendingFull, true);
+  assert.equal(full.scope.pendingIncremental, false);
+  assert.equal(full.batch.status, 'abandoned');
 });
 
 test('related analysis is not ready before enumeration and required analysis finish', async () => {

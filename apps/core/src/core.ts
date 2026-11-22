@@ -22,6 +22,7 @@ import {
   dataKeyCheckValue,
 } from '@buddy/storage';
 import type {
+  ConnectionRecord,
   DataKeyMaterial,
   DataKeyProvider,
   DbWorkerOptions,
@@ -136,6 +137,10 @@ import type {
 import type { UsageReconciler } from './budget-gate.js';
 import { createOperationRunner } from './operation-runner.js';
 import type { OperationRunner } from './operation-runner.js';
+import { createSyncExecutor } from './sync-executor.js';
+import type { SyncExecutor, SyncExecutorOptions } from './sync-executor.js';
+import { createSyncScheduler } from './sync-scheduler.js';
+import type { SyncScheduler, SyncSchedulerTarget } from './sync-scheduler.js';
 import { EventFeed } from './event-feed.js';
 import type { EventFeedOptions } from './event-feed.js';
 import { createEventStream } from './event-stream.js';
@@ -320,6 +325,23 @@ export interface StartCoreOptions {
   // 保存期限の掃除（ADR 0058）。省略したものは、時計の状態ファイルはデータディレクトリの clock-state.json、
   // 知らせの受け取りはなし（運搬は UI-05）。
   readonly retention?: CoreRetentionOptions;
+  // 同期の走査（B08-06、ADR 0137）。実行器は常に作り、掃除のゲートを渡す。周期の起動は scheduler を
+  // 渡したときだけ動かす（CLI の start が有効にする）。
+  readonly sync?: CoreSyncOptions;
+}
+
+export interface CoreSyncOptions {
+  // 接続ごとのアクセストークンの出所。接続の作成（B03-04）が用意する。省略した接続は走査しない。
+  readonly tokenSourceFor?: SyncExecutorOptions['tokenSourceFor'];
+  // 接続ごとの走査対象（account_id・資源種別）。接続の作成（B03-04）が持つ値。省略した接続は走査しない。
+  readonly targetsFor?: (
+    connection: ConnectionRecord,
+  ) => readonly SyncSchedulerTarget[] | Promise<readonly SyncSchedulerTarget[]>;
+  // 周期の起動（60 秒ポーリング＋ジッター、起動時の回復と全量照合）。省略すれば動かさない。
+  readonly scheduler?: {
+    readonly pollIntervalMs?: number;
+    readonly jitterMs?: number;
+  };
 }
 
 export interface CoreBackupOptions {
@@ -398,6 +420,10 @@ export interface CoreHandle {
   readonly homeNetwork: HomeNetworkGate | null;
   // 保存期限の掃除の job（ADR 0053）。gate() が開くまで検索・クラウドへの送信・自動利用を許さない。
   readonly retention: RetentionSweeper;
+  // 同期の走査の実行器（B08-05、ADR 0136）。掃除のゲートを渡してある。走査の開始は周期の起動が持つ。
+  readonly syncExecutor: SyncExecutor;
+  // 同期の周期起動（B08-06、ADR 0137）。scheduler を有効にしなければ null。
+  readonly syncScheduler: SyncScheduler | null;
   // 保存境界の保持者（記録しない会話のゲート。ADR 0045・0059）。今の保存モード・区切りの世代・由来の照合を持つ。
   readonly storage: StorageModeGate;
   readonly state: LifecycleState;
@@ -647,6 +673,10 @@ export async function startCore(
   let backupScheduler: BackupScheduler | null = null;
   let retention: RetentionSweeper | null = null;
   let storageGate: StorageModeGate | null = null;
+  let syncRun: {
+    executor: SyncExecutor;
+    scheduler: SyncScheduler | null;
+  } | null = null;
   let voice: VoiceControl | null = null;
   let control: ControlServer;
   let shutdown: Promise<void> | null = null;
@@ -687,6 +717,8 @@ export async function startCore(
     // 予算月の定期の確認と、保存期限の掃除の定期実行を止める。
     if (budgetTimer !== null) clearInterval(budgetTimer);
     backupScheduler?.stop();
+    // 同期の周期起動を止める（実行中の走査は止めない。走査は再開可能な形で保存され、次の起動で回復する）。
+    syncRun?.scheduler?.stop();
     // 実行中のバックアップ・掃除の終わりを待つ（新しい実行は断る）。DB を閉じて排他ロックを解放する前に待ち、旧い Core が
     // 再起動した Core と封筒・状態ファイルを取り合わないようにする（上限を過ぎたら待たずに進む）。
     await step(async () => {
@@ -766,6 +798,37 @@ export async function startCore(
       now: () => now().getTime(),
       log,
     });
+    // 同期の走査の実行器（B08-05）と周期起動（B08-06）。走査は外部の読み取りなので、掃除のゲートを渡す
+    // （ADR 0053・0136）。実行器は常に作るが、周期の起動は scheduler を有効にしたときだけ動かす。
+    // 対象（account_id・資源種別）とトークンの出所は接続の作成（B03-04）が用意するもので、渡されなければ
+    // 実行器は呼ばれない。起動時の回復は、排他ロックで旧 Core の終了が担保された後に scheduler が行う。
+    const syncExecutor = createSyncExecutor({
+      store: opened.store,
+      ...(options.sync?.tokenSourceFor === undefined
+        ? {}
+        : { tokenSourceFor: options.sync.tokenSourceFor }),
+      retention: {
+        ready: async () => {
+          await retention?.idle();
+        },
+        gate: () => (retention as RetentionSweeper).gate(),
+        lease: () => (retention as RetentionSweeper).lease(),
+      },
+    });
+    let syncScheduler: SyncScheduler | null = null;
+    if (options.sync?.scheduler !== undefined) {
+      syncScheduler = createSyncScheduler({
+        store: opened.store,
+        executor: syncExecutor,
+        log,
+        ...(options.sync.targetsFor === undefined
+          ? {}
+          : { targetsFor: options.sync.targetsFor }),
+        ...options.sync.scheduler,
+      });
+      syncScheduler.start();
+    }
+    syncRun = { executor: syncExecutor, scheduler: syncScheduler };
     const startedBudget = await startBudgetGate(
       dataDir,
       options,
@@ -913,6 +976,7 @@ export async function startCore(
   } catch (error) {
     if (budgetTimer !== null) clearInterval(budgetTimer);
     backupScheduler?.stop();
+    syncRun?.scheduler?.stop();
     retention?.close();
     feed?.close();
     await api?.close(0).catch(() => undefined);
@@ -952,6 +1016,12 @@ export async function startCore(
     budget: budgetGate,
     backup: backupService,
     retention: retention as RetentionSweeper,
+    syncExecutor: (
+      syncRun as { executor: SyncExecutor; scheduler: SyncScheduler | null }
+    ).executor,
+    syncScheduler: (
+      syncRun as { executor: SyncExecutor; scheduler: SyncScheduler | null }
+    ).scheduler,
     storage: storageGate as StorageModeGate,
     pairing,
     get state() {

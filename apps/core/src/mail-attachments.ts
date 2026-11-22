@@ -17,6 +17,7 @@
 import type { MailAttachmentInput } from '@buddy/ai';
 import { checkAttachment, classifyAttachment } from '@buddy/domain';
 import type { FetchScope } from '@buddy/domain';
+import type { StartupGateDecision } from '@buddy/domain';
 import { decodeBase64Url, listAttachmentParts } from '@buddy/connectors';
 import type {
   GoogleGmailAttachmentPart,
@@ -31,6 +32,14 @@ export interface MailAttachmentLoaderOptions {
   readonly scope: FetchScope;
   // PDF のテキスト抽出（試験で差し替える）。省略時は unpdf（pdfjs の Node 向けラッパー）。
   readonly extractPdfText?: (data: Uint8Array) => Promise<string>;
+  // 保存期限の掃除のゲート（ADR 0053・0058）。省略時は通さない（試験・模擬用）。
+  // 製品の配線（B10・B11 の後続）が RetentionSweeper の ready／gate／lease を渡す。
+  readonly retention?: {
+    readonly ready: () => Promise<void>;
+    readonly gate: () => StartupGateDecision;
+    // ゲートの確認から取得・抽出の終わりまでを掃除の本体と直列にする貸し出し。取れないときは null。
+    readonly lease: () => (() => void) | null;
+  };
 }
 
 export interface MailAttachmentLoader {
@@ -142,72 +151,58 @@ export function createMailAttachmentLoader(
     return data;
   };
 
-  return {
-    async load(request) {
-      const parts = listAttachmentParts(request.payload);
-      const results: MailAttachmentInput[] = [];
-      for (const [index, part] of parts.entries()) {
-        const attachmentId = part.partId ?? `attachment-${index}`;
-        const mimeType = effectiveMimeType(part);
-        const check = checkAttachment(options.scope, {
-          mimeType,
-          filename: part.filename,
-          sizeBytes: part.sizeBytes,
-        });
-        if (!check.ok) {
-          // 範囲外は取得しない。未読にも数えない（permitted: false が抽出入力側の印）。
-          results.push({
-            attachment_id: attachmentId,
-            permitted: false,
-            state: 'unread',
-            source_revision: null,
-          });
-          continue;
-        }
-        const failed: MailAttachmentInput = {
+  const loadAll = async (
+    request: Parameters<MailAttachmentLoader['load']>[0],
+    mayFetch: boolean,
+  ): Promise<readonly MailAttachmentInput[]> => {
+    const parts = listAttachmentParts(request.payload);
+    const results: MailAttachmentInput[] = [];
+    for (const [index, part] of parts.entries()) {
+      const attachmentId = part.partId ?? `attachment-${index}`;
+      const mimeType = effectiveMimeType(part);
+      const check = checkAttachment(options.scope, {
+        mimeType,
+        filename: part.filename,
+        sizeBytes: part.sizeBytes,
+      });
+      if (!check.ok) {
+        // 範囲外は取得しない。未読にも数えない（permitted: false が抽出入力側の印）。
+        results.push({
           attachment_id: attachmentId,
-          permitted: true,
-          state: 'failed',
-          source_revision: request.messageRevision,
-        };
-        const data = await fetchBytes(request.messageId, part);
-        if (data === null) {
-          results.push(failed);
-          continue;
-        }
-        const classified = classifyAttachment({
-          mimeType,
-          filename: part.filename,
+          permitted: false,
+          state: 'unread',
+          source_revision: null,
         });
-        // checkAttachment を通っているので種類は決まっている。決まらなければ失敗として扱う。
-        if (classified.kind === null) {
-          results.push(failed);
-          continue;
-        }
-        if (classified.kind === 'text') {
-          const text = decodeTextBytes(data, part.contentType);
-          if (text === null) {
-            results.push(failed);
-            continue;
-          }
-          results.push({
-            attachment_id: attachmentId,
-            permitted: true,
-            state: 'extracted',
-            source_revision: request.messageRevision,
-            text,
-          });
-          continue;
-        }
-        // PDF。テキストが取れない（画像だけ・暗号化など）ものは未読（failed）にする。
-        let pdfText: string;
-        try {
-          pdfText = await extractPdfText(data);
-        } catch {
-          results.push(failed);
-          continue;
-        }
-        if (pdfText.trim() === '') {
+        continue;
+      }
+      const failed: MailAttachmentInput = {
+        attachment_id: attachmentId,
+        permitted: true,
+        state: 'failed',
+        source_revision: request.messageRevision,
+      };
+      if (!mayFetch) {
+        // 掃除のゲートが閉じている間は取得しない。許可した添付は未読（failed）に倒す。
+        results.push(failed);
+        continue;
+      }
+      const data = await fetchBytes(request.messageId, part);
+      if (data === null) {
+        results.push(failed);
+        continue;
+      }
+      const classified = classifyAttachment({
+        mimeType,
+        filename: part.filename,
+      });
+      // checkAttachment を通っているので種類は決まっている。決まらなければ失敗として扱う。
+      if (classified.kind === null) {
+        results.push(failed);
+        continue;
+      }
+      if (classified.kind === 'text') {
+        const text = decodeTextBytes(data, part.contentType);
+        if (text === null) {
           results.push(failed);
           continue;
         }
@@ -216,10 +211,55 @@ export function createMailAttachmentLoader(
           permitted: true,
           state: 'extracted',
           source_revision: request.messageRevision,
-          text: pdfText,
+          text,
         });
+        continue;
       }
-      return results;
+      // PDF。テキストが取れない（画像だけ・暗号化など）ものは未読（failed）にする。
+      let pdfText: string;
+      try {
+        pdfText = await extractPdfText(data);
+      } catch {
+        results.push(failed);
+        continue;
+      }
+      if (pdfText.trim() === '') {
+        results.push(failed);
+        continue;
+      }
+      results.push({
+        attachment_id: attachmentId,
+        permitted: true,
+        state: 'extracted',
+        source_revision: request.messageRevision,
+        text: pdfText,
+      });
+    }
+    return results;
+  };
+
+  return {
+    async load(request) {
+      // 掃除が済むまで外部の読み取りを始めない（ADR 0053）。ゲートの確認と貸し出しの取得は同じ区間で行い、
+      // 取得・抽出が終わるまで貸し出しを持つ。ゲートが閉じている・貸し出しが取れないときは取得せず、
+      // 許可した添付を未読（failed）にする（読めたことにしない）。
+      let release: (() => void) | null = null;
+      let mayFetch = true;
+      if (options.retention !== undefined) {
+        mayFetch = false;
+        for (let attempt = 0; release === null && attempt < 3; attempt += 1) {
+          await options.retention.ready();
+          const gate = options.retention.gate();
+          if (!gate.search || !gate.auto_use) break;
+          release = options.retention.lease();
+        }
+        mayFetch = release !== null;
+      }
+      try {
+        return await loadAll(request, mayFetch);
+      } finally {
+        release?.();
+      }
     },
   };
 }

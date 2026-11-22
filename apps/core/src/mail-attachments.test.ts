@@ -576,3 +576,101 @@ test('mimeType が空でも Content-Type ヘッダーから種類を補って PD
     },
   ]);
 });
+
+test('掃除のゲートが閉じている間は添付を取得せず、許可した添付を未読にする', async () => {
+  const { gmail, calls } = fakeGmail(() =>
+    Promise.resolve({ size: 30, data: utf8('読めてはいけない文') }),
+  );
+  const loader = createMailAttachmentLoader({
+    gmail,
+    scope: SCOPE,
+    retention: {
+      ready: () => Promise.resolve(),
+      gate: () => ({
+        search: false,
+        cloud_send: false,
+        auto_use: false,
+        reasons: ['sweep_incomplete'],
+        use_blocked: [],
+      }),
+      lease: () => () => {},
+    },
+  });
+
+  const result = await loader.load({
+    messageId: MESSAGE_ID,
+    messageRevision: REVISION,
+    payload: payloadOf([
+      part({
+        partId: '1',
+        mimeType: 'text/plain',
+        filename: 'note.txt',
+        headers: [{ name: 'Content-Type', value: 'text/plain; charset=UTF-8' }],
+        bodySize: 30,
+        bodyAttachmentId: 'ATT-1',
+      }),
+    ]),
+  });
+
+  assert.deepEqual(calls, []);
+  assert.deepEqual(result, [
+    {
+      attachment_id: '1',
+      permitted: true,
+      state: 'failed',
+      source_revision: REVISION,
+    },
+  ] satisfies readonly MailAttachmentInput[]);
+});
+
+test('掃除のゲートが開いていれば貸し出しを持って取得し、終わりに返す', async () => {
+  const text = 'ゲートを通した文';
+  const { gmail, calls } = fakeGmail(() =>
+    Promise.resolve({ size: 30, data: utf8(text) }),
+  );
+  let releases = 0;
+  const loader = createMailAttachmentLoader({
+    gmail,
+    scope: SCOPE,
+    retention: {
+      ready: () => Promise.resolve(),
+      gate: () => ({
+        search: true,
+        cloud_send: true,
+        auto_use: true,
+        reasons: [],
+        use_blocked: [],
+      }),
+      lease: () => () => {
+        releases += 1;
+      },
+    },
+  });
+
+  const result = await loader.load({
+    messageId: MESSAGE_ID,
+    messageRevision: REVISION,
+    payload: payloadOf([
+      part({
+        partId: '1',
+        mimeType: 'text/plain',
+        filename: 'note.txt',
+        headers: [{ name: 'Content-Type', value: 'text/plain; charset=UTF-8' }],
+        bodySize: 30,
+        bodyAttachmentId: 'ATT-1',
+      }),
+    ]),
+  });
+
+  assert.deepEqual(calls, [{ messageId: MESSAGE_ID, attachmentId: 'ATT-1' }]);
+  assert.deepEqual(result, [
+    {
+      attachment_id: '1',
+      permitted: true,
+      state: 'extracted',
+      source_revision: REVISION,
+      text,
+    },
+  ] satisfies readonly MailAttachmentInput[]);
+  assert.equal(releases, 1);
+});

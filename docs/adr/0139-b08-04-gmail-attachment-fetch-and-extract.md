@@ -41,3 +41,7 @@
 - Outlook（Graph）の添付の取得と抽出は B09-03（Graph 側の取得 API と分類の共有が要る）。
 - PDF の抽出品質は PDF 側の ToUnicode の有無に依存する（埋め込みの無い CID フォント等では正しい文が取れないことがある）。実測は B15。暗号化された PDF は未読（failed）になる。
 - 取得範囲の変更（種類・サイズの狭め方）の保存と画面は B08-02 P2/P3・B09-05 の範囲で、本 ADR では保存済みの範囲を受けるだけ。
+
+## 追補（PR #291 の CI で判明）
+
+- 初版では `mail-attachments.ts` が retention 入口表（`retention-entries.test.ts`）に未登録で、CI の同試験が落ちた。loader に掃除ゲートの口（任意引数 `retention`、実行器と同じ ready／gate／lease の形）を追加し、gated として登録した。ゲートが閉じている・貸し出しが取れないときは取得せず、許可した添付は未読（failed）に倒す。試験は `mail-attachments.test.ts` に 2 件追加（ゲートが閉じていれば取得を呼ばないこと、開いていれば貸し出しを持って取得し終わりに返すこと）。

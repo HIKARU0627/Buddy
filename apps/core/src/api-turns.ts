@@ -147,7 +147,7 @@ export interface TurnRoutesOptions {
     readonly lease: () => (() => void) | null;
   };
   // 裏のジョブの受付（調査を最初から裏へ回す口。U254、ADR 0135）。省略は受付なしで、調査は従来どおり「未対応」の
-  // 聞き返しになる。製品の起動（core.ts）はまだ渡さない（実行器の受付・保存は B12-05）。
+  // 聞き返しになる。製品の起動（core.ts）は、検索・取得・要約の口が渡されたときだけ受付器をつなぐ（B12-05、ADR 0141）。
   readonly backgroundJobs?: BackgroundJobAcceptor;
 }
 

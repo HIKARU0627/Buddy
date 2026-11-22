@@ -210,6 +210,30 @@ export const TABLE_POLICIES: Readonly<Record<string, TablePolicy>> = {
     retention: 'sync_batch',
     transaction: 'sync_page',
   },
+  // 公開 Web 調査（B12-05、ADR 0141）。URL は保存しない（本文の置き場所なし）。
+  // 抜粋・要約は公開ページの引用とその要約（本人の私的な本文ではない）ので封筒には入れず、
+  // 列名も excerpt_text / summary_text として本文の列（PLAINTEXT_COLUMN_NAMES）と区別する。
+  // 保持は workflow_result（終端から 7 日）で、research.recover が期限切れを消す。
+  research_jobs: {
+    body: 'none',
+    retention: 'workflow_result',
+    transaction: 'research',
+  },
+  research_screenings: {
+    body: 'none',
+    retention: 'workflow_result',
+    transaction: 'research',
+  },
+  research_attempts: {
+    body: 'none',
+    retention: 'workflow_result',
+    transaction: 'research',
+  },
+  research_sources: {
+    body: 'none',
+    retention: 'workflow_result',
+    transaction: 'research',
+  },
   source_items: {
     body: 'sealed_refs',
     retention: 'source_body',

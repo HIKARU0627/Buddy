@@ -42,6 +42,7 @@ import { executeMemoryOp } from './memory-store.js';
 import { executeIntentShadowOp } from './intent-shadow-store.js';
 import { executeCandidateOp } from './candidate-store.js';
 import { executeSyncOp } from './sync-store.js';
+import { executeResearchOp } from './research-store.js';
 import { bindStore } from './store-binding.js';
 import type { StoreBindingResult } from './store-binding.js';
 
@@ -514,6 +515,29 @@ function main(): void {
     post({ type: 'sync_result', id: message.id, result, halted });
   };
 
+  // 公開 Web 調査の受付・保存（B12-05、設計 05・10 §5）。
+  const handleResearch = (
+    message: Extract<MainToWorker, { type: 'research' }>,
+  ): void => {
+    let result;
+    try {
+      const run = executeResearchOp(connection, message.op, {
+        platform: data.platform,
+        halted,
+      });
+      if (run.halt) halted = true;
+      result = run.result;
+    } catch {
+      // 照会の想定外の失敗。書込みは executeResearchOp の中で巻き戻している。
+      result = {
+        ok: false as const,
+        outcome: 'rejected' as const,
+        reasons: ['research_op_failed'],
+      };
+    }
+    post({ type: 'research_result', id: message.id, result, halted });
+  };
+
   port.on('message', (message: MainToWorker) => {
     if (message.type === 'command') handleCommand(message);
     else if (message.type === 'query') handleQuery(message);
@@ -530,6 +554,7 @@ function main(): void {
     else if (message.type === 'intent_shadow') handleIntentShadow(message);
     else if (message.type === 'candidate') handleCandidate(message);
     else if (message.type === 'sync') handleSync(message);
+    else if (message.type === 'research') handleResearch(message);
     else if (message.type === 'close') {
       halted = true;
       connection.close();

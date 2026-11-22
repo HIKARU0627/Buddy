@@ -95,6 +95,13 @@ const ENTRIES: Readonly<Record<string, readonly Entry[]>> = {
       anchors: ['options.retention.ready()', 'options.retention.lease()'],
     },
   ],
+  'research-executor.ts': [
+    {
+      kind: 'gated',
+      what: '公開 Web 調査の実行（検索・取得・要約の口への送出。B12-05）',
+      anchors: ['options.retention.ready()', 'options.retention.lease()'],
+    },
+  ],
   'mail-attachments.ts': [
     {
       kind: 'gated',
@@ -170,7 +177,7 @@ test('exempt entries state their reason and name the call they exempt', async ()
 
 test('the Core hands the gate to every gated entry', async () => {
   const text = await readFile(join(SOURCE_DIR, 'core.ts'), 'utf8');
-  // 発言の入口・実行担当・Live・同期の実行器（Google・Graph）の 5 つに、同じ掃除の job の gate／lease を渡している。
+  // 発言の入口・実行担当・Live・同期の実行器（Google・Graph）・調査の実行器の 6 つに、同じ掃除の job の gate／lease を渡している。
   for (const anchor of [
     'retention: {',
     'cloudGate: {',
@@ -180,6 +187,6 @@ test('the Core hands the gate to every gated entry', async () => {
   assert.equal(
     text.split('lease: () => (retention as RetentionSweeper).lease()').length -
       1,
-    5,
+    6,
   );
 });

@@ -88,6 +88,15 @@ import type {
   SyncPublishedItem,
   SyncScopeSnapshot,
 } from './sync-store.js';
+import { RESEARCH_WRITE_OPS } from './research-store.js';
+import type {
+  ResearchAcceptValue,
+  ResearchJobRecord,
+  ResearchOp,
+  ResearchOpResult,
+  ResearchRecoverValue,
+  ResearchRunnableEntry,
+} from './research-store.js';
 import type {
   CandidateOp,
   CandidateOpKind,
@@ -322,9 +331,20 @@ interface PendingSync {
   readonly resolve: (result: SyncOpResult) => void;
 }
 
+interface PendingResearch {
+  readonly kind: 'research';
+  readonly op: ResearchOp;
+  readonly timer: NodeJS.Timeout;
+  readonly resolve: (result: ResearchOpResult) => void;
+}
+
 export type SyncOpOutcome<T> =
   | { readonly ok: true; readonly value: T }
   | Extract<SyncOpResult, { ok: false }>;
+
+export type ResearchOpOutcome<T> =
+  | { readonly ok: true; readonly value: T }
+  | Extract<ResearchOpResult, { ok: false }>;
 
 export type CandidateOpOutcome<K extends CandidateOpKind> =
   | { readonly ok: true; readonly value: CandidateOpValues[K] }
@@ -397,6 +417,7 @@ export class DbWorkerClient {
     | PendingIntentShadow
     | PendingCandidate
     | PendingSync
+    | PendingResearch
   >();
   #issued = new WeakSet<DispatchPermit>();
   #consumed = new WeakSet<DispatchPermit>();
@@ -998,6 +1019,51 @@ export class DbWorkerClient {
     });
   }
 
+  // 公開 Web 調査の受付・保存の命令と照会（B12-05、設計 05・10 §5）。
+  research(
+    op: Extract<ResearchOp, { kind: 'research.accept' }>,
+  ): Promise<ResearchOpOutcome<ResearchAcceptValue>>;
+  research(
+    op: Extract<ResearchOp, { kind: 'research.get' }>,
+  ): Promise<ResearchOpOutcome<ResearchJobRecord | null>>;
+  research(
+    op: Extract<ResearchOp, { kind: 'research.list_runnable' }>,
+  ): Promise<ResearchOpOutcome<readonly ResearchRunnableEntry[]>>;
+  research(
+    op: Extract<ResearchOp, { kind: 'research.record_progress' }>,
+  ): Promise<ResearchOpOutcome<null>>;
+  research(
+    op: Extract<ResearchOp, { kind: 'research.advance' }>,
+  ): Promise<ResearchOpOutcome<ResearchJobRecord>>;
+  research(
+    op: Extract<ResearchOp, { kind: 'research.mark_notified' }>,
+  ): Promise<ResearchOpOutcome<null>>;
+  research(
+    op: Extract<ResearchOp, { kind: 'research.recover' }>,
+  ): Promise<ResearchOpOutcome<ResearchRecoverValue>>;
+  research(op: ResearchOp): Promise<ResearchOpResult> {
+    return new Promise<ResearchOpResult>((resolve) => {
+      if (this.#state !== 'running') {
+        resolve({
+          ok: false,
+          outcome: 'rejected',
+          reasons: [
+            this.#state === 'closed' ? 'worker_closed' : 'worker_unavailable',
+          ],
+        });
+        return;
+      }
+      const id = this.#nextId++;
+      const timer = setTimeout(
+        () => this.#break('worker_timeout'),
+        this.#responseTimeoutMs,
+      );
+      this.#pending.set(id, { kind: 'research', op, timer, resolve });
+      const message: MainToWorker = { type: 'research', id, op };
+      this.#worker.postMessage(message);
+    });
+  }
+
   // 許可がこのクライアントの現在の世代で作られ、まだ使っておらず、worker が動いているか。
   isDispatchPermitCurrent(permit: DispatchPermit): boolean {
     return (
@@ -1155,6 +1221,16 @@ export class DbWorkerClient {
         pending.resolve({
           ok: false,
           outcome: SYNC_WRITE_OPS.has(pending.op.kind) ? 'unknown' : 'rejected',
+          reasons: [reason],
+        });
+        continue;
+      }
+      if (pending.kind === 'research') {
+        pending.resolve({
+          ok: false,
+          outcome: RESEARCH_WRITE_OPS.has(pending.op.kind)
+            ? 'unknown'
+            : 'rejected',
           reasons: [reason],
         });
         continue;
@@ -1353,6 +1429,18 @@ export class DbWorkerClient {
     if (message.type === 'sync_result') {
       const pending = this.#pending.get(message.id);
       if (pending?.kind !== 'sync') return;
+      clearTimeout(pending.timer);
+      this.#pending.delete(message.id);
+      if (message.halted && this.#state === 'running') {
+        this.#state = 'broken';
+        this.#brokenReason = 'worker_halted';
+      }
+      pending.resolve(message.result);
+      return;
+    }
+    if (message.type === 'research_result') {
+      const pending = this.#pending.get(message.id);
+      if (pending?.kind !== 'research') return;
       clearTimeout(pending.timer);
       this.#pending.delete(message.id);
       if (message.halted && this.#state === 'running') {

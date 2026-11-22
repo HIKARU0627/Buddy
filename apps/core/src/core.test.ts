@@ -84,6 +84,30 @@ const exitedPid = () => {
   return result.pid as number;
 };
 
+test('the sync executor is always built with the retention gate; the scheduler only when enabled', async (t) => {
+  const plain = await started(t, await tempDataDir(t));
+  assert.equal(typeof plain.syncExecutor.runScan, 'function');
+  assert.equal(plain.syncScheduler, null);
+  await plain.stop('test');
+
+  const dataDir = await tempDataDir(t);
+  const handle = await startCore({
+    dataDir,
+    keyStore: keyStore(),
+    shutdownGraceMs: 200,
+    probeTimeoutMs: 300,
+    sync: { scheduler: {} },
+  });
+  onCleanup(t, async () => {
+    await handle.stop('test').catch(() => undefined);
+  });
+  assert.notEqual(handle.syncScheduler, null);
+  // 接続が無いので、起動時の回復と周期の処理は対象なしで終わる（実行器は呼ばれない）。
+  await handle.syncScheduler?.idle();
+  await handle.stop('test');
+  assert.deepEqual((await readdir(dataDir)).sort(), afterStop);
+});
+
 test('preflight reasons refuse startup before touching the data directory', async (t) => {
   const dataDir = await tempDataDir(t);
   await assert.rejects(

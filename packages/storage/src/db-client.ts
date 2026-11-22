@@ -972,6 +972,9 @@ export class DbWorkerClient {
   sync(
     op: Extract<SyncOp, { kind: 'sync.abandon' }>,
   ): Promise<SyncOpOutcome<SyncBatchValue>>;
+  sync(
+    op: Extract<SyncOp, { kind: 'sync.recover' }>,
+  ): Promise<SyncOpOutcome<SyncScopeSnapshot>>;
   sync(op: SyncOp): Promise<SyncOpResult> {
     return new Promise<SyncOpResult>((resolve) => {
       if (this.#state !== 'running') {

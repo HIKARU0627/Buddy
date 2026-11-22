@@ -196,3 +196,24 @@ export function abandonScan(
 export function analysisPlanCurrent(scope: ScopeState): boolean {
   return scope.analysisPlanCompleteGeneration === scope.activeGeneration;
 }
+
+// 再起動の回復（11 §1A、B08-06）。旧実行担当の終了を確認した後に、新しい担当世代へ進める。
+// 有効な走査が残っていれば放棄の規則（abandonScan）で abandoned にし、種類に応じた pending を立てる。
+// 世代が進んだ旧走査の遅着は、scanCurrentReasons の executor_changed で保存も公開も拒否される。
+// batch は取得集合の有効な走査（activeScanId と一致するもの）だけを渡す。それ以外は null。
+export function restartExecutor(
+  scope: ScopeState,
+  batch: ScanBatch | null,
+): { readonly scope: ScopeState; readonly batch: ScanBatch | null } {
+  const nextGeneration = (BigInt(scope.executorGeneration) + 1n).toString();
+  if (batch === null || scope.activeScanId !== batch.scanId)
+    return {
+      scope: { ...scope, executorGeneration: nextGeneration },
+      batch: null,
+    };
+  const abandoned = abandonScan(scope, batch);
+  return {
+    scope: { ...abandoned.scope, executorGeneration: nextGeneration },
+    batch: abandoned.batch,
+  };
+}

@@ -451,6 +451,9 @@ async function start(
         keyStore,
         log,
         backup: { keyStore: backupKeys, scheduler: {} },
+        // 同期の周期起動（B08-06）。対象とトークンの出所は接続の作成（B03-04）が用意するまでは無く、
+        // その間は起動時の回復だけが走り、実行器は呼ばれない。
+        sync: { scheduler: {} },
         ...(httpsOptions === undefined ? {} : { https: httpsOptions }),
       });
     } catch (error) {

@@ -149,7 +149,7 @@ test('exempt entries state their reason and name the call they exempt', async ()
 
 test('the Core hands the gate to every gated entry', async () => {
   const text = await readFile(join(SOURCE_DIR, 'core.ts'), 'utf8');
-  // 発言の入口・実行担当・Live の 3 つに、同じ掃除の job の gate／lease を渡している。
+  // 発言の入口・実行担当・Live・同期の実行器の 4 つに、同じ掃除の job の gate／lease を渡している。
   for (const anchor of [
     'retention: {',
     'cloudGate: {',
@@ -159,6 +159,6 @@ test('the Core hands the gate to every gated entry', async () => {
   assert.equal(
     text.split('lease: () => (retention as RetentionSweeper).lease()').length -
       1,
-    3,
+    4,
   );
 });

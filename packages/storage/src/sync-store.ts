@@ -15,6 +15,7 @@ import {
   abandonScan,
   publishScan,
   requestScan,
+  restartExecutor,
   scanCurrentReasons,
 } from '@buddy/domain';
 import type { ScanBatch, ScanKind, ScopeState } from '@buddy/domain';
@@ -134,7 +135,8 @@ export type SyncOp =
       readonly provider_cursor: string | null;
       readonly completed_at: string;
     }
-  | { readonly kind: 'sync.abandon'; readonly scan_id: string };
+  | { readonly kind: 'sync.abandon'; readonly scan_id: string }
+  | { readonly kind: 'sync.recover'; readonly scope_id: string };
 
 export type SyncOpKind = SyncOp['kind'];
 
@@ -169,6 +171,7 @@ export const SYNC_WRITE_OPS: ReadonlySet<SyncOpKind> = new Set([
   'sync.validate',
   'sync.publish',
   'sync.abandon',
+  'sync.recover',
 ]);
 
 const OP_KINDS: ReadonlySet<string> = new Set<SyncOpKind>([
@@ -180,6 +183,7 @@ const OP_KINDS: ReadonlySet<string> = new Set<SyncOpKind>([
   'sync.validate',
   'sync.publish',
   'sync.abandon',
+  'sync.recover',
 ]);
 
 class SyncRejection extends Error {
@@ -214,6 +218,7 @@ export function syncOpShapeReasons(op: SyncOp): string[] {
   };
   switch (op.kind) {
     case 'sync.get_scope':
+    case 'sync.recover':
       id(op.scope_id, 'scope_id_invalid');
       break;
     case 'sync.list_scopes':
@@ -742,6 +747,44 @@ function applyAbandon(
   };
 }
 
+// 再起動の回復（11 §1A、B08-06）。担当世代を 1 つ進め、有効な走査が残っていれば domain の回復の規則で
+// abandoned にして pending を立て直す。世代・有効な走査・pending の書換えは同じ transaction で行う。
+// 旧世代の遅着は、この後の stage_page・validate・publish が executor_changed で拒否する。
+function applyRecover(
+  db: SqliteDatabase,
+  op: Extract<SyncOp, { kind: 'sync.recover' }>,
+): SyncScopeSnapshot {
+  const current = requireScope(db, op.scope_id);
+  const activeRow =
+    current.active_scan_id === null
+      ? undefined
+      : readBatchRow(db, current.active_scan_id);
+  const result = restartExecutor(
+    toScopeState(current),
+    activeRow === undefined ? null : toScanBatch(toBatchRecord(activeRow)),
+  );
+  if (result.batch !== null) {
+    db.prepare(
+      "UPDATE sync_batches SET status = 'abandoned' WHERE scan_id = ?",
+    ).run(result.batch.scanId);
+    db.prepare('DELETE FROM sync_staging WHERE scan_id = ?').run(
+      result.batch.scanId,
+    );
+  }
+  db.prepare(
+    `UPDATE sync_scopes SET executor_generation = ?, active_scan_id = ?,
+       pending_incremental = ?, pending_full = ?
+     WHERE scope_id = ?`,
+  ).run(
+    Number(result.scope.executorGeneration),
+    result.scope.activeScanId,
+    result.scope.pendingIncremental ? 1 : 0,
+    result.scope.pendingFull ? 1 : 0,
+    op.scope_id,
+  );
+  return snapshot(db, op.scope_id);
+}
+
 function sqliteCode(error: unknown): string | null {
   return error instanceof Database.SqliteError ? error.code : null;
 }
@@ -814,6 +857,8 @@ export function executeSyncOp(
           return applyPublish(db, op);
         case 'sync.abandon':
           return applyAbandon(db, op);
+        case 'sync.recover':
+          return applyRecover(db, op);
         default:
           throw new SyncRejection(['kind_invalid']);
       }

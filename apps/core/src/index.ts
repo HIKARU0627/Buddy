@@ -56,6 +56,13 @@ export type {
   SyncScanOutcome,
   SyncScanRequest,
 } from './sync-executor.js';
+// B08-06: 同期の周期起動（設計 11 §1、ADR 0137）。起動時の回復と全量照合、60 秒ポーリング＋ジッター。
+export { createSyncScheduler } from './sync-scheduler.js';
+export type {
+  SyncScheduler,
+  SyncSchedulerOptions,
+  SyncSchedulerTarget,
+} from './sync-scheduler.js';
 // B07-04: 予算の門と設定ファイルの読み込み（ADR 0037）。
 export { BudgetGate } from './budget-gate.js';
 export type {

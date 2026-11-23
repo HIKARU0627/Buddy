@@ -39,6 +39,7 @@ import {
   CANDIDATE_CHANNELS,
   CANVAS_CHANNELS,
   CONNECTION_CHANNELS,
+  CONNECTIONS_CHANNELS,
   OPERATION_CHANNELS,
   DesktopCoreLink,
   type AdminConfirmRequest,
@@ -685,6 +686,12 @@ function registerIpc(): void {
       if (CANDIDATE_CHANNELS.includes(channel))
         return link
           .handleCandidateIpc(channel, raw, sender, controller.state)
+          .then((outcome) => outcome.response);
+      // 連携の接続の一覧と取得範囲の変更（B08-02 P3・B09-05、ADR 0142）。接続 ID・許可版は main が持ち、画面は参照だけ。
+      // 中枢の画面の端末でだけ受け付ける（core-link が確かめる）。
+      if (CONNECTIONS_CHANNELS.includes(channel))
+        return link
+          .handleConnectionsIpc(channel, raw, sender, controller.state)
           .then((outcome) => outcome.response);
       // キャンバスの物のユーザーの操作（UI-06）。キャンバスの窓だけ・前に出ている間だけ（core-link が確かめる）。
       if (CANVAS_CHANNELS.includes(channel))

@@ -25116,5 +25116,255 @@
         "list_seq": 1
       }
     }
+  },
+  {
+    "id": "desktop-ipc-connections-list",
+    "schema": "DesktopIpcRequest",
+    "valid": true,
+    "value": {
+      "channel": "desktop.connections_list",
+      "request_id": "00000000-0000-4000-8000-000000000d80",
+      "payload": null
+    }
+  },
+  {
+    "id": "desktop-ipc-connections-list-with-payload",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.connections_list",
+      "request_id": "00000000-0000-4000-8000-000000000d80",
+      "payload": { "provider": "google" }
+    }
+  },
+  {
+    "id": "desktop-ipc-connection-targets-update",
+    "schema": "DesktopIpcRequest",
+    "valid": true,
+    "value": {
+      "channel": "desktop.connection_targets_update",
+      "request_id": "00000000-0000-4000-8000-000000000d80",
+      "payload": {
+        "ref": "00000000-0000-4000-8000-000000000d70",
+        "targets": {
+          "calendar_ids": ["primary"],
+          "mail_container_ids": ["INBOX"],
+          "attachment_kinds": ["pdf", "text"],
+          "mail_lookback_days": 90,
+          "calendar_past_days": 30,
+          "calendar_future_days": 90,
+          "attachment_max_bytes": 10000000
+        }
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-connection-targets-update-over-limit",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.connection_targets_update",
+      "request_id": "00000000-0000-4000-8000-000000000d80",
+      "payload": {
+        "ref": "00000000-0000-4000-8000-000000000d70",
+        "targets": {
+          "calendar_ids": ["primary"],
+          "mail_container_ids": ["INBOX"],
+          "attachment_kinds": ["pdf"],
+          "mail_lookback_days": 91,
+          "calendar_past_days": 30,
+          "calendar_future_days": 90,
+          "attachment_max_bytes": 10000000
+        }
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-connection-targets-update-with-connection-id",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.connection_targets_update",
+      "request_id": "00000000-0000-4000-8000-000000000d80",
+      "payload": {
+        "ref": "00000000-0000-4000-8000-000000000d70",
+        "connection_id": "00000000-0000-4000-8000-000000000601",
+        "targets": {
+          "calendar_ids": ["primary"],
+          "mail_container_ids": ["INBOX"],
+          "attachment_kinds": ["pdf"],
+          "mail_lookback_days": 90,
+          "calendar_past_days": 30,
+          "calendar_future_days": 90,
+          "attachment_max_bytes": 10000000
+        }
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-connection-targets-update-with-revision",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.connection_targets_update",
+      "request_id": "00000000-0000-4000-8000-000000000d80",
+      "payload": {
+        "ref": "00000000-0000-4000-8000-000000000d70",
+        "expected_permission_revision": 3,
+        "targets": {
+          "calendar_ids": ["primary"],
+          "mail_container_ids": ["INBOX"],
+          "attachment_kinds": ["pdf"],
+          "mail_lookback_days": 90,
+          "calendar_past_days": 30,
+          "calendar_future_days": 90,
+          "attachment_max_bytes": 10000000
+        }
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-connections-view",
+    "schema": "DesktopIpcResponse",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000d80",
+      "channel": "desktop.connections_list",
+      "outcome": "ok",
+      "connections": {
+        "fetch": "loaded",
+        "entries": [
+          {
+            "ref": "00000000-0000-4000-8000-000000000d70",
+            "provider": "google",
+            "status": "active",
+            "access": "read",
+            "granted_scopes": [
+              "https://www.googleapis.com/auth/gmail.readonly"
+            ],
+            "targets": {
+              "calendar_ids": ["primary"],
+              "mail_container_ids": ["INBOX"],
+              "attachment_kinds": ["pdf", "text"],
+              "mail_lookback_days": 90,
+              "calendar_past_days": 30,
+              "calendar_future_days": 90,
+              "attachment_max_bytes": 10000000
+            },
+            "graph_account": null,
+            "delivery_unknown": false
+          },
+          {
+            "ref": "00000000-0000-4000-8000-000000000d71",
+            "provider": "microsoft",
+            "status": "needs_attention",
+            "access": "read",
+            "granted_scopes": ["Mail.Read"],
+            "targets": {
+              "calendar_ids": [],
+              "mail_container_ids": ["inbox"],
+              "attachment_kinds": ["pdf"],
+              "mail_lookback_days": 30,
+              "calendar_past_days": 0,
+              "calendar_future_days": 90,
+              "attachment_max_bytes": 5000000
+            },
+            "graph_account": {
+              "account_kind": "work_or_school",
+              "delegation": "delegated_user",
+              "rejection_reason": "admin_consent_required",
+              "category_updates": "display_only"
+            },
+            "delivery_unknown": false
+          }
+        ],
+        "list_seq": 1
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-connections-view-unavailable",
+    "schema": "DesktopIpcResponse",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000d80",
+      "channel": "desktop.connections_list",
+      "outcome": "ok",
+      "connections": {
+        "fetch": "unavailable",
+        "entries": [],
+        "list_seq": 1
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-connections-view-with-connection-id",
+    "schema": "DesktopIpcResponse",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000d80",
+      "channel": "desktop.connections_list",
+      "outcome": "ok",
+      "connections": {
+        "fetch": "loaded",
+        "entries": [
+          {
+            "ref": "00000000-0000-4000-8000-000000000d70",
+            "connection_id": "00000000-0000-4000-8000-000000000601",
+            "provider": "google",
+            "status": "active",
+            "access": "read",
+            "granted_scopes": [],
+            "targets": {
+              "calendar_ids": [],
+              "mail_container_ids": [],
+              "attachment_kinds": [],
+              "mail_lookback_days": 90,
+              "calendar_past_days": 30,
+              "calendar_future_days": 90,
+              "attachment_max_bytes": 10000000
+            },
+            "graph_account": null,
+            "delivery_unknown": false
+          }
+        ],
+        "list_seq": 1
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-connections-view-with-revision",
+    "schema": "DesktopIpcResponse",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000d80",
+      "channel": "desktop.connection_targets_update",
+      "outcome": "ok",
+      "connections": {
+        "fetch": "loaded",
+        "entries": [
+          {
+            "ref": "00000000-0000-4000-8000-000000000d70",
+            "provider": "google",
+            "status": "active",
+            "access": "read",
+            "granted_scopes": [],
+            "targets": {
+              "calendar_ids": [],
+              "mail_container_ids": [],
+              "attachment_kinds": [],
+              "mail_lookback_days": 90,
+              "calendar_past_days": 30,
+              "calendar_future_days": 90,
+              "attachment_max_bytes": 10000000
+            },
+            "graph_account": null,
+            "delivery_unknown": false,
+            "permission_revision": 3
+          }
+        ],
+        "list_seq": 1
+      }
+    }
   }
 ]

@@ -53,6 +53,9 @@ export const DESKTOP_IPC_CHANNELS = [
   // B11-05: 気づきの一覧の取得と状態の変更（開く・今回は扱わない・再通知）。従来の窓と状態の層から（ADR 0132）。
   'desktop.candidates_list',
   'desktop.candidate_state',
+  // B08-02 P3・B09-05: 連携の接続の一覧の取得と取得範囲の変更。中枢の画面でだけ（ADR 0142）。
+  'desktop.connections_list',
+  'desktop.connection_targets_update',
 ] as const;
 
 export type DesktopIpcChannel = (typeof DESKTOP_IPC_CHANNELS)[number];
@@ -184,6 +187,9 @@ export const DESKTOP_PAIRING_SCREEN_CHANNELS: readonly DesktopIpcChannel[] = [
   // 気づきの状態の変更（開く・今回は扱わない・再通知）も本人の画面操作（B11-05、ADR 0132）。外部へは送らない記録の操作
   // なので、入出力の停止中も受け付ける（停止の検査はしない）。
   'desktop.candidate_state',
+  // 連携の取得範囲の変更も本人の画面操作（B08-02 P3・B09-05、ADR 0142）。保存そのものは送信ではなく、実際の取得は
+  // 中枢の走査の調停を通るので、入出力の停止中も受け付ける（停止の検査はしない）。中枢の画面かどうかは main が別に確かめる。
+  'desktop.connection_targets_update',
 ];
 
 // ロック解除済みのときだけ受け付ける一覧（内容なので、ロック中・不明は出さない。B03-06）。
@@ -197,6 +203,8 @@ export const DESKTOP_UNLOCKED_CHANNELS: readonly DesktopIpcChannel[] = [
   'desktop.canvas_content',
   // 気づきの一覧（B11-05、ADR 0132）。題と期限は内容なので、ロック中・不明は出さない。前面は求めない。
   'desktop.candidates_list',
+  // 連携の接続の一覧（B08-02 P3・B09-05、ADR 0142）。権限と取得対象は内容なので、ロック中・不明は出さない。前面は求めない。
+  'desktop.connections_list',
 ];
 
 // 要求を受け付けてよいか。最初に満たさない検査の拒否を返す。
@@ -296,6 +304,10 @@ export const DESKTOP_ROLE_CHANNELS: Readonly<
     // 気づきの操作に見せかけられないよう、キャンバス・入力バーには渡さない。
     'desktop.candidates_list',
     'desktop.candidate_state',
+    // 連携の接続の一覧・取得範囲の変更（B08-02 P3・B09-05、ADR 0142）。画面は従来の窓の中枢の画面に置く。
+    // キャンバスの部品が連携の操作に見せかけられないよう、キャンバス・入力バーには渡さない。
+    'desktop.connections_list',
+    'desktop.connection_targets_update',
   ],
   input: ['desktop.get_state', 'desktop.turn_submit', 'desktop.canvas_summon'],
 };

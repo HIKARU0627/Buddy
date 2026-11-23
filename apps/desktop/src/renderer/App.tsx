@@ -14,6 +14,7 @@ import type { BuddyDesktopApi } from './desktop-api.js';
 import { ConnectionSection } from './screens/device/ConnectionSection.js';
 import { DeviceScreen } from './screens/device/DeviceScreen.js';
 import { HomeNetworkPanel } from './screens/hub/HomeNetworkPanel.js';
+import { ConnectionsPanel } from './screens/hub/ConnectionsPanel.js';
 import { HubTabs } from './screens/hub/HubPanels.js';
 import { PairingScreen } from './screens/pairing/PairingScreen.js';
 import { RoleWindow } from './screens/canvas/RoleWindow.js';
@@ -28,6 +29,7 @@ import { useHomeState } from './state/use-home-state.js';
 import { useHubState } from './state/use-hub-state.js';
 import { useWorkState } from './state/use-work-state.js';
 import { useCandidateState } from './state/use-candidate-state.js';
+import { useConnectionsState } from './state/use-connections-state.js';
 import { CandidatesPanel } from './screens/candidates/CandidatesPanel.js';
 import { WorkPanel } from './screens/work/WorkPanel.js';
 import { StopShortcutMark } from './components/StopShortcutMark.js';
@@ -88,6 +90,9 @@ function ConnectedApp({ api }: { readonly api: BuddyDesktopApi }) {
   );
   // 気づき（B11-05、ADR 0132）。会話と同じく、ロック解除済みで中枢に接続している間だけ内容を持つ（切断・ロックで捨てる）。
   const candidates = useCandidateState(api, workLive);
+  // 連携アカウント（B08-02 P3・B09-05、ADR 0142）。中枢の画面で中枢に接続している間だけ内容を持つ
+  // （中枢の画面かどうかは main が確かめる。接続を待つ間は欄だけ出し、操作を止める）。
+  const linked = useConnectionsState(api, mode === 'live');
   if (connection !== null && needsPairing(connection))
     return (
       <PairingScreen
@@ -164,6 +169,13 @@ function ConnectedApp({ api }: { readonly api: BuddyDesktopApi }) {
                 now={now}
                 paused={mode === 'paused'}
                 stopped={stopped}
+              />
+            }
+            connections={
+              <ConnectionsPanel
+                state={linked.state}
+                actions={linked.actions}
+                paused={mode === 'paused'}
               />
             }
           />

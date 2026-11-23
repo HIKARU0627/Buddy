@@ -12406,9 +12406,11 @@
         "desktop.voice_consent_revoke",
         "desktop.voice_control",
         "desktop.candidates_list",
-        "desktop.candidate_state"
+        "desktop.candidate_state",
+        "desktop.connections_list",
+        "desktop.connection_targets_update"
       ],
-      "description": "UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014・0025）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。中枢との接続・ペアリングは用途別のチャネルだけで、要求の宛先・本文を Renderer が決められない。音声レンダラーの IPC（B05）は別に定める。 発言・承認表示の準備・承認・取消・照合は用途別のチャネルで、操作は main が持つ参照（ref）で指す（B04-05、ADR 0031）。 キャンバスを前に出す（canvas_summon）は状態の層と入力バーからだけ使う（UI-02、ADR 0032）。状態の層のパネルを出す・しまう（status_panel）は状態の層からだけ使う（UI-04、ADR 0032）。キャンバスのユーザーの操作（canvas_user_op）はキャンバスの窓からだけ、キャンバスが前に出ている間だけ使う（UI-06、ADR 0032）。 予算の確認（超過枠の承認・見送り budget_overage_decide、M 超過の確認 budget_overrun_review、不明な費用の手での精算 budget_manual_settle）は状態の層からだけ使う。承認・確認・精算は main の OS の確認ダイアログを 1 回だけ挟み、画面が持つのは main が作る参照（ref）だけ（B07-05、ADR 0039）。 音声（B05-06、ADR 0050）: 音声の状態の取得（get_voice）・呼びかけなしで音声の会話を始める「続ける」（voice_continue）・外部への送信の同意の取り消し（voice_consent_revoke）は状態の層からだけ使う。外部への送信の同意は main の OS の確認ダイアログで 1 回だけ取り、画面は同意を作れない。音声レンダラーへの IPC は VoiceRendererRequest で、このチャネルとは別。 気づき（B11-05、ADR 0132）: 一覧の取得（candidates_list）と状態の変更（candidate_state。開く・今回は扱わない・再通知）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バーは使えない。候補は main が作る参照（ref）で指し、候補 ID・expected_state・接続範囲は main が持つ。"
+      "description": "UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014・0025）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。中枢との接続・ペアリングは用途別のチャネルだけで、要求の宛先・本文を Renderer が決められない。音声レンダラーの IPC（B05）は別に定める。 発言・承認表示の準備・承認・取消・照合は用途別のチャネルで、操作は main が持つ参照（ref）で指す（B04-05、ADR 0031）。 キャンバスを前に出す（canvas_summon）は状態の層と入力バーからだけ使う（UI-02、ADR 0032）。状態の層のパネルを出す・しまう（status_panel）は状態の層からだけ使う（UI-04、ADR 0032）。キャンバスのユーザーの操作（canvas_user_op）はキャンバスの窓からだけ、キャンバスが前に出ている間だけ使う（UI-06、ADR 0032）。 予算の確認（超過枠の承認・見送り budget_overage_decide、M 超過の確認 budget_overrun_review、不明な費用の手での精算 budget_manual_settle）は状態の層からだけ使う。承認・確認・精算は main の OS の確認ダイアログを 1 回だけ挟み、画面が持つのは main が作る参照（ref）だけ（B07-05、ADR 0039）。 音声（B05-06、ADR 0050）: 音声の状態の取得（get_voice）・呼びかけなしで音声の会話を始める「続ける」（voice_continue）・外部への送信の同意の取り消し（voice_consent_revoke）は状態の層からだけ使う。外部への送信の同意は main の OS の確認ダイアログで 1 回だけ取り、画面は同意を作れない。音声レンダラーへの IPC は VoiceRendererRequest で、このチャネルとは別。 気づき（B11-05、ADR 0132）: 一覧の取得（candidates_list）と状態の変更（candidate_state。開く・今回は扱わない・再通知）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バーは使えない。候補は main が作る参照（ref）で指し、候補 ID・expected_state・接続範囲は main が持つ。 連携の接続（B08-02 P3・B09-05、ADR 0142）: 一覧の取得（connections_list）と取得範囲の変更（connection_targets_update）は中枢の画面（接続・端末）でだけ使い、キャンバス・入力バーは使えない。接続は main が作る参照（ref）で指し、接続 ID・permission_revision は main が持つ。画面が送れるのは今読めている取得対象のうちの選択と、期間・添付の範囲だけで、新しい対象の追加は接続時（B03-04）に行う。"
     },
     "DesktopIpcRequest": {
       "oneOf": [
@@ -13306,6 +13308,52 @@
           "required": ["channel", "request_id", "payload"],
           "additionalProperties": false,
           "description": "気づきの状態を 1 つ進める（B11-05、ADR 0132）。ref は直前の一覧で main が渡した参照（候補 ID ではない）。main は一覧で読んだ状態を expected_state にして中枢へ送り、記録できたら一覧を読み直して返す。状態が変わっていた（409）なら読み直して preview_stale、結果が分からなければ自動では送り直さず outcome_unknown。ロック解除済みの画面操作だけ。外部へは送らない記録の操作なので、入出力の停止中も受け付ける。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "channel": {
+              "type": "string",
+              "const": "desktop.connections_list"
+            },
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "payload": {
+              "type": "null"
+            }
+          },
+          "required": ["channel", "request_id", "payload"],
+          "additionalProperties": false,
+          "description": "連携の接続の一覧を中枢から読み直す（B08-02 P3・B09-05、ADR 0142。設計 01 接続・端末）。ロック解除済みのときだけ（内容なので、前面は求めない）。中枢の画面の端末でだけ受け付ける。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "channel": {
+              "type": "string",
+              "const": "desktop.connection_targets_update"
+            },
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "ref": {
+                  "$ref": "#/$defs/Id"
+                },
+                "targets": {
+                  "$ref": "#/$defs/ConnectionTargets"
+                }
+              },
+              "required": ["ref", "targets"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["channel", "request_id", "payload"],
+          "additionalProperties": false,
+          "description": "連携の接続の取得範囲を保存する（B08-02 P3・B09-05、ADR 0142。設計 04 取得する対象、ADR 0086・0089）。ref は直前の一覧で main が渡した参照（接続 ID ではない）。main は一覧で読んだ permission_revision を expected_permission_revision にして中枢へ送り、保存できたら一覧を読み直して返す。版が変わっていた（409）なら読み直して preview_stale、結果が分からなければ自動では送り直さず outcome_unknown。targets は今読めている取得対象のうちの選択と、期間・添付の範囲だけで、main は今の保存値にないカレンダー・フォルダー／ラベルの追加を拒否する（新しい対象の追加は接続時、B03-04）。ロック解除済みの画面操作だけ。中枢の画面の端末でだけ受け付ける。"
         }
       ],
       "description": "UI レンダラーから main への要求（設計 10 §1、07 §2、02 停止、ADR 0014）。main は受け取ったら最初にこの定義で検査し、未知のチャネル・未知の項目・型違いは invalid_request で拒否する。引数のない要求の payload は null。端末 ID は名乗れず、送信元は main が webContents から判定する。"
@@ -14579,6 +14627,31 @@
           "type": "object",
           "properties": {
             "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "channel": {
+              "type": "string",
+              "enum": [
+                "desktop.connections_list",
+                "desktop.connection_targets_update"
+              ]
+            },
+            "outcome": {
+              "type": "string",
+              "const": "ok"
+            },
+            "connections": {
+              "$ref": "#/$defs/DesktopProviderConnectionsView"
+            }
+          },
+          "required": ["request_id", "channel", "outcome", "connections"],
+          "additionalProperties": false,
+          "description": "受け付けた。連携の接続の一覧の表示用の値を返す（取得範囲の変更の後は読み直した一覧。読み直せなかったときは fetch が stale）。B08-02 P3・B09-05、ADR 0142。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "request_id": {
               "anyOf": [
                 {
                   "$ref": "#/$defs/Id"
@@ -14878,6 +14951,90 @@
       ],
       "additionalProperties": false,
       "description": "画面に出す操作（B04-05、ADR 0031）。ref は main が操作ごとに作る参照で、操作 ID・内容版・hash・provider の受領 ID を含めない。allowed_actions は表示補助で、実行時の認可ではない。"
+    },
+    "DesktopConnectionEntry": {
+      "type": "object",
+      "properties": {
+        "ref": {
+          "$ref": "#/$defs/Id",
+          "description": "main が作る参照（接続 ID ではない）。同じ接続のあいだ変えず、世代（ロック・切断）が進んだら捨てる。"
+        },
+        "provider": {
+          "$ref": "#/$defs/ConnectionProvider"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["active", "needs_reauth", "needs_attention", "disconnected"]
+        },
+        "access": {
+          "type": "string",
+          "enum": ["read", "read_write"]
+        },
+        "granted_scopes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "OAuth で許可された権限（表示用）。取得範囲はこの権限より Buddy 側の対象で狭める（設計 04 接続・権限）。"
+        },
+        "targets": {
+          "$ref": "#/$defs/ConnectionTargets",
+          "description": "今保存されている取得対象と取得範囲。対象の表示名は契約にないため、画面は ID のまま出す。"
+        },
+        "graph_account": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GraphAccountState"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Microsoft の接続だけ。アカウント種別・委任・拒否の理由・カテゴリの扱い（設計 04 接続・権限、ADR 0072）。Google の接続では null。"
+        },
+        "delivery_unknown": {
+          "type": "boolean",
+          "description": "この接続への取得範囲の変更の結果が分からなかった（自動では送り直さない）。一覧を取り直すまで変更させない。"
+        }
+      },
+      "required": [
+        "ref",
+        "provider",
+        "status",
+        "access",
+        "granted_scopes",
+        "targets",
+        "graph_account",
+        "delivery_unknown"
+      ],
+      "additionalProperties": false,
+      "description": "連携の接続 1 件の、画面に出す値（B08-02 P3・B09-05、ADR 0142。設計 01 接続・端末、04 接続・権限／取得する対象）。接続 ID・permission_revision・scope_revision は main が持ち、画面へ出さない。"
+    },
+    "DesktopProviderConnectionsView": {
+      "type": "object",
+      "properties": {
+        "fetch": {
+          "type": "string",
+          "enum": ["loaded", "stale", "unavailable"],
+          "description": "取得の状態。loaded は直近の読み取りが成功、stale は直近の読み取りに失敗して前に読めた値を出している、unavailable はこの世代でまだ読めていない（「接続なし」と区別する）。"
+        },
+        "entries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DesktopConnectionEntry"
+          }
+        },
+        "list_seq": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "main が付ける一覧の通し番号。画面はこれより小さい番号の応答を反映しない（ADR 0026 と同じ）。"
+        }
+      },
+      "required": ["fetch", "entries", "list_seq"],
+      "additionalProperties": false,
+      "description": "連携の接続の画面に出す値（B08-02 P3・B09-05、ADR 0142。設計 01 接続・端末）。"
     },
     "DesktopCandidateEntry": {
       "type": "object",

@@ -149,13 +149,19 @@ test('requests go only to the contract channels', async () => {
       // B11-05: 気づきの一覧・状態の変更（従来の窓と状態の層。ADR 0132）。
       'desktop.candidates_list',
       'desktop.candidate_state',
+      // B08-02 P3・B09-05: 連携の接続の一覧・取得範囲の変更（従来の窓の中枢の画面と状態の層。ADR 0142）。
+      'desktop.connections_list',
+      'desktop.connection_targets_update',
     ],
   );
-  // 気づきの一覧・状態の変更（B11-05）は従来の窓（標準の端末画面）でも使う。
+  // 気づきの一覧・状態の変更（B11-05）は従来の窓（標準の端末画面）でも使う。連携の一覧・取得範囲の変更
+  // （B08-02 P3・B09-05）も従来の窓の中枢の画面で使う。
   const legacy = [
     ...channels,
     'desktop.candidates_list',
     'desktop.candidate_state',
+    'desktop.connections_list',
+    'desktop.connection_targets_update',
   ];
   for (const channel of legacy) {
     const request = { channel, request_id: 'r', payload: null };
@@ -289,6 +295,9 @@ const EXPECTED_ROLE_CHANNELS: Readonly<Record<string, readonly string[]>> = {
     // 気づきの一覧・状態の変更（B11-05、ADR 0132）。
     'desktop.candidates_list',
     'desktop.candidate_state',
+    // 連携の接続の一覧・取得範囲の変更（B08-02 P3・B09-05、ADR 0142）。
+    'desktop.connections_list',
+    'desktop.connection_targets_update',
   ],
 };
 const EXPECTED_ROLE_NOTIFICATIONS: Readonly<Record<string, readonly string[]>> =

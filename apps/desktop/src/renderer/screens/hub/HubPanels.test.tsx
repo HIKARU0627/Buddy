@@ -526,6 +526,31 @@ test('hub tabs: claims come first when there are any; the tab names match the co
   assert.match(empty, /hub-open-heading.*hub-claims-heading/su);
 });
 
+test('hub tabs: the connections tab appears only when its content is given', () => {
+  const { actions } = capture();
+  const withConnections = html(
+    <HubTabs
+      state={{ ...INITIAL_HUB_STATE, claims: [] }}
+      actions={actions}
+      now={NOW}
+      thisDevice={<p>このマシンの中身</p>}
+      connections={<p>連携の中身</p>}
+      initialTab="connections"
+    />,
+  );
+  assert.match(withConnections, /連携アカウント/u);
+  assert.match(withConnections, /連携の中身/u);
+  const without = html(
+    <HubTabs
+      state={{ ...INITIAL_HUB_STATE, claims: [] }}
+      actions={actions}
+      now={NOW}
+      thisDevice={<p>このマシンの中身</p>}
+    />,
+  );
+  assert.doesNotMatch(without, /連携アカウント/u);
+});
+
 test('hub state: a successful decision or revocation is announced at the top of its section, and cleared by the next operation', () => {
   const now = new Date(2030, 9, 5, 12, 0, 5).getTime();
   const sending = markSending(

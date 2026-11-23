@@ -43,6 +43,8 @@ const REQUEST_CHANNELS: readonly string[] = [
   'desktop.voice_control',
   'desktop.candidates_list',
   'desktop.candidate_state',
+  'desktop.connections_list',
+  'desktop.connection_targets_update',
 ];
 const NOTIFICATION_CHANNELS: readonly string[] = [
   'desktop.state_changed',

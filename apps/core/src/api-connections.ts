@@ -1,5 +1,7 @@
 // 連携の接続の一覧・取得対象の読み取りと、本人の選択の変更（設計 04 取得する対象、設計 11 §1A、B08-02、ADR 0086〜0089）。
 // 同期の状態の読み取り（getConnectionSync）は B08-05 で足した（ADR 0136）。
+// 選べる取得対象の読み取り（listConnectionTargetOptions）は ADR 0145 で足した。提供元からの読み取りは注入の口
+// （connection-discovery.ts）が行い、ここは接続の状態の確かめと応答の形だけを持つ。
 //
 // 経路の検査（端末トークン・自宅判定・ロック解除・画面の操作・接続範囲・版の照合）は api-server の admission が先に行う。
 // ここは検査を通った要求の処理で、判定の正本は保存層（connection-targets-store.ts）と domain の validateFetchScope。
@@ -15,6 +17,7 @@ import type { DbWorkerClient } from '@buddy/storage';
 import type { ConnectionRecord } from '@buddy/storage';
 import type { SyncBatchRecord, SyncScopeRecord } from '@buddy/storage';
 import type { EnvironmentInput } from './api-environment.js';
+import type { TargetDiscoveryPort } from './connection-discovery.js';
 import { apiErrorResponse } from './api-server.js';
 import type { ApiRouteHandler } from './api-server.js';
 import type { JsonObject } from './strict-json.js';
@@ -33,6 +36,8 @@ export type ConnectionRoutesStore = Pick<
 
 export interface ConnectionRoutesOptions {
   readonly store: ConnectionRoutesStore;
+  // 選べる取得対象を提供元から読む口（ADR 0145）。省略すれば、その経路は 503 で閉じる。
+  readonly discover?: TargetDiscoveryPort;
 }
 
 export interface ConnectionRoutes {
@@ -41,6 +46,7 @@ export interface ConnectionRoutes {
     readonly getConnectionTargets: ApiRouteHandler;
     readonly updateConnectionTargets: ApiRouteHandler;
     readonly getConnectionSync: ApiRouteHandler;
+    readonly listConnectionTargetOptions: ApiRouteHandler;
   };
   // updateConnectionTargets の expected_revision の照合。保存済みの許可版と本文の版を比べる。
   // 読めなければ例外にし、経路の検査が 503 で閉じる（「内容が変わりました」と見せない）。
@@ -218,6 +224,46 @@ export function createConnectionRoutes(
     };
   };
 
+  // 選べる取得対象（ADR 0145）。中枢の画面だけ（経路の検査の hub_screen）。存在しない接続は 422（契約に 404 は
+  // 無い。getConnectionTargets と同じ）。active でない接続（再認可待ち・確認待ち・解除済み）は提供元へ読みに行かず
+  // 409（画面は一覧を読み直して状態を確かめる）。トークンの出所が無い・口が無い・保存層を読めないときは 503。
+  // 提供元の拒否・読めないことは種類ごとの status で 200 に載せる。読んだ値は保存しない。
+  const listConnectionTargetOptions: ApiRouteHandler = async (request) => {
+    const result = await store.connectionTargets({
+      kind: 'connections.get',
+      connection_id: request.params['connection_id'] ?? '',
+    });
+    if (!result.ok) {
+      return result.reasons.includes('connection_id_invalid')
+        ? apiErrorResponse(422, 'invalid_input')
+        : apiErrorResponse(503, 'dependency_unavailable');
+    }
+    const connection = result.value;
+    if (connection === null) return apiErrorResponse(422, 'invalid_input');
+    if (connection.status !== 'active')
+      return apiErrorResponse(409, 'conflict');
+    if (options.discover === undefined)
+      return apiErrorResponse(503, 'dependency_unavailable');
+    let outcome;
+    try {
+      outcome = await options.discover(connection);
+    } catch {
+      return apiErrorResponse(503, 'dependency_unavailable');
+    }
+    if (outcome.kind !== 'ok')
+      return apiErrorResponse(503, 'dependency_unavailable');
+    return {
+      status: 200,
+      body: {
+        connection_id: connection.connection_id,
+        provider: connection.provider,
+        calendars: outcome.value.calendars,
+        mail_containers: outcome.value.mail_containers,
+        categories: outcome.value.categories,
+      },
+    };
+  };
+
   const revisionMatches = async (input: EnvironmentInput): Promise<boolean> => {
     const result = await store.connectionTargets({
       kind: 'connections.get',
@@ -237,6 +283,7 @@ export function createConnectionRoutes(
       getConnectionTargets,
       updateConnectionTargets,
       getConnectionSync,
+      listConnectionTargetOptions,
     },
     revisionMatches,
   };

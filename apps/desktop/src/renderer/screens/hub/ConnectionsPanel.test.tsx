@@ -1,4 +1,4 @@
-// 連携アカウントの欄（ConnectionsPanel。B08-02 P3・B09-05、ADR 0142）の試験。サーバー描画（react-dom/server）で、
+// 連携アカウントの欄（ConnectionsPanel。B08-02 P3・B09-05、ADR 0142・0145）の試験。サーバー描画（react-dom/server）で、
 // 取得の状態、提供元・状態・権限、取得対象（ID のまま）と範囲、Microsoft のアカウント種別・拒否の理由・カテゴリの扱い、
 // 未取得を「連携なし」と言わないこと、理由のコード・接続 ID・版を出さないことを確かめる。期待値は手で書く。
 // 実際の見た目・クリックは Electron の画面で確かめる（未実施）。
@@ -24,6 +24,7 @@ const id = (n: number) =>
 const ACTIONS: ConnectionActions = {
   refresh: () => undefined,
   update: () => undefined,
+  discover: () => undefined,
 };
 
 const googleEntry = (
@@ -47,6 +48,7 @@ const googleEntry = (
     attachment_max_bytes: 10000000,
   },
   graph_account: null,
+  discovery: null,
   delivery_unknown: false,
   ...overrides,
 });
@@ -74,6 +76,7 @@ const microsoftEntry = (
     rejection_reason: 'admin_consent_required',
     category_updates: 'display_only',
   },
+  discovery: null,
   delivery_unknown: false,
   ...overrides,
 });
@@ -128,7 +131,7 @@ test('a google connection shows provider, scopes and the saved targets by id', (
   assert.match(html, /PDF/u);
   assert.match(html, /テキスト（txt・md・csv）/u);
   assert.match(html, /メールを遡る日数（上限 90\u00a0日）/u);
-  assert.match(html, /選べる対象は接続時に決まります/u);
+  assert.match(html, /選べる対象を読み込む/u);
   assert.match(html, /保存する/u);
   // 接続 ID・版・理由のコードは出さない。
   assert.doesNotMatch(html, /permission_revision/u);
@@ -172,4 +175,117 @@ test('a stale view keeps the entries and says the latest read failed', () => {
   const html = text(panel({ view: view([googleEntry()], { fetch: 'stale' }) }));
   assert.match(html, /最新の取得に失敗しました/u);
   assert.match(html, /Google/u);
+});
+
+// --- 選べる対象（ADR 0145） ---
+
+test('discovered targets show display names, the primary mark, unchosen options and a saved id not found', () => {
+  const html = text(
+    panel({
+      view: view([
+        googleEntry({
+          targets: {
+            calendar_ids: ['gone@example.invalid'],
+            mail_container_ids: ['INBOX'],
+            attachment_kinds: ['pdf'],
+            mail_lookback_days: 90,
+            calendar_past_days: 30,
+            calendar_future_days: 90,
+            attachment_max_bytes: 10000000,
+          },
+          discovery: {
+            calendars: {
+              status: 'loaded',
+              options: [
+                {
+                  id: 'primary-cal@example.invalid',
+                  display_name: '合成のメイン',
+                  kind: 'calendar',
+                  primary: true,
+                },
+              ],
+            },
+            mail_containers: {
+              status: 'loaded',
+              options: [
+                {
+                  id: 'INBOX',
+                  display_name: 'INBOX',
+                  kind: 'mail_label',
+                  primary: false,
+                },
+                {
+                  id: 'Label_1',
+                  display_name: '合成のラベル',
+                  kind: 'mail_label',
+                  primary: false,
+                },
+              ],
+            },
+            categories: { status: 'not_supported', categories: [] },
+          },
+        }),
+      ]),
+    }),
+  );
+  assert.match(html, /合成のメイン（メイン）/u);
+  assert.match(html, /gone@example\.invalid/u);
+  assert.match(html, /連携先で見つかりません/u);
+  assert.match(html, /受信トレイ/u);
+  assert.match(html, /合成のラベル/u);
+  assert.match(html, /選べる対象を読み直す/u);
+  // Google にはカテゴリの欄を出さない。
+  assert.doesNotMatch(html, /既存のカテゴリ/u);
+});
+
+test('a microsoft discovery shows the categories, and a refused list says so without codes', () => {
+  const html = text(
+    panel({
+      view: view([
+        microsoftEntry({
+          status: 'active',
+          graph_account: {
+            account_kind: 'personal',
+            delegation: 'delegated_user',
+            rejection_reason: null,
+            category_updates: 'display_only',
+          },
+          discovery: {
+            calendars: { status: 'not_supported', options: [] },
+            mail_containers: { status: 'rejected', options: [] },
+            categories: {
+              status: 'loaded',
+              categories: [
+                {
+                  category_id: 'cat-1',
+                  display_name: '合成の赤',
+                  color: 'preset0',
+                },
+              ],
+            },
+          },
+        }),
+      ]),
+    }),
+  );
+  assert.match(html, /既存のカテゴリ（表示だけ）/u);
+  assert.match(html, /合成の赤/u);
+  assert.doesNotMatch(html, /preset0/u);
+  assert.match(html, /一覧の読み取りを許可していない/u);
+  assert.doesNotMatch(html, /rejected/u);
+  // 保存済みの inbox は ID のまま出す（一覧が読めていないので「見つからない」とは言わない）。
+  assert.match(html, /inbox/u);
+  assert.doesNotMatch(html, /連携先で見つかりません/u);
+});
+
+test('the discover button is disabled for a connection that is not active and while reading', () => {
+  const inactive = panel({ view: view([microsoftEntry()]) });
+  assert.match(inactive, /選べる対象を読み込む/u);
+  const button =
+    /<button[^>]*>[^<]*選べる対象を読み込む/u.exec(inactive)?.[0] ?? '';
+  assert.match(button, /disabled/u);
+  const reading = text(
+    panel({ view: view([googleEntry()]), discovering: id(1) }),
+  );
+  assert.match(reading, /読み込んでいます/u);
 });

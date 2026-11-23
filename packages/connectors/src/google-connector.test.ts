@@ -954,3 +954,121 @@ test('添付パートの列挙: 添付が無い payload では空になる', () 
   });
   assert.deepEqual(parts, []);
 });
+
+// --- 取得対象の発見（ADR 0145） ---
+
+test('Calendar listCalendars: 2 ページを読み切り、最小の fields で求め、表示名の元と primary を写す', async () => {
+  const { connector, urls } = setup([
+    json({
+      items: [
+        {
+          id: 'primary-cal@example.invalid',
+          summary: '合成のメイン',
+          primary: true,
+          accessRole: 'owner',
+          colorId: '7',
+        },
+        {
+          id: 'team-cal@example.invalid',
+          summary: '合成のチーム',
+          summaryOverride: '本人が付けた名前',
+        },
+      ],
+      nextPageToken: 'cal-page-2',
+    }),
+    json({ items: [{ id: 'nameless@example.invalid', primary: false }] }),
+  ]);
+  assert.deepEqual(await connector.calendar.listCalendars(), [
+    {
+      id: 'primary-cal@example.invalid',
+      summary: '合成のメイン',
+      primary: true,
+      accessRole: 'owner',
+    },
+    {
+      id: 'team-cal@example.invalid',
+      summary: '合成のチーム',
+      summaryOverride: '本人が付けた名前',
+      primary: false,
+    },
+    { id: 'nameless@example.invalid', primary: false },
+  ]);
+  const [first, second] = urls();
+  assert.equal(first?.pathname, '/calendar/v3/users/me/calendarList');
+  assert.equal(first?.searchParams.get('maxResults'), '250');
+  assert.equal(
+    first?.searchParams.get('fields'),
+    'items(id,summary,summaryOverride,primary,accessRole),nextPageToken',
+  );
+  assert.equal(first?.searchParams.get('pageToken'), null);
+  assert.equal(second?.searchParams.get('pageToken'), 'cal-page-2');
+});
+
+test('Calendar listCalendars: items の省略は空、id の無い項目・型の違う primary は invalid_response', async () => {
+  assert.deepEqual(
+    await setup([json({})]).connector.calendar.listCalendars(),
+    [],
+  );
+  for (const body of [
+    { items: [{ summary: 'id なし' }] },
+    { items: [{ id: 'x', primary: 'yes' }] },
+    { items: 'not-array' },
+  ]) {
+    await assert.rejects(
+      setup([json(body)]).connector.calendar.listCalendars(),
+      (error: unknown) =>
+        error instanceof GoogleApiError && error.kind === 'invalid_response',
+    );
+  }
+});
+
+test('Calendar listCalendars: 403 は再試行せず http_error で失敗し、トークンを漏らさない', async () => {
+  const { connector, requests } = setup([status(403)]);
+  await assert.rejects(connector.calendar.listCalendars(), (error: unknown) => {
+    assertNoToken(error);
+    return (
+      error instanceof GoogleApiError &&
+      error.kind === 'http_error' &&
+      error.status === 403
+    );
+  });
+  assert.equal(requests.length, 1);
+});
+
+test('Gmail listLabels: 種別を写し、未知の種別は null にし、最小の fields で 1 回だけ読む', async () => {
+  const { connector, urls } = setup([
+    json({
+      labels: [
+        { id: 'INBOX', name: 'INBOX', type: 'system', messagesTotal: 3 },
+        { id: 'Label_1', name: '合成のラベル', type: 'user' },
+        { id: 'Label_2', name: '種別なし' },
+        { id: 'Label_3', name: '未知の種別', type: 'other' },
+      ],
+    }),
+  ]);
+  assert.deepEqual(await connector.gmail.listLabels(), [
+    { id: 'INBOX', name: 'INBOX', type: 'system' },
+    { id: 'Label_1', name: '合成のラベル', type: 'user' },
+    { id: 'Label_2', name: '種別なし', type: null },
+    { id: 'Label_3', name: '未知の種別', type: null },
+  ]);
+  const [only] = urls();
+  assert.equal(only?.pathname, '/gmail/v1/users/me/labels');
+  assert.equal(only?.searchParams.get('fields'), 'labels(id,name,type)');
+  assert.equal(urls().length, 1);
+});
+
+test('Gmail listLabels: labels の省略は空、id・name の無い項目は invalid_response', async () => {
+  assert.deepEqual(await setup([json({})]).connector.gmail.listLabels(), []);
+  for (const body of [
+    { labels: [{ name: 'id なし' }] },
+    { labels: [{ id: 'Label_9' }] },
+    { labels: {} },
+  ]) {
+    await assert.rejects(
+      setup([json(body)]).connector.gmail.listLabels(),
+      (error: unknown) =>
+        error instanceof GoogleApiError && error.kind === 'invalid_response',
+    );
+  }
+});

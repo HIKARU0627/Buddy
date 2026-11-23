@@ -1,4 +1,4 @@
-// 連携の接続の一覧と取得範囲の変更（B08-02 P3・B09-05、ADR 0142）を、127.0.0.1 の Core と main の部品
+// 連携の接続の一覧と取得範囲の変更（B08-02 P3・B09-05、ADR 0142）と選べる対象の読み取り（ADR 0145）を、127.0.0.1 の Core と main の部品
 // （DesktopCoreLink・ConnectionsBridge・限定 IPC の受付）で通す統合の試験（candidate-link.test.ts と同じ形）。
 // 中枢は同じプロセスの startCore（鍵は模擬）。端末は中枢の DB に直接登録し（中枢と同じマシンの端末）、接続は
 // 中枢の DB に直接置く合成の Google 接続（接続の作成・OAuth は B03-04 で、この試験では作らない）。
@@ -229,6 +229,7 @@ test('the list comes from the hub; the screen value has no connection id and no 
       granted_scopes: ['https://www.googleapis.com/auth/gmail.readonly'],
       targets: SAVED_TARGETS,
       graph_account: null,
+      discovery: null,
       delivery_unknown: false,
     },
   );
@@ -299,4 +300,53 @@ test('adding a target that is not saved is refused and sends nothing', async (t)
   assert.equal(reasonOf(added), 'invalid_request');
   assert.deepEqual(connectionRequests(r), ['GET /v1/connections']);
   assert.equal(r.stored().permission_revision, 3);
+});
+
+// --- 選べる対象（ADR 0145） ---
+// 中枢にトークンの出所が無い（接続の作成 B03-04 が無い）ので、中枢は提供元へ送らず 503 で閉じる。提供元から読めた
+// 場合の形は connections-bridge.test.ts と Core の connection-discovery.test.ts（偽の connector）で確かめる。
+
+test('discover reaches the hub, which closes without a token source; nothing is saved and nothing can be added', async (t) => {
+  const r = await start(t);
+  const ref = await refOf(r);
+  const discovered = await r.ipc('desktop.connection_targets_discover', {
+    ref,
+  });
+  assert.equal(reasonOf(discovered), 'core_rejected');
+  assert.deepEqual(connectionRequests(r), [
+    'GET /v1/connections',
+    `GET /v1/connections/${CONNECTION}/target-options`,
+  ]);
+  const view = viewOf(await r.ipc('desktop.connections_list', null));
+  assert.equal(view.entries[0]?.discovery, null);
+  const added = await r.ipc('desktop.connection_targets_update', {
+    ref,
+    targets: { ...NARROWER, calendar_ids: ['brand-new-calendar'] },
+  });
+  assert.equal(reasonOf(added), 'invalid_request');
+  assert.equal(r.stored().permission_revision, 3);
+  assert.equal(r.stored().scope_revision, 5);
+});
+
+test('discover needs an unlocked, focused screen and a known ref; refused requests send nothing', async (t) => {
+  const r = await start(t);
+  const ref = await refOf(r);
+  const before = connectionRequests(r).length;
+  const unfocused = await r.ipc(
+    'desktop.connection_targets_discover',
+    { ref },
+    { sender: { trustedSender: true, windowFocused: false } },
+  );
+  assert.equal(reasonOf(unfocused), 'screen_operation_required');
+  const locked = await r.ipc(
+    'desktop.connection_targets_discover',
+    { ref },
+    { io: { lockState: 'locked', stopScope: 'none', ioEpoch: '0' } },
+  );
+  assert.equal(reasonOf(locked), 'device_locked');
+  const unknownRef = await r.ipc('desktop.connection_targets_discover', {
+    ref: randomUUID(),
+  });
+  assert.equal(reasonOf(unknownRef), 'entry_not_found');
+  assert.equal(connectionRequests(r).length, before);
 });

@@ -1545,6 +1545,38 @@ paths:
           $ref: '#/components/responses/RateLimited'
         '503':
           $ref: '#/components/responses/Unavailable'
+  /v1/connections/{connection_id}/target-options:
+    get:
+      operationId: listConnectionTargetOptions
+      summary: 選べる取得対象
+      description: 接続で選べるカレンダー・フォルダー／ラベルと、Outlook の既存のカテゴリ（表示だけ）を、中枢がそのときに提供元から読んで返す。保存しない。選んだ対象を取得対象へ足すのは本人の取得対象の変更（updateConnectionTargets）だけで、見つけた対象を自動で足さない。提供元への読み取りを伴うので中枢の画面だけ。接続が active でなければ提供元へ読みに行かず 409。トークンの出所が無い・保存層を読めないときは 503。提供元の拒否・読めないことは種類ごとの status で返す（01 接続・端末、04 取得する対象、ADR 0145）。
+      x-buddy-core-checks:
+        - device_token
+        - home_network
+        - unlocked
+        - hub_screen
+      parameters:
+        - $ref: '#/components/parameters/ConnectionId'
+        - $ref: '#/components/parameters/LockState'
+      responses:
+        '200':
+          description: 選べる取得対象。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/ConnectionTargetDiscovery
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
   /v1/connections/{connection_id}/disconnect:
     post:
       operationId: disconnectConnection

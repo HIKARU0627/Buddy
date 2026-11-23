@@ -62,6 +62,8 @@ export const H01_SHA256 =
 export interface MutableEnvironment {
   home: boolean;
   lock: 'unlocked' | 'locked' | 'unknown';
+  // 中枢の画面かどうか（省略は中枢の画面。ADR 0145 の hub_screen の拒否を試す）。
+  hub?: boolean;
 }
 
 export interface EventCore {
@@ -90,6 +92,8 @@ export async function startEventCore(
     readonly budget?: StartCoreOptions['budget'];
     // 公開 Web 調査の口（B12-05、ADR 0141）。検索・取得・要約の偽物を渡す。
     readonly research?: StartCoreOptions['research'];
+    // 同期の設定（トークンの出所。ADR 0145 の選べる取得対象の試験で使う）。
+    readonly sync?: StartCoreOptions['sync'];
   } = {},
 ): Promise<EventCore> {
   const dataDir =
@@ -102,7 +106,7 @@ export async function startEventCore(
   const environment: Partial<RequestEnvironment> = {
     homeNetwork: () => env.home,
     ...(options.lockFromHeader === true ? {} : { lockState: () => env.lock }),
-    hubLocal: () => true,
+    hubLocal: () => env.hub ?? true,
     audioOwner: () => 'self',
     claimSecretMatches: () => false,
   };
@@ -128,6 +132,7 @@ export async function startEventCore(
     ...(options.now === undefined ? {} : { now: options.now }),
     ...(options.budget === undefined ? {} : { budget: options.budget }),
     ...(options.research === undefined ? {} : { research: options.research }),
+    ...(options.sync === undefined ? {} : { sync: options.sync }),
   });
   onCleanup(t, () => handle.stop('test').catch(() => undefined));
   assert(handle.https !== null);

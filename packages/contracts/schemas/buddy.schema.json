@@ -383,6 +383,9 @@
       "$ref": "#/$defs/ConnectionDisconnectRequest"
     },
     {
+      "$ref": "#/$defs/ConnectionTargetDiscovery"
+    },
+    {
       "$ref": "#/$defs/DesktopIpcRequest"
     },
     {
@@ -12283,6 +12286,133 @@
       "required": ["connections"],
       "additionalProperties": false
     },
+    "ConnectionTargetOption": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "提供元の対象の ID（カレンダー ID・Gmail のラベル ID・Outlook のフォルダー ID）。取得対象（ConnectionTargets）に入れる値と同じ。"
+        },
+        "display_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "提供元が返した表示名（Google のカレンダーは本人が付けた名前を優先）。提供元が名前を返さなければ null で、推測で作らない。"
+        },
+        "kind": {
+          "type": "string",
+          "enum": ["calendar", "mail_label", "mail_folder"],
+          "description": "calendar は calendar_ids へ、mail_label（Gmail）と mail_folder（Outlook）は mail_container_ids へ入る対象。"
+        },
+        "primary": {
+          "type": "boolean",
+          "description": "Google の本人のメインのカレンダー。ほかは false。"
+        }
+      },
+      "required": ["id", "display_name", "kind", "primary"],
+      "additionalProperties": false,
+      "description": "接続で選べる取得対象 1 件（ADR 0145。設計 04 取得する対象、設計 01 接続・端末の対象選択）。見つけた対象を取得対象へ足すのは本人の選択（取得対象の変更）だけで、自動では足さない。"
+    },
+    "ConnectionTargetOptionList": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["loaded", "rejected", "unavailable", "not_supported"],
+          "description": "読み取りの結果。loaded は提供元から全ページを読めた（一覧は見つかった対象のすべて）。rejected は提供元が拒否した（権限・組織の方針など。理由のコードは載せない）。unavailable は読めなかった（通信・提供元の障害・待ち時間の上限・トークンの期限切れ・形の違う応答）。not_supported はこの提供元にこの種類の対象が Buddy では無い（Outlook のカレンダー、Google のカテゴリ）。loaded 以外では一覧は空。"
+        },
+        "options": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ConnectionTargetOption"
+          }
+        }
+      },
+      "required": ["status", "options"],
+      "additionalProperties": false,
+      "description": "1 種類の対象（カレンダー、またはフォルダー／ラベル）の発見の結果（ADR 0145）。並びは提供元が返した順。"
+    },
+    "ConnectionCategoryOption": {
+      "type": "object",
+      "properties": {
+        "category_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "display_name": {
+          "type": "string"
+        },
+        "color": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Outlook のカテゴリの色の名前（preset0 など）。無ければ null。"
+        }
+      },
+      "required": ["category_id", "display_name", "color"],
+      "additionalProperties": false,
+      "description": "Outlook の既存のカテゴリ 1 件（表示だけ。ADR 0072 の display_only、ADR 0145）。カテゴリの付与はしない。"
+    },
+    "ConnectionCategoryList": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["loaded", "rejected", "unavailable", "not_supported"],
+          "description": "読み取りの結果。loaded は提供元から全ページを読めた（一覧は見つかった対象のすべて）。rejected は提供元が拒否した（権限・組織の方針など。理由のコードは載せない）。unavailable は読めなかった（通信・提供元の障害・待ち時間の上限・トークンの期限切れ・形の違う応答）。not_supported はこの提供元にこの種類の対象が Buddy では無い（Outlook のカレンダー、Google のカテゴリ）。loaded 以外では一覧は空。"
+        },
+        "categories": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ConnectionCategoryOption"
+          }
+        }
+      },
+      "required": ["status", "categories"],
+      "additionalProperties": false,
+      "description": "Outlook の既存のカテゴリの一覧（設計 06 B09 のカテゴリ一覧。表示だけ、ADR 0072・0145）。MailboxSettings.Read が無ければ rejected になりうる（設計 04 接続・権限）。"
+    },
+    "ConnectionTargetDiscovery": {
+      "type": "object",
+      "properties": {
+        "connection_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "provider": {
+          "$ref": "#/$defs/ConnectionProvider"
+        },
+        "calendars": {
+          "$ref": "#/$defs/ConnectionTargetOptionList"
+        },
+        "mail_containers": {
+          "$ref": "#/$defs/ConnectionTargetOptionList"
+        },
+        "categories": {
+          "$ref": "#/$defs/ConnectionCategoryList"
+        }
+      },
+      "required": [
+        "connection_id",
+        "provider",
+        "calendars",
+        "mail_containers",
+        "categories"
+      ],
+      "additionalProperties": false,
+      "description": "接続で選べる取得対象の一覧（ADR 0145。設計 01 接続・端末の対象選択、設計 04 取得する対象）。中枢がそのときに提供元から読んだ値で、保存しない。選択済みかどうかは取得対象（ConnectionSummary.targets）と照らして画面が示す。OAuth トークン・本文は返さない。新しいカレンダー・フォルダーを見つけても自動では足さない。"
+    },
     "OAuthStartRequest": {
       "type": "object",
       "properties": {
@@ -12408,9 +12538,10 @@
         "desktop.candidates_list",
         "desktop.candidate_state",
         "desktop.connections_list",
-        "desktop.connection_targets_update"
+        "desktop.connection_targets_update",
+        "desktop.connection_targets_discover"
       ],
-      "description": "UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014・0025）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。中枢との接続・ペアリングは用途別のチャネルだけで、要求の宛先・本文を Renderer が決められない。音声レンダラーの IPC（B05）は別に定める。 発言・承認表示の準備・承認・取消・照合は用途別のチャネルで、操作は main が持つ参照（ref）で指す（B04-05、ADR 0031）。 キャンバスを前に出す（canvas_summon）は状態の層と入力バーからだけ使う（UI-02、ADR 0032）。状態の層のパネルを出す・しまう（status_panel）は状態の層からだけ使う（UI-04、ADR 0032）。キャンバスのユーザーの操作（canvas_user_op）はキャンバスの窓からだけ、キャンバスが前に出ている間だけ使う（UI-06、ADR 0032）。 予算の確認（超過枠の承認・見送り budget_overage_decide、M 超過の確認 budget_overrun_review、不明な費用の手での精算 budget_manual_settle）は状態の層からだけ使う。承認・確認・精算は main の OS の確認ダイアログを 1 回だけ挟み、画面が持つのは main が作る参照（ref）だけ（B07-05、ADR 0039）。 音声（B05-06、ADR 0050）: 音声の状態の取得（get_voice）・呼びかけなしで音声の会話を始める「続ける」（voice_continue）・外部への送信の同意の取り消し（voice_consent_revoke）は状態の層からだけ使う。外部への送信の同意は main の OS の確認ダイアログで 1 回だけ取り、画面は同意を作れない。音声レンダラーへの IPC は VoiceRendererRequest で、このチャネルとは別。 気づき（B11-05、ADR 0132）: 一覧の取得（candidates_list）と状態の変更（candidate_state。開く・今回は扱わない・再通知）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バーは使えない。候補は main が作る参照（ref）で指し、候補 ID・expected_state・接続範囲は main が持つ。 連携の接続（B08-02 P3・B09-05、ADR 0142）: 一覧の取得（connections_list）と取得範囲の変更（connection_targets_update）は中枢の画面（接続・端末）でだけ使い、キャンバス・入力バーは使えない。接続は main が作る参照（ref）で指し、接続 ID・permission_revision は main が持つ。画面が送れるのは今読めている取得対象のうちの選択と、期間・添付の範囲だけで、新しい対象の追加は接続時（B03-04）に行う。"
+      "description": "UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014・0025）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。中枢との接続・ペアリングは用途別のチャネルだけで、要求の宛先・本文を Renderer が決められない。音声レンダラーの IPC（B05）は別に定める。 発言・承認表示の準備・承認・取消・照合は用途別のチャネルで、操作は main が持つ参照（ref）で指す（B04-05、ADR 0031）。 キャンバスを前に出す（canvas_summon）は状態の層と入力バーからだけ使う（UI-02、ADR 0032）。状態の層のパネルを出す・しまう（status_panel）は状態の層からだけ使う（UI-04、ADR 0032）。キャンバスのユーザーの操作（canvas_user_op）はキャンバスの窓からだけ、キャンバスが前に出ている間だけ使う（UI-06、ADR 0032）。 予算の確認（超過枠の承認・見送り budget_overage_decide、M 超過の確認 budget_overrun_review、不明な費用の手での精算 budget_manual_settle）は状態の層からだけ使う。承認・確認・精算は main の OS の確認ダイアログを 1 回だけ挟み、画面が持つのは main が作る参照（ref）だけ（B07-05、ADR 0039）。 音声（B05-06、ADR 0050）: 音声の状態の取得（get_voice）・呼びかけなしで音声の会話を始める「続ける」（voice_continue）・外部への送信の同意の取り消し（voice_consent_revoke）は状態の層からだけ使う。外部への送信の同意は main の OS の確認ダイアログで 1 回だけ取り、画面は同意を作れない。音声レンダラーへの IPC は VoiceRendererRequest で、このチャネルとは別。 気づき（B11-05、ADR 0132）: 一覧の取得（candidates_list）と状態の変更（candidate_state。開く・今回は扱わない・再通知）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バーは使えない。候補は main が作る参照（ref）で指し、候補 ID・expected_state・接続範囲は main が持つ。 連携の接続（B08-02 P3・B09-05、ADR 0142）: 一覧の取得（connections_list）と取得範囲の変更（connection_targets_update）は中枢の画面（接続・端末）でだけ使い、キャンバス・入力バーは使えない。接続は main が作る参照（ref）で指し、接続 ID・permission_revision は main が持つ。画面が送れるのは今の保存値と、この世代で中枢から読んだ選べる対象（connection_targets_discover）のうちの選択と、期間・添付の範囲だけ（ADR 0145）。選べる対象の読み取りは提供元への読み取りを伴うので、中枢の画面のロック解除済みの画面操作だけ。"
     },
     "DesktopIpcRequest": {
       "oneOf": [
@@ -13353,7 +13484,32 @@
           },
           "required": ["channel", "request_id", "payload"],
           "additionalProperties": false,
-          "description": "連携の接続の取得範囲を保存する（B08-02 P3・B09-05、ADR 0142。設計 04 取得する対象、ADR 0086・0089）。ref は直前の一覧で main が渡した参照（接続 ID ではない）。main は一覧で読んだ permission_revision を expected_permission_revision にして中枢へ送り、保存できたら一覧を読み直して返す。版が変わっていた（409）なら読み直して preview_stale、結果が分からなければ自動では送り直さず outcome_unknown。targets は今読めている取得対象のうちの選択と、期間・添付の範囲だけで、main は今の保存値にないカレンダー・フォルダー／ラベルの追加を拒否する（新しい対象の追加は接続時、B03-04）。ロック解除済みの画面操作だけ。中枢の画面の端末でだけ受け付ける。"
+          "description": "連携の接続の取得範囲を保存する（B08-02 P3・B09-05、ADR 0142。設計 04 取得する対象、ADR 0086・0089）。ref は直前の一覧で main が渡した参照（接続 ID ではない）。main は一覧で読んだ permission_revision を expected_permission_revision にして中枢へ送り、保存できたら一覧を読み直して返す。版が変わっていた（409）なら読み直して preview_stale、結果が分からなければ自動では送り直さず outcome_unknown。targets は今の保存値と、この世代で読んだ選べる対象（connection_targets_discover）のうちの選択と、期間・添付の範囲だけで、main はどちらにも無いカレンダー・フォルダー／ラベルや種類の違う対象（ラベルをカレンダーへなど）を送らずに拒否する（ADR 0145）。ロック解除済みの画面操作だけ。中枢の画面の端末でだけ受け付ける。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "channel": {
+              "type": "string",
+              "const": "desktop.connection_targets_discover"
+            },
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "ref": {
+                  "$ref": "#/$defs/Id"
+                }
+              },
+              "required": ["ref"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["channel", "request_id", "payload"],
+          "additionalProperties": false,
+          "description": "連携の接続で選べる取得対象（カレンダー・フォルダー／ラベル）と Outlook のカテゴリを中枢に読ませる（ADR 0145。設計 01 接続・端末の対象選択）。ref は直前の一覧で main が渡した参照。中枢は提供元から読み、保存しない。読めた対象は一覧の行（DesktopConnectionEntry.discovery）に載せて返し、その世代のあいだ取得範囲の変更で足せるようになる。提供元への読み取りを伴うので、ロック解除済みの画面操作だけ。中枢の画面の端末でだけ受け付ける。"
         }
       ],
       "description": "UI レンダラーから main への要求（設計 10 §1、07 §2、02 停止、ADR 0014）。main は受け取ったら最初にこの定義で検査し、未知のチャネル・未知の項目・型違いは invalid_request で拒否する。引数のない要求の payload は null。端末 ID は名乗れず、送信元は main が webContents から判定する。"
@@ -14633,7 +14789,8 @@
               "type": "string",
               "enum": [
                 "desktop.connections_list",
-                "desktop.connection_targets_update"
+                "desktop.connection_targets_update",
+                "desktop.connection_targets_discover"
               ]
             },
             "outcome": {
@@ -14646,7 +14803,7 @@
           },
           "required": ["request_id", "channel", "outcome", "connections"],
           "additionalProperties": false,
-          "description": "受け付けた。連携の接続の一覧の表示用の値を返す（取得範囲の変更の後は読み直した一覧。読み直せなかったときは fetch が stale）。B08-02 P3・B09-05、ADR 0142。"
+          "description": "受け付けた。連携の接続の一覧の表示用の値を返す（取得範囲の変更の後は読み直した一覧。読み直せなかったときは fetch が stale。選べる対象の読み取りの後は、その行の discovery に結果を載せた一覧）。B08-02 P3・B09-05、ADR 0142・0145。"
         },
         {
           "type": "object",
@@ -14981,7 +15138,7 @@
         },
         "targets": {
           "$ref": "#/$defs/ConnectionTargets",
-          "description": "今保存されている取得対象と取得範囲。対象の表示名は契約にないため、画面は ID のまま出す。"
+          "description": "今保存されている取得対象と取得範囲。対象の表示名は discovery（読めたとき）と照らして画面が示し、読めていない・見つからない対象は ID のまま出す（ADR 0145）。"
         },
         "graph_account": {
           "anyOf": [
@@ -14993,6 +15150,17 @@
             }
           ],
           "description": "Microsoft の接続だけ。アカウント種別・委任・拒否の理由・カテゴリの扱い（設計 04 接続・権限、ADR 0072）。Google の接続では null。"
+        },
+        "discovery": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DesktopConnectionDiscovery"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "この世代で中枢から読んだ選べる対象（ADR 0145）。まだ読んでいなければ null。"
         },
         "delivery_unknown": {
           "type": "boolean",
@@ -15007,10 +15175,28 @@
         "granted_scopes",
         "targets",
         "graph_account",
+        "discovery",
         "delivery_unknown"
       ],
       "additionalProperties": false,
-      "description": "連携の接続 1 件の、画面に出す値（B08-02 P3・B09-05、ADR 0142。設計 01 接続・端末、04 接続・権限／取得する対象）。接続 ID・permission_revision・scope_revision は main が持ち、画面へ出さない。"
+      "description": "連携の接続 1 件の、画面に出す値（B08-02 P3・B09-05、ADR 0142・0145。設計 01 接続・端末、04 接続・権限／取得する対象）。接続 ID・permission_revision・scope_revision は main が持ち、画面へ出さない。"
+    },
+    "DesktopConnectionDiscovery": {
+      "type": "object",
+      "properties": {
+        "calendars": {
+          "$ref": "#/$defs/ConnectionTargetOptionList"
+        },
+        "mail_containers": {
+          "$ref": "#/$defs/ConnectionTargetOptionList"
+        },
+        "categories": {
+          "$ref": "#/$defs/ConnectionCategoryList"
+        }
+      },
+      "required": ["calendars", "mail_containers", "categories"],
+      "additionalProperties": false,
+      "description": "画面に出す選べる対象（ADR 0145）。中枢の ConnectionTargetDiscovery から接続 ID と提供元を除いたもの（提供元は行が持つ）。"
     },
     "DesktopProviderConnectionsView": {
       "type": "object",

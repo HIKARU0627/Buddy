@@ -2,6 +2,7 @@
 // 全量は選択ラベルごとに messages.list（labelIds・q=after:）で全ページ、増分は history.list で全ページ読む。
 // history の 404 は startHistoryId の期限切れとして GoogleHistoryExpiredError にする。
 // ラベル・期間は呼び出し側が渡した値だけを使い、connector 側で広げない。
+// ラベルの一覧（labels.list）は取得対象の発見の表示用（ADR 0145）。読んだラベルを取得対象へ足すのは本人の選択だけ。
 import {
   collectPages,
   GoogleApiError,
@@ -91,7 +92,17 @@ export interface GoogleGmailAttachmentPart {
 
 export type GoogleGmailMessageFormat = 'minimal' | 'metadata' | 'full';
 
+// labels.list の 1 件（ADR 0145）。type は system（INBOX など Gmail が持つラベル）か user（本人が作ったラベル）。
+// それ以外・無い場合は null（種別を断定しない）。
+export interface GoogleGmailLabel {
+  readonly id: string;
+  readonly name: string;
+  readonly type: 'system' | 'user' | null;
+}
+
 export interface GoogleGmailReader {
+  // 本人のラベルの一覧（labels.list はページを持たない）。取得対象の発見の表示用（ADR 0145）。
+  listLabels(): Promise<readonly GoogleGmailLabel[]>;
   listMessageIds(request: {
     readonly labelIds: readonly string[];
     readonly afterEpochSeconds: number;
@@ -315,6 +326,24 @@ export function listAttachmentParts(
   return found;
 }
 
+function toLabel(value: unknown): GoogleGmailLabel {
+  if (!isRecord(value)) throw invalidResponse();
+  const id = requiredString(value, 'id');
+  const name = value['name'];
+  if (typeof name !== 'string') throw invalidResponse();
+  const type = optionalString(value, 'type');
+  return {
+    id,
+    name,
+    type: type === 'system' || type === 'user' ? type : null,
+  };
+}
+
+function toLabels(body: unknown): readonly GoogleGmailLabel[] {
+  if (!isRecord(body)) throw invalidResponse();
+  return optionalArray(body, 'labels').map(toLabel);
+}
+
 function messageIdOf(value: unknown): string {
   if (!isRecord(value)) throw invalidResponse();
   const message = value['message'];
@@ -393,6 +422,13 @@ export function createGoogleGmailReader(
   };
 
   return {
+    async listLabels() {
+      return toLabels(
+        await client.getJson('/gmail/v1/users/me/labels', {
+          fields: 'labels(id,name,type)',
+        }),
+      );
+    },
     listMessageIdsPage,
     async listMessageIds(request) {
       return collectPages(async (pageToken) =>

@@ -75,6 +75,8 @@ const CANDIDATES = ['desktop.candidates_list', 'desktop.candidate_state'];
 const CONNECTIONS = [
   'desktop.connections_list',
   'desktop.connection_targets_update',
+  // 選べる取得対象の読み取り（ADR 0145）。
+  'desktop.connection_targets_discover',
 ];
 const ALL_CHANNELS = [
   ...LEGACY_CHANNELS,

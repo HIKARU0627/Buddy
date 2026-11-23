@@ -37,8 +37,11 @@ interface Harness {
   sql<T>(body: (db: ReturnType<typeof openWriteConnection>) => T): T;
 }
 
-async function start(t: test.TestContext): Promise<Harness> {
-  const core = await startEventCore(t);
+async function start(
+  t: test.TestContext,
+  options: Parameters<typeof startEventCore>[1] = {},
+): Promise<Harness> {
+  const core = await startEventCore(t, options);
   const device = await insertDevice(core.handle.store);
   const scope = await bootstrap(core, device);
   const sql = <T>(
@@ -466,4 +469,61 @@ test('the sync state returns the stored scope, the active batch and the retry de
   assert.equal(noScope.json?.['code'], 'dependency_unavailable');
   const unknown = await get(h, `/v1/connections/${UNKNOWN}/sync`);
   assert.equal(unknown.status, 422);
+});
+
+// --- 選べる取得対象（ADR 0145） ---
+// 提供元への読み取りの 200 の形は connection-discovery.test.ts（偽の connector）で確かめる。ここは経路の検査と、
+// 提供元へ読みに行く前に閉じる場合（存在しない・active でない・トークンの出所が無い）を実 Core で確かめる。
+
+const options = (id: string) => `/v1/connections/${id}/target-options`;
+
+test('target options need a device token, home, an unlocked device and the hub screen', async (t) => {
+  const h = await start(t);
+  const anonymous = await pinnedRequest(h.core.target, {
+    method: 'GET',
+    path: options(CONNECTION),
+    headers: {},
+  });
+  assert.equal(anonymous.status, 401);
+  h.core.env.lock = 'locked';
+  const locked = await get(h, options(CONNECTION));
+  assert.equal(locked.status, 403);
+  assert.equal(locked.json?.['code'], 'device_locked');
+  h.core.env.lock = 'unlocked';
+  h.core.env.hub = false;
+  const remote = await get(h, options(CONNECTION));
+  assert.equal(remote.status, 403);
+  assert.equal(remote.json?.['code'], 'hub_screen_required');
+  h.core.env.hub = true;
+  h.core.env.home = false;
+  const outside = await get(h, options(CONNECTION));
+  assert.equal(outside.status, 403);
+  assert.equal(outside.json?.['code'], 'outside_home_network');
+});
+
+test('target options close before any provider read: unknown is 422, disconnected is 409, no token source is 503', async (t) => {
+  const asked: string[] = [];
+  const h = await start(t, {
+    sync: {
+      // 出所を求められたら記録し、出所は無いと答える（提供元へは送らない）。
+      tokenSourceFor: (connection) => {
+        asked.push(connection.connection_id);
+        return null;
+      },
+    },
+  });
+  assert.equal((await get(h, options(UNKNOWN))).status, 422);
+  assert.equal((await get(h, options('not-an-id'))).status, 422);
+  const disconnected = await get(h, options(DISCONNECTED));
+  assert.equal(disconnected.status, 409);
+  assert.equal(disconnected.json?.['code'], 'conflict');
+  assert.deepEqual(asked, []);
+  const noToken = await get(h, options(CONNECTION));
+  assert.equal(noToken.status, 503);
+  assert.equal(noToken.json?.['code'], 'dependency_unavailable');
+  assert.deepEqual(asked, [CONNECTION]);
+  // 読むだけで、取得対象も版も変えない。
+  assert.equal(row(h).targets, '{}');
+  assert.equal(row(h).permission_revision, 2);
+  assert.equal(row(h).scope_revision, 2);
 });

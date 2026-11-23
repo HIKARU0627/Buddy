@@ -25252,6 +25252,7 @@
               "attachment_max_bytes": 10000000
             },
             "graph_account": null,
+            "discovery": null,
             "delivery_unknown": false
           },
           {
@@ -25275,6 +25276,7 @@
               "rejection_reason": "admin_consent_required",
               "category_updates": "display_only"
             },
+            "discovery": null,
             "delivery_unknown": false
           }
         ],
@@ -25325,6 +25327,7 @@
               "attachment_max_bytes": 10000000
             },
             "graph_account": null,
+            "discovery": null,
             "delivery_unknown": false
           }
         ],
@@ -25359,11 +25362,851 @@
               "attachment_max_bytes": 10000000
             },
             "graph_account": null,
+            "discovery": null,
             "delivery_unknown": false,
             "permission_revision": 3
           }
         ],
         "list_seq": 1
+      }
+    }
+  },
+  {
+    "id": "connection-target-discovery-google",
+    "schema": "ConnectionTargetDiscovery",
+    "valid": true,
+    "value": {
+      "connection_id": "00000000-0000-4000-8000-000000000e01",
+      "provider": "google",
+      "calendars": {
+        "status": "loaded",
+        "options": [
+          {
+            "id": "primary-cal@example.invalid",
+            "display_name": "合成のメイン",
+            "kind": "calendar",
+            "primary": true
+          },
+          {
+            "id": "team-cal@example.invalid",
+            "display_name": null,
+            "kind": "calendar",
+            "primary": false
+          }
+        ]
+      },
+      "mail_containers": {
+        "status": "loaded",
+        "options": [
+          {
+            "id": "INBOX",
+            "display_name": "INBOX",
+            "kind": "mail_label",
+            "primary": false
+          },
+          {
+            "id": "Label_1",
+            "display_name": "合成のラベル",
+            "kind": "mail_label",
+            "primary": false
+          }
+        ]
+      },
+      "categories": {
+        "status": "not_supported",
+        "categories": []
+      }
+    }
+  },
+  {
+    "id": "connection-target-discovery-microsoft",
+    "schema": "ConnectionTargetDiscovery",
+    "valid": true,
+    "value": {
+      "connection_id": "00000000-0000-4000-8000-000000000e02",
+      "provider": "microsoft",
+      "calendars": {
+        "status": "not_supported",
+        "options": []
+      },
+      "mail_containers": {
+        "status": "loaded",
+        "options": [
+          {
+            "id": "AAMkFolderInbox",
+            "display_name": "受信トレイ",
+            "kind": "mail_folder",
+            "primary": false
+          },
+          {
+            "id": "AAMkFolderWork",
+            "display_name": "合成の仕事",
+            "kind": "mail_folder",
+            "primary": false
+          }
+        ]
+      },
+      "categories": {
+        "status": "loaded",
+        "categories": [
+          {
+            "category_id": "cat-1",
+            "display_name": "合成の赤",
+            "color": "preset0"
+          },
+          {
+            "category_id": "cat-2",
+            "display_name": "色なし",
+            "color": null
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "connection-target-discovery-microsoft-categories-rejected",
+    "schema": "ConnectionTargetDiscovery",
+    "valid": true,
+    "value": {
+      "connection_id": "00000000-0000-4000-8000-000000000e02",
+      "provider": "microsoft",
+      "calendars": {
+        "status": "not_supported",
+        "options": []
+      },
+      "mail_containers": {
+        "status": "unavailable",
+        "options": []
+      },
+      "categories": {
+        "status": "rejected",
+        "categories": []
+      }
+    }
+  },
+  {
+    "id": "connection-target-discovery-with-token",
+    "schema": "ConnectionTargetDiscovery",
+    "valid": false,
+    "value": {
+      "connection_id": "00000000-0000-4000-8000-000000000e01",
+      "provider": "google",
+      "calendars": {
+        "status": "loaded",
+        "options": [
+          {
+            "id": "primary-cal@example.invalid",
+            "display_name": "合成のメイン",
+            "kind": "calendar",
+            "primary": true
+          },
+          {
+            "id": "team-cal@example.invalid",
+            "display_name": null,
+            "kind": "calendar",
+            "primary": false
+          }
+        ]
+      },
+      "mail_containers": {
+        "status": "loaded",
+        "options": [
+          {
+            "id": "INBOX",
+            "display_name": "INBOX",
+            "kind": "mail_label",
+            "primary": false
+          },
+          {
+            "id": "Label_1",
+            "display_name": "合成のラベル",
+            "kind": "mail_label",
+            "primary": false
+          }
+        ]
+      },
+      "categories": {
+        "status": "not_supported",
+        "categories": []
+      },
+      "access_token": "synthetic"
+    }
+  },
+  {
+    "id": "connection-target-discovery-unknown-status",
+    "schema": "ConnectionTargetDiscovery",
+    "valid": false,
+    "value": {
+      "connection_id": "00000000-0000-4000-8000-000000000e01",
+      "provider": "google",
+      "calendars": {
+        "status": "partial",
+        "options": []
+      },
+      "mail_containers": {
+        "status": "loaded",
+        "options": [
+          {
+            "id": "INBOX",
+            "display_name": "INBOX",
+            "kind": "mail_label",
+            "primary": false
+          },
+          {
+            "id": "Label_1",
+            "display_name": "合成のラベル",
+            "kind": "mail_label",
+            "primary": false
+          }
+        ]
+      },
+      "categories": {
+        "status": "not_supported",
+        "categories": []
+      }
+    }
+  },
+  {
+    "id": "connection-target-discovery-unknown-kind",
+    "schema": "ConnectionTargetDiscovery",
+    "valid": false,
+    "value": {
+      "connection_id": "00000000-0000-4000-8000-000000000e01",
+      "provider": "google",
+      "calendars": {
+        "status": "loaded",
+        "options": [
+          {
+            "id": "x",
+            "display_name": "x",
+            "kind": "task_list",
+            "primary": false
+          }
+        ]
+      },
+      "mail_containers": {
+        "status": "loaded",
+        "options": [
+          {
+            "id": "INBOX",
+            "display_name": "INBOX",
+            "kind": "mail_label",
+            "primary": false
+          },
+          {
+            "id": "Label_1",
+            "display_name": "合成のラベル",
+            "kind": "mail_label",
+            "primary": false
+          }
+        ]
+      },
+      "categories": {
+        "status": "not_supported",
+        "categories": []
+      }
+    }
+  },
+  {
+    "id": "connection-target-discovery-empty-id",
+    "schema": "ConnectionTargetDiscovery",
+    "valid": false,
+    "value": {
+      "connection_id": "00000000-0000-4000-8000-000000000e01",
+      "provider": "google",
+      "calendars": {
+        "status": "loaded",
+        "options": [
+          {
+            "id": "",
+            "display_name": "x",
+            "kind": "calendar",
+            "primary": false
+          }
+        ]
+      },
+      "mail_containers": {
+        "status": "loaded",
+        "options": [
+          {
+            "id": "INBOX",
+            "display_name": "INBOX",
+            "kind": "mail_label",
+            "primary": false
+          },
+          {
+            "id": "Label_1",
+            "display_name": "合成のラベル",
+            "kind": "mail_label",
+            "primary": false
+          }
+        ]
+      },
+      "categories": {
+        "status": "not_supported",
+        "categories": []
+      }
+    }
+  },
+  {
+    "id": "connection-target-discovery-options-while-rejected",
+    "schema": "ConnectionTargetDiscovery",
+    "valid": true,
+    "semantic_errors": ["options_without_loaded"],
+    "value": {
+      "connection_id": "00000000-0000-4000-8000-000000000e01",
+      "provider": "google",
+      "calendars": {
+        "status": "rejected",
+        "options": [
+          {
+            "id": "c",
+            "display_name": null,
+            "kind": "calendar",
+            "primary": false
+          }
+        ]
+      },
+      "mail_containers": {
+        "status": "loaded",
+        "options": [
+          {
+            "id": "INBOX",
+            "display_name": "INBOX",
+            "kind": "mail_label",
+            "primary": false
+          },
+          {
+            "id": "Label_1",
+            "display_name": "合成のラベル",
+            "kind": "mail_label",
+            "primary": false
+          }
+        ]
+      },
+      "categories": {
+        "status": "not_supported",
+        "categories": []
+      }
+    }
+  },
+  {
+    "id": "connection-target-discovery-label-as-calendar",
+    "schema": "ConnectionTargetDiscovery",
+    "valid": true,
+    "semantic_errors": ["option_kind_mismatch"],
+    "value": {
+      "connection_id": "00000000-0000-4000-8000-000000000e01",
+      "provider": "google",
+      "calendars": {
+        "status": "loaded",
+        "options": [
+          {
+            "id": "INBOX",
+            "display_name": "INBOX",
+            "kind": "mail_label",
+            "primary": false
+          }
+        ]
+      },
+      "mail_containers": {
+        "status": "loaded",
+        "options": [
+          {
+            "id": "INBOX",
+            "display_name": "INBOX",
+            "kind": "mail_label",
+            "primary": false
+          },
+          {
+            "id": "Label_1",
+            "display_name": "合成のラベル",
+            "kind": "mail_label",
+            "primary": false
+          }
+        ]
+      },
+      "categories": {
+        "status": "not_supported",
+        "categories": []
+      }
+    }
+  },
+  {
+    "id": "connection-target-discovery-google-categories",
+    "schema": "ConnectionTargetDiscovery",
+    "valid": true,
+    "semantic_errors": ["kind_not_supported"],
+    "value": {
+      "connection_id": "00000000-0000-4000-8000-000000000e01",
+      "provider": "google",
+      "calendars": {
+        "status": "loaded",
+        "options": [
+          {
+            "id": "primary-cal@example.invalid",
+            "display_name": "合成のメイン",
+            "kind": "calendar",
+            "primary": true
+          },
+          {
+            "id": "team-cal@example.invalid",
+            "display_name": null,
+            "kind": "calendar",
+            "primary": false
+          }
+        ]
+      },
+      "mail_containers": {
+        "status": "loaded",
+        "options": [
+          {
+            "id": "INBOX",
+            "display_name": "INBOX",
+            "kind": "mail_label",
+            "primary": false
+          },
+          {
+            "id": "Label_1",
+            "display_name": "合成のラベル",
+            "kind": "mail_label",
+            "primary": false
+          }
+        ]
+      },
+      "categories": {
+        "status": "loaded",
+        "categories": []
+      }
+    }
+  },
+  {
+    "id": "connection-target-discovery-microsoft-calendars",
+    "schema": "ConnectionTargetDiscovery",
+    "valid": true,
+    "semantic_errors": ["kind_not_supported"],
+    "value": {
+      "connection_id": "00000000-0000-4000-8000-000000000e02",
+      "provider": "microsoft",
+      "calendars": {
+        "status": "loaded",
+        "options": []
+      },
+      "mail_containers": {
+        "status": "loaded",
+        "options": [
+          {
+            "id": "AAMkFolderInbox",
+            "display_name": "受信トレイ",
+            "kind": "mail_folder",
+            "primary": false
+          },
+          {
+            "id": "AAMkFolderWork",
+            "display_name": "合成の仕事",
+            "kind": "mail_folder",
+            "primary": false
+          }
+        ]
+      },
+      "categories": {
+        "status": "loaded",
+        "categories": [
+          {
+            "category_id": "cat-1",
+            "display_name": "合成の赤",
+            "color": "preset0"
+          },
+          {
+            "category_id": "cat-2",
+            "display_name": "色なし",
+            "color": null
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "connection-target-discovery-microsoft-categories-not-supported",
+    "schema": "ConnectionTargetDiscovery",
+    "valid": true,
+    "semantic_errors": ["kind_supported"],
+    "value": {
+      "connection_id": "00000000-0000-4000-8000-000000000e02",
+      "provider": "microsoft",
+      "calendars": {
+        "status": "not_supported",
+        "options": []
+      },
+      "mail_containers": {
+        "status": "loaded",
+        "options": []
+      },
+      "categories": {
+        "status": "not_supported",
+        "categories": []
+      }
+    }
+  },
+  {
+    "id": "connection-target-discovery-duplicate-folder",
+    "schema": "ConnectionTargetDiscovery",
+    "valid": true,
+    "semantic_errors": ["option_duplicate"],
+    "value": {
+      "connection_id": "00000000-0000-4000-8000-000000000e02",
+      "provider": "microsoft",
+      "calendars": {
+        "status": "not_supported",
+        "options": []
+      },
+      "mail_containers": {
+        "status": "loaded",
+        "options": [
+          {
+            "id": "F",
+            "display_name": "a",
+            "kind": "mail_folder",
+            "primary": false
+          },
+          {
+            "id": "F",
+            "display_name": "b",
+            "kind": "mail_folder",
+            "primary": false
+          }
+        ]
+      },
+      "categories": {
+        "status": "loaded",
+        "categories": [
+          {
+            "category_id": "cat-1",
+            "display_name": "合成の赤",
+            "color": "preset0"
+          },
+          {
+            "category_id": "cat-2",
+            "display_name": "色なし",
+            "color": null
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "connection-target-discovery-two-primaries",
+    "schema": "ConnectionTargetDiscovery",
+    "valid": true,
+    "semantic_errors": ["primary_duplicate"],
+    "value": {
+      "connection_id": "00000000-0000-4000-8000-000000000e01",
+      "provider": "google",
+      "calendars": {
+        "status": "loaded",
+        "options": [
+          {
+            "id": "a",
+            "display_name": null,
+            "kind": "calendar",
+            "primary": true
+          },
+          {
+            "id": "b",
+            "display_name": null,
+            "kind": "calendar",
+            "primary": true
+          }
+        ]
+      },
+      "mail_containers": {
+        "status": "loaded",
+        "options": [
+          {
+            "id": "INBOX",
+            "display_name": "INBOX",
+            "kind": "mail_label",
+            "primary": false
+          },
+          {
+            "id": "Label_1",
+            "display_name": "合成のラベル",
+            "kind": "mail_label",
+            "primary": false
+          }
+        ]
+      },
+      "categories": {
+        "status": "not_supported",
+        "categories": []
+      }
+    }
+  },
+  {
+    "id": "connection-target-discovery-categories-while-unavailable",
+    "schema": "ConnectionTargetDiscovery",
+    "valid": true,
+    "semantic_errors": ["categories_without_loaded"],
+    "value": {
+      "connection_id": "00000000-0000-4000-8000-000000000e02",
+      "provider": "microsoft",
+      "calendars": {
+        "status": "not_supported",
+        "options": []
+      },
+      "mail_containers": {
+        "status": "loaded",
+        "options": [
+          {
+            "id": "AAMkFolderInbox",
+            "display_name": "受信トレイ",
+            "kind": "mail_folder",
+            "primary": false
+          },
+          {
+            "id": "AAMkFolderWork",
+            "display_name": "合成の仕事",
+            "kind": "mail_folder",
+            "primary": false
+          }
+        ]
+      },
+      "categories": {
+        "status": "unavailable",
+        "categories": [
+          {
+            "category_id": "c",
+            "display_name": "c",
+            "color": null
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-connection-targets-discover",
+    "schema": "DesktopIpcRequest",
+    "valid": true,
+    "value": {
+      "channel": "desktop.connection_targets_discover",
+      "request_id": "00000000-0000-4000-8000-000000000d80",
+      "payload": {
+        "ref": "00000000-0000-4000-8000-000000000d70"
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-connection-targets-discover-with-connection-id",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.connection_targets_discover",
+      "request_id": "00000000-0000-4000-8000-000000000d80",
+      "payload": {
+        "ref": "00000000-0000-4000-8000-000000000d70",
+        "connection_id": "00000000-0000-4000-8000-000000000601"
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-connection-targets-discover-without-ref",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.connection_targets_discover",
+      "request_id": "00000000-0000-4000-8000-000000000d80",
+      "payload": null
+    }
+  },
+  {
+    "id": "desktop-ipc-connections-view-with-discovery",
+    "schema": "DesktopIpcResponse",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000d80",
+      "channel": "desktop.connection_targets_discover",
+      "outcome": "ok",
+      "connections": {
+        "fetch": "loaded",
+        "entries": [
+          {
+            "ref": "00000000-0000-4000-8000-000000000d70",
+            "provider": "google",
+            "status": "active",
+            "access": "read",
+            "granted_scopes": [
+              "https://www.googleapis.com/auth/gmail.readonly",
+              "https://www.googleapis.com/auth/calendar.calendarlist.readonly"
+            ],
+            "targets": {
+              "calendar_ids": ["primary-cal@example.invalid"],
+              "mail_container_ids": ["INBOX"],
+              "attachment_kinds": ["pdf", "text"],
+              "mail_lookback_days": 90,
+              "calendar_past_days": 30,
+              "calendar_future_days": 90,
+              "attachment_max_bytes": 10000000
+            },
+            "graph_account": null,
+            "discovery": {
+              "calendars": {
+                "status": "loaded",
+                "options": [
+                  {
+                    "id": "primary-cal@example.invalid",
+                    "display_name": "合成のメイン",
+                    "kind": "calendar",
+                    "primary": true
+                  },
+                  {
+                    "id": "team-cal@example.invalid",
+                    "display_name": null,
+                    "kind": "calendar",
+                    "primary": false
+                  }
+                ]
+              },
+              "mail_containers": {
+                "status": "loaded",
+                "options": [
+                  {
+                    "id": "INBOX",
+                    "display_name": "INBOX",
+                    "kind": "mail_label",
+                    "primary": false
+                  },
+                  {
+                    "id": "Label_1",
+                    "display_name": "合成のラベル",
+                    "kind": "mail_label",
+                    "primary": false
+                  }
+                ]
+              },
+              "categories": {
+                "status": "not_supported",
+                "categories": []
+              }
+            },
+            "delivery_unknown": false
+          }
+        ],
+        "list_seq": 2
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-connections-view-discovery-with-connection-id",
+    "schema": "DesktopIpcResponse",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000d80",
+      "channel": "desktop.connection_targets_discover",
+      "outcome": "ok",
+      "connections": {
+        "fetch": "loaded",
+        "entries": [
+          {
+            "ref": "00000000-0000-4000-8000-000000000d70",
+            "provider": "google",
+            "status": "active",
+            "access": "read",
+            "granted_scopes": [
+              "https://www.googleapis.com/auth/gmail.readonly",
+              "https://www.googleapis.com/auth/calendar.calendarlist.readonly"
+            ],
+            "targets": {
+              "calendar_ids": ["primary-cal@example.invalid"],
+              "mail_container_ids": ["INBOX"],
+              "attachment_kinds": ["pdf", "text"],
+              "mail_lookback_days": 90,
+              "calendar_past_days": 30,
+              "calendar_future_days": 90,
+              "attachment_max_bytes": 10000000
+            },
+            "graph_account": null,
+            "discovery": {
+              "calendars": {
+                "status": "loaded",
+                "options": [
+                  {
+                    "id": "primary-cal@example.invalid",
+                    "display_name": "合成のメイン",
+                    "kind": "calendar",
+                    "primary": true
+                  },
+                  {
+                    "id": "team-cal@example.invalid",
+                    "display_name": null,
+                    "kind": "calendar",
+                    "primary": false
+                  }
+                ]
+              },
+              "mail_containers": {
+                "status": "loaded",
+                "options": [
+                  {
+                    "id": "INBOX",
+                    "display_name": "INBOX",
+                    "kind": "mail_label",
+                    "primary": false
+                  },
+                  {
+                    "id": "Label_1",
+                    "display_name": "合成のラベル",
+                    "kind": "mail_label",
+                    "primary": false
+                  }
+                ]
+              },
+              "categories": {
+                "status": "not_supported",
+                "categories": []
+              },
+              "connection_id": "00000000-0000-4000-8000-000000000e01"
+            },
+            "delivery_unknown": false
+          }
+        ],
+        "list_seq": 2
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-connections-view-without-discovery",
+    "schema": "DesktopIpcResponse",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000d80",
+      "channel": "desktop.connections_list",
+      "outcome": "ok",
+      "connections": {
+        "fetch": "loaded",
+        "entries": [
+          {
+            "ref": "00000000-0000-4000-8000-000000000d70",
+            "provider": "google",
+            "status": "active",
+            "access": "read",
+            "granted_scopes": [
+              "https://www.googleapis.com/auth/gmail.readonly",
+              "https://www.googleapis.com/auth/calendar.calendarlist.readonly"
+            ],
+            "targets": {
+              "calendar_ids": ["primary-cal@example.invalid"],
+              "mail_container_ids": ["INBOX"],
+              "attachment_kinds": ["pdf", "text"],
+              "mail_lookback_days": 90,
+              "calendar_past_days": 30,
+              "calendar_future_days": 90,
+              "attachment_max_bytes": 10000000
+            },
+            "graph_account": null,
+            "delivery_unknown": false
+          }
+        ],
+        "list_seq": 2
       }
     }
   }

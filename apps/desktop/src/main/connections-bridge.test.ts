@@ -1,4 +1,4 @@
-// 連携の接続の経路（ConnectionsBridge。B08-02 P3・B09-05、ADR 0142）の試験。接続は模擬（中枢への要求を記録して
+// 連携の接続の経路（ConnectionsBridge。B08-02 P3・B09-05、ADR 0142・0145）の試験。接続は模擬（中枢への要求を記録して
 // 手で答える）で、世代を手で動かす。期待値（表示用の値・本文・理由）は手で書いた合成の値。実アカウント・実 API は使わない。
 // 確かめること: 画面へ接続 ID・版を渡さない、読めなかったことを「接続なし」にしない、取得範囲の変更は一覧で読んだ
 // permission_revision を expected_permission_revision にして送り、保存できたら読み直す、409 は読み直して
@@ -97,6 +97,8 @@ interface Rig {
   readonly logs: string[];
   list: () => Outcome;
   put: (call: Call) => Outcome;
+  // 選べる対象の読み取り（GET …/target-options。ADR 0145）の答え。
+  discover: (call: Call) => Outcome;
   // 中枢への要求の答えを返す前に待つ（途中で世代が変わる状況を作る）。
   delay: (() => Promise<void>) | null;
   scope: string | null;
@@ -111,6 +113,7 @@ function rig(): Rig {
     logs,
     list: () => ({ kind: 'response', status: 200, body: listBody() }),
     put: () => ({ kind: 'unknown' }),
+    discover: () => ({ kind: 'unknown' }),
     delay: null,
     scope: SCOPE,
     puts: () => calls.filter((call) => call.method === 'PUT'),
@@ -125,6 +128,8 @@ function rig(): Rig {
       if (state.delay !== null) await state.delay();
       if (call.method === 'GET' && call.path === '/v1/connections')
         return state.list();
+      if (call.method === 'GET' && call.path.endsWith('/target-options'))
+        return state.discover(call);
       return state.put(call);
     },
   } as unknown as ClientConnection;
@@ -204,6 +209,7 @@ test('the list gives the screen only refs and display values (no connection id, 
         attachment_max_bytes: 10000000,
       },
       graph_account: null,
+      discovery: null,
       delivery_unknown: false,
     },
   );
@@ -230,6 +236,7 @@ test('the list gives the screen only refs and display values (no connection id, 
         rejection_reason: 'admin_consent_required',
         category_updates: 'display_only',
       },
+      discovery: null,
       delivery_unknown: false,
     },
   );
@@ -479,4 +486,255 @@ test('reset drops the list and a read across the reset is not applied', async ()
     entries: [],
     list_seq: 2,
   });
+});
+
+// --- 選べる対象（ADR 0145） ---
+
+const googleDiscovery = (fields: Record<string, unknown> = {}) => ({
+  connection_id: GOOGLE,
+  provider: 'google',
+  calendars: {
+    status: 'loaded',
+    options: [
+      {
+        id: 'primary-cal@example.invalid',
+        display_name: '合成のメイン',
+        kind: 'calendar',
+        primary: true,
+      },
+      {
+        id: 'team-cal@example.invalid',
+        display_name: '合成のチーム',
+        kind: 'calendar',
+        primary: false,
+      },
+    ],
+  },
+  mail_containers: {
+    status: 'loaded',
+    options: [
+      {
+        id: 'INBOX',
+        display_name: 'INBOX',
+        kind: 'mail_label',
+        primary: false,
+      },
+      {
+        id: 'Label_1',
+        display_name: '合成のラベル',
+        kind: 'mail_label',
+        primary: false,
+      },
+    ],
+  },
+  categories: { status: 'not_supported', categories: [] },
+  ...fields,
+});
+
+test('discover reads the hub once by the connection id and shows the result on that row only', async () => {
+  const { r, googleRef } = await listedRig();
+  r.discover = () => ({
+    kind: 'response',
+    status: 200,
+    body: googleDiscovery(),
+  });
+  const before = r.bridge.view().list_seq;
+  const found = await r.bridge.discover(googleRef);
+  assert.equal(found.ok, true);
+  assert.deepEqual(
+    r.calls.filter((call) => call.path.endsWith('/target-options')),
+    [
+      {
+        method: 'GET',
+        path: `/v1/connections/${GOOGLE}/target-options`,
+        expectedScopeId: SCOPE,
+      },
+    ],
+  );
+  const view = r.bridge.view();
+  assert(view.list_seq > before);
+  assert.deepEqual(view.entries[0]?.discovery, {
+    calendars: {
+      status: 'loaded',
+      options: [
+        {
+          id: 'primary-cal@example.invalid',
+          display_name: '合成のメイン',
+          kind: 'calendar',
+          primary: true,
+        },
+        {
+          id: 'team-cal@example.invalid',
+          display_name: '合成のチーム',
+          kind: 'calendar',
+          primary: false,
+        },
+      ],
+    },
+    mail_containers: {
+      status: 'loaded',
+      options: [
+        {
+          id: 'INBOX',
+          display_name: 'INBOX',
+          kind: 'mail_label',
+          primary: false,
+        },
+        {
+          id: 'Label_1',
+          display_name: '合成のラベル',
+          kind: 'mail_label',
+          primary: false,
+        },
+      ],
+    },
+    categories: { status: 'not_supported', categories: [] },
+  });
+  assert.equal(view.entries[1]?.discovery, null);
+  // 画面の値に接続 ID は出さない。
+  assert(!JSON.stringify(view).includes(GOOGLE));
+  // 一覧を読み直しても、この世代の結果は残る。
+  await r.bridge.list();
+  assert.notEqual(r.bridge.view().entries[0]?.discovery, null);
+});
+
+test('after discovery a discovered target of the right kind can be added; others are still refused', async () => {
+  const { r, googleRef } = await listedRig();
+  r.discover = () => ({
+    kind: 'response',
+    status: 200,
+    body: googleDiscovery(),
+  });
+  await r.bridge.discover(googleRef);
+  r.put = () => ({ kind: 'response', status: 200, body: googleSummary() });
+  const wider: ConnectionTargets = {
+    ...narrower,
+    calendar_ids: ['primary', 'team-cal@example.invalid'],
+    mail_container_ids: ['INBOX', 'Label_1'],
+  };
+  const saved = await r.bridge.updateTargets(googleRef, wider);
+  assert.equal(saved.ok, true);
+  assert.deepEqual(
+    (r.puts().at(-1)?.body as Record<string, unknown>)['targets'],
+    wider,
+  );
+  // 一覧に無い ID、種類の違う ID（ラベルをカレンダーへ）は送らない。
+  for (const targets of [
+    { ...narrower, calendar_ids: ['brand-new-calendar'] },
+    { ...narrower, calendar_ids: ['Label_1'] },
+    { ...narrower, mail_container_ids: ['team-cal@example.invalid'] },
+  ])
+    assert.deepEqual(await r.bridge.updateTargets(googleRef, targets), {
+      ok: false,
+      reason: 'invalid_request',
+    });
+  assert.equal(r.puts().length, 1);
+});
+
+test('a list that was not loaded adds nothing to what can be sent', async () => {
+  const { r, googleRef } = await listedRig();
+  r.discover = () => ({
+    kind: 'response',
+    status: 200,
+    body: googleDiscovery({
+      calendars: { status: 'rejected', options: [] },
+      mail_containers: { status: 'unavailable', options: [] },
+    }),
+  });
+  assert.equal((await r.bridge.discover(googleRef)).ok, true);
+  assert.deepEqual(
+    await r.bridge.updateTargets(googleRef, {
+      ...narrower,
+      calendar_ids: ['team-cal@example.invalid'],
+    }),
+    { ok: false, reason: 'invalid_request' },
+  );
+  assert.deepEqual(r.puts(), []);
+});
+
+test('a malformed, mismatched or semantically wrong discovery is not used', async () => {
+  const { r, googleRef } = await listedRig();
+  for (const body of [
+    { wrong: true },
+    googleDiscovery({ connection_id: MICROSOFT }),
+    googleDiscovery({ provider: 'microsoft' }),
+    googleDiscovery({ categories: { status: 'loaded', categories: [] } }),
+    googleDiscovery({
+      calendars: {
+        status: 'loaded',
+        options: [
+          {
+            id: 'INBOX',
+            display_name: 'INBOX',
+            kind: 'mail_label',
+            primary: false,
+          },
+        ],
+      },
+    }),
+  ]) {
+    r.discover = () => ({ kind: 'response', status: 200, body });
+    assert.deepEqual(await r.bridge.discover(googleRef), {
+      ok: false,
+      reason: 'core_rejected',
+    });
+  }
+  assert.equal(r.bridge.view().entries[0]?.discovery, null);
+  assert.deepEqual(
+    await r.bridge.updateTargets(googleRef, {
+      ...narrower,
+      calendar_ids: ['team-cal@example.invalid'],
+    }),
+    { ok: false, reason: 'invalid_request' },
+  );
+});
+
+test('discover failures: 409 re-reads and is preview_stale, 503 is core_rejected, unknown and not sent are not_connected, a bad ref is entry_not_found', async () => {
+  const { r, googleRef } = await listedRig();
+  assert.deepEqual(await r.bridge.discover(uuid(0x999)), {
+    ok: false,
+    reason: 'entry_not_found',
+  });
+  const reads = () =>
+    r.calls.filter((call) => call.path === '/v1/connections').length;
+  const before = reads();
+  r.discover = () => ({ kind: 'response', status: 409, body: {} });
+  assert.deepEqual(await r.bridge.discover(googleRef), fail('preview_stale'));
+  assert.equal(reads(), before + 1);
+  r.discover = () => ({ kind: 'response', status: 503, body: {} });
+  assert.deepEqual(await r.bridge.discover(googleRef), fail('core_rejected'));
+  r.discover = () => ({ kind: 'unknown' });
+  assert.deepEqual(await r.bridge.discover(googleRef), fail('not_connected'));
+  r.discover = () => ({ kind: 'not_sent', reason: 'not_connected' });
+  assert.deepEqual(await r.bridge.discover(googleRef), fail('not_connected'));
+  // 読み取りの失敗では行を保留にしない（何も変えていない）。
+  assert.equal(r.bridge.view().entries[0]?.delivery_unknown, false);
+  assert.deepEqual(r.puts(), []);
+});
+
+test('reset drops the discovery and a discovery across the reset is not applied', async () => {
+  const { r, googleRef } = await listedRig();
+  r.discover = () => ({
+    kind: 'response',
+    status: 200,
+    body: googleDiscovery(),
+  });
+  await r.bridge.discover(googleRef);
+  r.bridge.reset();
+  await r.bridge.list();
+  const ref = r.bridge.view().entries[0]?.ref ?? '';
+  assert.equal(r.bridge.view().entries[0]?.discovery, null);
+  // 世代をまたいだ読み取りは反映しない。
+  let release: () => void = () => undefined;
+  r.delay = () =>
+    new Promise<void>((resolve) => {
+      release = resolve;
+    });
+  const pending = r.bridge.discover(ref);
+  r.bridge.reset();
+  release();
+  assert.deepEqual(await pending, fail('not_connected'));
+  r.delay = null;
+  await r.bridge.list();
+  assert.equal(r.bridge.view().entries[0]?.discovery, null);
 });

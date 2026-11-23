@@ -31,8 +31,11 @@ test('save and load round-trip, with the file mode 0600', async () => {
   };
   await saveConfig(path, config);
   assert.deepEqual(await loadConfig(path), config);
-  const mode = (await stat(path)).mode & 0o777;
-  assert.equal(mode, 0o600);
+  // Windows のファイルシステムは POSIX の権限を持たないため、0600 の確認は POSIX のみ。
+  if (process.platform !== 'win32') {
+    const mode = (await stat(path)).mode & 0o777;
+    assert.equal(mode, 0o600);
+  }
 });
 
 test('the saved file holds the bridge token hash, never the token itself', async () => {

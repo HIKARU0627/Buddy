@@ -13,6 +13,7 @@ export type CoreCheck =
   | 'command_scope'
   | 'unlocked'
   | 'screen_operation'
+  | 'user_operation'
   | 'hub_screen'
   | 'audio_owner'
   | 'expected_revision';
@@ -20,6 +21,9 @@ export type CoreCheck =
 const READ = ['device_token', 'home_network'] as const;
 const COMMAND = [...READ, 'command_scope', 'unlocked'] as const;
 const SCREEN = [...COMMAND, 'screen_operation'] as const;
+// 本人の操作（画面操作か、チャット窓口＝ブリッジ経由の本人の指示。ADR 0143）。候補の状態の変更だけに使う。
+// 承認・取消・予算などの経路は従来どおり screen_operation（画面操作だけ）で、ここは広げない。
+const USER_OPERATION = [...COMMAND, 'user_operation'] as const;
 
 // operationId ごとの検査。OpenAPI の x-buddy-core-checks と一致することを試験する。
 export const ROUTE_CHECKS: Readonly<Record<string, readonly CoreCheck[]>> = {
@@ -93,8 +97,9 @@ export const ROUTE_CHECKS: Readonly<Record<string, readonly CoreCheck[]>> = {
   // 根拠の再取得は許可範囲（取得範囲）から取り直して抄録を返すので、接続範囲を求める（postCanvasContent と同じ）。
   // 状態は本人の操作でなく観測で変わり得るだけなので、画面操作は求めない。
   getCandidateEvidence: COMMAND,
-  // 状態の変更（開いた・対応した・却下・スヌーズ・解決）は本人の画面操作だけ。照合は expected_state で経路の処理が行う。
-  changeCandidateState: SCREEN,
+  // 状態の変更（開いた・対応した・却下・スヌーズ・解決）は本人の操作だけ（画面操作か chat 起源。ADR 0143）。
+  // 照合は expected_state で経路の処理が行う。
+  changeCandidateState: USER_OPERATION,
 };
 
 export interface RequestContext {
@@ -107,6 +112,8 @@ export interface RequestContext {
   readonly commandScope: 'current' | 'stale';
   readonly lockState: 'unlocked' | 'locked' | 'unknown';
   readonly screenOperation: boolean;
+  // 本人の操作の起源（Buddy-Input-Origin が screen か chat。ADR 0143）。chat はブリッジ経由の本人の指示。
+  readonly userOperation: boolean;
   readonly hubLocal: boolean;
   readonly audioOwner: 'self' | 'other' | 'none';
   readonly revisionMatches: boolean;
@@ -147,6 +154,9 @@ export function admitRequest(
     if (check === 'unlocked' && context.lockState !== 'unlocked')
       return reject(403, 'device_locked');
     if (check === 'screen_operation' && !context.screenOperation)
+      return reject(403, 'screen_operation_required');
+    // 本人の操作でない（voice・system の起源）ときは、画面操作と同じ拒否で返す（コードは増やさない。ADR 0143）。
+    if (check === 'user_operation' && !context.userOperation)
       return reject(403, 'screen_operation_required');
     if (check === 'hub_screen' && !context.hubLocal)
       return reject(403, 'hub_screen_required');

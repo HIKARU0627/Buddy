@@ -465,6 +465,49 @@ export default tseslint.config(
       ],
     },
   },
+  // ブリッジ（ADR 0143）。中枢へは HTTPS の端末としてだけ接続し、Core・保存・デスクトップのコードを読み込まない。
+  // 読めるのは契約の型（@buddy/contracts）と自宅の指紋の収集の出口（@buddy/platform/home-fingerprint）だけ。
+  {
+    files: ['apps/bridge/**/*.ts'],
+    languageOptions: { globals: globals.node },
+    rules: {
+      'no-restricted-imports': restricted(
+        [
+          [
+            'electron',
+            'electron/*',
+            '@electron/*',
+            '@buddy/core',
+            '@buddy/core/*',
+            '@buddy/storage',
+            '@buddy/storage/*',
+            '@buddy/desktop',
+            '@buddy/desktop/*',
+            '@buddy/client',
+            '@buddy/client/*',
+            '@buddy/ai',
+            '@buddy/ai/*',
+            '@buddy/connectors',
+            '@buddy/connectors/*',
+            '@buddy/domain',
+            '@buddy/domain/*',
+            '@buddy/platform/*',
+            '!@buddy/platform/home-fingerprint',
+            '../**/core/**',
+            '../**/storage/**',
+            '../**/desktop/**',
+          ],
+        ],
+        [
+          {
+            name: '@buddy/platform',
+            message:
+              'ブリッジは @buddy/platform/home-fingerprint だけを読み込めます。',
+          },
+        ],
+      ),
+    },
+  },
   // デスクトップ（ADR 0015）。main・preload・UI レンダラーで読み込めるものを分ける。
   {
     files: [

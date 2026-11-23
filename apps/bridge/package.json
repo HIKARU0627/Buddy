@@ -1,0 +1,23 @@
+{
+  "bin": {
+    "buddy-bridge": "dist/cli.js"
+  },
+  "dependencies": {
+    "@buddy/contracts": "workspace:*",
+    "@buddy/platform": "workspace:*"
+  },
+  "exports": {
+    ".": {
+      "default": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "name": "@buddy/bridge",
+  "private": true,
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "type": "module",
+  "version": "0.0.0"
+}

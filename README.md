@@ -84,6 +84,7 @@ npm は pnpm の初回導入だけに使います。hook の準備時に公式 G
 | `packages/platform`   | OS 別の起動・監督・鍵保護の可否のアダプター（B01）。Core から使う                                          |
 | `apps/core`           | Electron から独立した Node.js 中枢。起動・停止・排他・制御・DB（B01・B02）・HTTPS の受付（B03）            |
 | `apps/desktop`        | Electron / React（HeroUI）クライアント。トレイ常駐・端末状態の記録（B01）、中枢への接続・ペアリング（B03） |
+| `apps/bridge`         | 中枢と同じマシンの窓口。Muse 向けに絞った経路だけを公開する副次的な窓口（ADR 0143）                        |
 | `tests`               | 合成データ・模擬統合実行器・証拠と実施範囲の対応表                                                         |
 | `scripts`             | 環境確認、設計資料の整合検査、試験実行                                                                     |
 | `docs/design`         | 公開できる設計概要と非公開原本の参照手順                                                                   |

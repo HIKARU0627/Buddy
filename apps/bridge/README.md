@@ -1,0 +1,21 @@
+# @buddy/bridge
+
+中枢（Core）と同じマシンで動く小さな窓口です（[ADR 0143](../../docs/adr/0143-bridge-muse-window.md)）。Core へは HTTPS の端末（`hub_local`）として接続し、Muse 向けには絞った経路だけを独自トークンの認証で公開します。デスクトップアプリ（主 UI）の追加の窓口で、置き換えではありません。Core のコードは読み込みません。
+
+公開する経路は、候補の一覧・根拠・状態の変更（open・dismiss・snooze など）、接続と同期の状態、状態照会（スナップショット・予算・操作）、イベントのポーリング、調べ物の依頼だけです。操作の承認・ペアリング・端末管理・OAuth の開始・Live・キャンバスは公開しません。
+
+## 使い方
+
+ビルド後（`pnpm run build`）、リポジトリのルートで次のように動かします。
+
+```sh
+node apps/bridge/dist/cli.js init                 # 設定を作り、Muse 向けの認証トークンを 1 回だけ表示
+node apps/bridge/dist/cli.js pair --code <8桁>    # 中枢の画面で開始したペアリングへ申請し、承認されたら保存
+node apps/bridge/dist/cli.js serve                # 窓口を開く
+node apps/bridge/dist/cli.js status               # 設定と中枢への到達性を表示（トークンは出さない）
+```
+
+- 設定ファイルは `~/.buddy-bridge/config.json`（環境変数 `BUDDY_BRIDGE_CONFIG` で変更可、権限 0600）。端末トークンを含むので、置き場所と権限を変えないでください。監査ログは同じ場所の `audit.log`（時刻・経路の名前・結果の状態だけ。本文・トークンは出ません）。
+- `init` の後に、設定の `listen.host` をこのマシンの Tailscale のアドレス（100.x.x.x）へ変えてください（既定の 127.0.0.1 のままでは同じマシンからしか届きません。ワイルドカードは `serve` が拒否します）。
+- `pair` は中枢の証明書の指紋を表示します。中枢の画面に出ている指紋と一致するか確かめてから、中枢の画面で申請を承認してください（申請の期限は 5 分）。
+- Muse 側の登録手順は、Muse ワークスペース側のコネクタ文書（custom.buddy-bridge）にあります。

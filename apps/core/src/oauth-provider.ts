@@ -191,6 +191,15 @@ export interface OAuthProviderPortOptions {
   readonly now?: () => Date;
 }
 
+export interface GoogleOAuthPortOptions extends OAuthProviderPortOptions {
+  /**
+   * Google のクライアントシークレット（任意）。Google のデスクトップ型クライアントは PKCE を使っても
+   * トークンエンドポイントでシークレットを要求する（ADR 0144 追補）。設定時だけコード交換と更新の
+   * フォームに載せる。値はプライベートフィールドにだけ置き、ログ・例外・文字列化に出さない。
+   */
+  readonly clientSecret?: string;
+}
+
 abstract class BaseOAuthPort implements OAuthProviderPort {
   protected readonly clientId: string;
   protected readonly transport: OAuthHttpTransport;
@@ -215,6 +224,10 @@ abstract class BaseOAuthPort implements OAuthProviderPort {
   ): OAuthAccountIdentity | null;
   protected revokeEndpoint(): string | null {
     return null;
+  }
+  /** トークンエンドポイント（コード交換・更新）のフォームに足す項目。既定は無し。 */
+  protected tokenFormExtras(): Readonly<Record<string, string>> {
+    return {};
   }
 
   protected async postToken(
@@ -266,6 +279,7 @@ abstract class BaseOAuthPort implements OAuthProviderPort {
       code: input.code,
       redirect_uri: input.redirectUri,
       code_verifier: input.codeVerifier,
+      ...this.tokenFormExtras(),
     });
     if (!posted.ok) return posted;
     const tokens = this.tokensFrom(posted.value);
@@ -286,6 +300,7 @@ abstract class BaseOAuthPort implements OAuthProviderPort {
       client_id: this.clientId,
       grant_type: 'refresh_token',
       refresh_token: input.refreshToken,
+      ...this.tokenFormExtras(),
     });
     if (!posted.ok) return posted;
     const tokens = this.tokensFrom(posted.value);
@@ -309,6 +324,23 @@ abstract class BaseOAuthPort implements OAuthProviderPort {
 }
 
 class GoogleOAuthPort extends BaseOAuthPort {
+  // ES のプライベートフィールドなので、JSON・util.inspect・列挙には現れない。
+  readonly #clientSecret: string | null;
+
+  constructor(options: GoogleOAuthPortOptions) {
+    super(options);
+    this.#clientSecret =
+      options.clientSecret === undefined || options.clientSecret === ''
+        ? null
+        : options.clientSecret;
+  }
+
+  protected override tokenFormExtras(): Readonly<Record<string, string>> {
+    return this.#clientSecret === null
+      ? {}
+      : { client_secret: this.#clientSecret };
+  }
+
   authorizationUrl(input: {
     readonly redirectUri: string;
     readonly state: string;
@@ -413,7 +445,7 @@ class MicrosoftOAuthPort extends BaseOAuthPort {
 }
 
 export function createGoogleOAuthPort(
-  options: OAuthProviderPortOptions,
+  options: GoogleOAuthPortOptions,
 ): OAuthProviderPort {
   return new GoogleOAuthPort(options);
 }

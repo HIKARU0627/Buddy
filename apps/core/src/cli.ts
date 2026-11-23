@@ -408,16 +408,25 @@ function createCoreOAuthTokenStore(mode: KeyProtectionMode): OAuthTokenStore {
   return createOAuthTokenStore(process.platform);
 }
 
-// OAuth のクライアント設定は環境変数から読む（クライアント ID は秘密ではない。シークレットは使わない）。
+// OAuth のクライアント設定は環境変数から読む（クライアント ID は秘密ではない）。
+// Google はデスクトップ型でもトークンエンドポイントがシークレットを要求するため、
+// BUDDY_GOOGLE_OAUTH_CLIENT_SECRET があれば渡す（ADR 0144 追補）。シークレットは環境変数からだけ受け取り、
+// DB・KeyStore・ファイル・ログには出さない。Microsoft は公開クライアントなのでシークレットを使わない。
 // 設定が無いプロバイダは認可を開始できない（接続の作成は閉じたまま、ADR 0144）。
 function oauthProvidersFromEnv(env: NodeJS.ProcessEnv) {
   const providers: {
-    google?: { clientId: string };
+    google?: { clientId: string; clientSecret?: string };
     microsoft?: { clientId: string; tenant?: string };
   } = {};
   const googleClientId = env['BUDDY_GOOGLE_OAUTH_CLIENT_ID'];
+  const googleClientSecret = env['BUDDY_GOOGLE_OAUTH_CLIENT_SECRET'];
   if (googleClientId !== undefined && googleClientId !== '')
-    providers.google = { clientId: googleClientId };
+    providers.google = {
+      clientId: googleClientId,
+      ...(googleClientSecret === undefined || googleClientSecret === ''
+        ? {}
+        : { clientSecret: googleClientSecret }),
+    };
   const microsoftClientId = env['BUDDY_MICROSOFT_OAUTH_CLIENT_ID'];
   if (microsoftClientId !== undefined && microsoftClientId !== '')
     providers.microsoft = {

@@ -366,9 +366,10 @@ export interface StartCoreOptions {
 
 export interface CoreOAuthOptions {
   readonly tokenStore: OAuthTokenStore;
-  readonly providers?: Readonly<
-    Partial<Record<OAuthProviderName, CoreOAuthProviderOptions>>
-  >;
+  readonly providers?: {
+    readonly google?: CoreGoogleOAuthProviderOptions;
+    readonly microsoft?: CoreOAuthProviderOptions;
+  };
   // ループバックの戻り先。省略時は 127.0.0.1:47445。false なら受付を開かない（認可の開始もできない）。
   readonly callback?:
     { readonly host?: string; readonly port?: number } | false;
@@ -380,6 +381,11 @@ export interface CoreOAuthProviderOptions {
   readonly tenant?: string;
   /** プロバイダの口の差し替え（試験用）。省略時は実プロバイダ向けの口を作る。 */
   readonly port?: OAuthProviderPort;
+}
+
+export interface CoreGoogleOAuthProviderOptions extends CoreOAuthProviderOptions {
+  /** Google のクライアントシークレット（任意、ADR 0144 追補）。保存せず、プロバイダの口へ渡すだけ。 */
+  readonly clientSecret?: string;
 }
 
 export interface CoreResearchOptions {
@@ -889,7 +895,12 @@ export async function startCore(
         providers.google = {
           port:
             googleConfig.port ??
-            createGoogleOAuthPort({ clientId: googleConfig.clientId }),
+            createGoogleOAuthPort({
+              clientId: googleConfig.clientId,
+              ...(googleConfig.clientSecret === undefined
+                ? {}
+                : { clientSecret: googleConfig.clientSecret }),
+            }),
         };
       }
       const microsoftConfig = oauthOptions.providers?.microsoft;

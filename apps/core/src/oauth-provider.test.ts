@@ -135,7 +135,7 @@ test('google exchange maps the id_token claims to the account identity', async (
   assert.equal(captured.url, 'https://oauth2.googleapis.com/token');
   assert.equal(captured.form?.['grant_type'], 'authorization_code');
   assert.equal(captured.form?.['code_verifier'], 'verifier-1');
-  // クライアントシークレットは送らない（公開クライアント）。
+  // シークレット未設定ならクライアントシークレットは送らない（ADR 0144 追補）。
   assert.equal(captured.form?.['client_secret'], undefined);
 });
 
@@ -244,4 +244,163 @@ test('refresh returns the new access token and keeps a missing refresh token as 
   assert.equal(result.value.expires_at, '2026-11-23T00:30:00.000Z');
   assert.equal(captured.form?.['grant_type'], 'refresh_token');
   assert.equal(captured.form?.['refresh_token'], 'refresh-9');
+});
+
+// ADR 0144 追補: Google のデスクトップ型クライアントは PKCE でもトークンエンドポイントがシークレットを要求する。
+// シークレットは設定時だけ交換・更新のフォームに載せ、未設定なら載せない。Microsoft は常に載せない。
+// 期待するフォームは各プロバイダのトークンエンドポイントの仕様から手で書いた値（シークレットは合成値）。
+
+const SYNTHETIC_SECRET = 'synthetic-google-secret-0001';
+
+function recordingTransport(
+  forms: Readonly<Record<string, string>>[],
+  body: unknown,
+): OAuthHttpTransport {
+  return async (input) => {
+    forms.push({ ...input.form });
+    return { status: 200, body: JSON.stringify(body) };
+  };
+}
+
+const GOOGLE_TOKEN_BODY = {
+  access_token: 'access-s1',
+  refresh_token: 'refresh-s1',
+  expires_in: 3600,
+  id_token: idToken({ sub: 'google-user-s1' }),
+};
+
+test('google sends client_secret on exchange and refresh only when configured', async () => {
+  const forms: Readonly<Record<string, string>>[] = [];
+  const port = createGoogleOAuthPort({
+    clientId: 'google-client-1',
+    clientSecret: SYNTHETIC_SECRET,
+    transport: recordingTransport(forms, GOOGLE_TOKEN_BODY),
+    now: () => NOW,
+  });
+  const exchanged = await port.exchangeCode({
+    code: 'code-s1',
+    codeVerifier: 'verifier-s1',
+    redirectUri: 'http://127.0.0.1:47445/oauth/callback',
+  });
+  assert.ok(exchanged.ok);
+  const refreshed = await port.refresh({ refreshToken: 'refresh-s1' });
+  assert.ok(refreshed.ok);
+  assert.deepEqual(forms, [
+    {
+      client_id: 'google-client-1',
+      client_secret: 'synthetic-google-secret-0001',
+      grant_type: 'authorization_code',
+      code: 'code-s1',
+      redirect_uri: 'http://127.0.0.1:47445/oauth/callback',
+      code_verifier: 'verifier-s1',
+    },
+    {
+      client_id: 'google-client-1',
+      client_secret: 'synthetic-google-secret-0001',
+      grant_type: 'refresh_token',
+      refresh_token: 'refresh-s1',
+    },
+  ]);
+
+  // 失効（revoke）はシークレットを要しないので載せない。
+  const revokeForms: Readonly<Record<string, string>>[] = [];
+  const revoking = createGoogleOAuthPort({
+    clientId: 'google-client-1',
+    clientSecret: SYNTHETIC_SECRET,
+    transport: recordingTransport(revokeForms, {}),
+    now: () => NOW,
+  });
+  await revoking.revoke({ token: 'refresh-s1' });
+  assert.deepEqual(revokeForms, [
+    { token: 'refresh-s1', client_id: 'google-client-1' },
+  ]);
+});
+
+test('google omits client_secret when unset or empty', async () => {
+  for (const clientSecret of [undefined, '']) {
+    const forms: Readonly<Record<string, string>>[] = [];
+    const port = createGoogleOAuthPort({
+      clientId: 'google-client-1',
+      ...(clientSecret === undefined ? {} : { clientSecret }),
+      transport: recordingTransport(forms, GOOGLE_TOKEN_BODY),
+      now: () => NOW,
+    });
+    assert.ok(
+      (
+        await port.exchangeCode({
+          code: 'code-s2',
+          codeVerifier: 'verifier-s2',
+          redirectUri: 'http://127.0.0.1:47445/oauth/callback',
+        })
+      ).ok,
+    );
+    assert.ok((await port.refresh({ refreshToken: 'refresh-s2' })).ok);
+    assert.deepEqual(forms, [
+      {
+        client_id: 'google-client-1',
+        grant_type: 'authorization_code',
+        code: 'code-s2',
+        redirect_uri: 'http://127.0.0.1:47445/oauth/callback',
+        code_verifier: 'verifier-s2',
+      },
+      {
+        client_id: 'google-client-1',
+        grant_type: 'refresh_token',
+        refresh_token: 'refresh-s2',
+      },
+    ]);
+  }
+});
+
+test('google client secret does not appear in serialization or inspection of the port', async () => {
+  const { inspect } = await import('node:util');
+  const port = createGoogleOAuthPort({
+    clientId: 'google-client-1',
+    clientSecret: SYNTHETIC_SECRET,
+    transport: recordingTransport([], GOOGLE_TOKEN_BODY),
+    now: () => NOW,
+  });
+  assert.ok(!JSON.stringify(port).includes(SYNTHETIC_SECRET));
+  assert.ok(
+    !inspect(port, { depth: 10, showHidden: true }).includes(SYNTHETIC_SECRET),
+  );
+  assert.ok(!String(port).includes(SYNTHETIC_SECRET));
+  assert.ok(!Object.values(port).some((value) => value === SYNTHETIC_SECRET));
+});
+
+test('microsoft token forms stay without client_secret', async () => {
+  const forms: Readonly<Record<string, string>>[] = [];
+  const port = createMicrosoftOAuthPort({
+    clientId: 'ms-client-1',
+    transport: recordingTransport(forms, {
+      access_token: 'access-m1',
+      expires_in: 3600,
+      id_token: idToken({ oid: 'ms-user-m1', tid: 'contoso-tenant-id' }),
+    }),
+    now: () => NOW,
+  });
+  assert.ok(
+    (
+      await port.exchangeCode({
+        code: 'code-m1',
+        codeVerifier: 'verifier-m1',
+        redirectUri: 'http://127.0.0.1:47445/oauth/callback',
+      })
+    ).ok,
+  );
+  assert.ok((await port.refresh({ refreshToken: 'refresh-m1' })).ok);
+  assert.deepEqual(forms, [
+    {
+      client_id: 'ms-client-1',
+      grant_type: 'authorization_code',
+      code: 'code-m1',
+      redirect_uri: 'http://127.0.0.1:47445/oauth/callback',
+      code_verifier: 'verifier-m1',
+    },
+    {
+      client_id: 'ms-client-1',
+      grant_type: 'refresh_token',
+      refresh_token: 'refresh-m1',
+    },
+  ]);
 });

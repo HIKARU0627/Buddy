@@ -179,6 +179,12 @@ export const API_ROUTES: readonly ApiRoute[] = [
     '/v1/connections/{connection_id}/targets',
   ),
   route('getConnectionSync', 'GET', '/v1/connections/{connection_id}/sync'),
+  // 選べる取得対象（ADR 0145）。中枢が提供元から読み、保存しない。中枢の画面だけ。
+  route(
+    'listConnectionTargetOptions',
+    'GET',
+    '/v1/connections/{connection_id}/target-options',
+  ),
   route(
     'updateConnectionTargets',
     'PUT',

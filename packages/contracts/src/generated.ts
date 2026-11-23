@@ -130,6 +130,7 @@ export type BuddyContract =
   | OAuthStart
   | ConnectionTargetsRequest
   | ConnectionDisconnectRequest
+  | ConnectionTargetDiscovery
   | DesktopIpcRequest
   | DesktopIpcResponse
   | DesktopIpcNotification
@@ -1235,6 +1236,13 @@ export type DesktopIpcRequest =
         ref: Id;
         targets: ConnectionTargets;
       };
+    }
+  | {
+      channel: 'desktop.connection_targets_discover';
+      request_id: Id;
+      payload: {
+        ref: Id;
+      };
     };
 export type DesktopHubHost = string;
 export type DesktopHubHost1 = string;
@@ -1401,7 +1409,10 @@ export type DesktopIpcResponse =
     }
   | {
       request_id: Id;
-      channel: 'desktop.connections_list' | 'desktop.connection_targets_update';
+      channel:
+        | 'desktop.connections_list'
+        | 'desktop.connection_targets_update'
+        | 'desktop.connection_targets_discover';
       outcome: 'ok';
       connections: DesktopProviderConnectionsView;
     }
@@ -1644,7 +1655,7 @@ export type DesktopVoiceView =
       reply_mode: 'voice' | 'text';
     };
 /**
- * UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014・0025）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。中枢との接続・ペアリングは用途別のチャネルだけで、要求の宛先・本文を Renderer が決められない。音声レンダラーの IPC（B05）は別に定める。 発言・承認表示の準備・承認・取消・照合は用途別のチャネルで、操作は main が持つ参照（ref）で指す（B04-05、ADR 0031）。 キャンバスを前に出す（canvas_summon）は状態の層と入力バーからだけ使う（UI-02、ADR 0032）。状態の層のパネルを出す・しまう（status_panel）は状態の層からだけ使う（UI-04、ADR 0032）。キャンバスのユーザーの操作（canvas_user_op）はキャンバスの窓からだけ、キャンバスが前に出ている間だけ使う（UI-06、ADR 0032）。 予算の確認（超過枠の承認・見送り budget_overage_decide、M 超過の確認 budget_overrun_review、不明な費用の手での精算 budget_manual_settle）は状態の層からだけ使う。承認・確認・精算は main の OS の確認ダイアログを 1 回だけ挟み、画面が持つのは main が作る参照（ref）だけ（B07-05、ADR 0039）。 音声（B05-06、ADR 0050）: 音声の状態の取得（get_voice）・呼びかけなしで音声の会話を始める「続ける」（voice_continue）・外部への送信の同意の取り消し（voice_consent_revoke）は状態の層からだけ使う。外部への送信の同意は main の OS の確認ダイアログで 1 回だけ取り、画面は同意を作れない。音声レンダラーへの IPC は VoiceRendererRequest で、このチャネルとは別。 気づき（B11-05、ADR 0132）: 一覧の取得（candidates_list）と状態の変更（candidate_state。開く・今回は扱わない・再通知）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バーは使えない。候補は main が作る参照（ref）で指し、候補 ID・expected_state・接続範囲は main が持つ。 連携の接続（B08-02 P3・B09-05、ADR 0142）: 一覧の取得（connections_list）と取得範囲の変更（connection_targets_update）は中枢の画面（接続・端末）でだけ使い、キャンバス・入力バーは使えない。接続は main が作る参照（ref）で指し、接続 ID・permission_revision は main が持つ。画面が送れるのは今読めている取得対象のうちの選択と、期間・添付の範囲だけで、新しい対象の追加は接続時（B03-04）に行う。
+ * UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014・0025）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。中枢との接続・ペアリングは用途別のチャネルだけで、要求の宛先・本文を Renderer が決められない。音声レンダラーの IPC（B05）は別に定める。 発言・承認表示の準備・承認・取消・照合は用途別のチャネルで、操作は main が持つ参照（ref）で指す（B04-05、ADR 0031）。 キャンバスを前に出す（canvas_summon）は状態の層と入力バーからだけ使う（UI-02、ADR 0032）。状態の層のパネルを出す・しまう（status_panel）は状態の層からだけ使う（UI-04、ADR 0032）。キャンバスのユーザーの操作（canvas_user_op）はキャンバスの窓からだけ、キャンバスが前に出ている間だけ使う（UI-06、ADR 0032）。 予算の確認（超過枠の承認・見送り budget_overage_decide、M 超過の確認 budget_overrun_review、不明な費用の手での精算 budget_manual_settle）は状態の層からだけ使う。承認・確認・精算は main の OS の確認ダイアログを 1 回だけ挟み、画面が持つのは main が作る参照（ref）だけ（B07-05、ADR 0039）。 音声（B05-06、ADR 0050）: 音声の状態の取得（get_voice）・呼びかけなしで音声の会話を始める「続ける」（voice_continue）・外部への送信の同意の取り消し（voice_consent_revoke）は状態の層からだけ使う。外部への送信の同意は main の OS の確認ダイアログで 1 回だけ取り、画面は同意を作れない。音声レンダラーへの IPC は VoiceRendererRequest で、このチャネルとは別。 気づき（B11-05、ADR 0132）: 一覧の取得（candidates_list）と状態の変更（candidate_state。開く・今回は扱わない・再通知）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バーは使えない。候補は main が作る参照（ref）で指し、候補 ID・expected_state・接続範囲は main が持つ。 連携の接続（B08-02 P3・B09-05、ADR 0142）: 一覧の取得（connections_list）と取得範囲の変更（connection_targets_update）は中枢の画面（接続・端末）でだけ使い、キャンバス・入力バーは使えない。接続は main が作る参照（ref）で指し、接続 ID・permission_revision は main が持つ。画面が送れるのは今の保存値と、この世代で中枢から読んだ選べる対象（connection_targets_discover）のうちの選択と、期間・添付の範囲だけ（ADR 0145）。選べる対象の読み取りは提供元への読み取りを伴うので、中枢の画面のロック解除済みの画面操作だけ。
  */
 export type DesktopIpcChannel =
   | 'desktop.get_state'
@@ -1685,7 +1696,8 @@ export type DesktopIpcChannel =
   | 'desktop.candidates_list'
   | 'desktop.candidate_state'
   | 'desktop.connections_list'
-  | 'desktop.connection_targets_update';
+  | 'desktop.connection_targets_update'
+  | 'desktop.connection_targets_discover';
 /**
  * main から UI レンダラーへの通知（設計 10 §1、07 §2、ADR 0014）。本文・端末 ID・認証情報を含めない。
  */
@@ -5480,6 +5492,68 @@ export interface ConnectionDisconnectRequest {
   expected_permission_revision: PermissionRevision;
 }
 /**
+ * 接続で選べる取得対象の一覧（ADR 0145。設計 01 接続・端末の対象選択、設計 04 取得する対象）。中枢がそのときに提供元から読んだ値で、保存しない。選択済みかどうかは取得対象（ConnectionSummary.targets）と照らして画面が示す。OAuth トークン・本文は返さない。新しいカレンダー・フォルダーを見つけても自動では足さない。
+ */
+export interface ConnectionTargetDiscovery {
+  connection_id: Id;
+  provider: ConnectionProvider;
+  calendars: ConnectionTargetOptionList;
+  mail_containers: ConnectionTargetOptionList;
+  categories: ConnectionCategoryList;
+}
+/**
+ * 1 種類の対象（カレンダー、またはフォルダー／ラベル）の発見の結果（ADR 0145）。並びは提供元が返した順。
+ */
+export interface ConnectionTargetOptionList {
+  /**
+   * 読み取りの結果。loaded は提供元から全ページを読めた（一覧は見つかった対象のすべて）。rejected は提供元が拒否した（権限・組織の方針など。理由のコードは載せない）。unavailable は読めなかった（通信・提供元の障害・待ち時間の上限・トークンの期限切れ・形の違う応答）。not_supported はこの提供元にこの種類の対象が Buddy では無い（Outlook のカレンダー、Google のカテゴリ）。loaded 以外では一覧は空。
+   */
+  status: 'loaded' | 'rejected' | 'unavailable' | 'not_supported';
+  options: ConnectionTargetOption[];
+}
+/**
+ * 接続で選べる取得対象 1 件（ADR 0145。設計 04 取得する対象、設計 01 接続・端末の対象選択）。見つけた対象を取得対象へ足すのは本人の選択（取得対象の変更）だけで、自動では足さない。
+ */
+export interface ConnectionTargetOption {
+  /**
+   * 提供元の対象の ID（カレンダー ID・Gmail のラベル ID・Outlook のフォルダー ID）。取得対象（ConnectionTargets）に入れる値と同じ。
+   */
+  id: string;
+  /**
+   * 提供元が返した表示名（Google のカレンダーは本人が付けた名前を優先）。提供元が名前を返さなければ null で、推測で作らない。
+   */
+  display_name: string | null;
+  /**
+   * calendar は calendar_ids へ、mail_label（Gmail）と mail_folder（Outlook）は mail_container_ids へ入る対象。
+   */
+  kind: 'calendar' | 'mail_label' | 'mail_folder';
+  /**
+   * Google の本人のメインのカレンダー。ほかは false。
+   */
+  primary: boolean;
+}
+/**
+ * Outlook の既存のカテゴリの一覧（設計 06 B09 のカテゴリ一覧。表示だけ、ADR 0072・0145）。MailboxSettings.Read が無ければ rejected になりうる（設計 04 接続・権限）。
+ */
+export interface ConnectionCategoryList {
+  /**
+   * 読み取りの結果。loaded は提供元から全ページを読めた（一覧は見つかった対象のすべて）。rejected は提供元が拒否した（権限・組織の方針など。理由のコードは載せない）。unavailable は読めなかった（通信・提供元の障害・待ち時間の上限・トークンの期限切れ・形の違う応答）。not_supported はこの提供元にこの種類の対象が Buddy では無い（Outlook のカレンダー、Google のカテゴリ）。loaded 以外では一覧は空。
+   */
+  status: 'loaded' | 'rejected' | 'unavailable' | 'not_supported';
+  categories: ConnectionCategoryOption[];
+}
+/**
+ * Outlook の既存のカテゴリ 1 件（表示だけ。ADR 0072 の display_only、ADR 0145）。カテゴリの付与はしない。
+ */
+export interface ConnectionCategoryOption {
+  category_id: string;
+  display_name: string;
+  /**
+   * Outlook のカテゴリの色の名前（preset0 など）。無ければ null。
+   */
+  color: string | null;
+}
+/**
  * 配置のエンジンの格子のマス（UI-06、ADR 0032）。12 列で、列・行は 1 から。column + span − 1 が 12 を超えないこと（意味の検査）。ピクセル・座標は持たない。ユーザーの置き場所と、ユーザーの操作の置く先に使う。
  */
 export interface CanvasCell {
@@ -6244,7 +6318,7 @@ export interface DesktopProviderConnectionsView {
   list_seq: number;
 }
 /**
- * 連携の接続 1 件の、画面に出す値（B08-02 P3・B09-05、ADR 0142。設計 01 接続・端末、04 接続・権限／取得する対象）。接続 ID・permission_revision・scope_revision は main が持ち、画面へ出さない。
+ * 連携の接続 1 件の、画面に出す値（B08-02 P3・B09-05、ADR 0142・0145。設計 01 接続・端末、04 接続・権限／取得する対象）。接続 ID・permission_revision・scope_revision は main が持ち、画面へ出さない。
  */
 export interface DesktopConnectionEntry {
   /**
@@ -6263,6 +6337,10 @@ export interface DesktopConnectionEntry {
    * Microsoft の接続だけ。アカウント種別・委任・拒否の理由・カテゴリの扱い（設計 04 接続・権限、ADR 0072）。Google の接続では null。
    */
   graph_account: GraphAccountState | null;
+  /**
+   * この世代で中枢から読んだ選べる対象（ADR 0145）。まだ読んでいなければ null。
+   */
+  discovery: DesktopConnectionDiscovery | null;
   /**
    * この接続への取得範囲の変更の結果が分からなかった（自動では送り直さない）。一覧を取り直すまで変更させない。
    */
@@ -6291,6 +6369,14 @@ export interface ConnectionTargets1 {
    * 添付 1 件のバイト数の上限。設計の初期値 10MB（10,000,000 バイト）が上限。
    */
   attachment_max_bytes: number;
+}
+/**
+ * 画面に出す選べる対象（ADR 0145）。中枢の ConnectionTargetDiscovery から接続 ID と提供元を除いたもの（提供元は行が持つ）。
+ */
+export interface DesktopConnectionDiscovery {
+  calendars: ConnectionTargetOptionList;
+  mail_containers: ConnectionTargetOptionList;
+  categories: ConnectionCategoryList;
 }
 /**
  * 画面へ渡すキャンバスの今の記述（ADR 0032）。main が中枢から取り、形式（CanvasDocument）と意味（domain）の検査を通してから、参照を不透明な参照に置き換えて渡す。ロック・切断・世代の変化では渡した記述を捨てる（canvas を null にして通知する）。

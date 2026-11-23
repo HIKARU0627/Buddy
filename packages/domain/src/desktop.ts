@@ -56,6 +56,8 @@ export const DESKTOP_IPC_CHANNELS = [
   // B08-02 P3・B09-05: 連携の接続の一覧の取得と取得範囲の変更。中枢の画面でだけ（ADR 0142）。
   'desktop.connections_list',
   'desktop.connection_targets_update',
+  // 連携の接続で選べる取得対象の読み取り（中枢が提供元から読む）。中枢の画面でだけ（ADR 0145）。
+  'desktop.connection_targets_discover',
 ] as const;
 
 export type DesktopIpcChannel = (typeof DESKTOP_IPC_CHANNELS)[number];
@@ -190,6 +192,9 @@ export const DESKTOP_PAIRING_SCREEN_CHANNELS: readonly DesktopIpcChannel[] = [
   // 連携の取得範囲の変更も本人の画面操作（B08-02 P3・B09-05、ADR 0142）。保存そのものは送信ではなく、実際の取得は
   // 中枢の走査の調停を通るので、入出力の停止中も受け付ける（停止の検査はしない）。中枢の画面かどうかは main が別に確かめる。
   'desktop.connection_targets_update',
+  // 選べる取得対象の読み取り（ADR 0145）も本人の画面操作。提供元への読み取りを伴うので、本人が前面で押したときだけ
+  // 受け付ける（一覧のように後ろで読まない）。保存はせず外部へ送るものでもないので、入出力の停止中も受け付ける。
+  'desktop.connection_targets_discover',
 ];
 
 // ロック解除済みのときだけ受け付ける一覧（内容なので、ロック中・不明は出さない。B03-06）。
@@ -308,6 +313,7 @@ export const DESKTOP_ROLE_CHANNELS: Readonly<
     // キャンバスの部品が連携の操作に見せかけられないよう、キャンバス・入力バーには渡さない。
     'desktop.connections_list',
     'desktop.connection_targets_update',
+    'desktop.connection_targets_discover',
   ],
   input: ['desktop.get_state', 'desktop.turn_submit', 'desktop.canvas_summon'],
 };

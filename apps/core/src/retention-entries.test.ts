@@ -109,6 +109,13 @@ const ENTRIES: Readonly<Record<string, readonly Entry[]>> = {
       anchors: ['options.retention.ready()', 'options.retention.lease()'],
     },
   ],
+  'connection-discovery.ts': [
+    {
+      kind: 'exempt',
+      reason:
+        '選べる取得対象の発見（カレンダー・ラベル・フォルダーの一覧と Outlook のカテゴリ。ADR 0145）。中枢の画面での本人の操作で入れ物の名前を一度読んで返すだけで、何も保存せず、検索・クラウドへの送信・自動利用でもない。本文・添付は読まない',
+    },
+  ],
   'graph-mail-attachments.ts': [
     {
       kind: 'gated',

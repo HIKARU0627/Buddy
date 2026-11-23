@@ -3,10 +3,14 @@
 // node:test で試験する。受付の規則・参照の解決・期待する許可版は main が持つ。画面に来るのは main の参照（ref）と
 // 表示用の値（提供元・状態・権限・取得範囲・Microsoft のアカウントの状態）だけで、接続 ID・版は来ない。
 // - 未取得・取得の失敗を「接続なし」にしない（設計 01）。
-// - 画面から足せる対象はない。編集できるのは、今保存されている対象のうちの選択と、期間・添付の範囲だけ
-//   （新しい対象の追加は接続時、B03-04）。範囲の検査は domain の validateFetchScope（上限は設計の初期値）。
+// - 選べる対象（ADR 0145）: 本人が「選べる対象を読み込む」を押したときだけ main に読ませる。読めた対象は表示名と
+//   一緒に選択肢へ出し、まだ選んでいない対象も本人がチェックすれば足せる。見つけた対象を自動では選ばない（設計 04）。
+//   読めていない・連携先で見つからない保存済みの対象は ID のまま出す（推測で名前を作らない）。
+//   範囲の検査は domain の validateFetchScope（上限は設計の初期値）。
 // 理由のコード・API の名前は画面に出さない。
 import type {
+  ConnectionTargetOption,
+  ConnectionTargetOptionList,
   ConnectionTargets,
   DesktopConnectionEntry,
   DesktopIpcRequest,
@@ -41,7 +45,14 @@ export const CONNECTION_LABELS = {
   saved: '保存しました。',
   unknown: '結果を確認できませんでした',
   addNote:
-    '選べる対象は接続時に決まります。ここでは、今選んでいる対象を外すことと、期間・添付の範囲の変更ができます。',
+    '「選べる対象を読み込む」を押すと、連携先にあるカレンダー・フォルダー／ラベルを読み込み、まだ選んでいない対象も選べます。見つけた対象を自動では選びません。',
+  discover: '選べる対象を読み込む',
+  rediscover: '選べる対象を読み直す',
+  discovering: '読み込んでいます…',
+  notFound: '連携先で見つかりません',
+  primary: 'メイン',
+  categories: '既存のカテゴリ（表示だけ）',
+  noCategories: 'カテゴリはありません。',
   rangeProblem:
     '期間と大きさは上限の範囲で選んでください（メールは 1〜90 日、カレンダーは過去 0〜30 日・先 0〜90 日、添付は 1〜10,000,000 バイト）。',
   account: 'アカウント',
@@ -133,6 +144,86 @@ export const GRAPH_CATEGORY_LABELS: Readonly<Record<'display_only', string>> = {
   display_only: 'カテゴリは案の表示だけです（自動では付けません）',
 };
 
+// 選べる対象の一覧が読めなかったときの文言（ADR 0145）。理由のコードは出さない。not_supported は出さない。
+export const DISCOVERY_STATUS_LABELS: Readonly<
+  Record<'rejected' | 'unavailable', string>
+> = {
+  rejected:
+    '連携先が一覧の読み取りを許可していないため、選べる対象を表示できません',
+  unavailable:
+    '選べる対象を読み込めませんでした。少し待ってから、読み直してください',
+};
+
+// Gmail が持つラベル（ID が固定の system ラベル）の日本語の呼び名。本人が作ったラベルは連携先の名前のまま出す。
+export const GMAIL_SYSTEM_LABEL_NAMES: Readonly<Record<string, string>> = {
+  INBOX: '受信トレイ',
+  SENT: '送信済み',
+  DRAFT: '下書き',
+  SPAM: '迷惑メール',
+  TRASH: 'ゴミ箱',
+  STARRED: 'スター付き',
+  IMPORTANT: '重要',
+  UNREAD: '未読',
+  CHAT: 'チャット',
+  CATEGORY_PERSONAL: 'メイン（カテゴリ）',
+  CATEGORY_SOCIAL: 'ソーシャル（カテゴリ）',
+  CATEGORY_PROMOTIONS: 'プロモーション（カテゴリ）',
+  CATEGORY_UPDATES: '新着（カテゴリ）',
+  CATEGORY_FORUMS: 'フォーラム（カテゴリ）',
+};
+
+// --- 選べる対象の選択肢（ADR 0145） ---
+
+export interface TargetChoice {
+  readonly id: string;
+  // 画面に出す名前。表示名が無ければ ID。
+  readonly label: string;
+  // 表示名が分かっているか（分からなければ ID のまま出している）。
+  readonly named: boolean;
+  readonly primary: boolean;
+  // 保存済みだが、読めた一覧に無い（連携先で見つからない）。
+  readonly missing: boolean;
+}
+
+export function optionLabel(option: ConnectionTargetOption): string {
+  if (
+    option.kind === 'mail_label' &&
+    Object.hasOwn(GMAIL_SYSTEM_LABEL_NAMES, option.id)
+  )
+    return GMAIL_SYSTEM_LABEL_NAMES[option.id] as string;
+  return option.display_name !== null && option.display_name.trim().length > 0
+    ? option.display_name
+    : option.id;
+}
+
+// 選択肢の並び: 読めた一覧（連携先の順）→ 一覧に無い保存済みの対象（保存の順）。一覧が読めていなければ
+// 保存済みの対象だけ（ID のまま。ADR 0142 と同じ）。
+export function targetChoices(
+  savedIds: readonly string[],
+  list: ConnectionTargetOptionList | null,
+): readonly TargetChoice[] {
+  const options = list !== null && list.status === 'loaded' ? list.options : [];
+  const seen = new Set(options.map((option) => option.id));
+  return [
+    ...options.map((option) => ({
+      id: option.id,
+      label: optionLabel(option),
+      named: optionLabel(option) !== option.id,
+      primary: option.primary,
+      missing: false,
+    })),
+    ...savedIds
+      .filter((id) => !seen.has(id))
+      .map((id) => ({
+        id,
+        label: id,
+        named: false,
+        primary: false,
+        missing: list !== null && list.status === 'loaded',
+      })),
+  ];
+}
+
 // --- 取得範囲の下書き ---
 
 // 画面の入力の下書き。数値は入力の途中で空・不正になり得るので文字列で持つ。
@@ -218,6 +309,8 @@ export interface ConnectionsViewState {
   readonly reading: boolean;
   // 取得範囲の変更を送って結果を待っている行の参照（二重に押させない）。
   readonly busy: string | null;
+  // 選べる対象を読み込んでいる行の参照（ADR 0145。二重に押させない）。
+  readonly discovering: string | null;
   readonly notice: ConnectionNotice | null;
 }
 
@@ -226,6 +319,7 @@ export const INITIAL_CONNECTIONS_STATE: ConnectionsViewState = {
   seq: 0,
   reading: false,
   busy: null,
+  discovering: null,
   notice: null,
 };
 
@@ -238,11 +332,25 @@ export function connectionFailureText(reason: RejectReason): string {
     case 'core_rejected':
       return '中枢が受け付けませんでした。一覧を読み直してから、もう一度保存してください。';
     case 'invalid_request':
-      return '選んだ内容では保存できません。今の保存値にない対象は、ここからは足せません（対象の追加は接続時に行います）。';
+      return '選んだ内容では保存できません。選べる対象を読み直してから、もう一度選んでください。';
     case 'not_connected':
       return '中枢に接続していないため、連携を読めません。接続してから「読み直す」を押してください。';
     default:
       return REJECT_MESSAGES[reason];
+  }
+}
+
+// 選べる対象の読み込みの失敗の文言（ADR 0145）。読み取りなので、結果不明の扱いは無い（もう一度押せばよい）。
+export function discoveryFailureText(reason: RejectReason): string {
+  switch (reason) {
+    case 'preview_stale':
+      return '連携の状態が変わっていたため、選べる対象を読み込めませんでした。一覧を読み直したので、状態を確かめてください。';
+    case 'core_rejected':
+      return '選べる対象を読み込めませんでした。少し待ってから、もう一度押してください。';
+    case 'not_connected':
+      return '中枢に届かなかったため、選べる対象を読み込めませんでした。接続を確かめて、もう一度押してください。';
+    default:
+      return connectionFailureText(reason);
   }
 }
 
@@ -308,6 +416,28 @@ export function applyTargetsUpdateResponse(
   };
 }
 
+export function applyDiscoverResponse(
+  state: ConnectionsViewState,
+  ref: string,
+  response: DesktopIpcResponse,
+): ConnectionsViewState {
+  const idle = {
+    ...state,
+    discovering: state.discovering === ref ? null : state.discovering,
+  };
+  if (response.outcome === 'rejected')
+    return {
+      ...idle,
+      notice: {
+        tone: 'warning',
+        text: discoveryFailureText(response.reason),
+        ref,
+      },
+    };
+  if (!('connections' in response)) return idle;
+  return withView(idle, response.connections);
+}
+
 export function applyConnectionsFailure(
   state: ConnectionsViewState,
   ref: string | null,
@@ -316,6 +446,8 @@ export function applyConnectionsFailure(
     ...state,
     reading: ref === null ? false : state.reading,
     busy: ref !== null && state.busy === ref ? null : state.busy,
+    discovering:
+      ref !== null && state.discovering === ref ? null : state.discovering,
     notice: { tone: 'warning', text: CONNECTION_IPC_FAILURE_MESSAGE, ref },
   };
 }
@@ -325,6 +457,8 @@ export function applyConnectionsFailure(
 export interface ConnectionActions {
   readonly refresh: () => void;
   readonly update: (ref: string, targets: ConnectionTargets) => void;
+  // 選べる対象を読み込む（ADR 0145）。
+  readonly discover: (ref: string) => void;
 }
 
 export interface ConnectionsApi {
@@ -344,6 +478,7 @@ export class ConnectionsStore {
     this.actions = {
       refresh: () => this.#list(),
       update: (ref, targets) => this.#update(ref, targets),
+      discover: (ref) => this.#discover(ref),
     };
   }
 
@@ -393,7 +528,8 @@ export class ConnectionsStore {
   }
 
   #update(ref: string, targets: ConnectionTargets): void {
-    if (this.#state.busy !== null) return;
+    // 選べる対象を読み込んでいる間も送らない（読み込みの結果で選択肢が変わる）。
+    if (this.#state.busy !== null || this.#state.discovering !== null) return;
     const epoch = this.#epoch;
     let stale = false;
     this.#set({ ...this.#state, busy: ref, notice: null });
@@ -409,6 +545,27 @@ export class ConnectionsStore {
       (state) => applyConnectionsFailure(state, ref),
     ).then(() => {
       // 版が変わっていた・参照が古かった（main が読み直した）ときは、読み直した一覧を受け取る（409 では読み直す）。
+      if (stale && epoch === this.#epoch) this.#reread();
+    });
+  }
+
+  #discover(ref: string): void {
+    if (this.#state.discovering !== null || this.#state.busy !== null) return;
+    const epoch = this.#epoch;
+    let stale = false;
+    this.#set({ ...this.#state, discovering: ref, notice: null });
+    void this.#send(
+      request('desktop.connection_targets_discover', { ref }),
+      (state, response) => {
+        stale =
+          response.outcome === 'rejected' &&
+          (response.reason === 'preview_stale' ||
+            response.reason === 'entry_not_found');
+        return applyDiscoverResponse(state, ref, response);
+      },
+      (state) => applyConnectionsFailure(state, ref),
+    ).then(() => {
+      // 状態が変わっていた・参照が古かった（main が読み直した）ときは、読み直した一覧を受け取る。
       if (stale && epoch === this.#epoch) this.#reread();
     });
   }

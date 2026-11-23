@@ -333,6 +333,8 @@ const CANVAS_FORBIDDEN = [
   // キャンバスの部品が連携の操作に見せかけられない。
   'desktop.connections_list',
   'desktop.connection_targets_update',
+  // 選べる取得対象の読み取り（ADR 0145）。中枢の画面だけで、キャンバス・入力バーには渡さない。
+  'desktop.connection_targets_discover',
 ];
 
 test('window roles: the canvas cannot use stop, resume, approval or quit channels', () => {
@@ -447,13 +449,13 @@ test('window roles: every request and notification channel of the schema has a r
     [...notifications].sort(),
     [...DESKTOP_NOTIFICATION_CHANNELS].sort(),
   );
-  // 手で数えた数（現在の DesktopIpcChannel は 39 個。B04-05 の 7 個と UI-02 の canvas_summon、UI-04 の
+  // 手で数えた数（現在の DesktopIpcChannel は 40 個。B04-05 の 7 個と UI-02 の canvas_summon、UI-04 の
   // status_panel、UI-06 の canvas_user_op、UI-07 の canvas_content、B07-05 の予算の確認 3 個、B05-06 の音声 3 個、
-  // B05-05 の音声の会話の操作 1 個、B11-05 の気づき 2 個、B08-02 P3・B09-05 の連携 2 個を含む）。
-  // 禁止の一覧 34 ＋ 全員の get_state ＋ 入力バーの turn_submit・canvas_summon ＋
+  // B05-05 の音声の会話の操作 1 個、B11-05 の気づき 2 個、B08-02 P3・B09-05 の連携 2 個、ADR 0145 の選べる対象 1 個を含む）。
+  // 禁止の一覧 35 ＋ 全員の get_state ＋ 入力バーの turn_submit・canvas_summon ＋
   // キャンバスの canvas_user_op・canvas_content。
-  assert.equal(channels.size, 39);
-  assert.equal(CANVAS_FORBIDDEN.length + 5, 39);
+  assert.equal(channels.size, 40);
+  assert.equal(CANVAS_FORBIDDEN.length + 5, 40);
 });
 
 // PR #102 のレビュー（ADR 0032）: 見出しのマークアップ・URL、既存の text の更新、記録しない区切りの一時の記述、

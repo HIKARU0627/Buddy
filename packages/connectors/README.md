@@ -59,6 +59,14 @@
 - transport は注入できる（既定は `node:https` で 1 回だけ送る Graph 専用の薄い実装。B08-03 の HTTP の土台が入ったら差し替えられる）。
 - 検証は**模擬 transport だけ**。実 API・OAuth の実接続は未実施（B15）。
 
+## Google の取得対象の列挙（ADR 0145）
+
+`createGoogleReadConnector` の `calendar.listCalendars()`（`calendarList.list`、全ページ、`fields` は `id`・`summary`・`summaryOverride`・`primary`・`accessRole` だけ）と `gmail.listLabels()`（`labels.list`、`fields` は `id`・`name`・`type` だけ）。
+
+- 選べる取得対象を本人に見せるための読み取り。読んだ一覧を取得対象へ足すのは本人の選択（Core の取得対象の変更）だけで、connector は何も足さない（設計 04 取得する対象）。
+- カテゴリ一覧（Graph の `listCategories`）と同じく connector 固有の読み取りで、能力（`capability.reads`）の種別には加えない。
+- 失敗の扱いは既存の Google の読み取りと同じ（`GoogleApiError`。再試行は `CONNECTOR_RETRY_POLICY`）。検証は**模擬 transport だけ**で、実 API は未実施（B15）。
+
 ## 試験
 
 `src/*.test.ts`（ビルド後の `dist/*.test.js`）。期待値は手書きで、一時ディレクトリの provider を使います。後片付けは「閉じてから削除」の順、各試験に timeout を付けています。実 provider・実 API の試験ではありません（模擬のみ）。

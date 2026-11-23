@@ -103,6 +103,8 @@ test('client quit, local IO stop and hub stop are separate; no token, device ID,
     // 連携の接続（B08-02 P3・B09-05、ADR 0142）。接続 ID・版は main の中にだけ持つ。
     'DesktopProviderConnectionsView',
     'DesktopConnectionEntry',
+    // 選べる対象（ADR 0145）。接続 ID は main の中にだけ持つ。
+    'DesktopConnectionDiscovery',
   ])
     walk(defs[name], name);
   for (const field of [

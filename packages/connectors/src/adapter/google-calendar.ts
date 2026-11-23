@@ -1,6 +1,8 @@
 // Google Calendar の読み取り（B08-03、設計 04・11 §1）。
 // syncToken は timeMin/timeMax と併用できないので使わない。固定窓＋updatedMin＋singleEvents＋showDeleted で列挙し、
 // 取消は status='cancelled' で受け取る。窓・カレンダーは呼び出し側が渡した値だけを使い、connector 側で広げない。
+// カレンダーの一覧（calendarList.list）は取得対象の発見の表示用（ADR 0145）。読んだ一覧を取得対象へ足すのは本人の選択だけで、
+// connector も Core も自動では足さない（設計 04 取得する対象）。
 import {
   collectPages,
   invalidResponse,
@@ -38,7 +40,19 @@ export interface ListCalendarEventsRequest {
   readonly updatedMin?: string;
 }
 
+// calendarList.list の 1 件（ADR 0145）。表示名は summaryOverride（本人が付けた名前）を優先し、無ければ summary。
+// どちらも無ければ表示名は無い（推測で名前を作らない）。
+export interface GoogleCalendarListEntry {
+  readonly id: string;
+  readonly summary?: string;
+  readonly summaryOverride?: string;
+  readonly primary: boolean;
+  readonly accessRole?: string;
+}
+
 export interface GoogleCalendarReader {
+  // 本人のカレンダーの一覧（全ページ。calendar.calendarlist.readonly、設計 04 接続・権限）。取得対象の発見の表示用。
+  listCalendars(): Promise<readonly GoogleCalendarListEntry[]>;
   listEvents(
     request: ListCalendarEventsRequest,
   ): Promise<readonly GoogleCalendarEvent[]>;
@@ -49,6 +63,10 @@ export interface GoogleCalendarReader {
 }
 
 const CALENDAR_PAGE_SIZE = '250';
+// calendarList.list の最大の maxResults。項目は表示に要る最小の集合だけを求める（設計 04: 最小の select）。
+const CALENDAR_LIST_PAGE_SIZE = '250';
+const CALENDAR_LIST_FIELDS =
+  'items(id,summary,summaryOverride,primary,accessRole),nextPageToken';
 
 function toEventTime(value: unknown): GoogleCalendarEventTime | undefined {
   if (value === undefined || value === null) return undefined;
@@ -124,6 +142,44 @@ function toEventsPage(body: unknown): GooglePage<GoogleCalendarEvent> {
   };
 }
 
+// 未知のフィールドは落とす。id は必須。primary は true のときだけ真（無い・false は偽）。
+function toCalendarListEntry(value: unknown): GoogleCalendarListEntry {
+  if (!isRecord(value)) throw invalidResponse();
+  const id = value['id'];
+  if (typeof id !== 'string' || id.length === 0) throw invalidResponse();
+  const primary = value['primary'];
+  if (primary !== undefined && primary !== null && typeof primary !== 'boolean')
+    throw invalidResponse();
+  const entry: {
+    id: string;
+    summary?: string;
+    summaryOverride?: string;
+    primary: boolean;
+    accessRole?: string;
+  } = { id, primary: primary === true };
+  const summary = optionalString(value, 'summary');
+  const summaryOverride = optionalString(value, 'summaryOverride');
+  const accessRole = optionalString(value, 'accessRole');
+  if (summary !== undefined) entry.summary = summary;
+  if (summaryOverride !== undefined) entry.summaryOverride = summaryOverride;
+  if (accessRole !== undefined) entry.accessRole = accessRole;
+  return entry;
+}
+
+function toCalendarListPage(
+  body: unknown,
+): GooglePage<GoogleCalendarListEntry> {
+  if (!isRecord(body)) throw invalidResponse();
+  const items = body['items'];
+  // 該当が無いと items を省略することがある。省略は空、配列以外は不正。
+  if (items !== undefined && items !== null && !Array.isArray(items))
+    throw invalidResponse();
+  return {
+    items: (Array.isArray(items) ? items : []).map(toCalendarListEntry),
+    ...readNextPageToken(body),
+  };
+}
+
 export function createGoogleCalendarReader(
   client: GoogleHttpClient,
 ): GoogleCalendarReader {
@@ -146,6 +202,17 @@ export function createGoogleCalendarReader(
     );
   };
   return {
+    async listCalendars() {
+      return collectPages(async (pageToken) =>
+        toCalendarListPage(
+          await client.getJson('/calendar/v3/users/me/calendarList', {
+            maxResults: CALENDAR_LIST_PAGE_SIZE,
+            fields: CALENDAR_LIST_FIELDS,
+            pageToken,
+          }),
+        ),
+      );
+    },
     listEventsPage,
     async listEvents(request) {
       return collectPages(async (pageToken) =>

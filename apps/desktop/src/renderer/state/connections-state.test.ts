@@ -1,4 +1,4 @@
-// 連携の接続の画面の状態（connections-state.ts。B08-02 P3・B09-05、ADR 0142）の試験。期待値は手で書く。
+// 連携の接続の画面の状態（connections-state.ts。B08-02 P3・B09-05、ADR 0142・0145）の試験。期待値は手で書く。
 // 確かめること: 下書きの変換と範囲の検査（上限は設計の初期値）、並び順に依らない変更の判定、未取得を「接続なし」に
 // しないこと、保存は参照と取得範囲だけを送ること、409 で読み直すこと、世代をまたいだ応答を捨てること。
 import assert from 'node:assert/strict';
@@ -17,6 +17,8 @@ import {
   draftChanged,
   draftFromTargets,
   draftToTargets,
+  optionLabel,
+  targetChoices,
 } from './connections-state.js';
 
 const id = (n: number) =>
@@ -43,6 +45,7 @@ const entry = (
   granted_scopes: ['https://www.googleapis.com/auth/gmail.readonly'],
   targets: TARGETS,
   graph_account: null,
+  discovery: null,
   delivery_unknown: false,
   ...overrides,
 });
@@ -259,4 +262,178 @@ test('hide drops the content and a late answer is not applied', async () => {
   assert.deepEqual(store.snapshot(), INITIAL_CONNECTIONS_STATE);
   await answer(listed(view([entry(1)])));
   assert.deepEqual(store.snapshot(), INITIAL_CONNECTIONS_STATE);
+});
+
+// --- 選べる対象（ADR 0145） ---
+
+const DISCOVERY = {
+  calendars: {
+    status: 'loaded' as const,
+    options: [
+      {
+        id: 'primary-cal@example.invalid',
+        display_name: '合成のメイン',
+        kind: 'calendar' as const,
+        primary: true,
+      },
+      {
+        id: 'nameless@example.invalid',
+        display_name: null,
+        kind: 'calendar' as const,
+        primary: false,
+      },
+    ],
+  },
+  mail_containers: {
+    status: 'loaded' as const,
+    options: [
+      {
+        id: 'INBOX',
+        display_name: 'INBOX',
+        kind: 'mail_label' as const,
+        primary: false,
+      },
+      {
+        id: 'Label_1',
+        display_name: '合成のラベル',
+        kind: 'mail_label' as const,
+        primary: false,
+      },
+    ],
+  },
+  categories: { status: 'not_supported' as const, categories: [] },
+};
+
+test('labels: Gmail system labels get Japanese names, others keep the provider name, a missing name is the id', () => {
+  assert.equal(
+    optionLabel({
+      id: 'INBOX',
+      display_name: 'INBOX',
+      kind: 'mail_label',
+      primary: false,
+    }),
+    '受信トレイ',
+  );
+  assert.equal(
+    optionLabel({
+      id: 'Label_1',
+      display_name: '合成のラベル',
+      kind: 'mail_label',
+      primary: false,
+    }),
+    '合成のラベル',
+  );
+  // Outlook のフォルダーは ID が INBOX でも名前の付け替えをしない（Gmail のラベルだけ）。
+  assert.equal(
+    optionLabel({
+      id: 'INBOX',
+      display_name: '合成の受信',
+      kind: 'mail_folder',
+      primary: false,
+    }),
+    '合成の受信',
+  );
+  assert.equal(
+    optionLabel({
+      id: 'cal-x',
+      display_name: null,
+      kind: 'calendar',
+      primary: false,
+    }),
+    'cal-x',
+  );
+  assert.equal(
+    optionLabel({
+      id: 'cal-y',
+      display_name: '  ',
+      kind: 'calendar',
+      primary: false,
+    }),
+    'cal-y',
+  );
+});
+
+test('choices: discovered first in provider order, then saved ids not found; without a loaded list only the saved ids', () => {
+  assert.deepEqual(
+    targetChoices(
+      ['gone@example.invalid', 'primary-cal@example.invalid'],
+      DISCOVERY.calendars,
+    ),
+    [
+      {
+        id: 'primary-cal@example.invalid',
+        label: '合成のメイン',
+        named: true,
+        primary: true,
+        missing: false,
+      },
+      {
+        id: 'nameless@example.invalid',
+        label: 'nameless@example.invalid',
+        named: false,
+        primary: false,
+        missing: false,
+      },
+      {
+        id: 'gone@example.invalid',
+        label: 'gone@example.invalid',
+        named: false,
+        primary: false,
+        missing: true,
+      },
+    ],
+  );
+  // 読めていない（rejected・未読）ときは保存済みだけで、「見つからない」とは言わない。
+  for (const list of [null, { status: 'rejected' as const, options: [] }])
+    assert.deepEqual(targetChoices(['INBOX'], list), [
+      {
+        id: 'INBOX',
+        label: 'INBOX',
+        named: false,
+        primary: false,
+        missing: false,
+      },
+    ]);
+});
+
+test('discover sends only the ref, once at a time, and shows the discovered entry', async () => {
+  const { store, pending, answer } = harness();
+  store.actions.refresh();
+  await answer(listed(view([entry(1)])));
+  store.actions.discover(id(1));
+  store.actions.discover(id(1));
+  // 読み込み中は保存も送らない。
+  store.actions.update(id(1), { ...TARGETS, mail_lookback_days: 30 });
+  assert.equal(store.snapshot().discovering, id(1));
+  assert.deepEqual(
+    pending.map((item) => [item.request.channel, item.request.payload]),
+    [['desktop.connection_targets_discover', { ref: id(1) }]],
+  );
+  pending.splice(1);
+  await answer(
+    listed(view([entry(1, { discovery: DISCOVERY })], { list_seq: 3 })),
+  );
+  const state = store.snapshot();
+  assert.equal(state.discovering, null);
+  assert.deepEqual(state.view?.entries[0]?.discovery, DISCOVERY);
+  assert.equal(state.notice, null);
+});
+
+test('a failed discover is a row notice; preview_stale re-reads the list', async () => {
+  const { store, pending, answer } = harness();
+  store.actions.refresh();
+  await answer(listed(view([entry(1)])));
+  store.actions.discover(id(1));
+  await answer({ outcome: 'rejected', reason: 'core_rejected' });
+  assert.equal(store.snapshot().discovering, null);
+  assert.equal(store.snapshot().notice?.ref, id(1));
+  assert.match(store.snapshot().notice?.text ?? '', /読み込めませんでした/u);
+  assert.equal(pending.length, 0);
+  store.actions.discover(id(1));
+  await answer({ outcome: 'rejected', reason: 'preview_stale' });
+  assert.match(store.snapshot().notice?.text ?? '', /状態が変わっていた/u);
+  assert.deepEqual(
+    pending.map((item) => item.request.channel),
+    ['desktop.connections_list'],
+  );
 });

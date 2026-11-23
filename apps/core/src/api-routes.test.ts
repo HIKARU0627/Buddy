@@ -82,8 +82,9 @@ test(
       })),
     );
     // 気づきの一覧・根拠の再取得・状態の変更（B11-04 P2、ADR 0130）で 3 つ増えた。
-    assert.equal(operations.length, 50);
-    assert.equal(API_ROUTES.length, 50);
+    // 選べる取得対象（listConnectionTargetOptions、ADR 0145）で 1 つ増えた。
+    assert.equal(operations.length, 51);
+    assert.equal(API_ROUTES.length, 51);
     for (const { path, method, operation } of operations) {
       const route = API_ROUTES.find(
         (candidate) => candidate.operationId === operation.operationId,
@@ -172,7 +173,8 @@ test(
     // （postCanvasUserOp、UI-06）で 1 つ、キャンバスの物の中身の読み取り（postCanvasContent、UI-07）で 1 つ増えた。
     // 取得対象と同期の状態（B08-01、ADR 0071）で 2 つ、保存モードの切り替え（postStreamStorageMode、U170・ADR 0060）
     // で 1 つ増えた。気づきの一覧・根拠の再取得・状態の変更（B11-04 P2、ADR 0130）で 3 つ増えた。
-    assert.equal(declared.length, 39);
+    // 選べる取得対象（listConnectionTargetOptions、ADR 0145）で 1 つ増えた。
+    assert.equal(declared.length, 40);
   },
 );
 

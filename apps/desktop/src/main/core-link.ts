@@ -138,6 +138,8 @@ export const CANDIDATE_CHANNELS: readonly DesktopIpcChannel[] = [
 export const CONNECTIONS_CHANNELS: readonly DesktopIpcChannel[] = [
   'desktop.connections_list',
   'desktop.connection_targets_update',
+  // 選べる対象の読み取り（ADR 0145）。
+  'desktop.connection_targets_discover',
 ];
 
 // 中枢の画面のこのマシンの指紋の読み取り（main だけが持つ。画面へは伏せた表示だけを出す）。
@@ -1188,7 +1190,8 @@ export class DesktopCoreLink {
     );
   }
 
-  // 連携の接続の一覧と取得範囲の変更（B08-02 P3・B09-05、ADR 0142）。一覧はロック解除済み、変更はロック解除済みの
+  // 連携の接続の一覧と取得範囲の変更（B08-02 P3・B09-05、ADR 0142）と選べる対象の読み取り（ADR 0145。ロック解除済みの
+  // 画面操作）。一覧はロック解除済み、変更はロック解除済みの
   // 画面操作（前面）。対象の選択は中枢の画面で行う（設計 01 接続・端末、ADR 0086・0089）ので、中枢の画面の端末で
   // なければ hub_screen_required で断る。ロック・切断をまたいだ一覧は渡さない。
   async handleConnectionsIpc(
@@ -1202,7 +1205,8 @@ export class DesktopCoreLink {
       !contract.isRequest(raw) ||
       raw.channel !== ipcChannel ||
       (raw.channel !== 'desktop.connections_list' &&
-        raw.channel !== 'desktop.connection_targets_update')
+        raw.channel !== 'desktop.connection_targets_update' &&
+        raw.channel !== 'desktop.connection_targets_discover')
     )
       return this.#reject(
         echoRequestId(raw),
@@ -1226,10 +1230,12 @@ export class DesktopCoreLink {
     const result =
       raw.channel === 'desktop.connections_list'
         ? await this.#connections.list()
-        : await this.#connections.updateTargets(
-            raw.payload.ref,
-            raw.payload.targets,
-          );
+        : raw.channel === 'desktop.connection_targets_discover'
+          ? await this.#connections.discover(raw.payload.ref)
+          : await this.#connections.updateTargets(
+              raw.payload.ref,
+              raw.payload.targets,
+            );
     return this.#withinGeneration(
       generation,
       this.#operationOutcome(

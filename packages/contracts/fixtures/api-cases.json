@@ -2741,6 +2741,48 @@
         ["lock_unknown", 403, "device_locked"]
       ]
     },
+    "listConnectionTargetOptions": {
+      "params": {
+        "connection_id": "00000000-0000-4000-8000-000000000014"
+      },
+      "response": {
+        "connection_id": "00000000-0000-4000-8000-000000000014",
+        "provider": "google",
+        "calendars": {
+          "status": "loaded",
+          "options": [
+            {
+              "id": "primary-cal@example.invalid",
+              "display_name": "合成のメイン",
+              "kind": "calendar",
+              "primary": true
+            },
+            {
+              "id": "team-cal@example.invalid",
+              "display_name": "合成のチーム",
+              "kind": "calendar",
+              "primary": false
+            }
+          ]
+        },
+        "mail_containers": {
+          "status": "rejected",
+          "options": []
+        },
+        "categories": {
+          "status": "not_supported",
+          "categories": []
+        }
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"],
+        ["locked", 403, "device_locked"],
+        ["lock_unknown", 403, "device_locked"],
+        ["remote_device", 403, "hub_screen_required"]
+      ]
+    },
     "getConnectionSync": {
       "params": {
         "connection_id": "00000000-0000-4000-8000-000000000401"

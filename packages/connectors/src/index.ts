@@ -38,6 +38,7 @@ export {
   createGoogleCalendarReader,
   type GoogleCalendarEvent,
   type GoogleCalendarEventTime,
+  type GoogleCalendarListEntry,
   type GoogleCalendarReader,
   type ListCalendarEventsRequest,
 } from './adapter/google-calendar.js';
@@ -49,6 +50,7 @@ export {
   type GoogleGmailAttachment,
   type GoogleGmailAttachmentPart,
   type GoogleGmailHeader,
+  type GoogleGmailLabel,
   type GoogleGmailMessage,
   type GoogleGmailMessageFormat,
   type GoogleGmailMessageRef,

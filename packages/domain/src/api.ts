@@ -78,6 +78,9 @@ export const ROUTE_CHECKS: Readonly<Record<string, readonly CoreCheck[]>> = {
   // 取得対象と同期の状態（B08-01、ADR 0071）。接続の状態を含むのでロック解除を求める。
   getConnectionTargets: [...READ, 'unlocked'],
   getConnectionSync: [...READ, 'unlocked'],
+  // 選べる取得対象（ADR 0145）。提供元への読み取りを伴い、本人の対象選択のための値なので、中枢の画面だけ
+  // （設計 01 接続・端末。listPairingClaims・getHomeRegistration と同じ）。読み取りなので接続範囲・画面操作は求めない。
+  listConnectionTargetOptions: [...READ, 'unlocked', 'hub_screen'],
   updateConnectionTargets: [...SCREEN, 'expected_revision'],
   disconnectConnection: [...SCREEN, 'expected_revision'],
   // 自宅の指紋の報告（B03-03、ADR 0022）。報告そのものが自宅判定の材料なので home_network を求めない。

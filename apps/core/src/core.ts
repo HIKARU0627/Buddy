@@ -47,6 +47,8 @@ import {
   CONNECTION_REVISION_CHECKED_ROUTES,
   createConnectionRoutes,
 } from './api-connections.js';
+import { createConnectionDiscovery } from './connection-discovery.js';
+import type { TargetDiscoveryPort } from './connection-discovery.js';
 import { HomeNetworkKey, createHomeNetworkGate } from './api-home-network.js';
 import type { HomeNetworkGate } from './api-home-network.js';
 import { ApiListenError, createApiServer } from './api-server.js';
@@ -1176,6 +1178,18 @@ export async function startCore(
         storageGate,
         researchRun?.acceptor,
         oauthRun === null ? undefined : oauthRun.service,
+        // 選べる取得対象の読み取り（ADR 0145）。走査の実行器と同じ、解決済みのトークンの出所を使う
+        // （sync の明示が無ければ OAuth サービスが既定、B03-04）。出所が両方とも無ければ口を作らない。
+        googleTokenSourceFor === undefined && graphTokenSourceFor === undefined
+          ? undefined
+          : createConnectionDiscovery({
+              ...(googleTokenSourceFor === undefined
+                ? {}
+                : { googleTokenSourceFor }),
+              ...(graphTokenSourceFor === undefined
+                ? {}
+                : { graphTokenSourceFor }),
+            }),
       );
       api = started.api;
       streams = started.streams;
@@ -1343,6 +1357,8 @@ async function startHttps(
   researchAcceptor?: BackgroundJobAcceptor,
   // 接続の作成・OAuth のサービス（B03-04、ADR 0144）。無ければ undefined で、認可の開始・解除の経路は無い。
   oauthService?: OAuthService,
+  // 選べる取得対象の読み取り口（ADR 0145）。無ければ undefined で、その経路は 503 で閉じる。
+  discovery?: TargetDiscoveryPort,
 ): Promise<{
   readonly api: ApiServer;
   readonly info: CoreHttpsInfo;
@@ -1494,7 +1510,11 @@ async function startHttps(
       }),
   });
   // 連携の接続の一覧・取得対象の読み取りと変更（B08-02、ADR 0089）。許可版の照合は DB の現在値で行う。
-  const connectionRoutes = createConnectionRoutes({ store });
+  // 選べる取得対象の読み取り（ADR 0145）は口があるときだけ開き、読んだ値は保存しない。
+  const connectionRoutes = createConnectionRoutes({
+    store,
+    ...(discovery === undefined ? {} : { discover: discovery }),
+  });
   // 気づき（候補）の一覧・根拠の再取得・状態の変更（B11-04 P2、ADR 0130）。データ鍵は保持せず要求ごとに読む。
   // 本人のタイムゾーン（IANA）の出所は端末（OS）のタイムゾーン（本人の決定 2026-11-21、ADR 0131）で、要求ごとに読む。
   // 取得不能・不正なときだけ zone が null になり、一覧・状態の変更は 503 で閉じる（黙って代替しない）。

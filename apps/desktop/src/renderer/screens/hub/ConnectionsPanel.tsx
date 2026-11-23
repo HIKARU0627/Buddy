@@ -2,8 +2,10 @@
 // 取得する対象）。連携の接続ごとに、提供元・状態・許可されている権限と、取得する対象と範囲（今選んでいる
 // カレンダー・フォルダー／ラベル、期間、添付の種類と大きさ）を示し、対象を外すことと範囲の変更を保存できる。
 // Microsoft の接続は、アカウント種別・委任・拒否の理由と使える範囲・カテゴリの扱いも示す（設計 04、ADR 0072）。
-// - 対象の表示名は契約にないため、ID のまま出す（推測で名前を作らない）。
-// - 新しい対象はここでは足せない（接続時に決まる。B03-04）。その旨を欄に書く。
+// - 「選べる対象を読み込む」（ADR 0145）で中枢が連携先から読んだカレンダー・フォルダー／ラベルを表示名つきで出し、
+//   まだ選んでいない対象もチェックで足せる（保存は取得範囲の変更と同じ経路・許可版の照合）。見つけた対象を自動では
+//   選ばない。読めていない・連携先で見つからない保存済みの対象は ID のまま出す（推測で名前を作らない）。
+// - Microsoft の接続は、読めたら既存のカテゴリの一覧も出す（表示だけ。ADR 0072）。
 // - 未取得・取得の失敗を「連携しているアカウントはまだありません」と言わない（設計 01）。
 // - 接続の作成・接続解除・追加権限はこの画面の操作ではない（B03-04。設計 01 の接続・端末の操作のうち、
 //   この画面が受け持つのは対象選択だけ）。
@@ -17,7 +19,10 @@ import {
   Label,
   TextField,
 } from '@heroui/react';
-import type { DesktopConnectionEntry } from '@buddy/contracts';
+import type {
+  ConnectionTargetOptionList,
+  DesktopConnectionEntry,
+} from '@buddy/contracts';
 import { FETCH_SCOPE_LIMITS } from '@buddy/domain';
 import { InlineNotice } from '../../components/InlineNotice.js';
 import { Section } from '../../components/Section.js';
@@ -29,6 +34,7 @@ import {
   CONNECTION_LABELS,
   CONNECTION_STATUS_LABELS,
   CONTAINER_LABELS,
+  DISCOVERY_STATUS_LABELS,
   GRAPH_ACCOUNT_KIND_LABELS,
   GRAPH_CATEGORY_LABELS,
   GRAPH_DELEGATION_LABELS,
@@ -37,10 +43,12 @@ import {
   draftChanged,
   draftFromTargets,
   draftToTargets,
+  targetChoices,
 } from '../../state/connections-state.js';
 import type {
   ConnectionActions,
   ConnectionsViewState,
+  TargetChoice,
   TargetsDraft,
 } from '../../state/connections-state.js';
 import type { StatusLine } from '../../tones.js';
@@ -70,15 +78,33 @@ function toggle<T>(values: readonly T[], value: T, on: boolean): T[] {
   return on ? [...values, value] : values.filter((item) => item !== value);
 }
 
-function IdChoices({
+// 一覧が読めなかったことの文言（読めた・この提供元に無い・まだ読んでいないときは出さない）。
+function DiscoveryStatus({
+  list,
+}: {
+  readonly list: ConnectionTargetOptionList | null;
+}) {
+  if (
+    list === null ||
+    (list.status !== 'rejected' && list.status !== 'unavailable')
+  )
+    return null;
+  return (
+    <p className="text-xs text-muted">{DISCOVERY_STATUS_LABELS[list.status]}</p>
+  );
+}
+
+function TargetChoices({
   label,
-  ids,
+  choices,
+  list,
   selected,
   disabled,
   onToggle,
 }: {
   readonly label: string;
-  readonly ids: readonly string[];
+  readonly choices: readonly TargetChoice[];
+  readonly list: ConnectionTargetOptionList | null;
   readonly selected: readonly string[];
   readonly disabled: boolean;
   readonly onToggle: (id: string, on: boolean) => void;
@@ -86,25 +112,37 @@ function IdChoices({
   return (
     <fieldset className="flex flex-col gap-1.5">
       <legend className="text-sm font-medium">{label}</legend>
-      {ids.length === 0 ? (
-        <p className="text-sm text-muted">選んでいる{label}はありません。</p>
+      {choices.length === 0 ? (
+        <p className="text-sm text-muted">
+          {list?.status === 'loaded' ? '選べる' : '選んでいる'}
+          {label}はありません。
+        </p>
       ) : (
-        ids.map((id) => (
+        choices.map((choice) => (
           <Checkbox
-            key={id}
-            isSelected={selected.includes(id)}
+            key={choice.id}
+            isSelected={selected.includes(choice.id)}
             isDisabled={disabled}
-            onChange={(on) => onToggle(id, on)}
+            onChange={(on) => onToggle(choice.id, on)}
           >
             <Checkbox.Content>
               <Checkbox.Control>
                 <Checkbox.Indicator />
               </Checkbox.Control>
-              <Label className="break-all">{id}</Label>
+              <Label className="break-all">
+                {choice.label}
+                {choice.primary ? `（${CONNECTION_LABELS.primary}）` : ''}
+                {choice.missing ? (
+                  <span className="text-xs text-muted">
+                    {`（${CONNECTION_LABELS.notFound}）`}
+                  </span>
+                ) : null}
+              </Label>
             </Checkbox.Content>
           </Checkbox>
         ))
       )}
+      <DiscoveryStatus list={list} />
     </fieldset>
   );
 }
@@ -158,6 +196,11 @@ function ConnectionCard({
   const busy = state.busy !== null;
   const held = entry.delivery_unknown;
   const disabled = paused || busy || held;
+  const discovery = entry.discovery;
+  const discovering = state.discovering === entry.ref;
+  // 選べる対象は連携中の接続だけ読める（それ以外は中枢が提供元へ読みに行かない）。
+  const canDiscover =
+    !paused && !busy && state.discovering === null && entry.status === 'active';
   const targets = draftToTargets(draft);
   const changed = draftChanged(entry.targets, draft);
   const notice =
@@ -215,9 +258,27 @@ function ConnectionCard({
       </div>
       <div className="flex flex-col gap-3">
         <p className="text-sm font-medium">{CONNECTION_LABELS.targets}</p>
-        <IdChoices
+        <div>
+          <Button
+            size="sm"
+            variant="ghost"
+            isDisabled={!canDiscover}
+            onPress={() => actions.discover(entry.ref)}
+          >
+            {discovering
+              ? CONNECTION_LABELS.discovering
+              : discovery === null
+                ? CONNECTION_LABELS.discover
+                : CONNECTION_LABELS.rediscover}
+          </Button>
+        </div>
+        <TargetChoices
           label={CONNECTION_LABELS.calendars}
-          ids={entry.targets.calendar_ids}
+          choices={targetChoices(
+            entry.targets.calendar_ids,
+            discovery?.calendars ?? null,
+          )}
+          list={discovery?.calendars ?? null}
           selected={draft.calendarIds}
           disabled={disabled}
           onToggle={(id, on) =>
@@ -227,9 +288,13 @@ function ConnectionCard({
             })
           }
         />
-        <IdChoices
+        <TargetChoices
           label={CONTAINER_LABELS[entry.provider]}
-          ids={entry.targets.mail_container_ids}
+          choices={targetChoices(
+            entry.targets.mail_container_ids,
+            discovery?.mail_containers ?? null,
+          )}
+          list={discovery?.mail_containers ?? null}
           selected={draft.mailContainerIds}
           disabled={disabled}
           onToggle={(id, on) =>
@@ -239,6 +304,31 @@ function ConnectionCard({
             })
           }
         />
+        {discovery === null ||
+        discovery.categories.status === 'not_supported' ? null : (
+          <div className="flex flex-col gap-1">
+            <p className="text-sm font-medium">
+              {CONNECTION_LABELS.categories}
+            </p>
+            {discovery.categories.status !== 'loaded' ? (
+              <p className="text-xs text-muted">
+                {DISCOVERY_STATUS_LABELS[discovery.categories.status]}
+              </p>
+            ) : discovery.categories.categories.length === 0 ? (
+              <p className="text-sm text-muted">
+                {CONNECTION_LABELS.noCategories}
+              </p>
+            ) : (
+              <ul className="flex flex-wrap gap-x-3 gap-y-1">
+                {discovery.categories.categories.map((category) => (
+                  <li key={category.category_id} className="text-sm">
+                    {category.display_name}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
         <fieldset className="flex flex-col gap-1.5">
           <legend className="text-sm font-medium">
             {CONNECTION_LABELS.attachmentKinds}

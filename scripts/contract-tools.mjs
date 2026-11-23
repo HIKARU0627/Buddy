@@ -1224,6 +1224,46 @@ export function semanticErrors(name, value) {
     if (value.graph_account?.rejection_reason && value.status === 'active')
       errors.push('rejection_with_active');
   }
+  // 選べる取得対象（ADR 0145）。domain の targetDiscoveryErrors と同じ規則（scripts/connection-discovery.test.mjs が照合）。
+  // 提供元と対象の種類の対応、loaded 以外の一覧は空、ID の重複なし、メインのカレンダーは 1 件まで。
+  if (name === 'ConnectionTargetDiscovery') {
+    const rule =
+      value.provider === 'google'
+        ? { calendar: 'calendar', mail: 'mail_label', categories: false }
+        : { calendar: null, mail: 'mail_folder', categories: true };
+    const found = [];
+    const duplicated = (ids) => new Set(ids).size !== ids.length;
+    for (const [list, kind] of [
+      [value.calendars, rule.calendar],
+      [value.mail_containers, rule.mail],
+    ]) {
+      if (list.status !== 'loaded' && list.options.length > 0)
+        found.push('options_without_loaded');
+      if (kind === null && list.status !== 'not_supported')
+        found.push('kind_not_supported');
+      if (kind !== null && list.status === 'not_supported')
+        found.push('kind_supported');
+      if (list.options.some((option) => option.kind !== kind))
+        found.push('option_kind_mismatch');
+      if (duplicated(list.options.map((option) => option.id)))
+        found.push('option_duplicate');
+    }
+    const primaries = [
+      ...value.calendars.options,
+      ...value.mail_containers.options,
+    ].filter((option) => option.primary);
+    if (primaries.some((option) => option.kind !== 'calendar'))
+      found.push('primary_not_calendar');
+    if (primaries.length > 1) found.push('primary_duplicate');
+    const categories = value.categories;
+    if (categories.status !== 'loaded' && categories.categories.length > 0)
+      found.push('categories_without_loaded');
+    if (rule.categories === (categories.status === 'not_supported'))
+      found.push(rule.categories ? 'kind_supported' : 'kind_not_supported');
+    if (duplicated(categories.categories.map((item) => item.category_id)))
+      found.push('category_duplicate');
+    errors.push(...new Set(found));
+  }
   // 気づきの根拠は SourceRef の意味検査（引用の範囲）をそのまま使う（B11-01、ADR 0073）。
   if (name === 'CandidateEvidence')
     errors.push(...semanticErrors('SourceRef', value.source));

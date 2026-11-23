@@ -98,6 +98,7 @@ const REQUIRED_REJECTIONS = {
   command_scope: [410, 'expired_scope'],
   unlocked: [403, 'device_locked'],
   screen_operation: [403, 'screen_operation_required'],
+  user_operation: [403, 'screen_operation_required'],
   hub_screen: [403, 'hub_screen_required'],
   audio_owner: [409, 'audio_owned_elsewhere'],
   expected_revision: [409, 'conflict'],

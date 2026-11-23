@@ -74,7 +74,13 @@ export const API_VERSION = '1.0';
 // 待ち受けの既定のポート（ADR 0020 の読み取り）。
 export const DEFAULT_HTTPS_PORT = 47_443;
 // 要求の起点（OpenAPI の components.parameters.InputOrigin）。screen だけが画面操作。
-export const INPUT_ORIGINS: readonly string[] = ['screen', 'voice', 'system'];
+// chat はブリッジ経由の本人の指示（ADR 0143）で、画面操作とは別に数える。
+export const INPUT_ORIGINS: readonly string[] = [
+  'screen',
+  'voice',
+  'system',
+  'chat',
+];
 // 本文の JSON の入れ子の上限（契約の要求の形はこれより浅い）。
 const MAX_JSON_DEPTH = 32;
 const CLOSE_FALLBACK_MS = 1000;
@@ -390,6 +396,7 @@ const FAILING_CONTEXT: RequestContext = {
   commandScope: 'stale',
   lockState: 'unknown',
   screenOperation: false,
+  userOperation: false,
   hubLocal: false,
   audioOwner: 'none',
   revisionMatches: false,
@@ -596,6 +603,11 @@ export function createApiServer(options: ApiServerOptions): ApiServer {
         context.lockState = await environment.lockState(input);
       else if (check === 'screen_operation')
         context.screenOperation = headers['buddy-input-origin'] === 'screen';
+      else if (check === 'user_operation')
+        // 本人の操作（画面操作か、ブリッジ経由の本人の指示 chat。ADR 0143）。
+        context.userOperation =
+          headers['buddy-input-origin'] === 'screen' ||
+          headers['buddy-input-origin'] === 'chat';
       else if (check === 'hub_screen')
         context.hubLocal = await environment.hubLocal(input);
       else if (check === 'audio_owner')

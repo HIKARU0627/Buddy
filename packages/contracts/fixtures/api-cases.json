@@ -10,6 +10,7 @@
       "commandScope": "current",
       "lockState": "unlocked",
       "screenOperation": true,
+      "userOperation": true,
       "hubLocal": true,
       "audioOwner": "self",
       "revisionMatches": true
@@ -34,6 +35,14 @@
     },
     "voice_origin": {
       "screenOperation": false
+    },
+    "chat_origin": {
+      "screenOperation": false,
+      "userOperation": true
+    },
+    "system_origin": {
+      "screenOperation": false,
+      "userOperation": false
     },
     "remote_device": {
       "hubLocal": false
@@ -2676,8 +2685,9 @@
         ["locked", 403, "device_locked"],
         ["lock_unknown", 403, "device_locked"],
         ["too_large", 413, "payload_too_large"],
-        ["voice_origin", 403, "screen_operation_required"]
+        ["system_origin", 403, "screen_operation_required"]
       ],
+      "accepted_contexts": ["chat_origin"],
       "invalid_bodies": [
         {
           "request_id": "00000000-0000-4000-8000-000000009302",

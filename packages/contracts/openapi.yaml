@@ -1826,13 +1826,13 @@ paths:
     post:
       operationId: changeCandidateState
       summary: 気づきの状態の変更
-      description: 本人の画面操作で気づきの状態を 1 つ進める（open・act・dismiss・snooze・resolve）。expected_state が今の状態と違う・許されない遷移（終端・acted への act など）は 409。snooze はいまより後の snooze_until が必須で、過去の時刻・snooze 以外での指定は 422。存在しない候補は 422。成否が不明なときは 503 で、成功にも競合にも見せない（設計 11 §4、ADR 0073・0130）。
+      description: 本人の操作で気づきの状態を 1 つ進める（open・act・dismiss・snooze・resolve）。本人の操作は画面操作（screen）と、ブリッジ経由の本人の指示（chat、ADR 0143）で、voice・system の起源は 403。expected_state が今の状態と違う・許されない遷移（終端・acted への act など）は 409。snooze はいまより後の snooze_until が必須で、過去の時刻・snooze 以外での指定は 422。存在しない候補は 422。成否が不明なときは 503 で、成功にも競合にも見せない（設計 11 §4、ADR 0073・0130・0143）。
       x-buddy-core-checks:
         - device_token
         - home_network
         - command_scope
         - unlocked
-        - screen_operation
+        - user_operation
       parameters:
         - $ref: '#/components/parameters/CandidateId'
         - $ref: '#/components/parameters/InputOrigin'
@@ -1953,7 +1953,8 @@ components:
           - screen
           - voice
           - system
-      description: 要求の起点。Electron main が限定 IPC の種類から付け、screen 以外は画面操作が必要な経路で 403。Renderer が任意に指定できない。
+          - chat
+      description: 要求の起点。Electron main が限定 IPC の種類から付け、screen 以外は画面操作が必要な経路で 403。Renderer が任意に指定できない。chat はブリッジ（中枢と同じマシンの窓口、ADR 0143）が本人のチャットの指示を中継するときだけ付け、受理するのは候補の状態の変更（user_operation）だけ。他の経路では screen とみなさない。
     LockState:
       name: Buddy-Lock-State
       in: header

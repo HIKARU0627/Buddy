@@ -234,6 +234,15 @@ importers:
         specifier: 2.9.1
         version: 2.9.1
 
+  apps/bridge:
+    dependencies:
+      '@buddy/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@buddy/platform':
+        specifier: workspace:*
+        version: link:../../packages/platform
+
   apps/core:
     dependencies:
       '@buddy/ai':

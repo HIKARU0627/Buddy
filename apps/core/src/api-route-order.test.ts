@@ -38,6 +38,7 @@ const REJECTION: Readonly<Record<CoreCheck, readonly [number, string]>> = {
   command_scope: [410, 'expired_scope'],
   unlocked: [403, 'device_locked'],
   screen_operation: [403, 'screen_operation_required'],
+  user_operation: [403, 'screen_operation_required'],
   hub_screen: [403, 'hub_screen_required'],
   audio_owner: [403, 'audio_ownership_required'],
   expected_revision: [409, 'conflict'],
@@ -125,7 +126,10 @@ test(
     let currentScope: string | null = null;
     const STALE_SCOPE = '00000000-0000-4000-8000-0000000000d1';
 
-    const send = async (route: ApiRoute): Promise<Outcome> => {
+    const send = async (
+      route: ApiRoute,
+      originOverride?: string,
+    ): Promise<Outcome> => {
       const fixture = fixtures.operations[route.operationId] ?? {};
       let path = route.path.replace(
         /\{([a-z_]+)\}/gu,
@@ -136,10 +140,21 @@ test(
       const headers: Record<string, string> = {};
       if (!failing.has('device_token'))
         headers['authorization'] = `Bearer ${token}`;
-      if (route.inputOrigin)
-        headers['buddy-input-origin'] = failing.has('screen_operation')
-          ? 'voice'
-          : 'screen';
+      if (route.inputOrigin) {
+        // 起源の検査は経路ごとに違う（画面操作か、本人の操作か。ADR 0143）。voice はどちらも満たさない。
+        // screen は本人の操作も満たすので、画面操作の経路では user_operation の不成立を同時に作れない。
+        const routeChecks = ROUTE_CHECKS[route.operationId] ?? [];
+        headers['buddy-input-origin'] =
+          originOverride ??
+          (routeChecks.includes('screen_operation')
+            ? failing.has('screen_operation')
+              ? 'voice'
+              : 'screen'
+            : routeChecks.includes('user_operation') &&
+                failing.has('user_operation')
+              ? 'voice'
+              : 'screen');
+      }
       if (route.websocket) {
         return withTimeout(
           new Promise<Outcome>((resolve, reject) => {
@@ -257,6 +272,28 @@ test(
         }
       }
     }
+    // chat 起源（ブリッジ経由の本人の指示、ADR 0143）は、候補の状態の変更だけが受理し、
+    // 画面操作を求める経路（操作の承認）では従来どおり 403 になる。期待値は手書き。
+    failing = new Set();
+    const candidateRoute = API_ROUTES.find(
+      (route) => route.operationId === 'changeCandidateState',
+    );
+    assert(candidateRoute);
+    assert.deepEqual(
+      await send(candidateRoute, 'chat'),
+      passed(candidateRoute),
+      'changeCandidateState accepts the chat origin',
+    );
+    const approveRoute = API_ROUTES.find(
+      (route) => route.operationId === 'approveOperation',
+    );
+    assert(approveRoute);
+    assert.deepEqual(
+      await send(approveRoute, 'chat'),
+      { kind: 'http', status: 403, code: 'screen_operation_required' },
+      'approveOperation rejects the chat origin',
+    );
+    requests += 2;
     // すべての要求が中枢に届いている（ピン留めの照合に通った接続の上で送った）。
     assert(api.requestsReceived >= requests);
   },

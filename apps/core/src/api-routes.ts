@@ -15,7 +15,7 @@ export interface ApiRoute {
   readonly query: Readonly<Record<string, string>>;
   // 本文の JSON Schema の定義名。null は本文なし（本文があれば拒否する）。
   readonly body: string | null;
-  // 要求ヘッダー Buddy-Input-Origin（screen・voice・system）を必須とするか。
+  // 要求ヘッダー Buddy-Input-Origin（screen・voice・system・chat）を必須とするか。
   readonly inputOrigin: boolean;
   // WebSocket へ切り替える経路（101）。
   readonly websocket: boolean;

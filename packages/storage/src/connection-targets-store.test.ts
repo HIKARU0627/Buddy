@@ -514,3 +514,296 @@ test(
     });
   },
 );
+
+// --- B03-04: 接続の作成・切断・再認可（ADR 0144）。期待値は手書き。封筒の中身は合成。 ---
+
+const accountBlob = (over: Record<string, unknown> = {}) => ({
+  blob_id: 'blob-conn-2',
+  format_version: 1,
+  key_id: 'data-key-1',
+  nonce: new Uint8Array(12).fill(7),
+  ciphertext: new Uint8Array([1, 2, 3, 4]),
+  tag: new Uint8Array(16).fill(9),
+  ...over,
+});
+
+const create = (over: Record<string, unknown> = {}): ConnectionTargetsOp =>
+  ({
+    kind: 'connections.create',
+    connection_id: 'c-2',
+    provider: 'microsoft',
+    created_at: 1763856000000,
+    account: accountBlob(),
+    credential_ref: 'oauth-v1:c-2',
+    access: 'read',
+    granted_scopes: ['Mail.Read', 'offline_access'],
+    targets: targets({
+      calendar_ids: [],
+      mail_container_ids: ['inbox'],
+    }),
+    scopes: [
+      { scope_id: 'scope:c-2:mail', resource: 'mail' },
+      { scope_id: 'scope:c-2:calendar', resource: 'calendar' },
+    ],
+    ...over,
+  }) as ConnectionTargetsOp;
+
+test('create stores the connection, the account envelope, and pending-full scopes in one go', async () => {
+  await withTempDir((dir) => {
+    const db = openSeededDatabase(databasePath(dir));
+    try {
+      const created = value<ConnectionRecord>(run(db, create()));
+      assert.equal(created.connection_id, 'c-2');
+      assert.equal(created.provider, 'microsoft');
+      assert.equal(created.status, 'active');
+      assert.equal(created.access, 'read');
+      assert.deepEqual(created.granted_scopes, ['Mail.Read', 'offline_access']);
+      assert.equal(created.permission_revision, '1');
+      assert.equal(created.scope_revision, '1');
+      assert.equal(created.targets_state, 'complete');
+      assert.deepEqual(created.targets.mail_container_ids, ['inbox']);
+      // 封筒は所有者 connections・内容版 0・用途 connection_account で入る。
+      const blobRow = db
+        .prepare(
+          'SELECT owner_table, owner_id, owner_version, purpose FROM sealed_blobs WHERE blob_id = ?',
+        )
+        .get('blob-conn-2') as {
+        owner_table: string;
+        owner_id: string;
+        owner_version: number;
+        purpose: string;
+      };
+      assert.deepEqual(blobRow, {
+        owner_table: 'connections',
+        owner_id: 'c-2',
+        owner_version: 0,
+        purpose: 'connection_account',
+      });
+      // 取得集合は 2 つとも scope_revision 1・pending_full 1（最初の走査は全量）。
+      for (const scopeId of ['scope:c-2:mail', 'scope:c-2:calendar']) {
+        const row = scopeRow(db, scopeId);
+        assert.equal(row.scope_revision, 1);
+        assert.equal(row.pending_full, 1);
+        assert.equal(row.pending_incremental, 0);
+        assert.equal(row.active_scan_id, null);
+      }
+      // 封筒はそのまま読み戻せる（Core が開ける形）。
+      const blob = value<ReturnType<typeof accountBlob>>(
+        run(db, { kind: 'connections.account_blob', connection_id: 'c-2' }),
+      );
+      assert.equal(blob.blob_id, 'blob-conn-2');
+      assert.equal(blob.key_id, 'data-key-1');
+      assert.deepEqual([...blob.nonce], new Array(12).fill(7));
+      assert.deepEqual([...blob.ciphertext], [1, 2, 3, 4]);
+      // 無い接続の封筒は null。
+      assert.equal(
+        value(
+          run(db, { kind: 'connections.account_blob', connection_id: 'nope' }),
+        ),
+        null,
+      );
+    } finally {
+      db.close();
+    }
+  });
+});
+
+test('create refuses a duplicate connection id and malformed inputs', async () => {
+  await withTempDir((dir) => {
+    const db = openSeededDatabase(databasePath(dir));
+    try {
+      assert.deepEqual(reasons(run(db, create({ connection_id: 'c-1' }))), [
+        'connection_exists',
+      ]);
+      assert.ok(
+        reasons(run(db, create({ provider: 'other' as never }))).includes(
+          'provider_invalid',
+        ),
+      );
+      assert.ok(
+        reasons(
+          run(
+            db,
+            create({ account: accountBlob({ nonce: new Uint8Array(3) }) }),
+          ),
+        ).includes('account_blob_invalid'),
+      );
+      assert.ok(
+        reasons(run(db, create({ scopes: [] }))).includes('scopes_invalid'),
+      );
+      assert.ok(
+        reasons(
+          run(
+            db,
+            create({
+              scopes: [
+                { scope_id: 's-1', resource: 'mail' },
+                { scope_id: 's-1', resource: 'calendar' },
+              ],
+            }),
+          ),
+        ).includes('scopes_invalid'),
+      );
+      // 失敗した作成は接続を残さない。
+      assert.equal(
+        value(run(db, { kind: 'connections.get', connection_id: 'c-2' })),
+        null,
+      );
+    } finally {
+      db.close();
+    }
+  });
+});
+
+test('disconnect requires the revision, clears the credential reference and pending flags, and is idempotent', async () => {
+  await withTempDir((dir) => {
+    const db = openSeededDatabase(databasePath(dir));
+    try {
+      seedScope(db, 'c-1', 'scope-1', 1, {
+        scanId: 'scan-1',
+        kind: 'incremental',
+        status: 'fetching',
+      });
+      db.prepare(
+        'UPDATE sync_scopes SET pending_full = 1 WHERE scope_id = ?',
+      ).run('scope-1');
+      assert.deepEqual(
+        reasons(
+          run(db, {
+            kind: 'connections.disconnect',
+            connection_id: 'c-1',
+            expected_permission_revision: '9',
+          }),
+        ),
+        ['permission_revision_mismatch'],
+      );
+      const done = value<ConnectionTargetsUpdated>(
+        run(db, {
+          kind: 'connections.disconnect',
+          connection_id: 'c-1',
+          expected_permission_revision: '1',
+        }),
+      );
+      assert.equal(done.changed, true);
+      assert.equal(done.abandoned_scans, 1);
+      assert.equal(done.connection.status, 'disconnected');
+      assert.equal(done.connection.permission_revision, '2');
+      assert.equal(batchStatus(db, 'scan-1'), 'abandoned');
+      const row = scopeRow(db, 'scope-1');
+      assert.equal(row.pending_full, 0);
+      assert.equal(row.pending_incremental, 0);
+      assert.equal(row.active_scan_id, null);
+      const credential = db
+        .prepare(
+          'SELECT credential_ref FROM connections WHERE connection_id = ?',
+        )
+        .get('c-1') as { credential_ref: string | null };
+      assert.equal(credential.credential_ref, null);
+      // 冪等: 版が合えば 2 回目は成功で何も変わらない。
+      const again = value<ConnectionTargetsUpdated>(
+        run(db, {
+          kind: 'connections.disconnect',
+          connection_id: 'c-1',
+          expected_permission_revision: '2',
+        }),
+      );
+      assert.equal(again.changed, false);
+      assert.equal(again.connection.permission_revision, '2');
+      // 切断済みの取得対象は変えられない。
+      assert.deepEqual(reasons(run(db, update('2'))), [
+        'connection_disconnected',
+      ]);
+    } finally {
+      db.close();
+    }
+  });
+});
+
+test('reactivate restores an active connection without touching targets, and refuses a disconnected one', async () => {
+  await withTempDir((dir) => {
+    const db = openSeededDatabase(databasePath(dir));
+    try {
+      value(
+        run(db, {
+          kind: 'connections.mark_needs_reauth',
+          connection_id: 'c-1',
+        }),
+      );
+      const before = stored(db);
+      const restored = value<ConnectionRecord>(
+        run(db, {
+          kind: 'connections.reactivate',
+          connection_id: 'c-1',
+          credential_ref: 'oauth-v1:c-1',
+          access: 'read_write',
+          granted_scopes: ['gmail.modify'],
+        }),
+      );
+      assert.equal(restored.status, 'active');
+      assert.equal(restored.access, 'read_write');
+      assert.deepEqual(restored.granted_scopes, ['gmail.modify']);
+      assert.equal(restored.permission_revision, '2');
+      // 取得対象と取得範囲の版は触らない。
+      const after = stored(db);
+      assert.equal(after.targets, before.targets);
+      assert.equal(after.scope_revision, before.scope_revision);
+      // 切断した接続は再認可では戻らない（作り直す）。
+      value(
+        run(db, {
+          kind: 'connections.disconnect',
+          connection_id: 'c-1',
+          expected_permission_revision: '2',
+        }),
+      );
+      assert.deepEqual(
+        reasons(
+          run(db, {
+            kind: 'connections.reactivate',
+            connection_id: 'c-1',
+            credential_ref: 'oauth-v1:c-1',
+            access: 'read',
+            granted_scopes: [],
+          }),
+        ),
+        ['connection_disconnected'],
+      );
+    } finally {
+      db.close();
+    }
+  });
+});
+
+test('mark_needs_reauth only moves an active connection and keeps the revision', async () => {
+  await withTempDir((dir) => {
+    const db = openSeededDatabase(databasePath(dir));
+    try {
+      const marked = value<ConnectionRecord>(
+        run(db, {
+          kind: 'connections.mark_needs_reauth',
+          connection_id: 'c-1',
+        }),
+      );
+      assert.equal(marked.status, 'needs_reauth');
+      assert.equal(marked.permission_revision, '1');
+      // 2 回目はそのまま（active でないので動かさない）。
+      const again = value<ConnectionRecord>(
+        run(db, {
+          kind: 'connections.mark_needs_reauth',
+          connection_id: 'c-1',
+        }),
+      );
+      assert.equal(again.status, 'needs_reauth');
+      assert.equal(
+        value(
+          run(db, {
+            kind: 'connections.mark_needs_reauth',
+            connection_id: 'nope',
+          }),
+        ),
+        null,
+      );
+    } finally {
+      db.close();
+    }
+  });
+});

@@ -11,12 +11,18 @@ import { fileURLToPath } from 'node:url';
 import {
   createBackupKeyStore,
   createMockBackupKeyStore,
+  createMockOAuthTokenStore,
   createMockTlsKeyStore,
   createNodeCommandRunner,
+  createOAuthTokenStore,
   createTailscaleStatusSource,
   createTlsKeyStore,
 } from '@buddy/platform';
-import type { BackupKeyStore, TlsKeyStore } from '@buddy/platform';
+import type {
+  BackupKeyStore,
+  OAuthTokenStore,
+  TlsKeyStore,
+} from '@buddy/platform';
 import { DEFAULT_HTTPS_PORT } from './api-server.js';
 import { runAutostart } from './autostart.js';
 import { fingerprintLines } from './tls-certificate.js';
@@ -394,6 +400,36 @@ function createCoreTlsKeyStore(mode: KeyProtectionMode): TlsKeyStore {
   return createTlsKeyStore(process.platform);
 }
 
+// 起動の種類に合う OAuth トークンの KeyStore（B03-04、ADR 0144）。模擬はメモリ上だけ。
+function createCoreOAuthTokenStore(mode: KeyProtectionMode): OAuthTokenStore {
+  if (mode === 'mock') return createMockOAuthTokenStore();
+  if (mode === 'mock_unavailable')
+    return createMockOAuthTokenStore({ available: false });
+  return createOAuthTokenStore(process.platform);
+}
+
+// OAuth のクライアント設定は環境変数から読む（クライアント ID は秘密ではない。シークレットは使わない）。
+// 設定が無いプロバイダは認可を開始できない（接続の作成は閉じたまま、ADR 0144）。
+function oauthProvidersFromEnv(env: NodeJS.ProcessEnv) {
+  const providers: {
+    google?: { clientId: string };
+    microsoft?: { clientId: string; tenant?: string };
+  } = {};
+  const googleClientId = env['BUDDY_GOOGLE_OAUTH_CLIENT_ID'];
+  if (googleClientId !== undefined && googleClientId !== '')
+    providers.google = { clientId: googleClientId };
+  const microsoftClientId = env['BUDDY_MICROSOFT_OAUTH_CLIENT_ID'];
+  if (microsoftClientId !== undefined && microsoftClientId !== '')
+    providers.microsoft = {
+      clientId: microsoftClientId,
+      ...(env['BUDDY_MICROSOFT_OAUTH_TENANT'] === undefined ||
+      env['BUDDY_MICROSOFT_OAUTH_TENANT'] === ''
+        ? {}
+        : { tenant: env['BUDDY_MICROSOFT_OAUTH_TENANT'] }),
+    };
+  return providers;
+}
+
 async function start(
   dataDir: string,
   mode: KeyProtectionMode,
@@ -451,8 +487,14 @@ async function start(
         keyStore,
         log,
         backup: { keyStore: backupKeys, scheduler: {} },
-        // 同期の周期起動（B08-06）。対象とトークンの出所は接続の作成（B03-04）が用意するまでは無く、
-        // その間は起動時の回復だけが走り、実行器は呼ばれない。
+        // 接続の作成・OAuth（B03-04、ADR 0144）。トークンの KeyStore と、環境変数のクライアント設定を渡す。
+        // クライアント設定が無いプロバイダは認可を開始できない。
+        oauth: {
+          tokenStore: createCoreOAuthTokenStore(mode),
+          providers: oauthProvidersFromEnv(process.env),
+        },
+        // 同期の周期起動（B08-06）。対象とトークンの出所は OAuth サービス（B03-04）が既定で用意するので、
+        // 接続があれば起動時の回復に続いて実スキャンが走る。
         sync: { scheduler: {} },
         ...(httpsOptions === undefined ? {} : { https: httpsOptions }),
       });

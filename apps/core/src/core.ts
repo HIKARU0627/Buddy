@@ -37,6 +37,7 @@ import {
 } from '@buddy/platform';
 import type {
   BackupKeyStore,
+  OAuthTokenStore,
   TailscaleStatusSource,
   TlsKeyStore,
 } from '@buddy/platform';
@@ -155,6 +156,15 @@ import { persistCandidateDrafts } from './candidate-intake.js';
 import type { BackgroundJobAcceptor } from './turn-ports.js';
 import { createSyncScheduler } from './sync-scheduler.js';
 import type { SyncScheduler, SyncSchedulerTarget } from './sync-scheduler.js';
+import { createOAuthService } from './oauth.js';
+import type { OAuthCallbackOutcome, OAuthService } from './oauth.js';
+import { createOAuthCallbackServer } from './oauth-callback-server.js';
+import type { OAuthCallbackServer } from './oauth-callback-server.js';
+import {
+  createGoogleOAuthPort,
+  createMicrosoftOAuthPort,
+} from './oauth-provider.js';
+import type { OAuthProviderName, OAuthProviderPort } from './oauth-provider.js';
 import { EventFeed } from './event-feed.js';
 import type { EventFeedOptions } from './event-feed.js';
 import { createEventStream } from './event-stream.js';
@@ -221,7 +231,9 @@ export type CoreStartRefusal =
   // TLS の秘密鍵を鍵保護から取得できない・証明書が使えない（HTTPS を開かない）。
   | 'tls_unavailable'
   // HTTPS の待ち受けに失敗した（使用中のポート・存在しないアドレスなど）。
-  | 'https_listen_failed';
+  | 'https_listen_failed'
+  // OAuth のループバックの戻り先の待ち受けに失敗した（B03-04、ADR 0144）。
+  | 'oauth_callback_listen_failed';
 
 export class CoreStartError extends Error {
   readonly code: CoreStartRefusal;
@@ -346,6 +358,28 @@ export interface StartCoreOptions {
   // 起動時の回復（再開・再通知・孤児の取消）を回す。実アダプターは B12-03・B12-04 で、渡されなければ
   // 調査の受付は従来どおり閉じたまま（受け付けだけを先に生かすことはない。ADR 0135）。
   readonly research?: CoreResearchOptions;
+  // 接続の作成・OAuth（B03-04、ADR 0144）。トークンの KeyStore を渡したときだけ、認可の開始・解除の経路と
+  // ループバックの戻り先を開き、同期の対象とトークンの出所の既定として OAuth サービスを使う
+  // （sync 側で明示的に渡されたものが優先）。プロバイダのクライアント設定が無いプロバイダは認可を開始できない。
+  readonly oauth?: CoreOAuthOptions;
+}
+
+export interface CoreOAuthOptions {
+  readonly tokenStore: OAuthTokenStore;
+  readonly providers?: Readonly<
+    Partial<Record<OAuthProviderName, CoreOAuthProviderOptions>>
+  >;
+  // ループバックの戻り先。省略時は 127.0.0.1:47445。false なら受付を開かない（認可の開始もできない）。
+  readonly callback?:
+    { readonly host?: string; readonly port?: number } | false;
+}
+
+export interface CoreOAuthProviderOptions {
+  readonly clientId: string;
+  /** Microsoft のテナント（既定は common）。 */
+  readonly tenant?: string;
+  /** プロバイダの口の差し替え（試験用）。省略時は実プロバイダ向けの口を作る。 */
+  readonly port?: OAuthProviderPort;
 }
 
 export interface CoreResearchOptions {
@@ -452,6 +486,9 @@ export interface CoreHandle {
   readonly syncScheduler: SyncScheduler | null;
   // 公開 Web 調査の実行器（B12-05、ADR 0141）。research の口を渡さなければ null（受付も閉じたまま）。
   readonly researchExecutor: ResearchExecutor | null;
+  // 接続の作成・OAuth（B03-04、ADR 0144）。oauth を渡さなければ null。callbackPort は戻り先の待ち受けポート
+  // （HTTPS の受付が無い・戻り先を開かない構成では null）。
+  readonly oauth: { readonly callbackPort: number | null } | null;
   // 保存境界の保持者（記録しない会話のゲート。ADR 0045・0059）。今の保存モード・区切りの世代・由来の照合を持つ。
   readonly storage: StorageModeGate;
   readonly state: LifecycleState;
@@ -705,6 +742,10 @@ export async function startCore(
     executor: SyncExecutor;
     scheduler: SyncScheduler | null;
   } | null = null;
+  let oauthRun: {
+    service: OAuthService;
+    callback: OAuthCallbackServer | null;
+  } | null = null;
   let researchRun: ResearchExecutor | null = null;
   let voice: VoiceControl | null = null;
   let control: ControlServer;
@@ -768,6 +809,10 @@ export async function startCore(
       feed?.close();
     });
     await step(async () => api?.close(options.shutdownGraceMs ?? 2000));
+    // OAuth のループバックの戻り先を閉じる（B03-04）。
+    await step(async () => {
+      await oauthRun?.callback?.close();
+    });
     await step(() => control.close(options.shutdownGraceMs ?? 2000));
     // 音声の制御のタイマーとサイドバンドを止める（閉じ終えていない Live は次の起動の照合が扱う）。
     await step(async () => voice?.close());
@@ -831,16 +876,100 @@ export async function startCore(
       now: () => now().getTime(),
       log,
     });
+    // 接続の作成・OAuth（B03-04、ADR 0144）。トークンの KeyStore が渡されたときだけ作る。ループバックの
+    // 戻り先はこの時点で組み立て、待ち受けは HTTPS の受付の後に始める。同期の対象とトークンの出所は、
+    // sync 側で明示が無ければこのサービスが既定になる。
+    if (options.oauth !== undefined) {
+      const oauthOptions = options.oauth;
+      const providers: Partial<
+        Record<OAuthProviderName, { port: OAuthProviderPort }>
+      > = {};
+      const googleConfig = oauthOptions.providers?.google;
+      if (googleConfig !== undefined) {
+        providers.google = {
+          port:
+            googleConfig.port ??
+            createGoogleOAuthPort({ clientId: googleConfig.clientId }),
+        };
+      }
+      const microsoftConfig = oauthOptions.providers?.microsoft;
+      if (microsoftConfig !== undefined) {
+        providers.microsoft = {
+          port:
+            microsoftConfig.port ??
+            createMicrosoftOAuthPort({
+              clientId: microsoftConfig.clientId,
+              ...(microsoftConfig.tenant === undefined
+                ? {}
+                : { tenant: microsoftConfig.tenant }),
+            }),
+        };
+      }
+      let callback: OAuthCallbackServer | null = null;
+      let service: OAuthService;
+      if (oauthOptions.callback === false) {
+        // 戻り先を開かない構成。トークンの出所・対象・解除は働くが、認可の開始は閉じる
+        // （サービス側が redirectUri の空を見て 503 を返す）。
+        service = createOAuthService({
+          store: opened.store,
+          keyStore: options.keyStore,
+          tokenStore: oauthOptions.tokenStore,
+          providers,
+          redirectUri: '',
+          now,
+          log,
+        });
+      } else {
+        // 戻り先の受付はサービスの参照を後から受ける（受付が redirectUri を先に決めるため）。
+        let serviceRef: OAuthService | null = null;
+        callback = createOAuthCallbackServer({
+          ...(oauthOptions.callback?.host === undefined
+            ? {}
+            : { host: oauthOptions.callback.host }),
+          ...(oauthOptions.callback?.port === undefined
+            ? {}
+            : { port: oauthOptions.callback.port }),
+          handleCallback: (query): Promise<OAuthCallbackOutcome> =>
+            serviceRef === null
+              ? Promise.resolve({ kind: 'failed', reason: 'exchange_failed' })
+              : serviceRef.handleCallback(query),
+          log,
+        });
+        service = createOAuthService({
+          store: opened.store,
+          keyStore: options.keyStore,
+          tokenStore: oauthOptions.tokenStore,
+          providers,
+          redirectUri: callback.redirectUri,
+          now,
+          log,
+        });
+        serviceRef = service;
+      }
+      oauthRun = { service, callback };
+    }
     // 同期の走査の実行器（B08-05・B09-04）と周期起動（B08-06）。走査は外部の読み取りなので、掃除のゲートを渡す
     // （ADR 0053・0136）。実行器は provider ごとに作り、scheduler と CoreHandle には provider で振り分ける
     // 実行器を渡す（ADR 0138）。実行器は常に作るが、周期の起動は scheduler を有効にしたときだけ動かす。
     // 対象（account_id・資源種別）とトークンの出所は接続の作成（B03-04）が用意するもので、渡されなければ
     // 実行器は呼ばれない。起動時の回復は、排他ロックで旧 Core の終了が担保された後に scheduler が行う。
+    const googleTokenSourceFor =
+      options.sync?.tokenSourceFor ??
+      (oauthRun === null
+        ? undefined
+        : (connection: ConnectionRecord) =>
+            oauthRun?.service.googleTokenSourceFor(connection) ?? null);
+    const graphTokenSourceFor =
+      options.sync?.graphTokenSourceFor ??
+      (oauthRun === null
+        ? undefined
+        : (connection: ConnectionRecord) =>
+            oauthRun?.service.graphTokenSourceFor(connection) ?? null);
     const googleSyncExecutor = createSyncExecutor({
       store: opened.store,
-      ...(options.sync?.tokenSourceFor === undefined
+      ...(googleTokenSourceFor === undefined
         ? {}
-        : { tokenSourceFor: options.sync.tokenSourceFor }),
+        : { tokenSourceFor: googleTokenSourceFor }),
       retention: {
         ready: async () => {
           await retention?.idle();
@@ -851,9 +980,9 @@ export async function startCore(
     });
     const graphSyncExecutor = createGraphSyncExecutor({
       store: opened.store,
-      ...(options.sync?.graphTokenSourceFor === undefined
+      ...(graphTokenSourceFor === undefined
         ? {}
-        : { tokenSourceFor: options.sync.graphTokenSourceFor }),
+        : { tokenSourceFor: graphTokenSourceFor }),
       retention: {
         ready: async () => {
           await retention?.idle();
@@ -867,15 +996,20 @@ export async function startCore(
       google: googleSyncExecutor,
       microsoft: graphSyncExecutor,
     });
+    const syncTargetsFor =
+      options.sync?.targetsFor ??
+      (oauthRun === null
+        ? undefined
+        : (connection: ConnectionRecord) =>
+            oauthRun?.service.targetsFor(connection) ??
+            Promise.resolve([] as readonly SyncSchedulerTarget[]));
     let syncScheduler: SyncScheduler | null = null;
     if (options.sync?.scheduler !== undefined) {
       syncScheduler = createSyncScheduler({
         store: opened.store,
         executor: syncExecutor,
         log,
-        ...(options.sync.targetsFor === undefined
-          ? {}
-          : { targetsFor: options.sync.targetsFor }),
+        ...(syncTargetsFor === undefined ? {} : { targetsFor: syncTargetsFor }),
         ...options.sync.scheduler,
       });
       syncScheduler.start();
@@ -1030,6 +1164,7 @@ export async function startCore(
         retention,
         storageGate,
         researchRun?.acceptor,
+        oauthRun === null ? undefined : oauthRun.service,
       );
       api = started.api;
       streams = started.streams;
@@ -1045,6 +1180,19 @@ export async function startCore(
         log(
           '証明書を新しく作りました。登録済みの端末は指紋が合わなくなるため、再登録が必要です。',
         );
+      // OAuth のループバックの戻り先（B03-04）。API の受付があって初めて意味を持つので、ここで開く。
+      if (oauthRun?.callback != null) {
+        try {
+          await oauthRun.callback.listen();
+          log(
+            `OAuth の戻り先を待ち受けました（${oauthRun.callback.host}:${oauthRun.callback.port}）。`,
+          );
+        } catch {
+          throw new CoreStartError('oauth_callback_listen_failed', [
+            'oauth_callback_listen_failed',
+          ]);
+        }
+      }
     }
     const handle = (request: ControlRequest) => {
       if (
@@ -1145,6 +1293,15 @@ export async function startCore(
       syncRun as { executor: SyncExecutor; scheduler: SyncScheduler | null }
     ).scheduler,
     researchExecutor: researchRun,
+    oauth:
+      oauthRun === null
+        ? null
+        : {
+            callbackPort:
+              oauthRun.callback === null || httpsInfo === null
+                ? null
+                : oauthRun.callback.port,
+          },
     storage: storageGate as StorageModeGate,
     pairing,
     get state() {
@@ -1173,6 +1330,8 @@ async function startHttps(
   storage: StorageModeGate,
   // 公開 Web 調査の受付器（B12-05、ADR 0141）。口が無ければ undefined で、調査は未対応のまま。
   researchAcceptor?: BackgroundJobAcceptor,
+  // 接続の作成・OAuth のサービス（B03-04、ADR 0144）。無ければ undefined で、認可の開始・解除の経路は無い。
+  oauthService?: OAuthService,
 ): Promise<{
   readonly api: ApiServer;
   readonly info: CoreHttpsInfo;
@@ -1560,6 +1719,7 @@ async function startHttps(
     connectionRoutes.handlers,
     candidateHandlers,
     voiceRoutes.handlers,
+    ...(oauthService === undefined ? [] : [oauthService.handlers]),
   ].flatMap((handlers) => Object.keys(handlers));
   if (new Set(handlerKeys).size !== handlerKeys.length)
     throw new Error('route_handlers_overlap');
@@ -1584,6 +1744,7 @@ async function startHttps(
         ...connectionRoutes.handlers,
         ...candidateHandlers,
         ...voiceRoutes.handlers,
+        ...(oauthService === undefined ? {} : oauthService.handlers),
       },
       eventStream: streams,
       ioState: (device, lock) => voice.ioState(device, lock),

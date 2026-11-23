@@ -75,6 +75,7 @@ import type {
 import { BudgetBridge } from './budget-bridge.js';
 import type { BudgetConfirmRequest } from './budget-bridge.js';
 import { CandidateBridge } from './candidate-bridge.js';
+import { ConnectionsBridge } from './connections-bridge.js';
 import { CanvasBridge } from './canvas-bridge.js';
 import { OperationBridge } from './operation-bridge.js';
 import type {
@@ -130,6 +131,13 @@ export const CANVAS_CHANNELS: readonly DesktopIpcChannel[] = [
 export const CANDIDATE_CHANNELS: readonly DesktopIpcChannel[] = [
   'desktop.candidates_list',
   'desktop.candidate_state',
+];
+
+// 連携の接続の一覧と取得範囲の変更のチャネル（B08-02 P3・B09-05、ADR 0142）。中枢の画面の端末でだけ使える
+// （handleConnectionsIpc が中枢の画面かを確かめる。設計 01 接続・端末、ADR 0086・0089）。
+export const CONNECTIONS_CHANNELS: readonly DesktopIpcChannel[] = [
+  'desktop.connections_list',
+  'desktop.connection_targets_update',
 ];
 
 // 中枢の画面のこのマシンの指紋の読み取り（main だけが持つ。画面へは伏せた表示だけを出す）。
@@ -365,6 +373,8 @@ export class DesktopCoreLink {
   #budgetPoll: (() => void) | null = null;
   // 気づきの一覧と状態の変更（参照だけを画面へ渡す。B11-05、ADR 0132）。
   readonly #candidates: CandidateBridge;
+  // 連携の接続の一覧と取得範囲の変更（参照だけを画面へ渡す。B08-02 P3・B09-05、ADR 0142）。
+  readonly #connections: ConnectionsBridge;
 
   constructor(options: DesktopCoreLinkOptions) {
     this.#options = options;
@@ -402,6 +412,12 @@ export class DesktopCoreLink {
       connection: () => this.#connection,
       newRef: () => options.clock.newRequestId(),
       now: () => options.clock.now(),
+      log: (code) => this.#log(code),
+    });
+    this.#connections = new ConnectionsBridge({
+      contract: options.contract,
+      connection: () => this.#connection,
+      newRef: () => options.clock.newRequestId(),
       log: (code) => this.#log(code),
     });
     this.#canvas = new CanvasBridge({
@@ -1168,6 +1184,59 @@ export class DesktopCoreLink {
         raw.channel,
         result,
         (candidates) => ({ candidates }),
+      ),
+    );
+  }
+
+  // 連携の接続の一覧と取得範囲の変更（B08-02 P3・B09-05、ADR 0142）。一覧はロック解除済み、変更はロック解除済みの
+  // 画面操作（前面）。対象の選択は中枢の画面で行う（設計 01 接続・端末、ADR 0086・0089）ので、中枢の画面の端末で
+  // なければ hub_screen_required で断る。ロック・切断をまたいだ一覧は渡さない。
+  async handleConnectionsIpc(
+    ipcChannel: string,
+    raw: unknown,
+    sender: DesktopIpcSender,
+    ioState: DesktopIoState,
+  ): Promise<ConnectionIpcOutcome> {
+    const contract = this.#options.contract;
+    if (
+      !contract.isRequest(raw) ||
+      raw.channel !== ipcChannel ||
+      (raw.channel !== 'desktop.connections_list' &&
+        raw.channel !== 'desktop.connection_targets_update')
+    )
+      return this.#reject(
+        echoRequestId(raw),
+        echoChannel(raw, ipcChannel),
+        'invalid_request',
+      );
+    const admission = admitDesktopRequest(raw.channel, null, ioState, sender);
+    if (!admission.ok)
+      return this.#reject(raw.request_id, raw.channel, admission.reason);
+    const connection = this.#connection;
+    if (
+      connection === null ||
+      this.#registration !== 'registered' ||
+      connection.state.phase !== 'live'
+    )
+      return this.#reject(raw.request_id, raw.channel, 'not_connected');
+    const generation = this.#viewGeneration;
+    if (this.#hubScreen === null) await this.#probeHubScreen();
+    if (this.#hubScreen !== true)
+      return this.#reject(raw.request_id, raw.channel, 'hub_screen_required');
+    const result =
+      raw.channel === 'desktop.connections_list'
+        ? await this.#connections.list()
+        : await this.#connections.updateTargets(
+            raw.payload.ref,
+            raw.payload.targets,
+          );
+    return this.#withinGeneration(
+      generation,
+      this.#operationOutcome(
+        raw.request_id,
+        raw.channel,
+        result,
+        (connections) => ({ connections }),
       ),
     );
   }
@@ -2050,6 +2119,7 @@ export class DesktopCoreLink {
     this.#budget.reset();
     this.#cancelBudgetPoll();
     this.#candidates.reset();
+    this.#connections.reset();
     this.#canvas.reset();
     this.#confirmAbort?.abort();
     this.#confirmAbort = null;

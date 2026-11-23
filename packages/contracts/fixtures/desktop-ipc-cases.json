@@ -579,6 +579,63 @@
         "expected": { "ok": true }
       },
       {
+        "id": "connections-list-unlocked-unfocused",
+        "refs": ["ADR 0142", "B08-02", "B09-05"],
+        "channel": "desktop.connections_list",
+        "expected_io_epoch": null,
+        "sender": { "windowFocused": false },
+        "expected": { "ok": true }
+      },
+      {
+        "id": "connections-list-while-locked",
+        "channel": "desktop.connections_list",
+        "expected_io_epoch": null,
+        "state": { "lockState": "locked" },
+        "expected": { "ok": false, "reason": "device_locked" }
+      },
+      {
+        "id": "connections-list-while-lock-unknown",
+        "channel": "desktop.connections_list",
+        "expected_io_epoch": null,
+        "state": { "lockState": "unknown" },
+        "expected": { "ok": false, "reason": "device_locked" }
+      },
+      {
+        "id": "connection-targets-update-by-screen",
+        "refs": ["ADR 0142", "B08-02", "B09-05"],
+        "channel": "desktop.connection_targets_update",
+        "expected_io_epoch": null,
+        "expected": { "ok": true }
+      },
+      {
+        "id": "connection-targets-update-from-hidden-window",
+        "channel": "desktop.connection_targets_update",
+        "expected_io_epoch": null,
+        "sender": { "windowFocused": false },
+        "expected": { "ok": false, "reason": "screen_operation_required" }
+      },
+      {
+        "id": "connection-targets-update-while-locked",
+        "channel": "desktop.connection_targets_update",
+        "expected_io_epoch": null,
+        "state": { "lockState": "locked" },
+        "expected": { "ok": false, "reason": "device_locked" }
+      },
+      {
+        "id": "connection-targets-update-from-untrusted-sender",
+        "channel": "desktop.connection_targets_update",
+        "expected_io_epoch": null,
+        "sender": { "trustedSender": false },
+        "expected": { "ok": false, "reason": "untrusted_sender" }
+      },
+      {
+        "id": "connection-targets-update-by-screen-while-stopped",
+        "channel": "desktop.connection_targets_update",
+        "expected_io_epoch": null,
+        "state": { "stopScope": "local" },
+        "expected": { "ok": true }
+      },
+      {
         "id": "home-status-unlocked-unfocused",
         "refs": ["ADR 0022", "B03-08"],
         "channel": "desktop.home_status",

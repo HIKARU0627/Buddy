@@ -1,5 +1,5 @@
 // 中枢の画面の端末だけに出す本体（設計 02 端末登録と接続、ADR 0024・0026）。Tabs で「端末の登録」
-// 「登録済みの端末」「自宅のネットワーク」（B03-08）「このマシンの接続」を分ける（状態帯は全画面で共通）。承認・拒否・失効は重い操作として、
+// 「登録済みの端末」「連携アカウント」（B08-02 P3・B09-05、ADR 0142）「自宅のネットワーク」（B03-08）「このマシンの接続」を分ける（状態帯は全画面で共通）。承認・拒否・失効は重い操作として、
 // main が OS の確認ダイアログで本人に確かめてから送る（本人の判断 2026-10-22、ADR 0026。画面の中の確認は使わない）。
 // 状態と操作は引数で受け取り、限定 API を直接呼ばない。
 // 画面に来るのは main の参照（ref）と表示用の値だけで、申請 ID・端末 ID・申請用の秘密・トークンはない。
@@ -31,6 +31,7 @@ export const HUB_LABELS = {
   thisMachine: 'このマシンの接続',
   homeTitle: '自宅のネットワーク',
   registerTab: '端末の登録',
+  connectionsTab: '連携アカウント',
   claimsTitle: '承認待ちの申請',
   devicesTitle: '登録済みの端末',
   noClaims: '承認待ちの申請はありません。',
@@ -405,7 +406,7 @@ export function DevicesPanel({
   );
 }
 
-export type HubTab = 'device' | 'claims' | 'devices' | 'home';
+export type HubTab = 'device' | 'claims' | 'devices' | 'home' | 'connections';
 
 // 最小の幅（480px）でもタブの名前を 1 行に収める（折り返さず、狭いときは字と余白を小さくする。UI レビュー 3 回目の未確認）。
 const TAB_CLASS = 'whitespace-nowrap px-1.5 text-xs sm:px-4 sm:text-sm';
@@ -416,6 +417,7 @@ export function HubTabs({
   now,
   thisDevice,
   home,
+  connections,
   initialTab = 'claims',
   paused = null,
   stopped = false,
@@ -434,6 +436,8 @@ export function HubTabs({
   readonly thisDevice: ReactNode;
   // 「自宅のネットワーク」のタブの中身（B03-08。HomeNetworkPanel）。渡さなければタブを出さない。
   readonly home?: ReactNode;
+  // 「連携アカウント」のタブの中身（B08-02 P3・B09-05。ConnectionsPanel）。渡さなければタブを出さない。
+  readonly connections?: ReactNode;
   readonly initialTab?: HubTab;
 }) {
   const [tab, setTab] = useState<HubTab>(initialTab);
@@ -499,6 +503,12 @@ export function HubTabs({
               {HUB_LABELS.devicesTitle}
               <Tabs.Indicator />
             </Tabs.Tab>
+            {connections === undefined ? null : (
+              <Tabs.Tab id="connections" className={TAB_CLASS}>
+                {HUB_LABELS.connectionsTab}
+                <Tabs.Indicator />
+              </Tabs.Tab>
+            )}
             {home === undefined ? null : (
               <Tabs.Tab id="home" className={TAB_CLASS}>
                 {HUB_LABELS.homeTitle}
@@ -526,6 +536,11 @@ export function HubTabs({
             actions={actions}
           />
         </Tabs.Panel>
+        {connections === undefined ? null : (
+          <Tabs.Panel id="connections" className="flex flex-col gap-6 pt-4">
+            {connections}
+          </Tabs.Panel>
+        )}
         {home === undefined ? null : (
           <Tabs.Panel id="home" className="flex flex-col gap-6 pt-4">
             {home}

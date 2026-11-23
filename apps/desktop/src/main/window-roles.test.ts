@@ -70,6 +70,12 @@ const VOICE = [
 ];
 // B11-05 で足した、気づきの一覧・状態の変更のチャネル（従来の窓と状態の層。キャンバス・入力バーは使わない。ADR 0132）。
 const CANDIDATES = ['desktop.candidates_list', 'desktop.candidate_state'];
+// B08-02 P3・B09-05 で足した、連携の接続の一覧・取得範囲の変更のチャネル（従来の窓の中枢の画面と状態の層。
+// キャンバス・入力バーは使わない。ADR 0142）。
+const CONNECTIONS = [
+  'desktop.connections_list',
+  'desktop.connection_targets_update',
+];
 const ALL_CHANNELS = [
   ...LEGACY_CHANNELS,
   SUMMON,
@@ -79,6 +85,7 @@ const ALL_CHANNELS = [
   ...BUDGET,
   ...VOICE,
   ...CANDIDATES,
+  ...CONNECTIONS,
 ];
 
 const UNLOCKED = {
@@ -198,8 +205,9 @@ test('the legacy window keeps every existing channel and the same sender decisio
   assert.deepEqual([...DESKTOP_IPC_CHANNELS], ALL_CHANNELS);
   const registry = new UiWindowRegistry<FakeWindow>();
   registry.register(7, 'legacy', { name: 'legacy' });
-  // 気づきのチャネル（B11-05）は従来の窓（標準の端末画面）で使う。
-  for (const channel of [...LEGACY_CHANNELS, ...CANDIDATES]) {
+  // 気づきのチャネル（B11-05）は従来の窓（標準の端末画面）で使う。連携のチャネル（B08-02 P3・B09-05）も従来の窓の
+  // 中枢の画面で使う。
+  for (const channel of [...LEGACY_CHANNELS, ...CANDIDATES, ...CONNECTIONS]) {
     assert.equal(channelAllowedForWindow('legacy', channel), true, channel);
     // 窓の主フレームからの要求は、前面かどうかをそのまま渡して受け付ける（期待値は手で書いた値）。
     for (const focused of [true, false])

@@ -26,6 +26,7 @@ import { StorageError } from './errors.js';
 import type {
   DbCommand,
   DbCommandKind,
+  SealedBlobInput,
   StoreOutcome,
 } from './operation-commands.js';
 import type {
@@ -744,6 +745,21 @@ export class DbWorkerClient {
   connectionTargets(
     op: Extract<ConnectionTargetsOp, { kind: 'connections.update_targets' }>,
   ): Promise<ConnectionTargetsOpOutcome<ConnectionTargetsUpdated>>;
+  connectionTargets(
+    op: Extract<ConnectionTargetsOp, { kind: 'connections.create' }>,
+  ): Promise<ConnectionTargetsOpOutcome<ConnectionRecord>>;
+  connectionTargets(
+    op: Extract<ConnectionTargetsOp, { kind: 'connections.account_blob' }>,
+  ): Promise<ConnectionTargetsOpOutcome<SealedBlobInput | null>>;
+  connectionTargets(
+    op: Extract<ConnectionTargetsOp, { kind: 'connections.disconnect' }>,
+  ): Promise<ConnectionTargetsOpOutcome<ConnectionTargetsUpdated>>;
+  connectionTargets(
+    op: Extract<ConnectionTargetsOp, { kind: 'connections.reactivate' }>,
+  ): Promise<ConnectionTargetsOpOutcome<ConnectionRecord>>;
+  connectionTargets(
+    op: Extract<ConnectionTargetsOp, { kind: 'connections.mark_needs_reauth' }>,
+  ): Promise<ConnectionTargetsOpOutcome<ConnectionRecord | null>>;
   connectionTargets(
     op: ConnectionTargetsOp,
   ): Promise<ConnectionTargetsOpResult> {

@@ -111,6 +111,8 @@ export interface SecretSlot {
   /** 値がなければ null。読めなければ例外。 */
   read(): Promise<string | null>;
   write(value: string): Promise<void>;
+  /** 項目を消す（対応する保護領域だけが持つ。OAuth トークンの失効・削除で使う）。 */
+  readonly remove?: () => Promise<void>;
 }
 
 const BASE64 =
@@ -275,6 +277,7 @@ export interface KeyringModule {
   ) => {
     getPassword(): Promise<string | null | undefined>;
     setPassword(password: string): Promise<void>;
+    deletePassword?(): Promise<boolean | void>;
   };
 }
 
@@ -339,6 +342,11 @@ export function keychainSlotOpener(
         return value ?? null;
       },
       write: (value) => entry.setPassword(value),
+      async remove() {
+        if (typeof entry.deletePassword !== 'function')
+          throw new Error('keyring entry has no deletePassword');
+        await entry.deletePassword();
+      },
     };
   };
 }

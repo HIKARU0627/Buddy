@@ -20,8 +20,10 @@ import type { ApiRouteHandler } from './api-server.js';
 import type { JsonObject } from './strict-json.js';
 
 // 版の照合を api-connections.ts で行う経路（core.ts が環境の revisionMatches を切り替える）。
+// disconnectConnection の処理は oauth.ts が持つが、照合は接続の現在値で同じに行う（B03-04、ADR 0144）。
 export const CONNECTION_REVISION_CHECKED_ROUTES: ReadonlySet<string> = new Set([
   'updateConnectionTargets',
+  'disconnectConnection',
 ]);
 
 export type ConnectionRoutesStore = Pick<

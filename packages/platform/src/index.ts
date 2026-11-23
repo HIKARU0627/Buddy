@@ -14,3 +14,4 @@ export * from './home-fingerprint.js';
 export * from './tailscale-status.js';
 // B06-08: バックアップの鍵（backup_file・ledger_hmac_key）の KeyStore（ADR 0055）。
 export * from './backup-key-store.js';
+export * from './oauth-token-store.js';

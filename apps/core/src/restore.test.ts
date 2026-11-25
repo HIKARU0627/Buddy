@@ -163,6 +163,7 @@ function createCommand(
       approval_id: randomUUID(),
       policy_version: '3',
       current_policy_version: '3',
+      safety_target_key: `target:${operationId}`,
     },
   };
 }

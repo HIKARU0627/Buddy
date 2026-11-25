@@ -15,6 +15,7 @@ import Database from 'better-sqlite3';
 import {
   RETENTION_RULES,
   approvalDecision,
+  autoActionKindFor,
   canTransition,
   commandGuard,
   planContentRevision,
@@ -22,6 +23,14 @@ import {
 } from '@buddy/domain';
 import type { OperationRoute, OperationState } from '@buddy/domain';
 import { writeConnectionReasons } from './connection.js';
+import {
+  countPolicyAutoApproval,
+  recordAutoAction,
+  recordUndoOutcome,
+  safetyStopped,
+  startUndo,
+} from './safety-store.js';
+import type { UndoStatus } from './safety-store.js';
 import type { SqliteDatabase, StoragePlatform } from './connection.js';
 import {
   INTERNAL_COMMAND_SCOPE,
@@ -36,6 +45,7 @@ import type {
   DispatchedAttempt,
   PrepareOperationCommand,
   RecordResultCommand,
+  ResultState,
   RecoverAfterRestartCommand,
   ReviseContentCommand,
   ApplyLocalCommand,
@@ -233,6 +243,7 @@ interface ApprovalRow {
   content_version: number;
   content_hash: string;
   route: string;
+  policy_version: number | null;
   status: string;
   approved_at: number;
 }
@@ -736,6 +747,62 @@ export function insertTaskContent(
   );
 }
 
+// --- 自動実行・取り消し（08 §9、03、ADR 0147） ---
+
+// 方針による自動承認は自動実行の一覧に載る種類だけに許す。
+function requireAutoKind(operationKind: string): void {
+  if (autoActionKindFor(operationKind) === null)
+    throw new CommandRejection(['operation_kind_not_auto']);
+}
+
+function isCompensation(db: SqliteDatabase, operationId: string): boolean {
+  return (
+    db
+      .prepare('SELECT 1 FROM undo_records WHERE compensation_operation_id = ?')
+      .get(operationId) !== undefined
+  );
+}
+
+const UNDO_STATUS: Partial<Record<ResultState, UndoStatus>> = {
+  succeeded: 'undone',
+  not_executed: 'failed',
+  unknown_held: 'unknown',
+};
+
+// 結果の記録と同じ transaction で、自動実行の一覧と取り消しの記録を書く。
+function afterResult(
+  db: SqliteDatabase,
+  context: StoreContext,
+  operation: OperationRow,
+  approvalId: string,
+  to: ResultState,
+): void {
+  if (to === 'succeeded') {
+    const approval = db
+      .prepare(
+        'SELECT route, policy_version FROM approvals WHERE approval_id = ?',
+      )
+      .get(approvalId) as
+      Pick<ApprovalRow, 'route' | 'policy_version'> | undefined;
+    const kind = autoActionKindFor(operation.kind);
+    if (
+      approval?.route === 'policy_auto' &&
+      approval.policy_version !== null &&
+      kind !== null
+    )
+      recordAutoAction(
+        db,
+        context.now,
+        operation.operation_id,
+        kind,
+        approval.policy_version,
+      );
+  }
+  const undo = UNDO_STATUS[to];
+  if (undo !== undefined)
+    recordUndoOutcome(db, context.now, operation.operation_id, undo);
+}
+
 // --- 命令ごとの本体 ---
 
 function createOperation(
@@ -770,6 +837,16 @@ function createOperation(
     );
     if (decision.action !== 'record')
       throw new CommandRejection(decision.reasons);
+    requireAutoKind(command.operation_kind);
+    // 時間窓の件数を承認の記録と同じ transaction で数える（08 §9）。基準を超えたら承認を書かず、
+    // 安全停止だけを commit して拒否を返す（ADR 0147）。
+    const block = countPolicyAutoApproval(
+      db,
+      context.now,
+      auto.safety_target_key,
+    );
+    if (block === 'safety_stopped') throw new CommandRejection([block]);
+    if (block !== null) return rejected(command, [block]);
   }
   const state: OperationState =
     auto === null ? 'awaiting_approval' : 'approved';
@@ -801,6 +878,17 @@ function createOperation(
       toInt(auto.policy_version),
       context.now,
     );
+  const undo = command.undo_of ?? null;
+  if (undo !== null) {
+    const block = startUndo(
+      db,
+      context.now,
+      undo.undo_id,
+      undo.operation_id,
+      command.operation_id,
+    );
+    if (block !== null) throw new CommandRejection([block]);
+  }
   appendEvent(db, context, command.operation_id, 1);
   writeReceipt(db, context, command, 1);
   return durable(command, 1);
@@ -862,6 +950,19 @@ function approveOperation(
     operation.workflow_id,
     null,
   );
+  if (command.route === 'policy_auto') {
+    requireAutoKind(operation.kind);
+    // 取り消しの補償の操作は本人の画面操作が起点（03 J12）。方針では承認しない。
+    if (isCompensation(db, operation.operation_id))
+      throw new CommandRejection(['undo_auto_approval']);
+    const block = countPolicyAutoApproval(
+      db,
+      context.now,
+      command.safety_target_key ?? '',
+    );
+    if (block === 'safety_stopped') throw new CommandRejection([block]);
+    if (block !== null) return rejected(command, [block]);
+  }
   db.prepare(
     "INSERT INTO approvals (approval_id, operation_id, content_version, content_hash, route, device_id, preview_id, policy_version, status, approved_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'valid', ?)",
   ).run(
@@ -1073,6 +1174,7 @@ function recordResult(
     db.prepare(
       "UPDATE approvals SET status = 'consumed' WHERE approval_id = ? AND status = 'valid'",
     ).run(attempt.approval_id);
+  afterResult(db, context, operation, attempt.approval_id, command.to);
   return durable(command, advance(db, context, command, operation, command.to));
 }
 
@@ -1257,6 +1359,9 @@ function applyLocal(
     approval.content_hash !== hash
   )
     throw new CommandRejection(['approval_not_valid']);
+  // 停止前に自動承認済みで未実行のものは保留にする（08 §9）。
+  if (approval.route === 'policy_auto' && safetyStopped(db))
+    throw new CommandRejection(['safety_stopped']);
   db.prepare(
     "INSERT INTO operation_attempts (attempt_id, operation_id, content_version, approval_id, status, dispatch_intent_at, external_id, result_status, created_at) VALUES (?, ?, ?, ?, 'succeeded', ?, ?, 'confirmed_success', ?)",
   ).run(
@@ -1283,6 +1388,7 @@ function applyLocal(
   db.prepare(
     "UPDATE approvals SET status = 'consumed' WHERE approval_id = ? AND status = 'valid'",
   ).run(approval.approval_id);
+  afterResult(db, context, operation, approval.approval_id, 'succeeded');
   return durable(
     command,
     advance(db, context, command, operation, 'succeeded'),

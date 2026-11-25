@@ -151,6 +151,34 @@ export interface AutoApprovalCounter {
   readonly window_minutes: number;
 }
 
+// 同じ対象への同じ種類の自動実行の反復（設計 03「取り消しと安全停止」の初期案: 1 時間に 3 回以上）と、
+// 補償の操作の連続失敗（3 回連続）。どちらも安全停止の理由になる。値は T10 の結果で調整する（ADR 0147）。
+// 同じ対象の 3 回目は記録せずに停止する（U300）。
+export const SAME_TARGET_REPEAT_LIMIT = 3;
+export const SAME_TARGET_WINDOW_MINUTES = 60;
+export const COMPENSATION_FAILURE_LIMIT = 3;
+
+// 取り消しの期限。自動実行の完了から 30 日（J12、ADR 0074。0001 の auto_actions の CHECK と同じ値）。
+export const UNDO_WINDOW_MS = 30 * 24 * 60 * 60_000;
+
+// 自動実行の一覧（auto_actions.action_kind）に載る操作の種類。方針による自動承認はこの種類だけに許す。
+// 自分だけの予定の作成（create_event）は操作の種類がまだないため載せない（ADR 0147）。
+export type AutoActionKind = 'create_task' | 'label_mail' | 'draft_reply';
+
+const AUTO_ACTION_KINDS: Readonly<Record<string, AutoActionKind>> = {
+  'task.create': 'create_task',
+  'mail.labels.change': 'label_mail',
+  'mail.draft.create': 'draft_reply',
+};
+
+export function autoActionKindFor(
+  operationKind: string,
+): AutoActionKind | null {
+  return Object.hasOwn(AUTO_ACTION_KINDS, operationKind)
+    ? (AUTO_ACTION_KINDS[operationKind] as AutoActionKind)
+    : null;
+}
+
 // 次の自動承認を記録してよいか。窓が過ぎていれば新しい窓として数え直す。
 export function autoApprovalAllowed(
   counter: AutoApprovalCounter | null | undefined,

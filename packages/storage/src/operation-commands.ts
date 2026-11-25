@@ -86,6 +86,15 @@ export interface CreateOperationCommand extends DbCommandBase<'operation.create'
     // 取り消す自動実行の操作。
     readonly operation_id: string;
   } | null;
+  // 気づきの候補を起点にした方針による自動承認（11 §5A・§5B、ADR 0148）。auto_approval と一緒にだけ使う。
+  // 判定に使った依頼と関連解析の版は、保存層が候補の行から読んで承認の行に写す（Core の値を信用しない）。
+  readonly candidate_origin?: {
+    readonly candidate_id: string;
+    // 書込み先のアカウント（同じ依頼・操作・アカウント・カレンダーにつき一度だけ）。
+    readonly account_id: string;
+    // 予定のカレンダー。予定以外は null。
+    readonly calendar_id: string | null;
+  } | null;
 }
 
 export interface ApproveOperationCommand extends DbCommandBase<'operation.approve'> {
@@ -356,6 +365,18 @@ export function commandShapeReasons(command: DbCommand): string[] {
           reasons.push('undo_of_invalid');
         // 取り消しは本人の画面操作が起点で、方針による自動承認では作らない（03 J12）。
         else if (auto !== null) reasons.push('undo_auto_approval');
+      }
+      const origin = command.candidate_origin;
+      if (origin !== undefined && origin !== null) {
+        if (
+          typeof origin !== 'object' ||
+          !isId(origin.candidate_id) ||
+          !isExternalId(origin.account_id) ||
+          !isNullable(origin.calendar_id, isExternalId)
+        )
+          reasons.push('candidate_origin_invalid');
+        // 候補の起点は方針による自動承認の判定の記録。画面の承認や取り消しには付けない（ADR 0148）。
+        else if (auto === null) reasons.push('candidate_origin_without_auto');
       }
       break;
     }

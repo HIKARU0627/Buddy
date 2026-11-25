@@ -16,12 +16,17 @@ import {
   RETENTION_RULES,
   approvalDecision,
   autoActionKindFor,
+  autoCreationReasons,
   canTransition,
   commandGuard,
   planContentRevision,
   replayDecision,
 } from '@buddy/domain';
-import type { OperationRoute, OperationState } from '@buddy/domain';
+import type {
+  AutoActionKind,
+  OperationRoute,
+  OperationState,
+} from '@buddy/domain';
 import { writeConnectionReasons } from './connection.js';
 import {
   countPolicyAutoApproval,
@@ -246,6 +251,14 @@ interface ApprovalRow {
   policy_version: number | null;
   status: string;
   approved_at: number;
+  // 候補を起点にした方針による自動承認の判定に使った版（0015、ADR 0148）。それ以外は NULL。
+  candidate_id: string | null;
+  request_entity_id: string | null;
+  request_revision: number | null;
+  related_group_id: string | null;
+  analysis_revision: number | null;
+  source_set_hash: string | null;
+  published_generation: number | null;
 }
 
 interface ReceiptRow {
@@ -803,6 +816,192 @@ function afterResult(
     recordUndoOutcome(db, context.now, operation.operation_id, undo);
 }
 
+// --- 候補を起点にした自動実行の最終ガード（11 §5A・§5B、ADR 0103・0148） ---
+
+// 判定に使った依頼と関連解析の版。候補の行から読み、承認の行に写して送出の直前にも使う。
+interface CandidateUse {
+  readonly candidate_id: string;
+  readonly request_entity_id: string;
+  readonly request_revision: number;
+  readonly related_group_id: string;
+  readonly analysis_revision: number;
+  readonly source_set_hash: string;
+  readonly published_generation: number;
+}
+
+// 判定に使った版が今も DB の現在値か、依頼が有効で、同じ依頼・操作・アカウント・カレンダーをまだ作っていないかを見る。
+// 読めなかったもの（依頼・関連解析が無い）は拒否する（推測で通さない。ADR 0103 の finalGuard と同じ理由の名前）。
+// 送出の直前は、自分の操作の一度だけの記録を「作成済み」に数えない（ownOperationId）。
+function candidateGuardReasons(
+  db: SqliteDatabase,
+  use: CandidateUse,
+  kind: AutoActionKind,
+  accountId: string,
+  calendarId: string,
+  ownOperationId: string | null,
+): string[] {
+  const reasons: string[] = [];
+  const entity = db
+    .prepare(
+      'SELECT state, request_revision, recreation_suppressed FROM request_entities WHERE request_entity_id = ?',
+    )
+    .get(use.request_entity_id) as
+    | { state: string; request_revision: number; recreation_suppressed: number }
+    | undefined;
+  if (entity === undefined) reasons.push('entity_not_found');
+  else {
+    if (entity.request_revision !== use.request_revision)
+      reasons.push('request_revision_changed');
+    const created = db
+      .prepare(
+        'SELECT operation_kind, account_id, calendar_id FROM request_entity_operations WHERE request_entity_id = ? AND operation_id <> ?',
+      )
+      .all(use.request_entity_id, ownOperationId ?? '') as {
+      operation_kind: string;
+      account_id: string;
+      calendar_id: string;
+    }[];
+    reasons.push(
+      ...autoCreationReasons(
+        {
+          request_entity_id: use.request_entity_id,
+          state: entity.state as 'active' | 'cancelled' | 'completed',
+          recreation_suppressed: entity.recreation_suppressed === 1,
+          created_operations: created,
+        },
+        [],
+        { kind, accountId, calendarId },
+      ),
+    );
+  }
+  // 同じ集合の最新の版と比べる。新しい版が公開されていれば、旧版の資格は ready に戻っても通さない。
+  const analysis = db
+    .prepare(
+      'SELECT analysis_revision, source_set_hash, published_generation, status FROM related_analyses WHERE group_id = ? ORDER BY analysis_revision DESC LIMIT 1',
+    )
+    .get(use.related_group_id) as
+    | {
+        analysis_revision: number;
+        source_set_hash: string;
+        published_generation: number;
+        status: string;
+      }
+    | undefined;
+  if (analysis === undefined) reasons.push('analysis_not_found');
+  else {
+    if (analysis.analysis_revision !== use.analysis_revision)
+      reasons.push('analysis_revision_changed');
+    if (analysis.source_set_hash !== use.source_set_hash)
+      reasons.push('source_set_changed');
+    if (analysis.published_generation !== use.published_generation)
+      reasons.push('generation_changed');
+    if (analysis.status !== 'ready') reasons.push('analysis_not_ready');
+  }
+  return reasons;
+}
+
+const CLOSED_CANDIDATE_STATES = new Set(['dismissed', 'resolved']);
+
+// 作成と同時の自動承認で、候補の行から判定に使った版を読み、最終ガードを通す。
+function candidateUseForCreate(
+  db: SqliteDatabase,
+  command: CreateOperationCommand,
+  kind: AutoActionKind,
+): CandidateUse | null {
+  const origin = command.candidate_origin ?? null;
+  if (origin === null) return null;
+  const row = db
+    .prepare(
+      'SELECT state, request_entity_id, request_revision, related_group_id, related_analysis_revision, related_source_set_hash, related_published_generation FROM notification_candidates WHERE candidate_id = ?',
+    )
+    .get(origin.candidate_id) as
+    | {
+        state: string;
+        request_entity_id: string | null;
+        request_revision: number | null;
+        related_group_id: string | null;
+        related_analysis_revision: number | null;
+        related_source_set_hash: string | null;
+        related_published_generation: number | null;
+      }
+    | undefined;
+  if (row === undefined) throw new CommandRejection(['candidate_not_found']);
+  const reasons: string[] = [];
+  // 本人が閉じた候補（不要・解決済み）からは作らない。
+  if (CLOSED_CANDIDATE_STATES.has(row.state)) reasons.push('candidate_closed');
+  if (row.request_entity_id === null || row.request_revision === null)
+    reasons.push('candidate_without_request');
+  if (
+    row.related_group_id === null ||
+    row.related_analysis_revision === null ||
+    row.related_source_set_hash === null ||
+    row.related_published_generation === null
+  )
+    reasons.push('related_analysis_missing');
+  if (reasons.length > 0) throw new CommandRejection(reasons);
+  const use: CandidateUse = {
+    candidate_id: origin.candidate_id,
+    request_entity_id: row.request_entity_id ?? '',
+    request_revision: row.request_revision ?? 0,
+    related_group_id: row.related_group_id ?? '',
+    analysis_revision: row.related_analysis_revision ?? 0,
+    source_set_hash: row.related_source_set_hash ?? '',
+    published_generation: row.related_published_generation ?? 0,
+  };
+  const blocked = candidateGuardReasons(
+    db,
+    use,
+    kind,
+    origin.account_id,
+    origin.calendar_id ?? '',
+    null,
+  );
+  if (blocked.length > 0) throw new CommandRejection(blocked);
+  return use;
+}
+
+// 送出の直前（LocalCommand の適用・RemoteMutation の送出意図）。候補を起点にした自動承認だけを照合する。
+// 一度だけの記録（request_entity_operations）が依頼と一緒に消えていても、承認の行の版で依頼を探して拒否する。
+function dispatchGuardReasons(
+  db: SqliteDatabase,
+  operation: OperationRow,
+  approval: ApprovalRow,
+): string[] {
+  if (approval.route !== 'policy_auto' || approval.candidate_id === null)
+    return [];
+  const link = db
+    .prepare(
+      'SELECT operation_kind, account_id, calendar_id FROM request_entity_operations WHERE operation_id = ?',
+    )
+    .get(operation.operation_id) as
+    | {
+        operation_kind: AutoActionKind;
+        account_id: string;
+        calendar_id: string;
+      }
+    | undefined;
+  const reasons = candidateGuardReasons(
+    db,
+    {
+      candidate_id: approval.candidate_id,
+      request_entity_id: approval.request_entity_id ?? '',
+      request_revision: approval.request_revision ?? 0,
+      related_group_id: approval.related_group_id ?? '',
+      analysis_revision: approval.analysis_revision ?? 0,
+      source_set_hash: approval.source_set_hash ?? '',
+      published_generation: approval.published_generation ?? 0,
+    },
+    link?.operation_kind ?? autoActionKindFor(operation.kind) ?? 'create_task',
+    link?.account_id ?? '',
+    link?.calendar_id ?? '',
+    operation.operation_id,
+  );
+  // 依頼があるのに自分の一度だけの記録が無いのは、記録の欠け。推測で通さない。
+  if (link === undefined && !reasons.includes('entity_not_found'))
+    reasons.push('candidate_link_missing');
+  return reasons;
+}
+
 // --- 命令ごとの本体 ---
 
 function createOperation(
@@ -814,6 +1013,7 @@ function createOperation(
     throw new CommandRejection(['operation_exists']);
   guard(db, command, '0', command.workflow_id, null);
   const auto = command.auto_approval;
+  let candidateUse: CandidateUse | null = null;
   if (auto !== null) {
     // 作成と同時の自動承認も approvalDecision で判定する（承認待ちの版 0 の操作として）。
     const decision = approvalDecision(
@@ -838,6 +1038,12 @@ function createOperation(
     if (decision.action !== 'record')
       throw new CommandRejection(decision.reasons);
     requireAutoKind(command.operation_kind);
+    // 候補を起点にしたものは、件数を数える前に最終ガードを通す（拒否した判定は自動承認に数えない。ADR 0148）。
+    candidateUse = candidateUseForCreate(
+      db,
+      command,
+      autoActionKindFor(command.operation_kind) ?? 'create_task',
+    );
     // 時間窓の件数を承認の記録と同じ transaction で数える（08 §9）。基準を超えたら承認を書かず、
     // 安全停止だけを commit して拒否を返す（ADR 0147）。
     const block = countPolicyAutoApproval(
@@ -870,13 +1076,33 @@ function createOperation(
   );
   if (auto !== null)
     db.prepare(
-      "INSERT INTO approvals (approval_id, operation_id, content_version, content_hash, route, device_id, preview_id, policy_version, status, approved_at) VALUES (?, ?, 1, ?, 'policy_auto', NULL, NULL, ?, 'valid', ?)",
+      "INSERT INTO approvals (approval_id, operation_id, content_version, content_hash, route, device_id, preview_id, policy_version, status, approved_at, candidate_id, request_entity_id, request_revision, related_group_id, analysis_revision, source_set_hash, published_generation) VALUES (?, ?, 1, ?, 'policy_auto', NULL, NULL, ?, 'valid', ?, ?, ?, ?, ?, ?, ?, ?)",
     ).run(
       auto.approval_id,
       command.operation_id,
       command.content_hash,
       toInt(auto.policy_version),
       context.now,
+      candidateUse?.candidate_id ?? null,
+      candidateUse?.request_entity_id ?? null,
+      candidateUse?.request_revision ?? null,
+      candidateUse?.related_group_id ?? null,
+      candidateUse?.analysis_revision ?? null,
+      candidateUse?.source_set_hash ?? null,
+      candidateUse?.published_generation ?? null,
+    );
+  // 同じ依頼・操作・アカウント・カレンダーにつき一度だけ（11 §5A）。承認と同じ transaction で記録する。
+  // 送出が失敗しても行は残し、同じ候補から自動でやり直さない（本人が画面で作り直す。ADR 0148）。
+  const origin = command.candidate_origin ?? null;
+  if (candidateUse !== null && origin !== null)
+    db.prepare(
+      'INSERT INTO request_entity_operations (request_entity_id, operation_kind, account_id, calendar_id, operation_id) VALUES (?, ?, ?, ?, ?)',
+    ).run(
+      candidateUse.request_entity_id,
+      autoActionKindFor(command.operation_kind),
+      origin.account_id,
+      origin.calendar_id ?? '',
+      command.operation_id,
     );
   const undo = command.undo_of ?? null;
   if (undo !== null) {
@@ -1069,6 +1295,9 @@ function recordDispatchIntent(
     approval.content_hash !== hash
   )
     reasons.push('approval_not_valid');
+  // 候補を起点にした自動承認は、送出意図の直前にも判定に使った版を照らす（ADR 0148）。
+  if (approval !== undefined)
+    reasons.push(...dispatchGuardReasons(db, operation, approval));
   if (operation.effect_route === 'remote_mutation') {
     const observed = command.observed_connection ?? null;
     if (command.connection_id === null) {
@@ -1362,6 +1591,9 @@ function applyLocal(
   // 停止前に自動承認済みで未実行のものは保留にする（08 §9）。
   if (approval.route === 'policy_auto' && safetyStopped(db))
     throw new CommandRejection(['safety_stopped']);
+  // 候補を起点にした自動承認は、適用の直前にも判定に使った版を照らす（ADR 0148）。
+  const blocked = dispatchGuardReasons(db, operation, approval);
+  if (blocked.length > 0) throw new CommandRejection(blocked);
   db.prepare(
     "INSERT INTO operation_attempts (attempt_id, operation_id, content_version, approval_id, status, dispatch_intent_at, external_id, result_status, created_at) VALUES (?, ?, ?, ?, 'succeeded', ?, ?, 'confirmed_success', ?)",
   ).run(

@@ -20,15 +20,15 @@
       "refs": ["X02", "08 §5"],
       "steps": [
         [
-          "INSERT INTO approvals VALUES ('ap-1', 'op-1', 1, '1111111111111111111111111111111111111111111111111111111111111111', 'screen', 'dev-1', 'pv-1', NULL, 'valid', 1200)",
+          "INSERT INTO approvals (approval_id, operation_id, content_version, content_hash, route, device_id, preview_id, policy_version, status, approved_at) VALUES ('ap-1', 'op-1', 1, '1111111111111111111111111111111111111111111111111111111111111111', 'screen', 'dev-1', 'pv-1', NULL, 'valid', 1200)",
           "ok"
         ],
         [
-          "INSERT INTO approvals VALUES ('ap-2', 'op-1', 1, '1111111111111111111111111111111111111111111111111111111111111111', 'policy_auto', NULL, NULL, 3, 'valid', 1200)",
+          "INSERT INTO approvals (approval_id, operation_id, content_version, content_hash, route, device_id, preview_id, policy_version, status, approved_at) VALUES ('ap-2', 'op-1', 1, '1111111111111111111111111111111111111111111111111111111111111111', 'policy_auto', NULL, NULL, 3, 'valid', 1200)",
           "unique"
         ],
         [
-          "INSERT INTO approvals VALUES ('ap-3', 'op-1', 1, '1111111111111111111111111111111111111111111111111111111111111111', 'screen', 'dev-1', 'pv-1', NULL, 'revoked', 1200)",
+          "INSERT INTO approvals (approval_id, operation_id, content_version, content_hash, route, device_id, preview_id, policy_version, status, approved_at) VALUES ('ap-3', 'op-1', 1, '1111111111111111111111111111111111111111111111111111111111111111', 'screen', 'dev-1', 'pv-1', NULL, 'revoked', 1200)",
           "ok"
         ],
         [
@@ -36,11 +36,11 @@
           "ok"
         ],
         [
-          "INSERT INTO approvals VALUES ('ap-4', 'op-1', 1, '1111111111111111111111111111111111111111111111111111111111111111', 'screen', 'dev-1', 'pv-1', NULL, 'valid', 1200)",
+          "INSERT INTO approvals (approval_id, operation_id, content_version, content_hash, route, device_id, preview_id, policy_version, status, approved_at) VALUES ('ap-4', 'op-1', 1, '1111111111111111111111111111111111111111111111111111111111111111', 'screen', 'dev-1', 'pv-1', NULL, 'valid', 1200)",
           "unique"
         ],
         [
-          "INSERT INTO approvals VALUES ('ap-5', 'op-1', 2, '2222222222222222222222222222222222222222222222222222222222222222', 'screen', 'dev-1', 'pv-1', NULL, 'valid', 1200)",
+          "INSERT INTO approvals (approval_id, operation_id, content_version, content_hash, route, device_id, preview_id, policy_version, status, approved_at) VALUES ('ap-5', 'op-1', 2, '2222222222222222222222222222222222222222222222222222222222222222', 'screen', 'dev-1', 'pv-1', NULL, 'valid', 1200)",
           "ok"
         ]
       ]
@@ -50,15 +50,15 @@
       "refs": ["08 §1"],
       "steps": [
         [
-          "INSERT INTO approvals VALUES ('ap-1', 'op-1', 1, '1111111111111111111111111111111111111111111111111111111111111111', 'screen', 'dev-1', NULL, NULL, 'valid', 1200)",
+          "INSERT INTO approvals (approval_id, operation_id, content_version, content_hash, route, device_id, preview_id, policy_version, status, approved_at) VALUES ('ap-1', 'op-1', 1, '1111111111111111111111111111111111111111111111111111111111111111', 'screen', 'dev-1', NULL, NULL, 'valid', 1200)",
           "check"
         ],
         [
-          "INSERT INTO approvals VALUES ('ap-2', 'op-1', 1, '1111111111111111111111111111111111111111111111111111111111111111', 'policy_auto', NULL, NULL, NULL, 'valid', 1200)",
+          "INSERT INTO approvals (approval_id, operation_id, content_version, content_hash, route, device_id, preview_id, policy_version, status, approved_at) VALUES ('ap-2', 'op-1', 1, '1111111111111111111111111111111111111111111111111111111111111111', 'policy_auto', NULL, NULL, NULL, 'valid', 1200)",
           "check"
         ],
         [
-          "INSERT INTO approvals VALUES ('ap-3', 'op-1', 9, '1111111111111111111111111111111111111111111111111111111111111111', 'screen', 'dev-1', 'pv-1', NULL, 'valid', 1200)",
+          "INSERT INTO approvals (approval_id, operation_id, content_version, content_hash, route, device_id, preview_id, policy_version, status, approved_at) VALUES ('ap-3', 'op-1', 9, '1111111111111111111111111111111111111111111111111111111111111111', 'screen', 'dev-1', 'pv-1', NULL, 'valid', 1200)",
           "foreign_key"
         ]
       ]
@@ -82,7 +82,7 @@
       "refs": ["08 §3・§4", "X06"],
       "steps": [
         [
-          "INSERT INTO approvals VALUES ('ap-1', 'op-1', 1, '1111111111111111111111111111111111111111111111111111111111111111', 'screen', 'dev-1', 'pv-1', NULL, 'valid', 1200)",
+          "INSERT INTO approvals (approval_id, operation_id, content_version, content_hash, route, device_id, preview_id, policy_version, status, approved_at) VALUES ('ap-1', 'op-1', 1, '1111111111111111111111111111111111111111111111111111111111111111', 'screen', 'dev-1', 'pv-1', NULL, 'valid', 1200)",
           "ok"
         ],
         [
@@ -501,7 +501,7 @@
           "ok"
         ],
         [
-          "INSERT INTO approvals VALUES ('ap-1', 'op-1', 1, '1111111111111111111111111111111111111111111111111111111111111111', 'screen', 'dev-1', 'pv-1', NULL, 'valid', 1200)",
+          "INSERT INTO approvals (approval_id, operation_id, content_version, content_hash, route, device_id, preview_id, policy_version, status, approved_at) VALUES ('ap-1', 'op-1', 1, '1111111111111111111111111111111111111111111111111111111111111111', 'screen', 'dev-1', 'pv-1', NULL, 'valid', 1200)",
           "trigger:operation_send_blocked"
         ],
         [
@@ -851,7 +851,7 @@
       "refs": ["X09", "D1", "D5", "ADR 0030", "ADR 0051"],
       "steps": [
         [
-          "INSERT INTO approvals VALUES ('ap-1', 'op-1', 1, '1111111111111111111111111111111111111111111111111111111111111111', 'screen', 'dev-1', 'pv-1', NULL, 'valid', 1200)",
+          "INSERT INTO approvals (approval_id, operation_id, content_version, content_hash, route, device_id, preview_id, policy_version, status, approved_at) VALUES ('ap-1', 'op-1', 1, '1111111111111111111111111111111111111111111111111111111111111111', 'screen', 'dev-1', 'pv-1', NULL, 'valid', 1200)",
           "ok"
         ],
         [
@@ -1291,7 +1291,7 @@
           "trigger:operation_version_immutable"
         ],
         [
-          "INSERT INTO approvals VALUES ('ap-9', 'op-1', 1, '1111111111111111111111111111111111111111111111111111111111111111', 'screen', 'dev-1', 'pv-1', NULL, 'valid', 2200)",
+          "INSERT INTO approvals (approval_id, operation_id, content_version, content_hash, route, device_id, preview_id, policy_version, status, approved_at) VALUES ('ap-9', 'op-1', 1, '1111111111111111111111111111111111111111111111111111111111111111', 'screen', 'dev-1', 'pv-1', NULL, 'valid', 2200)",
           "trigger:operation_body_erased"
         ],
         [

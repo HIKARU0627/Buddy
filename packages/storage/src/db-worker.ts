@@ -43,6 +43,7 @@ import { executeIntentShadowOp } from './intent-shadow-store.js';
 import { executeCandidateOp } from './candidate-store.js';
 import { executeSyncOp } from './sync-store.js';
 import { executeResearchOp } from './research-store.js';
+import { readAutoExecutionState } from './auto-execution-state.js';
 import { bindStore } from './store-binding.js';
 import type { StoreBindingResult } from './store-binding.js';
 
@@ -187,6 +188,8 @@ function main(): void {
         value = readCommandReceipt(connection, query.command_id);
       else if (query.kind === 'interrupted')
         value = listInterruptedOperations(connection);
+      else if (query.kind === 'auto_execution_state')
+        value = readAutoExecutionState(connection, query.candidate_id);
       else if (isEventQuery(query))
         value = executeEventQuery(connection, storeGeneration, query);
       else

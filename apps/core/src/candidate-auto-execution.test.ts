@@ -1,0 +1,632 @@
+// 気づきの候補を起点にした自動実行の配線（ADR 0149）。期待値は設計 11 §5・§5A・§5B（判定表・一度だけ・関連解析）、
+// 04（既定 OFF・初回取り込み）、08 §9（安全停止）と、ADR 0146〜0148 の理由の名前から手で書いた値。
+// DB は実物（マイグレーションを当てた SQLite）を使い、worker の代わりに同期で命令を実行する。
+import assert from 'node:assert/strict';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import test from 'node:test';
+import type { Deadline } from '@buddy/contracts';
+import type {
+  AnalysisState,
+  AutoExecutionPolicy,
+  CandidateRequest,
+} from '@buddy/domain';
+import {
+  applyMigrations,
+  executeCommand,
+  initStoreGeneration,
+  openOperationIntent,
+  openWriteConnection,
+  readAutoExecutionState,
+  stopSafetyBreaker,
+} from '@buddy/storage';
+import type {
+  CreateOperationCommand,
+  DataKeyMaterial,
+  DbCommand,
+  DbCommandOutcome,
+  SqliteDatabase,
+} from '@buddy/storage';
+import { createApiContract } from './api-contract.js';
+import {
+  candidateSafetyTargetKey,
+  candidateTaskDue,
+  candidateTaskTitle,
+  runCandidateAutoExecution,
+} from './candidate-auto-execution.js';
+import type {
+  CandidateAutoExecutionInput,
+  CandidateAutoExecutionPorts,
+  CandidateAutoExecutionResult,
+} from './candidate-auto-execution.js';
+
+const T0 = 1_900_000_000_000;
+const NOW = new Date(T0).toISOString();
+const ZONE = 'Asia/Tokyo';
+const KEY: DataKeyMaterial = { keyId: 'k-test', key: randomBytes(32) };
+const sha256Hex = (material: string): string =>
+  createHash('sha256').update(material).digest('hex');
+const ACCOUNT = 'acct-1';
+const REQ = '11111111-1111-4111-8111-111111111111';
+const CAND = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+const GROUP = 'group-1';
+const HASH = 'd'.repeat(64);
+const CONTRACT = createApiContract();
+const GENERATION = '00000000-0000-4000-8000-0000000000ff';
+
+const POLICY_TASK_ON: AutoExecutionPolicy = {
+  policy_version: '3',
+  rules: {
+    'task.register': true,
+    'event.create_own': false,
+    'mail.apply_existing_label': false,
+    'mail.save_draft': false,
+  },
+};
+const POLICY_OFF: AutoExecutionPolicy = {
+  policy_version: '3',
+  rules: {
+    'task.register': false,
+    'event.create_own': false,
+    'mail.apply_existing_label': false,
+    'mail.save_draft': false,
+  },
+};
+
+const dateOnly: Deadline = {
+  kind: 'date',
+  date: '2030-10-07',
+  original_text: '10月7日まで',
+};
+
+function candidateRequest(deadline: Deadline = dateOnly): CandidateRequest {
+  return {
+    kind: 'action_required',
+    deadline,
+    fields: [
+      {
+        field: 'summary',
+        status: 'explicit',
+        refs: [{ quote: '書類を提出してください。' }],
+        rule_id: null,
+      },
+    ],
+    in_quoted_text: false,
+    confidence_observed: 'medium',
+    addressed_to_me: true,
+    from_automated_sender: false,
+  } as CandidateRequest;
+}
+
+const ANALYSIS: AnalysisState = {
+  group_id: GROUP,
+  analysis_revision: '2',
+  source_set_hash: HASH,
+  published_generation: '5',
+  plan_complete: true,
+  sources: [{ state: 'analyzed', rule_id: null }],
+  unresolved_change_count: 0,
+};
+
+function input(
+  over: Partial<CandidateAutoExecutionInput> = {},
+): CandidateAutoExecutionInput {
+  return {
+    candidate_id: CAND,
+    summary: '書類の提出',
+    request: candidateRequest(),
+    completeness: { unread_source_ids: [], truncated_source_ids: [] },
+    received_at_local: '2030-10-05T10:00',
+    zone: ZONE,
+    initial_import: false,
+    analysis: ANALYSIS,
+    current_published_generation: '5',
+    changes: [],
+    account_id: ACCOUNT,
+    source_id: 'msg-1',
+    calendar_id: null,
+    context: {
+      ownCalendarSelected: false,
+      labelAssigned: false,
+      draftExists: false,
+      budgetAvailable: true,
+    },
+    label_provider: 'google',
+    policy_current: true,
+    permission_current: true,
+    ...over,
+  };
+}
+
+// 依頼（版 3、有効）・関連解析（版 2、ready、世代 5）・その版で作った候補。
+function seed(db: SqliteDatabase): void {
+  db.prepare(
+    "INSERT INTO request_entities (request_entity_id, source_account_id, thread_id, origin_message_id, request_revision, state, recreation_suppressed, summary_blob_id, created_at, delete_at) VALUES (?, 'acct-1', 'thread-1', 'msg-1', 3, 'active', 0, NULL, ?, NULL)",
+  ).run(REQ, T0);
+  db.prepare(
+    "INSERT INTO related_analyses (group_id, analysis_revision, source_set_hash, published_generation, plan_complete, status) VALUES (?, 2, ?, 5, 1, 'ready')",
+  ).run(GROUP, HASH);
+  db.prepare(
+    "INSERT INTO notification_candidates (candidate_id, request_entity_id, request_revision, kind, notification_key, state, created_at, received_at, state_changed_at, related_group_id, related_analysis_revision, related_source_set_hash, related_published_generation) VALUES (?, ?, 3, 'mail_deadline', 'key-1', 'new', ?, ?, ?, ?, 2, ?, 5)",
+  ).run(CAND, REQ, T0, T0, T0, GROUP, HASH);
+}
+
+interface Harness {
+  readonly db: SqliteDatabase;
+  readonly ports: CandidateAutoExecutionPorts;
+  readonly submitted: CreateOperationCommand[];
+  readonly started: string[];
+}
+
+function withHarness(
+  policy: AutoExecutionPolicy,
+  run: (harness: Harness) => Promise<void>,
+): Promise<void> {
+  const dir = mkdtempSync(join(tmpdir(), 'buddy-auto-'));
+  const db = openWriteConnection(join(dir, 'buddy.sqlite'), {
+    platform: 'macos',
+  });
+  const submitted: CreateOperationCommand[] = [];
+  const started: string[] = [];
+  const ports: CandidateAutoExecutionPorts = {
+    store: {
+      query: async (query) => readAutoExecutionState(db, query.candidate_id),
+      submit: (command: DbCommand) => {
+        if (command.kind === 'operation.create') submitted.push(command);
+        const result = executeCommand(db, command, {
+          now: T0,
+          platform: 'macos',
+          storeGeneration: GENERATION,
+        });
+        const outcome = (
+          result.outcome.outcome === 'durable'
+            ? { ...result.outcome, dispatch_permit: null }
+            : result.outcome
+        ) as DbCommandOutcome;
+        return {
+          received: Promise.resolve(true),
+          result: Promise.resolve(outcome),
+        };
+      },
+    },
+    dataKey: KEY,
+    contract: CONTRACT,
+    policy,
+    current_policy_version: '3',
+    task: { list_id: 'inbox', permission_revision: '0' },
+    sha256Hex,
+    newId: randomUUID,
+    now: () => NOW,
+    afterApproval: (operationId) => {
+      started.push(operationId);
+    },
+  };
+  return (async () => {
+    try {
+      applyMigrations(db);
+      initStoreGeneration(db, GENERATION);
+      seed(db);
+      await run({ db, ports, submitted, started });
+    } finally {
+      db.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  })();
+}
+
+function judged(result: CandidateAutoExecutionResult) {
+  assert.equal(result.kind, 'judged', JSON.stringify(result));
+  return result.kind === 'judged' ? result.results : [];
+}
+
+// 操作ごとの「判定・理由・結果の種類」を並べる。
+function summary(result: CandidateAutoExecutionResult): unknown[] {
+  return judged(result).map((item) => [
+    item.operation,
+    item.decision,
+    item.reason_codes,
+    item.outcome.kind,
+  ]);
+}
+
+const count = (db: SqliteDatabase, sql: string): number =>
+  (db.prepare(sql).get() as { n: number }).n;
+
+test('用事の登録だけ方針で有効なら、用事だけを方針による自動承認で作り、実行を始める', async () => {
+  await withHarness(
+    POLICY_TASK_ON,
+    async ({ db, ports, submitted, started }) => {
+      const result = await runCandidateAutoExecution(ports, input());
+      assert.deepEqual(summary(result), [
+        ['create_task', 'auto_eligible', [], 'created'],
+        [
+          'create_event',
+          'notice_only',
+          [
+            'policy_disabled',
+            'deadline_not_instant',
+            'confidence_not_high',
+            'own_calendar_not_selected',
+          ],
+          'not_eligible',
+        ],
+        [
+          'label_mail',
+          'notice_only',
+          ['policy_disabled', 'label_not_assigned'],
+          'not_eligible',
+        ],
+        [
+          'draft_reply',
+          'notice_only',
+          ['policy_disabled', 'not_reply_required'],
+          'not_eligible',
+        ],
+      ]);
+      const created = judged(result)[0]?.outcome;
+      assert.equal(created?.kind, 'created');
+      const operationId =
+        created?.kind === 'created' ? created.operation_id : '';
+      assert.deepEqual(started, [operationId]);
+      // 承認から始まり、承認は方針の経路で候補と依頼の版を持ち、一度だけの記録がある。
+      assert.deepEqual(
+        db
+          .prepare('SELECT state, kind FROM operations WHERE operation_id = ?')
+          .get(operationId),
+        { state: 'approved', kind: 'task.create' },
+      );
+      assert.deepEqual(
+        db
+          .prepare(
+            'SELECT route, candidate_id, request_entity_id, request_revision, analysis_revision FROM approvals WHERE operation_id = ?',
+          )
+          .get(operationId),
+        {
+          route: 'policy_auto',
+          candidate_id: CAND,
+          request_entity_id: REQ,
+          request_revision: 3,
+          analysis_revision: 2,
+        },
+      );
+      assert.deepEqual(
+        db
+          .prepare(
+            'SELECT request_entity_id, operation_kind, account_id, calendar_id FROM request_entity_operations WHERE operation_id = ?',
+          )
+          .get(operationId),
+        {
+          request_entity_id: REQ,
+          operation_kind: 'create_task',
+          account_id: 'acct-1',
+          calendar_id: '',
+        },
+      );
+      // 確定 intent: 題は要約だけ、期限は日付のまま、本文は空。
+      const command = submitted[0];
+      assert.ok(command !== undefined);
+      const opened = openOperationIntent(
+        KEY,
+        { operationId, contentVersion: 1 },
+        {
+          formatVersion: command.intent.format_version,
+          keyId: command.intent.key_id,
+          nonce: command.intent.nonce,
+          ciphertext: command.intent.ciphertext,
+          tag: command.intent.tag,
+        },
+        command.content_hash,
+      );
+      assert.equal(opened.ok, true);
+      assert.deepEqual(JSON.parse(opened.ok ? opened.canonical : 'null'), {
+        action: {
+          body: null,
+          due: '2030-10-07',
+          kind: 'task.create',
+          title: '書類の提出',
+        },
+        content_version: '1',
+        effects: {
+          external_recipients: [],
+          reconcile_scope: 'local_transaction',
+        },
+        operation_id: operationId,
+        permission_revision: '0',
+        schema: 'buddy.operation.v1',
+        target: { list_id: 'inbox' },
+      });
+      // 安全停止の鍵はメールの ID を平文で持たない。
+      assert.equal(
+        command.auto_approval?.safety_target_key.includes('msg-1'),
+        false,
+      );
+    },
+  );
+});
+
+test('既定の方針（すべて OFF）では、どの操作も作らず実行も始めない', async () => {
+  await withHarness(POLICY_OFF, async ({ db, ports, started }) => {
+    const result = await runCandidateAutoExecution(ports, input());
+    assert.deepEqual(
+      judged(result).map((item) => [
+        item.operation,
+        item.decision,
+        item.outcome.kind,
+      ]),
+      [
+        ['create_task', 'notice_only', 'not_eligible'],
+        ['create_event', 'notice_only', 'not_eligible'],
+        ['label_mail', 'notice_only', 'not_eligible'],
+        ['draft_reply', 'notice_only', 'not_eligible'],
+      ],
+    );
+    assert.deepEqual(started, []);
+    assert.equal(count(db, 'SELECT count(*) AS n FROM operations'), 0);
+  });
+});
+
+test('同じ候補を二度判定しても、用事は一度だけ作る（二度目は作成済みで気づきだけ）', async () => {
+  await withHarness(POLICY_TASK_ON, async ({ db, ports, started }) => {
+    await runCandidateAutoExecution(ports, input());
+    const again = await runCandidateAutoExecution(ports, input());
+    assert.deepEqual(summary(again)[0], [
+      'create_task',
+      'notice_only',
+      ['already_created'],
+      'not_eligible',
+    ]);
+    assert.equal(started.length, 1);
+    assert.equal(count(db, 'SELECT count(*) AS n FROM operations'), 1);
+  });
+});
+
+test('安全停止中は保留にし、操作を作らない', async () => {
+  await withHarness(POLICY_TASK_ON, async ({ db, ports, started }) => {
+    stopSafetyBreaker(db, T0 - 1000, 'rate_exceeded');
+    const result = await runCandidateAutoExecution(ports, input());
+    assert.deepEqual(summary(result)[0], [
+      'create_task',
+      'hold',
+      ['safety_stopped'],
+      'not_eligible',
+    ]);
+    assert.deepEqual(started, []);
+    assert.equal(count(db, 'SELECT count(*) AS n FROM operations'), 0);
+  });
+});
+
+test('初回取り込み・関連解析の未完了の候補からは作らない', async () => {
+  await withHarness(POLICY_TASK_ON, async ({ ports, started }) => {
+    const initial = await runCandidateAutoExecution(
+      ports,
+      input({ initial_import: true }),
+    );
+    assert.deepEqual(summary(initial)[0], [
+      'create_task',
+      'notice_only',
+      ['initial_import'],
+      'not_eligible',
+    ]);
+    const pending = await runCandidateAutoExecution(
+      ports,
+      input({ analysis: { ...ANALYSIS, plan_complete: false } }),
+    );
+    assert.deepEqual(summary(pending)[0], [
+      'create_task',
+      'hold',
+      ['plan_incomplete'],
+      'not_eligible',
+    ]);
+    assert.deepEqual(started, []);
+  });
+});
+
+test('Core の判定が通っても、DB の関連解析が新しい版なら保存層が断り、作り直さない', async () => {
+  await withHarness(POLICY_TASK_ON, async ({ db, ports, started }) => {
+    db.prepare(
+      "INSERT INTO related_analyses (group_id, analysis_revision, source_set_hash, published_generation, plan_complete, status) VALUES (?, 3, ?, 5, 1, 'ready')",
+    ).run(GROUP, HASH);
+    const result = await runCandidateAutoExecution(ports, input());
+    const first = judged(result)[0];
+    assert.equal(first?.decision, 'auto_eligible');
+    assert.equal(first?.outcome.kind, 'rejected');
+    assert.deepEqual(
+      first?.outcome.kind === 'rejected' ? first.outcome.reasons : [],
+      ['analysis_revision_changed'],
+    );
+    assert.deepEqual(started, []);
+    assert.equal(count(db, 'SELECT count(*) AS n FROM operations'), 0);
+    // 断った作成は安全停止の件数に数えない（ADR 0148）。
+    assert.equal(
+      count(db, 'SELECT count(*) AS n FROM safety_window_counts'),
+      0,
+    );
+  });
+});
+
+test('候補が無い・閉じた・依頼の版が変わったときは、どの操作も判定しない', async () => {
+  await withHarness(POLICY_TASK_ON, async ({ db, ports, started }) => {
+    assert.deepEqual(
+      await runCandidateAutoExecution(
+        ports,
+        input({ candidate_id: 'ffffffff-ffff-4fff-8fff-ffffffffffff' }),
+      ),
+      { kind: 'skipped', reasons: ['candidate_not_found'] },
+    );
+    db.prepare(
+      'UPDATE request_entities SET request_revision = 4 WHERE request_entity_id = ?',
+    ).run(REQ);
+    assert.deepEqual(await runCandidateAutoExecution(ports, input()), {
+      kind: 'skipped',
+      reasons: ['request_revision_changed'],
+    });
+    db.prepare(
+      "UPDATE notification_candidates SET state = 'dismissed', closed_at = ?, key_delete_at = ? WHERE candidate_id = ?",
+    ).run(T0, T0 + 604_800_000 + 7_776_000_000, CAND);
+    assert.deepEqual(await runCandidateAutoExecution(ports, input()), {
+      kind: 'skipped',
+      reasons: ['candidate_closed', 'request_revision_changed'],
+    });
+    assert.deepEqual(started, []);
+  });
+});
+
+test('ラベルの付与は判定が通っても、書込みをつないでいないので操作を作らない', async () => {
+  await withHarness(
+    {
+      policy_version: '3',
+      rules: {
+        'task.register': false,
+        'event.create_own': false,
+        'mail.apply_existing_label': true,
+        'mail.save_draft': false,
+      },
+    },
+    async ({ db, ports, started }) => {
+      const result = await runCandidateAutoExecution(
+        ports,
+        input({
+          context: {
+            ownCalendarSelected: false,
+            labelAssigned: true,
+            draftExists: false,
+            budgetAvailable: true,
+          },
+        }),
+      );
+      assert.deepEqual(summary(result)[2], [
+        'label_mail',
+        'auto_eligible',
+        [],
+        'not_wired',
+      ]);
+      assert.deepEqual(started, []);
+      assert.equal(count(db, 'SELECT count(*) AS n FROM operations'), 0);
+    },
+  );
+});
+
+test('予定はカレンダーが無ければ、選択済みでも気づきだけにする', async () => {
+  await withHarness(
+    {
+      policy_version: '3',
+      rules: {
+        'task.register': false,
+        'event.create_own': true,
+        'mail.apply_existing_label': false,
+        'mail.save_draft': false,
+      },
+    },
+    async ({ ports }) => {
+      const request: CandidateRequest = {
+        ...candidateRequest({
+          kind: 'instant',
+          local_datetime: '2030-10-07T17:00',
+          zone: ZONE,
+          original_text: '10月7日 17時',
+        }),
+        confidence_observed: 'high',
+      };
+      const context = {
+        ownCalendarSelected: true,
+        labelAssigned: false,
+        draftExists: false,
+        budgetAvailable: true,
+      };
+      const without = await runCandidateAutoExecution(
+        ports,
+        input({ request, context, calendar_id: null }),
+      );
+      assert.deepEqual(summary(without)[1], [
+        'create_event',
+        'notice_only',
+        ['own_calendar_not_selected'],
+        'not_eligible',
+      ]);
+      const withCalendar = await runCandidateAutoExecution(
+        ports,
+        input({ request, context, calendar_id: 'cal-own' }),
+      );
+      assert.deepEqual(summary(withCalendar)[1], [
+        'create_event',
+        'auto_eligible',
+        [],
+        'not_wired',
+      ]);
+    },
+  );
+});
+
+test('時刻のある期限は本人のタイムゾーンの地域日時で登録し、別のタイムゾーンなら作らない', async () => {
+  await withHarness(POLICY_TASK_ON, async ({ db, ports, started }) => {
+    const other = await runCandidateAutoExecution(
+      ports,
+      input({
+        request: candidateRequest({
+          kind: 'instant',
+          local_datetime: '2030-10-07T17:00',
+          zone: 'America/New_York',
+          original_text: 'Oct 7 5pm',
+        }),
+      }),
+    );
+    assert.deepEqual(judged(other)[0]?.outcome, {
+      kind: 'not_created',
+      reasons: ['deadline_zone_mismatch'],
+    });
+    assert.equal(count(db, 'SELECT count(*) AS n FROM operations'), 0);
+    assert.deepEqual(started, []);
+  });
+  assert.deepEqual(
+    candidateTaskDue(
+      {
+        kind: 'instant',
+        local_datetime: '2030-10-07T17:00',
+        zone: ZONE,
+        original_text: '10月7日 17時',
+      },
+      ZONE,
+    ),
+    { ok: true, due: '2030-10-07T17:00' },
+  );
+  assert.deepEqual(candidateTaskDue({ kind: 'none' }, ZONE), {
+    ok: true,
+    due: null,
+  });
+  assert.deepEqual(
+    candidateTaskDue(
+      { kind: 'unresolved', reason: 'relative', original_text: '来週中' },
+      ZONE,
+    ),
+    { ok: false, reason: 'deadline_unresolved' },
+  );
+});
+
+test('用事の題は要約から作り、期限・差出人を付けない。空の要約は固定の題にする', () => {
+  assert.equal(candidateTaskTitle('  書類の\n提出  '), '書類の 提出');
+  assert.equal(candidateTaskTitle(''), '対応の依頼');
+});
+
+test('安全停止の鍵は操作・アカウント・元のメールで決まり、ハッシュの形にする', () => {
+  const key = candidateSafetyTargetKey(
+    'create_task',
+    'acct-1',
+    'msg-1',
+    sha256Hex,
+  );
+  assert.match(key, /^auto:[0-9a-f]{64}$/u);
+  assert.equal(
+    candidateSafetyTargetKey('create_task', 'acct-1', 'msg-1', sha256Hex),
+    key,
+  );
+  assert.notEqual(
+    candidateSafetyTargetKey('label_mail', 'acct-1', 'msg-1', sha256Hex),
+    key,
+  );
+  assert.notEqual(
+    candidateSafetyTargetKey('create_task', 'acct-1', 'msg-2', sha256Hex),
+    key,
+  );
+});

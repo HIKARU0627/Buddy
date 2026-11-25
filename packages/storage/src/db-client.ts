@@ -38,6 +38,7 @@ import type {
 import type { StoreBindingInput, StoreBindingResult } from './store-binding.js';
 import { DEVICE_WRITE_OPS } from './device-store.js';
 import type { EventQuery, EventQueryValues } from './event-store.js';
+import type { AutoExecutionStateRecord } from './auto-execution-state.js';
 import type {
   CommandScopeRecord,
   DeviceOp,
@@ -603,6 +604,10 @@ export class DbWorkerClient {
   query(query: {
     kind: 'interrupted';
   }): Promise<readonly InterruptedOperation[]>;
+  query(query: {
+    kind: 'auto_execution_state';
+    candidate_id: string;
+  }): Promise<AutoExecutionStateRecord>;
   // スナップショット・イベント・操作の表示用の照会（ADR 0023）。
   query<Q extends EventQuery>(query: Q): Promise<EventQueryValues[Q['kind']]>;
   query(query: DbQuery): Promise<DbQueryValue> {

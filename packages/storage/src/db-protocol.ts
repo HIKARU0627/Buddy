@@ -19,6 +19,7 @@ import type { DeviceOp, DeviceOpResult } from './device-store.js';
 import type { PairingOp, PairingOpResult } from './pairing-store.js';
 // B03-04: スナップショット・イベント・操作の表示用の照会（ADR 0023）。
 import type { EventQuery, EventQueryValue } from './event-store.js';
+import type { AutoExecutionStateRecord } from './auto-execution-state.js';
 import type {
   HomeNetworkOp,
   HomeNetworkOpResult,
@@ -115,6 +116,8 @@ export type DbQuery =
     }
   // 起動時の回復の対象（preparing・dispatching の操作）。
   | { readonly kind: 'interrupted' }
+  // 候補を起点にした自動実行の判定に使う DB の現在値（ADR 0149）。
+  | { readonly kind: 'auto_execution_state'; readonly candidate_id: string }
   | EventQuery;
 
 export type DbQueryValue =
@@ -122,6 +125,7 @@ export type DbQueryValue =
   | CommandReceiptRecord
   | readonly OutboxEventRecord[]
   | readonly InterruptedOperation[]
+  | AutoExecutionStateRecord
   | EventQueryValue
   | null;
 

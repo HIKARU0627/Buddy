@@ -3,6 +3,8 @@ export * from './analysis.js';
 export * from './api.js';
 export * from './approval.js';
 export * from './audio.js';
+// B13-02: 候補起点の自動実行の判定表・重複キー・安全停止による保留（ADR 0146）。
+export * from './auto-execution.js';
 export * from './budget.js';
 // B07-02: M と R の計算・予算月・利用状況・超過枠への経路・手での精算（ADR 0035）。
 export * from './budget-rules.js';

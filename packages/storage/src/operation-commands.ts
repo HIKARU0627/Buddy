@@ -77,6 +77,14 @@ export interface CreateOperationCommand extends DbCommandBase<'operation.create'
     readonly approval_id: string;
     readonly policy_version: string;
     readonly current_policy_version: string;
+    // 同じ対象への反復を数える鍵（03 の安全停止。ADR 0147）。Core が操作の種類と対象から作る。
+    readonly safety_target_key: string;
+  } | null;
+  // 取り消しの補償の操作（03、ADR 0074・0147）。あれば同じ transaction で取り消しの記録を作る。
+  readonly undo_of?: {
+    readonly undo_id: string;
+    // 取り消す自動実行の操作。
+    readonly operation_id: string;
   } | null;
 }
 
@@ -91,6 +99,8 @@ export interface ApproveOperationCommand extends DbCommandBase<'operation.approv
   readonly preview_valid: boolean;
   readonly policy_version: string | null;
   readonly current_policy_version: string;
+  // 方針による自動承認（route が policy_auto）で必須。同じ対象への反復を数える鍵（ADR 0147）。
+  readonly safety_target_key?: string | null;
 }
 
 export interface PrepareOperationCommand extends DbCommandBase<'operation.prepare'> {
@@ -331,9 +341,22 @@ export function commandShapeReasons(command: DbCommand): string[] {
         (typeof auto !== 'object' ||
           !isId(auto.approval_id) ||
           !isRevision(auto.policy_version) ||
-          !isRevision(auto.current_policy_version))
+          !isRevision(auto.current_policy_version) ||
+          !isExternalId(auto.safety_target_key))
       )
         reasons.push('auto_approval_invalid');
+      const undo = command.undo_of;
+      if (undo !== undefined && undo !== null) {
+        if (
+          typeof undo !== 'object' ||
+          !isId(undo.undo_id) ||
+          !isId(undo.operation_id) ||
+          undo.operation_id === command.operation_id
+        )
+          reasons.push('undo_of_invalid');
+        // 取り消しは本人の画面操作が起点で、方針による自動承認では作らない（03 J12）。
+        else if (auto !== null) reasons.push('undo_auto_approval');
+      }
       break;
     }
     case 'operation.approve':
@@ -364,6 +387,18 @@ export function commandShapeReasons(command: DbCommand): string[] {
         reasons.push('screen_approval_incomplete');
       if (command.route === 'policy_auto' && command.policy_version === null)
         reasons.push('policy_version_invalid');
+      // 方針の承認は同じ対象への反復を数える鍵を必要とする（ADR 0147）。
+      if (
+        command.route === 'policy_auto' &&
+        !isExternalId(command.safety_target_key)
+      )
+        reasons.push('safety_target_key_invalid');
+      if (
+        command.route === 'screen' &&
+        command.safety_target_key !== undefined &&
+        command.safety_target_key !== null
+      )
+        reasons.push('safety_target_key_invalid');
       break;
     case 'operation.prepare':
       if (!isId(command.attempt_id)) reasons.push('attempt_id_invalid');

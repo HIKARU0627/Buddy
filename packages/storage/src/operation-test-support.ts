@@ -158,13 +158,17 @@ export function createCommand(
     readonly effect_route?: 'local_command' | 'remote_mutation';
     readonly workflow_id?: string | null;
     readonly intent?: SealedBlobInput;
+    readonly operation_kind?: string;
+    // 同じ対象への反復を数える鍵。既定は操作ごとに別の対象。
+    readonly target_key?: string;
+    readonly undo_of?: CreateOperationCommand['undo_of'];
   } = {},
 ): CreateOperationCommand {
   return {
     ...base(operationId, '0', options),
     kind: 'operation.create',
     workflow_id: options.workflow_id ?? null,
-    operation_kind: 'mail.labels.change',
+    operation_kind: options.operation_kind ?? 'mail.labels.change',
     effect_route: options.effect_route ?? 'remote_mutation',
     content_hash: CONTENT_HASH,
     intent: options.intent ?? sealedIntent(),
@@ -174,8 +178,10 @@ export function createCommand(
             approval_id: randomUUID(),
             policy_version: '3',
             current_policy_version: '3',
+            safety_target_key: options.target_key ?? `target:${operationId}`,
           }
         : null,
+    undo_of: options.undo_of ?? null,
   };
 }
 

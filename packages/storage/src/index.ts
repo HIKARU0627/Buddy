@@ -10,6 +10,7 @@ export * from './migrations.js';
 export * from './sealed-blob.js';
 export * from './operation-commands.js';
 export * from './operation-store.js';
+export * from './safety-store.js';
 export type * from './db-protocol.js';
 export { DB_WORKER_STALL_MARKER } from './db-protocol.js';
 export * from './db-client.js';

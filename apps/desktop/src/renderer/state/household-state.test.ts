@@ -486,8 +486,9 @@ test('the export range choices count back from the month the hub decided', () =>
     from: '2027-12',
     to: '2030-11',
   });
+  // 2020-12〜2030-11 でちょうど 120 か月。
   assert.deepEqual(exportRangeOf('ten_years', '2030-11', null), {
-    from: '2021-02',
+    from: '2020-12',
     to: '2030-11',
   });
   // 2000 年より前にさかのぼるときは 2000-01 から。

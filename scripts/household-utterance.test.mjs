@@ -567,3 +567,180 @@ test('収入の金額の境（0 円・上限・桁あふれ）と読めない金
       said,
     );
 });
+
+// --- 見直しで見つかった読み違いの修正（ADR 0174 の追補） ---
+
+test('お金を出した話の後の「もらった」「入った」は収入にせず、お金を出す言い方と収入の言い方がある一言は候補にしない', () => {
+  for (const said of [
+    '家賃 8 万円振り込んだら、確認の連絡をもらった',
+    '後輩に 3000 円渡したら、手紙をもらった',
+    '500 円出したら、おまけをもらった',
+    '子どもにお小遣いを 500 円あげたら、お礼に飴をもらった',
+    '友達に 3000 円のランチをおごって、お礼にお菓子をもらった',
+    '1000 円寄付したら、お礼状をいただいた',
+    'お祝いに 1 万円包んだら、内祝いをいただいた',
+    '電気代の請求が 8000 円入った',
+  ])
+    assert.deepEqual(
+      readHouseholdUtterance(said, TODAY),
+      unreadable('direction_unclear'),
+      said,
+    );
+  // 金額と収入の言い方が別の節にある・金額が名詞にかかる・通知やメールが「入った」・「手に入った」は読まない。
+  for (const said of [
+    '8 万円の引き落としの通知が入った',
+    '3000 円のチケットを予約したら、確認のメールが入った',
+    '欲しかった本が 2000 円で手に入った',
+    '1 万円貯まったので、ご褒美をもらった',
+    '1000 円のお菓子をいただいた',
+    '25 万円の給料が入った',
+  ])
+    assert.deepEqual(readHouseholdUtterance(said, TODAY), NONE, said);
+});
+
+test('お釣り・立て替え・ポイント・割り勘の言葉が別の節にあっても、収入の話として数える', () => {
+  for (const said of [
+    '給料が 25 万円入った。立て替えてた分を払った',
+    'フリマで 3000 円売れた。お釣りで飴を買った',
+    'フリマで 3000 円売れたので、ポイントで本を買った',
+    'お小遣いを 5000 円もらって、ポイントで本を買った',
+    '1 万円稼いだけど、割り勘で払った',
+  ])
+    assert.deepEqual(
+      readHouseholdUtterance(said, TODAY),
+      unreadable('direction_unclear'),
+      said,
+    );
+  // 同じ節のお釣りの話は収入の話に数えない。支出だけの一言として読む。
+  assert.deepEqual(
+    readHouseholdUtterance('コンビニで 800 円払った。お釣りももらった', TODAY),
+    draft({ amount_yen: 800, merchant: 'コンビニ' }),
+  );
+  // 収入の候補は、別の節の言葉でも、お釣り・立て替えなどがあれば今までどおり出さない（取りこぼしの側）。
+  assert.deepEqual(
+    readHouseholdUtterance('友達に立て替えてたので、3000 円もらった', TODAY),
+    NONE,
+  );
+});
+
+test('振替・両替・値引きの「入った」「もらった」は収入として読まない', () => {
+  for (const said of [
+    'Suica に 3000 円入った',
+    'PayPay に 5000 円入った',
+    '財布に 1 万円入った',
+    '口座に 5 万円入った',
+    'ATM から 3 万円入った',
+    '貯金から 3 万円入った',
+    '定期預金から 3 万円入った',
+    '千円札 2 枚に両替して 2000 円もらった',
+    '1 万円を両替でもらった',
+    '500 円の割引をもらった',
+    '500 円の値引きをもらった',
+    '500 円ディスカウントもらった',
+    // 給料などの言葉があっても、口座・財布への「入った」は読まない（取りこぼしの側）。
+    '口座に給料が 25 万円入った',
+    '給料が口座に 25 万円入った',
+    '給料が 25 万円口座に入った',
+  ])
+    assert.deepEqual(readHouseholdUtterance(said, TODAY), NONE, said);
+  // 頭の日付の「25日に」は行き先ではない。
+  assert.deepEqual(
+    readHouseholdUtterance('25日に給料が 25 万円入った', TODAY),
+    income({ amount_yen: 250000, occurred_on: null, memo: '給料' }),
+  );
+});
+
+test('時給・日給・1 個あたりなどの単価は金額として読まず、理由を返す', () => {
+  for (const said of [
+    '時給 1000 円で 8 時間稼いだ',
+    '日給 8000 円もらった',
+    '月給 25 万円が振り込まれた',
+    '単価 500 円で 10 個売れた',
+    '1 枚 100 円で売れた',
+    '1 個 200 円のパンを 3 個買った',
+    '1 本 150 円のジュースを買った',
+    '一人あたり 3000 円払った',
+    '1 人あたり 3000 円払った',
+  ])
+    assert.deepEqual(
+      readHouseholdUtterance(said, TODAY),
+      unreadable('unit_price'),
+      said,
+    );
+  // 単価でなければ今までどおり読む。数と助数詞だけの「〜で」は店名にしない。
+  assert.deepEqual(
+    readHouseholdUtterance('3 個で 600 円使った', TODAY),
+    draft({ amount_yen: 600 }),
+  );
+});
+
+test('「〜んでもらった」は「〜てもらった」と同じく読まず、「振り込まれた」は読む', () => {
+  for (const said of [
+    '500 円分包んでもらった',
+    '母に 5000 円振り込んでもらった',
+    '1000 円返してもらった',
+    '1000 円おごってもらった',
+  ])
+    assert.deepEqual(readHouseholdUtterance(said, TODAY), NONE, said);
+  assert.deepEqual(
+    readHouseholdUtterance('母から 5000 円振り込まれた', TODAY),
+    income({ amount_yen: 5000, memo: '母' }),
+  );
+  // 助詞の「で」の後の「もらった」は今までどおり読む。
+  assert.deepEqual(
+    readHouseholdUtterance('5000 円を現金でもらった', TODAY),
+    income({ amount_yen: 5000 }),
+  );
+});
+
+test('明日・明後日・あさって・ついたちは日付を空にし、時間や回数の言い方はメモ・店名に入れない', () => {
+  const cases = [
+    [
+      '明日給料が 25 万円入った',
+      income({ amount_yen: 250000, occurred_on: null, memo: '給料' }),
+    ],
+    [
+      '明後日お小遣いを 5000 円もらった',
+      income({ amount_yen: 5000, occurred_on: null, memo: 'お小遣い' }),
+    ],
+    [
+      'あさってお小遣いを 5000 円もらった',
+      income({ amount_yen: 5000, occurred_on: null, memo: 'お小遣い' }),
+    ],
+    [
+      'ついたちに給料が 25 万円入った',
+      income({ amount_yen: 250000, occurred_on: null, memo: '給料' }),
+    ],
+    [
+      '明日コンビニで 500 円使った',
+      draft({ occurred_on: null, merchant: 'コンビニ' }),
+    ],
+    ['8 時間で 1 万円稼いだ', income({ amount_yen: 10000 })],
+    ['3 回で 1500 円使った', draft({ amount_yen: 1500 })],
+    ['入った店で 500 円使った', draft({})],
+    ['行ったお店で 500 円払った', draft({})],
+  ];
+  for (const [said, expected] of cases)
+    assert.deepEqual(readHouseholdUtterance(said, TODAY), expected, said);
+});
+
+test('今まで読めていた一言は、直した後も同じに読む', () => {
+  const cases = [
+    ['給料が 25 万円入った', income({ amount_yen: 250000, memo: '給料' })],
+    [
+      'お小遣いを 5000 円もらった',
+      income({ amount_yen: 5000, memo: 'お小遣い' }),
+    ],
+    ['フリマで 3,000 円売れた', income({ amount_yen: 3000, memo: 'フリマ' })],
+    ['フリマで 3000 円売れたよ', income({ amount_yen: 3000, memo: 'フリマ' })],
+    ['コンビニで 500 円使った', draft({ merchant: 'コンビニ' })],
+    ['給料日に 3000 円使った', draft({ amount_yen: 3000 })],
+    ['給料が入った、25 万円', income({ amount_yen: 250000 })],
+    [
+      '古いカメラを 1 万 2000 円で売った',
+      income({ amount_yen: 12000, memo: '古いカメラ' }),
+    ],
+  ];
+  for (const [said, expected] of cases)
+    assert.deepEqual(readHouseholdUtterance(said, TODAY), expected, said);
+});

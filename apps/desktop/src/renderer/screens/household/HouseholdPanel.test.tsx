@@ -172,7 +172,8 @@ test('the month shows its totals, the spending by category and the rows', () => 
   const all = options(html);
   assert.equal(all.filter((label) => label === '食費').length, 1);
   assert.equal(all.filter((label) => label === '収入').length, 1);
-  assert.equal(all.length, 19);
+  // 支出の行の分類 18 と収入の行の分類 1 に、書き出しの期間の選択肢 4 つ（ADR 0172）を足した数。
+  assert.equal(all.length, 18 + 1 + 4);
   assert.match(html, /<select[^>]*disabled=""[^>]*>[^]*?<option[^>]*>収入/u);
   // 削除のボタンが行ごとにある。月の一覧に今月と 10 月がある。
   assert.equal(buttons(html).filter((label) => label === '削除する').length, 2);

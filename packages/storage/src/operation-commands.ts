@@ -85,6 +85,13 @@ export interface CreateOperationCommand extends DbCommandBase<'operation.create'
     readonly undo_id: string;
     // 取り消す自動実行の操作。
     readonly operation_id: string;
+    // 一覧で本人が押した取り消し（J12 の確認）。あれば同じ transaction で画面の承認を記録し approved から始める
+    // （preview_id は undo_id。ADR 0153）。無ければ承認待ちから始める。
+    readonly screen_approval?: {
+      readonly approval_id: string;
+      // 押した端末（登録済みで失効していないこと）。
+      readonly device_id: string;
+    } | null;
   } | null;
   // 気づきの候補を起点にした方針による自動承認（11 §5A・§5B、ADR 0148）。auto_approval と一緒にだけ使う。
   // 判定に使った依頼と関連解析の版は、保存層が候補の行から読んで承認の行に写す（Core の値を信用しない）。
@@ -360,7 +367,12 @@ export function commandShapeReasons(command: DbCommand): string[] {
           typeof undo !== 'object' ||
           !isId(undo.undo_id) ||
           !isId(undo.operation_id) ||
-          undo.operation_id === command.operation_id
+          undo.operation_id === command.operation_id ||
+          (undo.screen_approval !== undefined &&
+            undo.screen_approval !== null &&
+            (typeof undo.screen_approval !== 'object' ||
+              !isId(undo.screen_approval.approval_id) ||
+              !isId(undo.screen_approval.device_id)))
         )
           reasons.push('undo_of_invalid');
         // 取り消しは本人の画面操作が起点で、方針による自動承認では作らない（03 J12）。

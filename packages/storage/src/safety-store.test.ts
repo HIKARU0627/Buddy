@@ -622,7 +622,7 @@ const SIX_IN_WINDOW = {
   window_minutes: 10,
 };
 
-test('the automatic list is newest first and shows undo as undone, in progress, unavailable (no undo route yet) or expired', async () => {
+test('the automatic list is newest first and shows undo as undone, in progress, unavailable (kind not undoable) or expired', async () => {
   await withStore((db) => {
     assert.deepEqual(listAutoActions(db, T0), {
       safety: {
@@ -696,6 +696,228 @@ test('the automatic list is newest first and shows undo as undone, in progress, 
       ['op-b', 'undone'],
       ['op-a', 'expired'],
     ]);
+    // 取り消せる種類に label_mail を渡すと、有効な記録のない期限内の行だけが available になる（ADR 0153）。
+    const undoable = (now: number): unknown =>
+      listAutoActions(db, now, ['label_mail']).items.map((row) => [
+        row.operation_id,
+        row.undo_state,
+      ]);
+    assert.deepEqual(undoable(T0 + 100), [
+      ['op-e', 'in_progress'],
+      ['op-d', 'available'],
+      ['op-c', 'in_progress'],
+      ['op-b', 'undone'],
+      ['op-a', 'available'],
+    ]);
+    assert.deepEqual(undoable(T0 + 41 + 2_592_000_000), [
+      ['op-e', 'in_progress'],
+      ['op-d', 'expired'],
+      ['op-c', 'in_progress'],
+      ['op-b', 'undone'],
+      ['op-a', 'expired'],
+    ]);
+    // 他の種類だけを渡しても label_mail は取り消せるように見せない。
+    assert.deepEqual(
+      listAutoActions(db, T0 + 100, ['create_task']).items.map(
+        (row) => row.undo_state,
+      ),
+      ['in_progress', 'unavailable', 'in_progress', 'undone', 'unavailable'],
+    );
+  });
+});
+
+test('one automatic action is read by id with the same undo state as the list; anything else reads as null', async () => {
+  await withStore((db) => {
+    seedAutoActions(db);
+    const context = { platform: 'macos' as const, halted: false };
+    const read = (operationId: string, kinds?: readonly 'label_mail'[]) =>
+      executeSafetyOp(
+        db,
+        {
+          kind: 'safety.auto_action',
+          operation_id: operationId,
+          now: T0 + 100,
+          ...(kinds === undefined ? {} : { undoable_kinds: kinds }),
+        },
+        context,
+      );
+    assert.deepEqual(read('op-d', ['label_mail']), {
+      result: {
+        ok: true,
+        value: item(
+          'op-d',
+          '2027-01-15T08:00:00.040Z',
+          '2027-02-14T08:00:00.040Z',
+          'available',
+        ),
+      },
+      halt: false,
+    });
+    assert.deepEqual(read('op-d'), {
+      result: {
+        ok: true,
+        value: item(
+          'op-d',
+          '2027-01-15T08:00:00.040Z',
+          '2027-02-14T08:00:00.040Z',
+          'unavailable',
+        ),
+      },
+      halt: false,
+    });
+    // 画面で承認した操作・未完了の自動承認・ない操作は自動実行ではない。
+    for (const id of ['op-screen', 'op-pending', 'op-none'])
+      assert.deepEqual(read(id, ['label_mail']), {
+        result: { ok: true, value: null },
+        halt: false,
+      });
+    assert.deepEqual(
+      executeSafetyOp(
+        db,
+        {
+          kind: 'safety.auto_action',
+          operation_id: '',
+          now: Number.NaN,
+          undoable_kinds: ['send_mail' as 'label_mail'],
+        },
+        context,
+      ),
+      {
+        result: {
+          ok: false,
+          outcome: 'rejected',
+          reasons: [
+            'now_invalid',
+            'undoable_kinds_invalid',
+            'operation_id_invalid',
+          ],
+        },
+        halt: false,
+      },
+    );
+  });
+});
+
+test('an undo pressed on the list creates the compensation already approved on screen by that device', async () => {
+  await withStore((db) => {
+    committed(exec(db, createCommand('op-auto', { auto: true }), T0));
+    finishAuto(db, 'op-auto', T0 + 5);
+    const pressed = (id: string, device: string) =>
+      createCommand(id, {
+        undo_of: {
+          undo_id: `undo-${id}`,
+          operation_id: 'op-auto',
+          screen_approval: { approval_id: `appr-${id}`, device_id: device },
+        },
+      });
+    // 失効した端末・登録のない端末からは作らない（何も書かない）。
+    db.prepare(
+      "UPDATE devices SET revoked_at = 2000 WHERE device_id = 'dev-2'",
+    ).run();
+    assert.deepEqual(reasons(exec(db, pressed('op-x', 'dev-2'), T0 + 9)), [
+      'device_not_registered',
+    ]);
+    assert.deepEqual(reasons(exec(db, pressed('op-y', 'dev-9'), T0 + 9)), [
+      'device_not_registered',
+    ]);
+    assert.deepEqual(undoRows(db), []);
+    assert.equal(
+      committed(exec(db, pressed('op-comp', 'dev-1'), T0 + 10)),
+      '1',
+    );
+    assert.deepEqual(operationState(db, 'op-comp'), {
+      state: 'approved',
+      state_revision: 1,
+    });
+    assert.deepEqual(
+      db
+        .prepare(
+          'SELECT approval_id, content_version, content_hash, route, device_id, preview_id, policy_version, status, approved_at FROM approvals WHERE operation_id = ?',
+        )
+        .all('op-comp'),
+      [
+        {
+          approval_id: 'appr-op-comp',
+          content_version: 1,
+          content_hash: CONTENT_HASH,
+          route: 'screen',
+          device_id: 'dev-1',
+          preview_id: 'undo-op-comp',
+          policy_version: null,
+          status: 'valid',
+          approved_at: T0 + 10,
+        },
+      ],
+    );
+    assert.deepEqual(undoRows(db), [
+      {
+        undo_id: 'undo-op-comp',
+        operation_id: 'op-auto',
+        compensation_operation_id: 'op-comp',
+        status: 'in_progress',
+        requested_at: T0 + 10,
+      },
+    ]);
+    // 承認済みから準備へ進める（承認の命令は要らない）。結果まで進めると取り消し済みになる。
+    const prepare = prepareCommand('op-comp', '1');
+    committed(exec(db, prepare, T0 + 11));
+    committed(
+      exec(db, dispatchCommand('op-comp', '2', prepare.attempt_id), T0 + 11),
+    );
+    committed(
+      exec(
+        db,
+        resultCommand('op-comp', '3', prepare.attempt_id, 'reconciling'),
+        T0 + 11,
+      ),
+    );
+    committed(
+      exec(
+        db,
+        resultCommand('op-comp', '4', prepare.attempt_id, 'succeeded'),
+        T0 + 12,
+      ),
+    );
+    assert.deepEqual(
+      undoRows(db).map((row) => (row as { status: string }).status),
+      ['undone'],
+    );
+    // 期限を過ぎた押下は承認も取り消しの記録も書かない。
+    committed(exec(db, createCommand('op-old', { auto: true }), T0));
+    finishAuto(db, 'op-old', T0 + 20);
+    const late = createCommand('op-late', {
+      undo_of: {
+        undo_id: 'undo-late',
+        operation_id: 'op-old',
+        screen_approval: { approval_id: 'appr-late', device_id: 'dev-1' },
+      },
+    });
+    assert.deepEqual(reasons(exec(db, late, T0 + 21 + 2_592_000_000)), [
+      'undo_expired',
+    ]);
+    assert.equal(
+      db
+        .prepare('SELECT count(*) AS n FROM approvals WHERE approval_id = ?')
+        .get('appr-late')?.['n' as never],
+      0,
+    );
+    // 押下の承認の形が不正なら命令の形の検査で拒否する。
+    assert.deepEqual(
+      reasons(
+        exec(
+          db,
+          createCommand('op-bad', {
+            undo_of: {
+              undo_id: 'undo-bad',
+              operation_id: 'op-old',
+              screen_approval: { approval_id: '', device_id: 'dev-1' },
+            },
+          }),
+          T0 + 30,
+        ),
+      ),
+      ['undo_of_invalid'],
+    );
   });
 });
 

@@ -1554,11 +1554,36 @@ async function startHttps(
     },
     log,
   });
-  // 自動実行の一覧と安全停止の解除（B13-05、ADR 0152）。安全停止の版の照合は DB の現在値で行う。
-  // 取り消しの経路（undoAutoAction）はまだ作らない（一覧の undo_state は unavailable）。
+  // 自動実行の一覧・安全停止の解除・取り消し（B13-05、ADR 0152・0153）。版の照合は DB の現在値で行う。
+  // 取り消しは提供元の読み書きの口があるときだけ開く（無ければ一覧は取り消せるように見せず、経路は 503）。
+  // 補償の操作は保存の後に実行担当へ渡す（実行担当はこの後で作るので、呼ばれた時点の値を使う）。
+  const undoProvider = https.turns?.provider ?? null;
   const autoActionRoutes = createAutoActionRoutes({
     store,
     now: () => now().getTime(),
+    undo:
+      undoProvider === null || (https.turns?.writer ?? null) === null
+        ? null
+        : {
+            provider: undoProvider,
+            contract: createApiContract(),
+            dataKey: async () => {
+              const result = await keyStore.loadDataKey();
+              return result.ok ? result.dataKey : null;
+            },
+            afterApproval: (operationId) => runner.afterApproval(operationId),
+            ...(retention === null
+              ? {}
+              : {
+                  retention: {
+                    ready: async () => {
+                      await retention?.idle();
+                    },
+                    gate: () => (retention as RetentionSweeper).gate(),
+                    lease: () => (retention as RetentionSweeper).lease(),
+                  },
+                }),
+          },
   });
   const candidateHandlers = {
     ...candidateRoutes.handlers,

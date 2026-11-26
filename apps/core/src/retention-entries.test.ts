@@ -123,6 +123,13 @@ const ENTRIES: Readonly<Record<string, readonly Entry[]>> = {
       anchors: ['ports.retention.ready()', 'ports.retention.lease()'],
     },
   ],
+  'api-auto-actions.ts': [
+    {
+      kind: 'gated',
+      what: '自動実行の取り消しで、接続・許可の版・対象のメールを読み直す（B13-05、ADR 0153）',
+      anchors: ['retention.ready()', 'retention.lease()'],
+    },
+  ],
   'graph-mail-attachments.ts': [
     {
       kind: 'gated',
@@ -191,7 +198,8 @@ test('exempt entries state their reason and name the call they exempt', async ()
 
 test('the Core hands the gate to every gated entry', async () => {
   const text = await readFile(join(SOURCE_DIR, 'core.ts'), 'utf8');
-  // 発言の入口・実行担当・Live・同期の実行器（Google・Graph）・調査の実行器の 6 つに、同じ掃除の job の gate／lease を渡している。
+  // 発言の入口・実行担当・Live・同期の実行器（Google・Graph）・調査の実行器・自動実行の取り消しの 7 つに、同じ掃除の
+  // job の gate／lease を渡している。
   for (const anchor of [
     'retention: {',
     'cloudGate: {',
@@ -201,6 +209,6 @@ test('the Core hands the gate to every gated entry', async () => {
   assert.equal(
     text.split('lease: () => (retention as RetentionSweeper).lease()').length -
       1,
-    6,
+    7,
   );
 });

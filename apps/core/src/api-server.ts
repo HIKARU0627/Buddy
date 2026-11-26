@@ -107,7 +107,10 @@ export type ApiErrorCode =
   | 'private_conversation'
   | 'output_mode_text'
   | 'external_send_consent_required'
-  | 'budget_held';
+  | 'budget_held'
+  // 自動実行の取り消し（07 §2、J12、ADR 0153）。
+  | 'target_changed'
+  | 'undo_expired';
 
 const MESSAGES: Readonly<Record<ApiErrorCode, string>> = {
   unauthenticated: '端末トークンがない、無効、または失効しています。',
@@ -131,6 +134,8 @@ const MESSAGES: Readonly<Record<ApiErrorCode, string>> = {
   output_mode_text: '返し方が文字のため、音声の接続を開きません。',
   external_send_consent_required: '音声を外部へ送ることへの同意が必要です。',
   budget_held: '会話の予算を予約できません。',
+  target_changed: '対象がその後に変わったため、自動では戻しません。',
+  undo_expired: '取り消しの期限を過ぎました。',
 };
 
 // 経路の処理（handlers）が返す拒否の応答。本文は ApiError（code・message・request_id）だけ。

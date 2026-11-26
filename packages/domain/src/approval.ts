@@ -183,7 +183,8 @@ export function autoActionKindFor(
 // - 取り消しの記録（undo_records）のうち有効なもの（in_progress・undone・unknown）は一つだけ（0001 の索引）。
 //   undone は取り消し済み。in_progress と unknown（補償の結果の確認中）は取り消しの途中として見せる。
 // - 有効な記録がなく（記録なし・失敗だけ）、期限（完了から 30 日）を過ぎていれば expired。
-// - 取り消しの経路がまだない間は unavailable にし、取り消せるように見せない（ADR 0152）。
+// - 補償の操作を作れない種類（または提供元の読み書きの口がない間）は unavailable にし、取り消せるように見せない
+//   （ADR 0152・0153）。
 // - 外部の対象が変わったか（target_changed）は提供元を読まないと分からないので、ここでは決めない。
 export type AutoActionUndoState =
   | 'available'

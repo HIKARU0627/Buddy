@@ -14,6 +14,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import {
   candidateLocalClock,
+  detectHouseholdRecurring,
   householdContentErrors,
   householdMonthOf,
   householdMonthShift,
@@ -195,6 +196,13 @@ export function createHouseholdRoutes(
         months,
         truncated: read.truncated,
         settings: settings.value,
+        // 定期の支出と固定費の目安（ADR 0165）。同じ 12 か月の記録から計算し、保存しない。
+        recurring: detectHouseholdRecurring(
+          read.months.flatMap((month) =>
+            month.entries.map((entry) => entry.content),
+          ),
+          current,
+        ),
       },
     };
   };

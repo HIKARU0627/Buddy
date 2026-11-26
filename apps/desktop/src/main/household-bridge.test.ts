@@ -66,6 +66,18 @@ const overview = () => ({
   ),
   truncated: false,
   settings: { mail_intake: 'on', settings_revision: '2' },
+  recurring: {
+    items: [
+      {
+        merchant: '合成モバイル',
+        category: 'communication',
+        typical_yen: 3000,
+        months_seen: 4,
+        last_on: '2030-11-03',
+      },
+    ],
+    monthly_total_yen: 3000,
+  },
 });
 
 const lunch = (fields: Record<string, unknown> = {}) => ({
@@ -251,6 +263,7 @@ test('the view carries refs and display values only, and reads the current month
     list_seq: 2,
     mail_intake: 'on',
     last_import: null,
+    recurring: overview().recurring,
   });
   assert.deepEqual(
     contract.responseErrors({

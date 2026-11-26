@@ -1380,12 +1380,27 @@ export function semanticErrors(name, value) {
       found.push('summary_mismatch');
     errors.push(...new Set(found));
   }
+  // 定期の支出（ADR 0165）。固定費の目安は目安の合計、並びは目安の大きい順。
+  if (name === 'HouseholdRecurringSummary') {
+    if (
+      value.items.reduce((sum, item) => sum + item.typical_yen, 0) !==
+      value.monthly_total_yen
+    )
+      errors.push('recurring_total_mismatch');
+    for (let index = 1; index < value.items.length; index += 1)
+      if (value.items[index - 1].typical_yen < value.items[index].typical_yen) {
+        errors.push('recurring_order');
+        break;
+      }
+  }
   if (name === 'HouseholdMonthTotals') {
     if (value.balance_yen !== value.income_yen - value.expense_yen)
       errors.push('balance_mismatch');
   }
   if (name === 'HouseholdOverview') {
-    const found = [];
+    const found = [
+      ...semanticErrors('HouseholdRecurringSummary', value.recurring),
+    ];
     let expected = value.current_month;
     for (const month of value.months) {
       found.push(...semanticErrors('HouseholdMonthTotals', month));

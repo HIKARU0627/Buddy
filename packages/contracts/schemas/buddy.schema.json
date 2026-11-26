@@ -6544,6 +6544,9 @@
         },
         "settings": {
           "$ref": "#/$defs/HouseholdSettings"
+        },
+        "recurring": {
+          "$ref": "#/$defs/HouseholdRecurringSummary"
         }
       },
       "required": [
@@ -6552,7 +6555,8 @@
         "generated_at",
         "months",
         "truncated",
-        "settings"
+        "settings",
+        "recurring"
       ],
       "additionalProperties": false,
       "description": "家計簿の月ごとの合計（GET /v1/household/months、ADR 0161）。今月は Core が本人のタイムゾーンで決め、端末の時計で代用しない。月は今月から 1 か月ずつさかのぼる（意味検査）。"
@@ -6785,6 +6789,65 @@
       ],
       "additionalProperties": false,
       "description": "取り込みの結果（ADR 0164）。"
+    },
+    "HouseholdRecurringItem": {
+      "type": "object",
+      "properties": {
+        "merchant": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "description": "最後に現れた記録の店名。"
+        },
+        "category": {
+          "$ref": "#/$defs/HouseholdCategoryId"
+        },
+        "typical_yen": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991,
+          "description": "月の金額の目安（現れた月ごとの合計の中央値）。"
+        },
+        "months_seen": {
+          "type": "integer",
+          "minimum": 3,
+          "maximum": 12
+        },
+        "last_on": {
+          "type": "string",
+          "pattern": "^20[0-9]{2}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$"
+        }
+      },
+      "required": [
+        "merchant",
+        "category",
+        "typical_yen",
+        "months_seen",
+        "last_on"
+      ],
+      "additionalProperties": false,
+      "description": "定期の支出 1 件（ADR 0165）。"
+    },
+    "HouseholdRecurringSummary": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/HouseholdRecurringItem"
+          },
+          "description": "目安の大きい順。"
+        },
+        "monthly_total_yen": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991,
+          "description": "固定費の目安（目安の合計）。"
+        }
+      },
+      "required": ["items", "monthly_total_yen"],
+      "additionalProperties": false,
+      "description": "定期の支出と固定費の目安（ADR 0165）。月ごとの合計と同じ 12 か月の記録から、中枢が毎回計算する（保存しない）。毎月決まって払っている支出（3 か月以上・最後が今月か先月・月 2 回以下・金額の幅が 2 倍以内）だけ。"
     },
     "HouseholdEntryDeleteRequest": {
       "type": "object",
@@ -16674,6 +16737,17 @@
           ],
           "description": "カードの利用通知メールの取り込みの入・切（ADR 0163）。読めていなければ null（入・切を推測で見せない）。設定の版は main の中にだけ持つ。"
         },
+        "recurring": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HouseholdRecurringSummary"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "定期の支出と固定費の目安（ADR 0165）。読めていなければ null。"
+        },
         "last_import": {
           "anyOf": [
             {
@@ -16729,6 +16803,7 @@
         }
       },
       "required": [
+        "recurring",
         "last_import",
         "mail_intake",
         "fetch",

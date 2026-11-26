@@ -3,12 +3,12 @@
 // - 候補を保存した後に呼ぶ。DB の現在値（安全停止・時間窓・候補・依頼・作成済みの操作）を読み、Core が別に確かめた
 //   事実（方針・許可の版・抽出の根拠・関連解析の計画）と合わせて、4 種類の操作それぞれを judgeAutoExecution で判定する。
 // - 今つなぐのは Buddy 内の用事の登録（create_task、LocalCommand）と、既存のラベルの付与（label_mail、Gmail と模擬の
-//   RemoteMutation、ADR 0150）。判定が auto_eligible のとき、確定 intent を
+//   RemoteMutation、ADR 0150）と、返信の下書きの保存（draft_reply、RemoteMutation、ADR 0151）。判定が auto_eligible のとき、確定 intent を
 //   契約で確かめて暗号化し、方針による自動承認（auto_approval）と候補の起点（candidate_origin）を付けて
 //   operation.create へ送る。作成と承認と一度だけの記録は保存層の一つの transaction で行い、保存層が候補の行から
 //   版を読み直して照合する（ADR 0148 の最終ガード）。ここでの判定は最終ガードを省略する理由にならない。
-// - 下書き・予定は、判定の結果を返すだけで操作を作らない（not_wired）。書込みの内容（下書きの本文、予定の内容）を
-//   決める口がまだない。
+// - 予定は、判定の結果を返すだけで操作を作らない（not_wired）。予定の内容を決める口がまだない。
+// - 下書きの本文は本文を作る口（composeReply）から受け取り、宛先と件名は Core が返信元から決める。
 // - 拒否・成否不明の操作を自動で作り直さない（U302）。結果は呼び出し側が記録・表示に使う。
 // - 本文（題・抄録・メール本文）をログに出さない。用事の本文（body）は空にし、メールの文を写さない。
 import type { Deadline } from '@buddy/contracts';
@@ -36,7 +36,7 @@ import type {
 } from '@buddy/storage';
 import type { ApiContract } from './api-contract.js';
 import { mailCandidateTitle } from './candidate-intake.js';
-import { canRead, canWrite } from './turn-ports.js';
+import { canRead, canWrite, replyFields } from './turn-ports.js';
 import type {
   ProviderConnection,
   ProviderMailTarget,
@@ -118,6 +118,15 @@ export interface CandidateAutoExecutionPorts {
     // 掃除が動いている・待っている・ゲートが閉じているときは null。返された関数を呼ぶまで新しい掃除は本体に入らない。
     readonly lease: () => (() => void) | null;
   };
+  // 返信の下書きの本文を作る口（裏の文章の生成。設計 05 の reply_draft）。宛先と件名は Core が返信元から決め、
+  // 本文だけをここから受け取る。作れなければ null。口が無ければ null（下書きは作らない）。
+  readonly composeReply:
+    | ((request: {
+        readonly account_id: string;
+        readonly source_id: string;
+        readonly summary: string;
+      }) => Promise<string | null>)
+    | null;
   // 自動承認した操作の実行を始める（OperationRunner.afterApproval）。
   readonly afterApproval: (operationId: string) => void;
 }
@@ -286,15 +295,21 @@ export async function runCandidateAutoExecution(
         ...base,
         outcome: await createLabel(ports, input, state),
       });
+    else if (operation === 'draft_reply')
+      results.push({
+        ...base,
+        outcome: await createDraft(ports, input, state),
+      });
     else results.push({ ...base, outcome: { kind: 'not_wired' } });
   }
   return { kind: 'judged', results };
 }
 
 interface AutoCreate {
-  readonly operation: 'create_task' | 'label_mail';
+  readonly operation: 'create_task' | 'label_mail' | 'draft_reply';
   readonly operation_id: string;
-  readonly operation_kind: 'task.create' | 'mail.labels.change';
+  readonly operation_kind:
+    'task.create' | 'mail.labels.change' | 'mail.draft.create';
   readonly effect_route: 'local_command' | 'remote_mutation';
   readonly permission_revision: string;
   readonly content: Record<string, unknown>;
@@ -412,6 +427,33 @@ const LABEL_PROVIDER_OF: Readonly<
   mock: 'mock',
 };
 
+// 掃除の貸し出しを持った区間で read を呼ぶ（ADR 0053）。ゲートの確認と貸し出しの取得は同じ同期の区間で行い、
+// read が終わるまで貸し出しを持つ。保存（Buddy 内）と実行の開始の前に返す（送出は実行担当が別に通す）。
+async function withRetentionLease<T>(
+  ports: CandidateAutoExecutionPorts,
+  read: () => Promise<T>,
+): Promise<{ readonly ok: true; readonly value: T } | { readonly ok: false }> {
+  let release: (() => void) | null = null;
+  for (
+    let attempt = 0;
+    release === null && attempt < LEASE_ATTEMPTS;
+    attempt += 1
+  ) {
+    await ports.retention.ready();
+    const gate = ports.retention.gate();
+    if (!gate.search || !gate.cloud_send || !gate.auto_use)
+      return { ok: false };
+    // 取れないのは、ready の後に別の掃除が始まったとき。その掃除が済むのを待って確かめ直す。
+    release = ports.retention.lease();
+  }
+  if (release === null) return { ok: false };
+  try {
+    return { ok: true, value: await read() };
+  } finally {
+    release();
+  }
+}
+
 // 既存のラベルを元のメールに 1 つ足す（Gmail のラベル追加は加算の操作。11 §5A）。外すラベルは作らない。
 // 接続・許可の版・対象のメールを今読み直し、接続のアカウントと元サービスが判定に使った値と同じときだけ作る。
 // 送出の直前には実行器が対象の版と許可の版をもう一度確かめる（D1、ADR 0030）。
@@ -429,31 +471,17 @@ async function createLabel(
     return { kind: 'not_created', reasons: ['label_provider_unsupported'] };
   if (provider === null)
     return { kind: 'not_created', reasons: ['connection_unavailable'] };
-  // 掃除が済むまで provider を読まない（ADR 0053）。ゲートの確認と貸し出しの取得は同じ同期の区間で行い、
-  // 読み直しが終わるまで貸し出しを持つ。保存（Buddy 内）と実行の開始の前に返す（送出は実行担当が別に通す）。
-  let release: (() => void) | null = null;
-  for (
-    let attempt = 0;
-    release === null && attempt < LEASE_ATTEMPTS;
-    attempt += 1
-  ) {
-    await ports.retention.ready();
-    const gate = ports.retention.gate();
-    if (!gate.search || !gate.cloud_send || !gate.auto_use)
-      return { kind: 'not_created', reasons: ['retention_blocked'] };
-    // 取れないのは、ready の後に別の掃除が始まったとき。その掃除が済むのを待って確かめ直す。
-    release = ports.retention.lease();
-  }
-  if (release === null)
-    return { kind: 'not_created', reasons: ['retention_blocked'] };
-  let read: LabelRead;
-  try {
-    read = await readLabelTarget(provider, input, labelId);
-  } finally {
-    release();
-  }
+  const gated = await withRetentionLease(ports, () =>
+    readMailTarget(provider, input, 'mail.labels.change'),
+  );
+  if (!gated.ok) return { kind: 'not_created', reasons: ['retention_blocked'] };
+  const read = gated.value;
   if (!read.ok) return { kind: 'not_created', reasons: [read.reason] };
   const { connection, permission, target } = read;
+  if (LABEL_PROVIDER_OF[connection.provider] !== input.label_provider)
+    return { kind: 'not_created', reasons: ['label_provider_changed'] };
+  if (target.labels.includes(labelId))
+    return { kind: 'not_created', reasons: ['no_change'] };
   const operationId = ports.newId();
   return submitAuto(ports, input, state, {
     operation: 'label_mail',
@@ -482,7 +510,82 @@ async function createLabel(
   });
 }
 
-type LabelRead =
+// 返信の下書きを元のメールのスレッドに保存する（送らない。11 §5A）。宛先は返信元の差出人、件名は返信元の件名に
+// 「Re: 」を付けた値で、どちらも Core が provider の読み取りから決める（ADR 0004・0033）。本文だけを本文を作る口から
+// 受け取る。照合は作成物の目印なので、目印で下書きを探せない provider では作らない（実行担当と同じ条件）。
+async function createDraft(
+  ports: CandidateAutoExecutionPorts,
+  input: CandidateAutoExecutionInput,
+  state: AutoExecutionStateRecord,
+): Promise<CandidateOperationOutcome> {
+  const provider = ports.provider;
+  const compose = ports.composeReply;
+  if (provider === null)
+    return { kind: 'not_created', reasons: ['connection_unavailable'] };
+  if (provider.findDrafts === undefined)
+    return { kind: 'not_created', reasons: ['draft_unreconcilable'] };
+  if (compose === null)
+    return { kind: 'not_created', reasons: ['composer_unavailable'] };
+  // 本文を作る口は元のメールを読むので、読み直しと同じ貸し出しの区間で呼ぶ。
+  const gated = await withRetentionLease(ports, async () => {
+    const read = await readMailTarget(provider, input, 'mail.draft.create');
+    if (!read.ok) return read;
+    const reply = replyFields(read.target);
+    if (reply === null)
+      return { ok: false as const, reason: 'reply_fields_unreadable' };
+    let body: string | null;
+    try {
+      body = await compose({
+        account_id: input.account_id,
+        source_id: input.source_id,
+        summary: input.summary,
+      });
+    } catch {
+      body = null;
+    }
+    const trimmed = typeof body === 'string' ? body.trim() : '';
+    if (trimmed.length === 0)
+      return { ok: false as const, reason: 'body_unavailable' };
+    return { ok: true as const, read, reply, body: trimmed };
+  });
+  if (!gated.ok) return { kind: 'not_created', reasons: ['retention_blocked'] };
+  const result = gated.value;
+  if (!result.ok) return { kind: 'not_created', reasons: [result.reason] };
+  const { connection, permission, target } = result.read;
+  const operationId = ports.newId();
+  return submitAuto(ports, input, state, {
+    operation: 'draft_reply',
+    operation_id: operationId,
+    operation_kind: 'mail.draft.create',
+    effect_route: 'remote_mutation',
+    permission_revision: permission,
+    content: {
+      schema: 'buddy.operation.v1',
+      operation_id: operationId,
+      content_version: '1',
+      permission_revision: permission,
+      provider: connection.provider,
+      account_id: connection.account_id,
+      target: {
+        remote_id: target.remote_id,
+        source_revision: target.source_revision,
+      },
+      action: {
+        kind: 'mail.draft.create',
+        to: result.reply.to,
+        cc: [],
+        subject: result.reply.subject,
+        body: result.body,
+      },
+      effects: {
+        external_recipients: [],
+        reconcile_scope: 'operation_marker',
+      },
+    },
+  });
+}
+
+type MailRead =
   | {
       readonly ok: true;
       readonly connection: ProviderConnection;
@@ -492,11 +595,11 @@ type LabelRead =
   | { readonly ok: false; readonly reason: string };
 
 // 接続・許可の版・対象のメールを今読み直す（掃除の貸し出しを持った区間で呼ぶ）。
-async function readLabelTarget(
+async function readMailTarget(
   provider: ProviderReader,
   input: CandidateAutoExecutionInput,
-  labelId: string,
-): Promise<LabelRead> {
+  writeKind: 'mail.labels.change' | 'mail.draft.create',
+): Promise<MailRead> {
   let connection: ProviderConnection | null;
   try {
     connection = await provider.connection();
@@ -507,12 +610,10 @@ async function readLabelTarget(
     connection === null ||
     connection.status !== 'active' ||
     connection.account_id !== input.account_id ||
-    !canWrite(connection, 'mail.labels.change') ||
+    !canWrite(connection, writeKind) ||
     !canRead(connection, 'mail.message')
   )
     return { ok: false, reason: 'connection_unavailable' };
-  if (LABEL_PROVIDER_OF[connection.provider] !== input.label_provider)
-    return { ok: false, reason: 'label_provider_changed' };
   let permission: string | null = null;
   try {
     const read = await provider.readPermission(input.account_id);
@@ -531,7 +632,5 @@ async function readLabelTarget(
   }
   if (target === null || target.remote_id !== input.source_id)
     return { ok: false, reason: 'target_not_found' };
-  if (target.labels.includes(labelId))
-    return { ok: false, reason: 'no_change' };
   return { ok: true, connection, permission, target };
 }

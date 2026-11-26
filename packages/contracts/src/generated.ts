@@ -75,6 +75,7 @@ export type BuddyContract =
   | HouseholdImportResult
   | HouseholdBudgetChangeRequest
   | HouseholdBudget
+  | HouseholdEntryCreateRequest
   | CandidateEvidenceRequest
   | WebSearchRequest
   | WebSearchResponse
@@ -1566,6 +1567,13 @@ export type DesktopIpcRequest =
               HouseholdBudgetItem,
             ];
       };
+    }
+  | {
+      channel: 'desktop.household_add';
+      request_id: Id;
+      payload: {
+        entry: HouseholdManualEntry;
+      };
     };
 export type DesktopHubHost = string;
 export type DesktopHubHost1 = string;
@@ -1756,7 +1764,8 @@ export type DesktopIpcResponse =
         | 'desktop.household_delete'
         | 'desktop.household_intake'
         | 'desktop.household_import'
-        | 'desktop.household_budget';
+        | 'desktop.household_budget'
+        | 'desktop.household_add';
       outcome: 'ok';
       household: DesktopHouseholdView;
     }
@@ -2000,7 +2009,7 @@ export type DesktopVoiceView =
       reply_mode: 'voice' | 'text';
     };
 /**
- * UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014・0025）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。中枢との接続・ペアリングは用途別のチャネルだけで、要求の宛先・本文を Renderer が決められない。音声レンダラーの IPC（B05）は別に定める。 発言・承認表示の準備・承認・取消・照合は用途別のチャネルで、操作は main が持つ参照（ref）で指す（B04-05、ADR 0031）。 キャンバスを前に出す（canvas_summon）は状態の層と入力バーからだけ使う（UI-02、ADR 0032）。状態の層のパネルを出す・しまう（status_panel）は状態の層からだけ使う（UI-04、ADR 0032）。キャンバスのユーザーの操作（canvas_user_op）はキャンバスの窓からだけ、キャンバスが前に出ている間だけ使う（UI-06、ADR 0032）。 予算の確認（超過枠の承認・見送り budget_overage_decide、M 超過の確認 budget_overrun_review、不明な費用の手での精算 budget_manual_settle）は状態の層からだけ使う。承認・確認・精算は main の OS の確認ダイアログを 1 回だけ挟み、画面が持つのは main が作る参照（ref）だけ（B07-05、ADR 0039）。 音声（B05-06、ADR 0050）: 音声の状態の取得（get_voice）・呼びかけなしで音声の会話を始める「続ける」（voice_continue）・外部への送信の同意の取り消し（voice_consent_revoke）は状態の層からだけ使う。外部への送信の同意は main の OS の確認ダイアログで 1 回だけ取り、画面は同意を作れない。音声レンダラーへの IPC は VoiceRendererRequest で、このチャネルとは別。 気づき（B11-05、ADR 0132）: 一覧の取得（candidates_list）と状態の変更（candidate_state。開く・今回は扱わない・再通知）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バーは使えない。候補は main が作る参照（ref）で指し、候補 ID・expected_state・接続範囲は main が持つ。 連携の接続（B08-02 P3・B09-05、ADR 0142）: 一覧の取得（connections_list）と取得範囲の変更（connection_targets_update）は中枢の画面（接続・端末）でだけ使い、キャンバス・入力バーは使えない。接続は main が作る参照（ref）で指し、接続 ID・permission_revision は main が持つ。画面が送れるのは今の保存値と、この世代で中枢から読んだ選べる対象（connection_targets_discover）のうちの選択と、期間・添付の範囲だけ（ADR 0145）。選べる対象の読み取りは提供元への読み取りを伴うので、中枢の画面のロック解除済みの画面操作だけ。 自動実行（B13-05、ADR 0154）: 一覧と安全停止の状態の取得（auto_actions_list）・取り消し（auto_action_undo）・安全停止の解除（safety_resume）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バーは使えない。自動実行した操作と安全停止の状態は main が作る参照（ref）で指し、操作 ID・state_revision・safety_revision・接続範囲は main が持つ。 家計簿（ADR 0162）: 月ごとの合計と 1 か月の記録の取得（household_view）・分類の変更（household_category）・削除（household_delete）・利用通知の取り込みの入・切（household_intake、ADR 0163）・書き出しの取り込み（household_import、ADR 0164。ファイルは main が OS のファイル選択で本人に選ばせ、画面はパスも中身も渡さない）・分類ごとの予算の変更（household_budget、ADR 0166）は従来の窓（標準の端末画面）から使い、キャンバス・入力バーは使えない。記録は main が作る参照（ref）で指し、記録の ID・内容版・接続範囲は main が持つ。
+ * UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014・0025）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。中枢との接続・ペアリングは用途別のチャネルだけで、要求の宛先・本文を Renderer が決められない。音声レンダラーの IPC（B05）は別に定める。 発言・承認表示の準備・承認・取消・照合は用途別のチャネルで、操作は main が持つ参照（ref）で指す（B04-05、ADR 0031）。 キャンバスを前に出す（canvas_summon）は状態の層と入力バーからだけ使う（UI-02、ADR 0032）。状態の層のパネルを出す・しまう（status_panel）は状態の層からだけ使う（UI-04、ADR 0032）。キャンバスのユーザーの操作（canvas_user_op）はキャンバスの窓からだけ、キャンバスが前に出ている間だけ使う（UI-06、ADR 0032）。 予算の確認（超過枠の承認・見送り budget_overage_decide、M 超過の確認 budget_overrun_review、不明な費用の手での精算 budget_manual_settle）は状態の層からだけ使う。承認・確認・精算は main の OS の確認ダイアログを 1 回だけ挟み、画面が持つのは main が作る参照（ref）だけ（B07-05、ADR 0039）。 音声（B05-06、ADR 0050）: 音声の状態の取得（get_voice）・呼びかけなしで音声の会話を始める「続ける」（voice_continue）・外部への送信の同意の取り消し（voice_consent_revoke）は状態の層からだけ使う。外部への送信の同意は main の OS の確認ダイアログで 1 回だけ取り、画面は同意を作れない。音声レンダラーへの IPC は VoiceRendererRequest で、このチャネルとは別。 気づき（B11-05、ADR 0132）: 一覧の取得（candidates_list）と状態の変更（candidate_state。開く・今回は扱わない・再通知）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バーは使えない。候補は main が作る参照（ref）で指し、候補 ID・expected_state・接続範囲は main が持つ。 連携の接続（B08-02 P3・B09-05、ADR 0142）: 一覧の取得（connections_list）と取得範囲の変更（connection_targets_update）は中枢の画面（接続・端末）でだけ使い、キャンバス・入力バーは使えない。接続は main が作る参照（ref）で指し、接続 ID・permission_revision は main が持つ。画面が送れるのは今の保存値と、この世代で中枢から読んだ選べる対象（connection_targets_discover）のうちの選択と、期間・添付の範囲だけ（ADR 0145）。選べる対象の読み取りは提供元への読み取りを伴うので、中枢の画面のロック解除済みの画面操作だけ。 自動実行（B13-05、ADR 0154）: 一覧と安全停止の状態の取得（auto_actions_list）・取り消し（auto_action_undo）・安全停止の解除（safety_resume）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バーは使えない。自動実行した操作と安全停止の状態は main が作る参照（ref）で指し、操作 ID・state_revision・safety_revision・接続範囲は main が持つ。 家計簿（ADR 0162）: 月ごとの合計と 1 か月の記録の取得（household_view）・分類の変更（household_category）・削除（household_delete）・利用通知の取り込みの入・切（household_intake、ADR 0163）・書き出しの取り込み（household_import、ADR 0164。ファイルは main が OS のファイル選択で本人に選ばせ、画面はパスも中身も渡さない）・分類ごとの予算の変更（household_budget、ADR 0166）・記録の手入力（household_add、ADR 0167）は従来の窓（標準の端末画面）から使い、キャンバス・入力バーは使えない。記録は main が作る参照（ref）で指し、記録の ID・内容版・接続範囲は main が持つ。
  */
 export type DesktopIpcChannel =
   | 'desktop.get_state'
@@ -2051,7 +2060,8 @@ export type DesktopIpcChannel =
   | 'desktop.household_delete'
   | 'desktop.household_intake'
   | 'desktop.household_import'
-  | 'desktop.household_budget';
+  | 'desktop.household_budget'
+  | 'desktop.household_add';
 /**
  * main から UI レンダラーへの通知（設計 10 §1、07 §2、ADR 0014）。本文・端末 ID・認証情報を含めない。
  */
@@ -5299,6 +5309,27 @@ export interface HouseholdBudgetChangeRequest {
         HouseholdBudgetItem,
         HouseholdBudgetItem,
       ];
+}
+/**
+ * 家計の記録の手入力（POST /v1/household/entries、ADR 0167）。本人の画面操作だけが送る。出所の鍵は request_id から作るので、同じ要求の再送は二つ目を作らず、記録済みの記録を返す。
+ */
+export interface HouseholdEntryCreateRequest {
+  request_id: Id;
+  command_scope_id: Id;
+  entry: HouseholdManualEntry;
+}
+/**
+ * 本人が手で入れる家計の記録 1 件の中身（ADR 0167）。中枢は家計の記録の検査（向きと分類・長さ・長い数字の並び）をし直す。
+ */
+export interface HouseholdManualEntry {
+  direction: HouseholdDirection;
+  amount_yen: number;
+  occurred_on: string;
+  occurred_time: string | null;
+  category: HouseholdCategoryId;
+  merchant: string | null;
+  memo: string | null;
+  payment: string | null;
 }
 /**
  * 気づきの根拠の再取得の要求（設計 11 §4、ADR 0073・0130）。許可範囲から取り直すので接続範囲を本文で示す（postCanvasContent と同じ）。

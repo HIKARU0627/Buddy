@@ -92,6 +92,9 @@ const ACTIONS: HouseholdActions = {
   startBudget: noop,
   cancelBudget: noop,
   saveBudget: noop,
+  startAdd: noop,
+  cancelAdd: noop,
+  addEntry: noop,
 };
 
 const render = (node: ReactNode) =>
@@ -353,4 +356,34 @@ test('the budget block compares the month spending with the budget, and the edit
   assert(buttons(editing).includes('予算を保存する'));
   // 読めていなければ出さない。
   assert.doesNotMatch(text(panel({ view: view([entry(0)]), seq: 2 })), /予算/u);
+});
+
+test('the add block offers to add a record and the form lists the fields', () => {
+  const closed = panel({ view: view([entry(0)]), seq: 2 });
+  assert(buttons(closed).includes('記録を手で足す'));
+  const open = panel({ view: view([entry(0)]), seq: 2, adding: true });
+  for (const id of ['amount', 'date', 'time', 'merchant', 'memo', 'payment'])
+    assert.match(open, new RegExp(`id="household-add-${id}"`, 'u'));
+  assert.match(open, /id="household-add-direction"/u);
+  assert(buttons(open).includes('足す'));
+  assert.match(text(open), /カード番号・口座番号は入れないでください/u);
+});
+
+test('rows that look like the same purchase from two sources are marked, and the list says so', () => {
+  const html = text(
+    panel({
+      view: view([
+        entry(0),
+        entry(1, { source_kind: 'manual', merchant: '合成の食堂（手入力）' }),
+        entry(2, { amount_yen: 999 }),
+      ]),
+      seq: 2,
+    }),
+  );
+  assert.match(html, /同じ日・同じ金額の記録が別の出所からも入っています/u);
+  assert.equal((html.match(/重なっているかもしれません/gu) ?? []).length, 2);
+  const single = text(
+    panel({ view: view([entry(0), entry(2, { amount_yen: 999 })]), seq: 2 }),
+  );
+  assert.doesNotMatch(single, /重なっているかもしれません/u);
 });

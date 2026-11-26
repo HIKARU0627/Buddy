@@ -20,6 +20,7 @@ import type {
   DesktopHouseholdView,
   HouseholdBudgetItem,
   HouseholdCategoryId,
+  HouseholdManualEntry,
   HouseholdEntry,
   HouseholdMonth,
   HouseholdOverview,
@@ -494,6 +495,45 @@ export class HouseholdBridge {
       (outcome.status >= 200 && outcome.status < 300)
     ) {
       this.#host.log('household_budget_outcome_unknown');
+      return fail('outcome_unknown');
+    }
+    return fail(outcome.status === 409 ? 'preview_stale' : 'core_rejected');
+  }
+
+  // 家計の記録を手で足す（ADR 0167）。受け付けたら足した記録の月を読み直す（その月を出す）。
+  async add(
+    entry: HouseholdManualEntry,
+  ): Promise<HouseholdOutcome<DesktopHouseholdView>> {
+    const gen = this.#gen;
+    const connection = this.#host.connection();
+    const scope = connection?.state.commandScopeId ?? null;
+    if (connection === null || scope === null) return fail('not_connected');
+    const outcome = await connection.request({
+      method: 'POST',
+      path: '/v1/household/entries',
+      body: { entry: { ...entry } },
+      scoped: true,
+      screenOperation: true,
+      expectedScopeId: scope,
+    });
+    if (outcome.kind === 'not_sent') return fail('not_connected');
+    if (gen !== this.#gen) return fail('outcome_unknown');
+    if (
+      outcome.kind === 'response' &&
+      outcome.status === 200 &&
+      this.#host.contract.valid('HouseholdEntry', outcome.body)
+    ) {
+      await this.#read(entry.occurred_on.slice(0, 7));
+      if (gen !== this.#gen) return fail('not_connected');
+      return { ok: true, value: this.view() };
+    }
+    void this.#reread();
+    if (
+      outcome.kind === 'unknown' ||
+      outcome.status >= 500 ||
+      (outcome.status >= 200 && outcome.status < 300)
+    ) {
+      this.#host.log('household_add_outcome_unknown');
       return fail('outcome_unknown');
     }
     return fail(outcome.status === 409 ? 'preview_stale' : 'core_rejected');

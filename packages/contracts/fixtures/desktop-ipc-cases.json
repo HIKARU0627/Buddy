@@ -1037,6 +1037,28 @@
         "expected_io_epoch": null,
         "state": { "stopScope": "local" },
         "expected": { "ok": true }
+      },
+      {
+        "id": "household-add-from-hidden-window",
+        "refs": ["ADR 0167"],
+        "channel": "desktop.household_add",
+        "expected_io_epoch": null,
+        "sender": { "windowFocused": false },
+        "expected": { "ok": false, "reason": "screen_operation_required" }
+      },
+      {
+        "id": "household-add-while-locked",
+        "channel": "desktop.household_add",
+        "expected_io_epoch": null,
+        "state": { "lockState": "locked" },
+        "expected": { "ok": false, "reason": "device_locked" }
+      },
+      {
+        "id": "household-add-while-stopped",
+        "channel": "desktop.household_add",
+        "expected_io_epoch": null,
+        "state": { "stopScope": "local" },
+        "expected": { "ok": true }
       }
     ]
   },

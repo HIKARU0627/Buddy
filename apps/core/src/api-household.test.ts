@@ -793,6 +793,87 @@ test('予算: 分類ごとの予算を丸ごと差し替え、月ごとの合計
   );
 });
 
+test('手入力: 記録を足して返し、同じ要求の再送は二つ目を作らない。分類を選べば店名の規則を覚える（ADR 0167）', async (t) => {
+  const { store, dataKey, ports } = withDb(t);
+  const handlers = routes(store, dataKey);
+  const requestId = '00000000-0000-4000-8000-0000000c0106';
+  const body = (
+    over: Record<string, unknown> = {},
+    id = requestId,
+  ): JsonObject =>
+    ({
+      request_id: id,
+      command_scope_id: SCOPE,
+      entry: {
+        direction: 'expense',
+        amount_yen: 680,
+        occurred_on: '2030-11-04',
+        occurred_time: '08:15',
+        category: 'food',
+        merchant: '合成のパン屋',
+        memo: '現金',
+        payment: null,
+        ...over,
+      },
+    }) as JsonObject;
+  const created = await call(handlers.createHouseholdEntry, {}, body());
+  assert.equal(created.status, 200);
+  assert(contract.valid('HouseholdEntry', created.body));
+  assert.equal(created.body['source_kind'], 'manual');
+  assert.equal(created.body['amount_yen'], 680);
+  assert.equal(created.body['category'], 'food');
+  // 同じ要求の再送は同じ記録を返す。
+  const resent = await call(handlers.createHouseholdEntry, {}, body());
+  assert.equal(resent.status, 200);
+  assert.equal(resent.body['entry_id'], created.body['entry_id']);
+  const month = await call(handlers.getHouseholdMonth, { month: '2030-11' });
+  assert.equal((month.body['entries'] as Json[]).length, 1);
+  // 覚えた規則は、次の同じ店の未分類の利用に当たる。
+  const next = await recordHouseholdEntry(
+    ports,
+    {
+      kind: 'mail_notice',
+      provider: 'google',
+      account_id: 'acct-synthetic',
+      remote_id: 'm-bakery',
+      index: 0,
+    },
+    content({ merchant: '合成のパン屋', occurred_on: '2030-11-05' }),
+  );
+  assert.equal(next.outcome === 'created' && next.rule_applied, true);
+  // 向きの違う分類・口座番号らしい店名は 422。
+  for (const over of [
+    { category: 'income' },
+    { merchant: '振込 1234 5678 9012 3456' },
+  ]) {
+    const bad = await call(
+      handlers.createHouseholdEntry,
+      {},
+      body(over, '00000000-0000-4000-8000-0000000c0107'),
+    );
+    assert.equal(bad.status, 422);
+  }
+  // 消した記録の再送は作り直さず 409。
+  const removed = await call(
+    handlers.deleteHouseholdEntry,
+    { entry_id: created.body['entry_id'] as string },
+    {
+      request_id: '00000000-0000-4000-8000-0000000c0108',
+      command_scope_id: SCOPE,
+      expected_content_revision: '1',
+    },
+  );
+  assert.equal(removed.status, 200);
+  assert.equal(
+    (await call(handlers.createHouseholdEntry, {}, body())).status,
+    409,
+  );
+  assert.equal(
+    (await call(routes(store, null).createHouseholdEntry, {}, body())).status,
+    503,
+  );
+});
+
 test('成否不明・保存の失敗は 503 にし、成功にも競合にも見せない', async (t) => {
   const { store, dataKey, ports } = withDb(t);
   const entry = await record(ports, { merchant: '合成の売店' });

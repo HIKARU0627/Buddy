@@ -11,7 +11,7 @@ import type {
   DesktopIpcResponse,
   HouseholdCategoryId,
 } from '@buddy/contracts';
-import { HOUSEHOLD_CATEGORIES } from '@buddy/domain';
+import { HOUSEHOLD_CATEGORIES, householdDuplicateGroups } from '@buddy/domain';
 import { request } from '../desktop-api.js';
 import { REJECT_MESSAGES } from '../labels.js';
 
@@ -74,8 +74,105 @@ export const HOUSEHOLD_LABELS = {
   budgetNote:
     '分類ごとの月の予算を円で入れてください。空のままの分類は予算なしにします。',
   budgetTotal: '予算の合計',
-  budgetInvalid: '予算は 1 円以上の整数で入れてください。',
+  budgetInvalid: '予算は 1\u00a0円以上の整数で入れてください。',
+  addTitle: '記録を足す',
+  addOpen: '記録を手で足す',
+  addNote:
+    'メールにも書き出しにもない支出（現金など）や収入を足します。カード番号・口座番号は入れないでください。',
+  addSubmit: '足す',
+  adding: '足しています…',
+  addDirection: '向き',
+  addAmount: '金額（円）',
+  addDate: '日付',
+  addTime: '時刻（なくてもよい）',
+  addMerchant: '店名・相手',
+  addMemo: 'メモ',
+  addPayment: '支払い手段',
+  duplicateNote:
+    '同じ日・同じ金額の記録が別の出所からも入っています。同じ利用を二重に記録していないか確かめ、重なっていれば片方を削除してください。',
+  duplicateMark: '重なっているかもしれません',
+  addInvalid:
+    '金額（1\u00a0円以上の整数）と日付（2000〜2099\u00a0年）を入れてください。時刻は HH:MM です。',
 } as const;
+
+/**
+ * 出している月の記録のうち、重なっていそうな記録の参照（ADR 0168）。同じ日・同じ金額・同じ向きで出所の違う記録や、
+ * 手入力の二つを、本人が確かめられるように印を付ける（自動では消さない）。
+ */
+export function duplicateRefs(
+  entries: readonly DesktopHouseholdEntry[],
+): ReadonlySet<string> {
+  return new Set(
+    householdDuplicateGroups(
+      entries.map((entry) => ({
+        key: entry.ref,
+        source_kind: entry.source_kind,
+        direction: entry.direction,
+        occurred_on: entry.occurred_on,
+        amount_yen: entry.amount_yen,
+      })),
+    ).flat(),
+  );
+}
+
+// 手入力の知らせを出す場所。
+export const ADD_PLACE = 'add';
+
+export interface ManualEntryInput {
+  readonly direction: DesktopHouseholdEntry['direction'];
+  readonly amount: string;
+  readonly date: string;
+  readonly time: string;
+  readonly category: HouseholdCategoryId;
+  readonly merchant: string;
+  readonly memo: string;
+  readonly payment: string;
+}
+
+type ManualEntry = Extract<
+  DesktopIpcRequest,
+  { channel: 'desktop.household_add' }
+>['payload']['entry'];
+
+/**
+ * 入力欄の文字から手入力の記録を作る。金額は全角数字とコンマを受ける。空の店名・メモ・支払い手段は null。形が
+ * 違えば null（送らせない。長さ・長い数字の並びなどの中身の検査は中枢が行う）。
+ */
+export function manualEntryFromInput(
+  input: ManualEntryInput,
+): ManualEntry | null {
+  const amount = input.amount.normalize('NFKC').replaceAll(',', '').trim();
+  if (!/^[1-9][0-9]{0,9}$/u.test(amount)) return null;
+  const date = input.date.normalize('NFKC').trim();
+  const match = /^(20[0-9]{2})-([0-9]{2})-([0-9]{2})$/u.exec(date);
+  if (match === null) return null;
+  const parsed = new Date(`${date}T00:00:00Z`);
+  if (
+    Number.isNaN(parsed.getTime()) ||
+    parsed.toISOString().slice(0, 10) !== date
+  )
+    return null;
+  const time = input.time.normalize('NFKC').trim();
+  if (time !== '' && !/^([01][0-9]|2[0-3]):[0-5][0-9]$/u.test(time))
+    return null;
+  const text = (value: string): string | null => {
+    const trimmed = value.trim();
+    return trimmed === '' ? null : trimmed;
+  };
+  const allowed = categoryChoices(input.direction).map((choice) => choice.id);
+  return {
+    direction: input.direction,
+    amount_yen: Number(amount),
+    occurred_on: date,
+    occurred_time: time === '' ? null : time,
+    category: allowed.includes(input.category)
+      ? input.category
+      : (allowed[0] as HouseholdCategoryId),
+    merchant: text(input.merchant),
+    memo: text(input.memo),
+    payment: text(input.payment),
+  } as ManualEntry;
+}
 
 type BudgetPayload = Extract<
   DesktopIpcRequest,
@@ -258,6 +355,8 @@ export interface HouseholdViewState {
   readonly confirming: string | null;
   // 予算の入力欄を出しているか。
   readonly editingBudget: boolean;
+  // 手入力の欄を出しているか。
+  readonly adding: boolean;
 }
 
 export const INITIAL_HOUSEHOLD_STATE: HouseholdViewState = {
@@ -268,9 +367,11 @@ export const INITIAL_HOUSEHOLD_STATE: HouseholdViewState = {
   notice: null,
   confirming: null,
   editingBudget: false,
+  adding: false,
 };
 
-type Kind = 'view' | 'category' | 'delete' | 'intake' | 'import' | 'budget';
+type Kind =
+  'view' | 'category' | 'delete' | 'intake' | 'import' | 'budget' | 'add';
 
 export function householdFailureText(kind: Kind, reason: RejectReason): string {
   switch (reason) {
@@ -279,10 +380,14 @@ export function householdFailureText(kind: Kind, reason: RejectReason): string {
         ? '取り込みの設定はその後に変わっていました。読み直したので、今の設定を確かめてください。'
         : kind === 'budget'
           ? '予算はその後に変わっていました。読み直したので、今の予算を確かめてから、もう一度保存してください。'
-          : 'この記録はその後に変わっていました。読み直したので、今の内容を確かめてから、もう一度操作してください。';
+          : kind === 'add'
+            ? 'この記録は足せませんでした（同じ要求で足した記録を消していた）。もう一度入れ直してください。'
+            : 'この記録はその後に変わっていました。読み直したので、今の内容を確かめてから、もう一度操作してください。';
     case 'outcome_unknown':
       return '結果を確かめられませんでした。自動では送り直しません。「読み直す」で今の内容を確かめてください。';
     case 'core_rejected':
+      if (kind === 'add')
+        return '中身を受け付けませんでした。金額・日付・分類と、店名やメモにカード番号・口座番号のような長い数字が入っていないかを確かめてください。';
       return kind === 'category'
         ? 'この分類には変えられませんでした。読み直したので、もう一度選んでください。'
         : '中枢が受け付けませんでした。読み直したので、もう一度操作してください。';
@@ -346,9 +451,10 @@ export function applyViewResponse(
 }
 
 const SUCCESS_TEXT: Readonly<
-  Record<'category' | 'delete' | 'intake' | 'budget', string>
+  Record<'category' | 'delete' | 'intake' | 'budget' | 'add', string>
 > = {
   budget: '予算を保存しました。',
+  add: '記録を足しました。',
   intake: '取り込みの設定を変えました。',
   category:
     '分類を変えました。店名のある記録は、同じ店の次の未分類の利用にもこの分類を使います。',
@@ -357,7 +463,7 @@ const SUCCESS_TEXT: Readonly<
 
 export function applyChangeResponse(
   state: HouseholdViewState,
-  kind: 'category' | 'delete' | 'intake' | 'budget',
+  kind: 'category' | 'delete' | 'intake' | 'budget' | 'add',
   place: string,
   response: DesktopIpcResponse,
 ): HouseholdViewState {
@@ -429,6 +535,10 @@ export interface HouseholdActions {
   readonly saveBudget: (
     items: readonly { category: HouseholdCategoryId; budget_yen: number }[],
   ) => void;
+  // 手入力の欄を出す・しまう・足す（ADR 0167）。
+  readonly startAdd: () => void;
+  readonly cancelAdd: () => void;
+  readonly addEntry: (entry: ManualEntry) => void;
 }
 
 export interface HouseholdApi {
@@ -471,6 +581,12 @@ export class HouseholdStore {
       },
       cancelBudget: () => this.#set({ ...this.#state, editingBudget: false }),
       saveBudget: (items) => this.#saveBudget(items),
+      startAdd: () => {
+        if (this.#state.view === null) return;
+        this.#set({ ...this.#state, adding: true, notice: null });
+      },
+      cancelAdd: () => this.#set({ ...this.#state, adding: false }),
+      addEntry: (entry) => this.#addEntry(entry),
     };
   }
 
@@ -584,6 +700,25 @@ export class HouseholdStore {
     });
   }
 
+  #addEntry(entry: ManualEntry): void {
+    if (this.#state.busy !== null || !this.#state.adding) return;
+    this.#set({ ...this.#state, busy: ADD_PLACE, notice: null });
+    const epoch = this.#epoch;
+    let reread = false;
+    void this.#send(
+      request('desktop.household_add', { entry }),
+      (state, response) => {
+        reread = response.outcome === 'rejected' && REREAD.has(response.reason);
+        const next = applyChangeResponse(state, 'add', ADD_PLACE, response);
+        // 足せたら欄をしまう。拒否なら残して直させる。
+        return response.outcome === 'ok' ? { ...next, adding: false } : next;
+      },
+      (state) => applyFailure(state, ADD_PLACE),
+    ).then(() => {
+      if (reread && epoch === this.#epoch) this.#reread();
+    });
+  }
+
   #importExport(): void {
     if (this.#state.busy !== null || this.#state.view === null) return;
     this.#set({
@@ -618,7 +753,7 @@ export class HouseholdStore {
 
   // 送った変更・削除の結果を反映し、拒否なら（main が読み直した）値を受け取る。
   #change(
-    kind: 'category' | 'delete' | 'intake' | 'budget',
+    kind: 'category' | 'delete' | 'intake' | 'budget' | 'add',
     ref: string,
     built: DesktopIpcRequest,
   ) {

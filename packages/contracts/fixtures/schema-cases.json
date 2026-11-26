@@ -4675,6 +4675,75 @@
     "semantic_errors": ["budget_category_duplicate"]
   },
   {
+    "id": "household-manual-entry",
+    "schema": "HouseholdManualEntry",
+    "valid": true,
+    "value": {
+      "direction": "expense",
+      "amount_yen": 680,
+      "occurred_on": "2030-11-04",
+      "occurred_time": "08:15",
+      "category": "food",
+      "merchant": "合成のパン屋",
+      "memo": "現金",
+      "payment": null
+    }
+  },
+  {
+    "id": "household-manual-entry-time",
+    "schema": "HouseholdManualEntry",
+    "valid": false,
+    "value": {
+      "direction": "expense",
+      "amount_yen": 680,
+      "occurred_on": "2030-11-04",
+      "occurred_time": "8:15",
+      "category": "food",
+      "merchant": "合成のパン屋",
+      "memo": "現金",
+      "payment": null
+    }
+  },
+  {
+    "id": "household-entry-create",
+    "schema": "HouseholdEntryCreateRequest",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-0000000c0106",
+      "command_scope_id": "00000000-0000-4000-8000-000000009002",
+      "entry": {
+        "direction": "expense",
+        "amount_yen": 680,
+        "occurred_on": "2030-11-04",
+        "occurred_time": "08:15",
+        "category": "food",
+        "merchant": "合成のパン屋",
+        "memo": "現金",
+        "payment": null
+      }
+    }
+  },
+  {
+    "id": "household-entry-create-extra",
+    "schema": "HouseholdEntryCreateRequest",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-0000000c0106",
+      "command_scope_id": "00000000-0000-4000-8000-000000009002",
+      "entry": {
+        "direction": "expense",
+        "amount_yen": 680,
+        "occurred_on": "2030-11-04",
+        "occurred_time": "08:15",
+        "category": "food",
+        "merchant": "合成のパン屋",
+        "memo": "現金",
+        "payment": null
+      },
+      "source_kind": "manual"
+    }
+  },
+  {
     "id": "sync-batch",
     "schema": "SyncBatch",
     "valid": true,

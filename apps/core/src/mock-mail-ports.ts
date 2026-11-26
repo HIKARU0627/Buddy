@@ -15,16 +15,20 @@ import type {
 export const MOCK_LABEL_WRITE_SCOPE = 'mail.labels.change';
 // 下書きの保存に要る範囲（模擬 provider の WRITE_SCOPES.draftCreate と同じ値）。
 export const MOCK_DRAFT_WRITE_SCOPE = 'mail.drafts.create';
+// 下書きの削除に要る範囲（模擬 provider の WRITE_SCOPES.draftDelete と同じ値。ADR 0156）。
+export const MOCK_DRAFT_DELETE_SCOPE = 'mail.drafts.delete';
 
 // 操作の種類と、その書込みに要る範囲。
 const WRITE_SCOPE_OF_KIND: readonly (readonly [string, string])[] = [
   ['mail.labels.change', MOCK_LABEL_WRITE_SCOPE],
   ['mail.draft.create', MOCK_DRAFT_WRITE_SCOPE],
+  ['mail.draft.delete', MOCK_DRAFT_DELETE_SCOPE],
 ];
 
 // 読み取りの種類と、それに要る範囲（模擬 provider の合成の範囲）。
 const READ_SCOPE_OF_KIND: readonly (readonly [string, string])[] = [
   ['mail.message', 'mail.read'],
+  ['mail.draft', 'mail.read'],
   ['calendar.events', 'calendar.read'],
 ];
 
@@ -63,10 +67,12 @@ export function mockMailPorts(options: {
     readTarget: (remoteId) => read.readTarget(remoteId),
     listEvents: () => read.listEvents(),
     findDrafts: (marker) => read.findDraftsByMarker(marker),
+    readDraft: (draftId) => read.readDraft(draftId),
   };
   const writer: ProviderWriter = {
     changeLabels: (identity, change) => write.changeLabels(identity, change),
     createDraft: (identity, draft) => write.createDraft(identity, draft),
+    deleteDraft: (identity, draft) => write.deleteDraft(identity, draft),
   };
   return { reader, writer };
 }

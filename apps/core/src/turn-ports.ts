@@ -151,6 +151,21 @@ export interface ProviderDraft {
   readonly in_reply_to: string | null;
 }
 
+// 下書きの中身の読み取り（取り消しの削除の前に、Buddy が作ったままかを確かめる。ADR 0156）。
+// revision は下書きが変わるたびに変わり、削除の条件に使う。status は draft か sent など。
+export interface ProviderDraftContent {
+  readonly draft_id: string;
+  readonly revision: string;
+  readonly status: string;
+  // Buddy が付けた目印。Buddy が作っていない下書きは null。
+  readonly marker: string | null;
+  readonly in_reply_to: string | null;
+  readonly to: readonly string[];
+  readonly cc: readonly string[];
+  readonly subject: string;
+  readonly body: string;
+}
+
 export interface ProviderPermission {
   readonly account_id: string;
   readonly permission_revision: string;
@@ -184,6 +199,8 @@ export interface ProviderReader {
   listEvents(): Promise<readonly ProviderEvent[]>;
   // 操作の目印で下書きを探す（照合だけに使う）。持たない provider では下書きの保存を実行しない。
   findDrafts?(marker: string): Promise<readonly ProviderDraft[]>;
+  // 下書きを id で読む。無ければ null。持たない provider では下書きの削除を実行しない（ADR 0156）。
+  readDraft?(draftId: string): Promise<ProviderDraftContent | null>;
 }
 
 // 連携の provider への書込み（B04-04、ADR 0030）。形は #87 の MockMailConnector の書込みに合わせた。
@@ -229,6 +246,12 @@ export interface ProviderWriter {
       readonly body: string;
       readonly marker: string;
     },
+  ): Promise<ProviderWriteOutcome<{ readonly draft_id: string }>>;
+  // Buddy が作った下書きの削除（取り消し、ADR 0156）。source_revision が今の版と違えば相手は 409 で断る。
+  // 持たない provider では下書きの削除を実行しない。
+  deleteDraft?(
+    identity: ProviderWriteIdentity,
+    draft: { readonly draft_id: string; readonly source_revision: string },
   ): Promise<ProviderWriteOutcome<{ readonly draft_id: string }>>;
 }
 

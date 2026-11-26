@@ -4,9 +4,10 @@
 // ここは検査を通った要求の処理で、判定の正本は保存層（safety-store.ts）と domain の autoActionUndoState。
 // - 一覧（GET /v1/auto-actions）は安全停止の状態と自動実行した操作を一つの読み取りで返す。本文（確定 intent）は返さない。
 // - 取り消し（POST /v1/auto-actions/{id}/undo）は補償の操作を新しい operation_id で作る（ADR 0153）。今はメールの
-//   ラベルの変更（label_mail）だけで、提供元の読み書きの口があるときだけ取り消せるように見せる。他の種類は unavailable。
-//   一覧での本人の押下が J12 の確認で、補償の操作は画面の承認つきで作り、すぐ実行担当へ渡す。作る前に対象のメールを
-//   読み直し、ラベルが自動実行の後に変わっていれば 409（target_changed）で自動では戻さない。期限切れは 410（undo_expired）。
+//   ラベルの変更（label_mail）と返信の下書きの保存（draft_reply、ADR 0156）で、提供元の読み書きの口があるときだけ
+//   取り消せるように見せる。用事は unavailable。一覧での本人の押下が J12 の確認で、補償の操作は画面の承認つきで作り、
+//   すぐ実行担当へ渡す。作る前に対象を読み直し、ラベルが自動実行の後に変わっていれば、または下書きが送られた・
+//   手を加えられた・消えていれば 409（target_changed）で自動では戻さない。期限切れは 410（undo_expired）。
 //   同じ接続範囲・request_id の再送は保存済みの受付結果、内容が違えば 409（07 §3）。
 // - 解除（POST /v1/safety/resume）は登録済みの端末の画面操作だけ。版（expected_safety_revision）は DB の現在値で
 //   照合し、解除の transaction の中でも同じ値で照合し直す（compare-and-swap）。同じ request_id の再送は、成功済みなら
@@ -15,6 +16,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { AutoActionKind } from '@buddy/domain';
+import { operationMarker } from '@buddy/domain';
 import { openOperationIntent, sealOperationIntent } from '@buddy/storage';
 import type {
   AutoActionListRecord,
@@ -38,6 +40,7 @@ import type { JsonObject } from './strict-json.js';
 import { canRead, canWrite } from './turn-ports.js';
 import type {
   ProviderConnection,
+  ProviderDraftContent,
   ProviderMailTarget,
   ProviderReader,
 } from './turn-ports.js';
@@ -90,8 +93,22 @@ export interface AutoActionRoutes {
   revisionMatches(input: EnvironmentInput): Promise<boolean>;
 }
 
-// 補償の操作を作れる種類（ADR 0153）。下書き・用事の補償は操作の種類が契約にまだない（U310）。
-export const UNDOABLE_KINDS: readonly AutoActionKind[] = ['label_mail'];
+// 補償の操作を作れる種類（ADR 0153・0156）。下書きは Buddy が作ったままのものを削除で戻す。用事の補償は
+// 操作の種類が契約にまだない（U310）。下書きの削除は、提供元が下書きを id で読めるときだけ（undoableKindsOf）。
+export const UNDOABLE_KINDS: readonly AutoActionKind[] = [
+  'label_mail',
+  'draft_reply',
+];
+
+// 渡された口で取り消せる種類。下書きは id で読み直せないと、作ったままかを確かめられない。
+export function undoableKindsOf(
+  provider: Pick<ProviderReader, 'readDraft'> | null,
+): readonly AutoActionKind[] {
+  if (provider === null) return [];
+  return UNDOABLE_KINDS.filter(
+    (kind) => kind !== 'draft_reply' || provider.readDraft !== undefined,
+  );
+}
 
 // 掃除の貸し出しを取り直す回数（発言の入口・候補の自動実行と同じ）。
 const LEASE_ATTEMPTS = 3;
@@ -155,6 +172,80 @@ export function labelsUnchanged(
   );
 }
 
+// 自動実行の返信の下書きの保存の確定 intent から、補償に使う項目を取り出す。形が違えば null。
+interface DraftCreation {
+  readonly provider: string;
+  readonly account_id: string;
+  // 返信元のメール。
+  readonly in_reply_to: string;
+  // 下書きに付けた目印（buddy-op:<operation_id>:<content_version>）を作るための値。
+  readonly operation_id: string;
+  readonly content_version: string;
+  readonly to: readonly string[];
+  readonly cc: readonly string[];
+  readonly subject: string;
+  readonly body: string;
+}
+
+export function draftCreationOf(
+  intent: Record<string, unknown>,
+): DraftCreation | null {
+  const target = intent['target'] as Record<string, unknown> | undefined;
+  const action = intent['action'] as Record<string, unknown> | undefined;
+  const to = stringList(action?.['to']);
+  const cc = stringList(action?.['cc']);
+  if (
+    action?.['kind'] !== 'mail.draft.create' ||
+    typeof intent['provider'] !== 'string' ||
+    typeof intent['account_id'] !== 'string' ||
+    typeof intent['operation_id'] !== 'string' ||
+    typeof intent['content_version'] !== 'string' ||
+    typeof target?.['remote_id'] !== 'string' ||
+    to === null ||
+    cc === null ||
+    typeof action['subject'] !== 'string' ||
+    typeof action['body'] !== 'string'
+  )
+    return null;
+  return {
+    provider: intent['provider'],
+    account_id: intent['account_id'],
+    in_reply_to: target['remote_id'],
+    operation_id: intent['operation_id'],
+    content_version: intent['content_version'],
+    to,
+    cc,
+    subject: action['subject'],
+    body: action['body'],
+  };
+}
+
+const sameList = (a: readonly string[], b: readonly string[]): boolean =>
+  a.length === b.length && a.every((item, index) => item === b[index]);
+
+// 下書きが Buddy の作ったままか。下書きのままで、目印・返信元・宛先・CC・件名・本文が保存した内容と同じこと。
+// 本人が手を加えた・送った・別の目印の下書きは消さない（ADR 0156）。
+export function draftUnchanged(
+  draft: ProviderDraftContent,
+  creation: DraftCreation,
+): boolean {
+  let marker: string;
+  try {
+    marker = operationMarker(creation.operation_id, creation.content_version);
+  } catch {
+    return false;
+  }
+  return (
+    draft.status === 'draft' &&
+    draft.marker === marker &&
+    draft.in_reply_to === creation.in_reply_to &&
+    sameList(draft.to, creation.to) &&
+    sameList(draft.cc, creation.cc) &&
+    draft.subject === creation.subject &&
+    draft.body === creation.body
+  );
+}
+
 const stringOf = (value: unknown): string =>
   typeof value === 'string' ? value : '';
 
@@ -203,8 +294,9 @@ export function createAutoActionRoutes(
 ): AutoActionRoutes {
   const { store, now } = options;
   const undo = options.undo ?? null;
-  const undoableKinds: readonly AutoActionKind[] =
-    undo === null ? [] : UNDOABLE_KINDS;
+  const undoableKinds: readonly AutoActionKind[] = undoableKindsOf(
+    undo === null ? null : undo.provider,
+  );
 
   const authenticated =
     (
@@ -328,6 +420,149 @@ export function createAutoActionRoutes(
     }
   };
 
+  type DraftRead =
+    | {
+        readonly kind: 'ok';
+        readonly connection: ProviderConnection;
+        readonly permission: string;
+        readonly draft: ProviderDraftContent;
+      }
+    | { readonly kind: 'unavailable' }
+    // 接続の口座が違う・下書きがない（自動では戻さない）。
+    | { readonly kind: 'changed' };
+
+  // Buddy が作った下書きを id で読み直す（読み取りだけ。ADR 0156）。
+  const readDraft = async (
+    provider: ProviderReader,
+    creation: DraftCreation,
+    draftId: string,
+  ): Promise<DraftRead> => {
+    try {
+      const connection = await provider.connection();
+      if (
+        provider.readDraft === undefined ||
+        connection === null ||
+        connection.status !== 'active' ||
+        connection.provider !== creation.provider ||
+        !canWrite(connection, 'mail.draft.delete') ||
+        !canRead(connection, 'mail.draft')
+      )
+        return { kind: 'unavailable' };
+      if (connection.account_id !== creation.account_id)
+        return { kind: 'changed' };
+      const permission = await provider.readPermission(creation.account_id);
+      if (permission === null || permission.account_id !== creation.account_id)
+        return { kind: 'unavailable' };
+      const draft = await provider.readDraft(draftId);
+      if (draft === null || draft.draft_id !== draftId)
+        return { kind: 'changed' };
+      return {
+        kind: 'ok',
+        connection,
+        permission: permission.permission_revision,
+        draft,
+      };
+    } catch {
+      return { kind: 'unavailable' };
+    }
+  };
+
+  // 補償の内容。ラベルは逆向きの変更、下書きは削除。送出の直前には実行担当が対象と許可の版をもう一度確かめる
+  // （D1、ADR 0030・0156）。対象が変わっていれば target_changed、読めなければ unavailable。
+  type Compensation =
+    | {
+        readonly kind: 'ok';
+        readonly operation_kind: 'mail.labels.change' | 'mail.draft.delete';
+        readonly permission: string;
+        readonly content: Record<string, unknown>;
+      }
+    | { readonly kind: 'unavailable' | 'target_changed' };
+
+  const compensationFor = async (
+    ports: AutoActionUndoPorts,
+    original: Record<string, unknown>,
+    view: { readonly external_id: string | null },
+    compensationId: string,
+  ): Promise<Compensation> => {
+    const base = {
+      schema: 'buddy.operation.v1',
+      operation_id: compensationId,
+      content_version: '1',
+    };
+    const effects = {
+      external_recipients: [],
+      reconcile_scope: 'exact_target',
+    };
+    const change = labelChangeOf(original);
+    if (change !== null) {
+      // 対象のメールを今読み直す（掃除が済むまで読まない）。
+      const current = await withLease(() => readTarget(ports.provider, change));
+      if (current === null || current.kind === 'unavailable')
+        return { kind: 'unavailable' };
+      if (
+        current.kind === 'changed' ||
+        !labelsUnchanged(current.target, change)
+      )
+        return { kind: 'target_changed' };
+      return {
+        kind: 'ok',
+        operation_kind: 'mail.labels.change',
+        permission: current.permission,
+        content: {
+          ...base,
+          permission_revision: current.permission,
+          provider: current.connection.provider,
+          account_id: current.connection.account_id,
+          target: {
+            remote_id: current.target.remote_id,
+            source_revision: current.target.source_revision,
+          },
+          action: {
+            kind: 'mail.labels.change',
+            add: [...change.remove],
+            remove: [...change.add],
+          },
+          effects,
+        },
+      };
+    }
+    const creation = draftCreationOf(original);
+    if (creation === null) return { kind: 'unavailable' };
+    // 作った下書きの id がなければ、どの下書きか確かめられない（自動では消さない）。
+    const draftId = view.external_id;
+    if (draftId === null) return { kind: 'target_changed' };
+    const current = await withLease(() =>
+      readDraft(ports.provider, creation, draftId),
+    );
+    if (current === null || current.kind === 'unavailable')
+      return { kind: 'unavailable' };
+    if (current.kind === 'changed' || !draftUnchanged(current.draft, creation))
+      return { kind: 'target_changed' };
+    return {
+      kind: 'ok',
+      operation_kind: 'mail.draft.delete',
+      permission: current.permission,
+      content: {
+        ...base,
+        permission_revision: current.permission,
+        provider: current.connection.provider,
+        account_id: current.connection.account_id,
+        target: {
+          remote_id: current.draft.draft_id,
+          source_revision: current.draft.revision,
+        },
+        action: {
+          kind: 'mail.draft.delete',
+          created_by: {
+            operation_id: creation.operation_id,
+            content_version: creation.content_version,
+          },
+        },
+        effects,
+      },
+    };
+  };
+
   // 補償の操作の作成の拒否を応答へ写す。
   const undoRejection = (
     requestId: string,
@@ -441,36 +676,17 @@ export function createAutoActionRoutes(
     );
     if (!opened.ok)
       return apiErrorResponse(503, 'dependency_unavailable', requestId);
-    const change = labelChangeOf(
+    const compensation = await compensationFor(
+      undo,
       JSON.parse(opened.canonical) as Record<string, unknown>,
+      view,
+      compensationId,
     );
-    if (change === null)
-      return apiErrorResponse(503, 'dependency_unavailable', requestId);
-    // 対象のメールを今読み直す（掃除が済むまで読まない）。
-    const current = await withLease(() => readTarget(undo.provider, change));
-    if (current === null || current.kind === 'unavailable')
-      return apiErrorResponse(503, 'dependency_unavailable', requestId);
-    if (current.kind === 'changed' || !labelsUnchanged(current.target, change))
-      return apiErrorResponse(409, 'target_changed', requestId);
-    // 補償は逆向きのラベルの変更。送出の直前には実行担当が対象と許可の版をもう一度確かめる（D1、ADR 0030）。
-    const content = {
-      schema: 'buddy.operation.v1',
-      operation_id: compensationId,
-      content_version: '1',
-      permission_revision: current.permission,
-      provider: current.connection.provider,
-      account_id: current.connection.account_id,
-      target: {
-        remote_id: current.target.remote_id,
-        source_revision: current.target.source_revision,
-      },
-      action: {
-        kind: 'mail.labels.change',
-        add: [...change.remove],
-        remove: [...change.add],
-      },
-      effects: { external_recipients: [], reconcile_scope: 'exact_target' },
-    };
+    if (compensation.kind !== 'ok')
+      return compensation.kind === 'target_changed'
+        ? apiErrorResponse(409, 'target_changed', requestId)
+        : apiErrorResponse(503, 'dependency_unavailable', requestId);
+    const content = compensation.content;
     if (!undo.contract.valid('OperationIntent', content))
       return apiErrorResponse(503, 'dependency_unavailable', requestId);
     const sealed = sealOperationIntent(
@@ -487,7 +703,7 @@ export function createAutoActionRoutes(
       operation_id: compensationId,
       expected_state_revision: '0',
       request_revision: null,
-      permission_revision: current.permission,
+      permission_revision: compensation.permission,
       forgetting_generation: view.forgetting_generation,
       connection_id: null,
       request: {
@@ -496,7 +712,7 @@ export function createAutoActionRoutes(
         request_hash: hash,
       },
       workflow_id: null,
-      operation_kind: 'mail.labels.change',
+      operation_kind: compensation.operation_kind,
       effect_route: 'remote_mutation',
       content_hash: sealed.content_hash,
       intent: sealed.intent,

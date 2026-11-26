@@ -144,6 +144,24 @@ test('rows show the kind, how long ago, the undo state, and the undo button only
   // 画面の文言に内部のコードは出さず、参照の値は属性にも出さない。
   assert.doesNotMatch(words, /target_changed|unavailable|label_mail/u);
   assert.doesNotMatch(html, new RegExp(SAFETY_REF, 'u'));
+  // 取り消せない下書きの行には、削除の説明を出さない。
+  assert.doesNotMatch(words, /下書きを削除します/u);
+});
+
+test('a draft that can be undone says the undo deletes the draft Buddy made; a label row does not (ADR 0156)', () => {
+  const words = text(
+    panel({
+      view: view([entry(0, { kind: 'draft_reply' }), entry(1)]),
+      seq: 2,
+    }),
+  );
+  const effect = '取り消すと、Buddy が作った下書きを削除します。';
+  assert.equal(words.split(effect).length - 1, 1);
+  assert(
+    buttons(
+      panel({ view: view([entry(0, { kind: 'draft_reply' })]), seq: 2 }),
+    ).includes('取り消す'),
+  );
 });
 
 test('a stop shows its reason, when it stopped and the resume button; confirming asks first', () => {

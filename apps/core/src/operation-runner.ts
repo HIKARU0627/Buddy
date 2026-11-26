@@ -51,8 +51,11 @@ import type { TurnRouteStore } from './api-turns.js';
 import { canRead, canWrite, replyFields } from './turn-ports.js';
 import type {
   FaultHook,
+  ProviderConnection,
   ProviderDraft,
+  ProviderDraftContent,
   ProviderMailTarget,
+  ProviderPermission,
   ProviderReader,
   ProviderWriter,
 } from './turn-ports.js';
@@ -127,7 +130,14 @@ interface DraftIntent extends RemoteIntentBase {
   readonly marker: string;
 }
 
-type RemoteIntent = LabelIntent | DraftIntent;
+// Buddy が作った下書きの削除（取り消し、ADR 0156）。remote_id は下書きの id、source_revision は下書きの版。
+interface DraftDeleteIntent extends RemoteIntentBase {
+  readonly kind: 'mail.draft.delete';
+  // 元の操作が下書きに付けた目印。下書きの目印がこれと違えば消さない。
+  readonly created_marker: string;
+}
+
+type RemoteIntent = LabelIntent | DraftIntent | DraftDeleteIntent;
 
 type Recheck =
   | {
@@ -183,9 +193,21 @@ export function draftSaveObserved(
   return { kind: 'found', external_id: (matched[0] as ProviderDraft).draft_id };
 }
 
+// 下書きの削除の照合（exact_target、by_remote_id）。下書きが無ければ消えた（found）。同じ id の下書きが
+// 残っていれば未適用（not_found。遅れて適用されうる）。違う id が返れば説明できないので unreadable。
+export function draftDeleteObserved(
+  draft: ProviderDraftContent | null,
+  intent: Pick<DraftDeleteIntent, 'remote_id'>,
+): ReconcileObservation {
+  if (draft === null) return { kind: 'found', external_id: intent.remote_id };
+  if (draft.draft_id !== intent.remote_id) return { kind: 'unreadable' };
+  return { kind: 'not_found' };
+}
+
 const STEP_KINDS: readonly string[] = [
   'apply_labels',
   'create_draft',
+  'delete_draft',
   'send',
   'create_task',
 ];
@@ -352,14 +374,79 @@ export function createOperationRunner(
         marker,
       };
     }
+    if (operationKind === 'mail.draft.delete') {
+      const createdBy = action['created_by'] as
+        Record<string, unknown> | undefined;
+      if (
+        typeof createdBy?.['operation_id'] !== 'string' ||
+        typeof createdBy['content_version'] !== 'string'
+      )
+        return null;
+      let createdMarker: string;
+      try {
+        createdMarker = operationMarker(
+          createdBy['operation_id'],
+          createdBy['content_version'],
+        );
+      } catch {
+        return null;
+      }
+      return {
+        ...base,
+        kind: 'mail.draft.delete',
+        created_marker: createdMarker,
+      };
+    }
     return null;
   };
 
   // 種類ごとの書込み・照合の差し込み口が provider にあるか（ない provider では送らない）。
-  const supported = (intent: RemoteIntent): boolean =>
-    intent.kind === 'mail.labels.change' ||
-    (options.writer?.createDraft !== undefined &&
-      options.provider?.findDrafts !== undefined);
+  const supported = (intent: RemoteIntent): boolean => {
+    if (intent.kind === 'mail.labels.change') return true;
+    if (intent.kind === 'mail.draft.create')
+      return (
+        options.writer?.createDraft !== undefined &&
+        options.provider?.findDrafts !== undefined
+      );
+    return (
+      options.writer?.deleteDraft !== undefined &&
+      options.provider?.readDraft !== undefined
+    );
+  };
+
+  // 下書きの削除の確かめ直し（ADR 0156）。下書きが無い・送られた・目印が違う・版が変わった・許可の版が変わった
+  // なら消さない（内容版も上げない。準備のまま残し、本人の取消を待つ）。
+  const recheckDraftDelete = async (
+    provider: ProviderReader,
+    connection: ProviderConnection,
+    permission: ProviderPermission,
+    intent: DraftDeleteIntent,
+  ): Promise<Recheck> => {
+    if (provider.readDraft === undefined)
+      return { kind: 'blocked', reason: 'not_readable' };
+    if (!canRead(connection, 'mail.draft'))
+      return { kind: 'blocked', reason: 'not_readable' };
+    const draft = await provider.readDraft(intent.remote_id);
+    if (draft === null || draft.draft_id !== intent.remote_id)
+      return { kind: 'blocked', reason: 'target_missing' };
+    if (
+      draft.status !== 'draft' ||
+      draft.marker !== intent.created_marker ||
+      draft.revision !== intent.source_revision
+    )
+      return { kind: 'blocked', reason: 'target_changed' };
+    // 許可の版が変わったら消さない（内容版を上げても、削除の承認画面は出さないので本人が承認できない）。
+    if (permission.permission_revision !== intent.permission_revision)
+      return { kind: 'blocked', reason: 'permission_changed' };
+    if (!canWrite(connection, intent.kind))
+      return { kind: 'blocked', reason: 'not_writable' };
+    return {
+      kind: 'ok',
+      status: connection.status,
+      access: connection.access,
+      permission_revision: permission.permission_revision,
+    };
+  };
 
   // アダプターで対象と許可を確かめ直す（送出の直前の接続の照合を含む）。読み取りだけ。
   const recheck = async (intent: RemoteIntent): Promise<Recheck> => {
@@ -372,6 +459,13 @@ export function createOperationRunner(
       const permission = await provider.readPermission(intent.account_id);
       if (permission === null || permission.account_id !== intent.account_id)
         return { kind: 'blocked', reason: 'permission_unreadable' };
+      if (intent.kind === 'mail.draft.delete')
+        return await recheckDraftDelete(
+          provider,
+          connection,
+          permission,
+          intent,
+        );
       // 対象のメールを読む前に、メールの読み取りが許可に含まれることを確かめる（B04-07）。
       if (!canRead(connection, 'mail.message'))
         return { kind: 'blocked', reason: 'not_readable' };
@@ -414,6 +508,14 @@ export function createOperationRunner(
           await provider.readTarget(intent.remote_id),
           intent,
         );
+      // 下書きの削除は id で読む（by_remote_id）。無ければ消えた（found）、あれば未適用（not_found）。
+      if (intent.kind === 'mail.draft.delete') {
+        if (provider.readDraft === undefined) return { kind: 'unreadable' };
+        return draftDeleteObserved(
+          await provider.readDraft(intent.remote_id),
+          intent,
+        );
+      }
       // 下書きは作成物の目印で探す（by_operation_marker）。
       if (provider.findDrafts === undefined) return { kind: 'unreadable' };
       return draftSaveObserved(
@@ -444,6 +546,16 @@ export function createOperationRunner(
         labels.kind === 'applied'
           ? { kind: 'applied', external_id: labels.value.remote_id }
           : { kind: labels.kind };
+    } else if (intent.kind === 'mail.draft.delete') {
+      if (writer.deleteDraft === undefined) return { kind: 'unreadable' };
+      const deleted = await writer.deleteDraft(identity, {
+        draft_id: intent.remote_id,
+        source_revision: intent.source_revision,
+      });
+      outcome =
+        deleted.kind === 'applied'
+          ? { kind: 'applied', external_id: deleted.value.draft_id }
+          : { kind: deleted.kind };
     } else {
       if (writer.createDraft === undefined) return { kind: 'unreadable' };
       const created = await writer.createDraft(identity, {

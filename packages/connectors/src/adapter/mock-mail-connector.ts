@@ -52,6 +52,19 @@ export interface MarkedDraft {
   readonly status: 'draft' | 'sent';
 }
 
+/** ID で読んだ下書き（取り消しの前の確認と、削除の前提の読み直しに使う。読み取りだけ。ADR 0156）。 */
+export interface DraftContent {
+  readonly draft_id: string;
+  readonly revision: string;
+  readonly status: 'draft' | 'sent';
+  readonly marker: string | null;
+  readonly in_reply_to: string | null;
+  readonly to: readonly string[];
+  readonly cc: readonly string[];
+  readonly subject: string;
+  readonly body: string;
+}
+
 /** 書込みの識別。受信記録に残り、結果が分からないときの正確な照合の手がかりになる。 */
 export interface WriteIdentity {
   readonly operation_id: string;
@@ -96,6 +109,8 @@ export interface MockMailConnector {
   }): Promise<readonly RemoteDraft[]>;
   /** 操作の目印で下書きを探す（照合の lookup、by_operation_marker）。読み取りだけ。 */
   findDraftsByMarker(marker: string): Promise<readonly MarkedDraft[]>;
+  /** 下書きを ID で読む。無ければ null。読み取りだけ（ADR 0156）。 */
+  readDraft(draftId: string): Promise<DraftContent | null>;
   changeLabels(
     identity: WriteIdentity,
     change: {
@@ -120,6 +135,48 @@ export interface MockMailConnector {
     identity: WriteIdentity,
     draftId: string,
   ): Promise<WriteOutcome<{ readonly draft_id: string }>>;
+  /** 下書きの削除（ADR 0156）。版が同じで送信していない下書きだけを消す（条件付き要求。違えば 409）。 */
+  deleteDraft(
+    identity: WriteIdentity,
+    draft: { readonly draft_id: string; readonly source_revision: string },
+  ): Promise<WriteOutcome<{ readonly draft_id: string }>>;
+}
+
+function parseDraftContent(value: unknown): DraftContent | null {
+  const o = obj(value);
+  const draft_id = str(o?.['draft_id']);
+  const revision = str(o?.['revision']);
+  const status = str(o?.['status']);
+  const to = strings(o?.['to']);
+  const cc = strings(o?.['cc']);
+  const subject = str(o?.['subject']);
+  const body = str(o?.['body']);
+  const marker = o?.['marker'];
+  const inReplyTo = o?.['in_reply_to'];
+  if (
+    draft_id === null ||
+    revision === null ||
+    revision.length === 0 ||
+    (status !== 'draft' && status !== 'sent') ||
+    to === null ||
+    cc === null ||
+    subject === null ||
+    body === null ||
+    (marker !== null && typeof marker !== 'string') ||
+    (inReplyTo !== null && typeof inReplyTo !== 'string')
+  )
+    return null;
+  return {
+    draft_id,
+    revision,
+    status,
+    marker: marker as string | null,
+    in_reply_to: inReplyTo as string | null,
+    to,
+    cc,
+    subject,
+    body,
+  };
 }
 
 function obj(value: unknown): Record<string, unknown> | null {
@@ -349,6 +406,13 @@ export function createMockMailConnector(
       );
       return drafts ?? [];
     },
+    async readDraft(draftId) {
+      return read(`/v1/mail/drafts/${encodeURIComponent(draftId)}`, (body) => {
+        const draft = parseDraftContent(body);
+        // 求めた ID と違う下書きが返れば、応答の形が違うものとして扱う。
+        return draft !== null && draft.draft_id === draftId ? draft : null;
+      });
+    },
     changeLabels: (identity, change) =>
       write(
         `/v1/mail/messages/${encodeURIComponent(change.remote_id)}/labels`,
@@ -376,6 +440,18 @@ export function createMockMailConnector(
         `/v1/mail/drafts/${encodeURIComponent(draftId)}/send`,
         idBody(identity),
         parseDraft('sent', draftId),
+      ),
+    deleteDraft: (identity, draft) =>
+      write(
+        `/v1/mail/drafts/${encodeURIComponent(draft.draft_id)}/delete`,
+        { ...idBody(identity), source_revision: draft.source_revision },
+        (body) => {
+          const o = obj(body);
+          return str(o?.['draft_id']) === draft.draft_id &&
+            o?.['deleted'] === true
+            ? { draft_id: draft.draft_id }
+            : null;
+        },
       ),
   };
 }

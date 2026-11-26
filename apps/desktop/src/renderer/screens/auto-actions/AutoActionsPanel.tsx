@@ -16,6 +16,7 @@ import {
   canUndo,
   elapsedText,
   safetyShown,
+  UNDO_EFFECT_LABELS,
   undoStateText,
 } from '../../state/auto-action-state.js';
 import type {
@@ -199,6 +200,11 @@ function AutoActionRow({
           ) : null}
         </div>
       )}
+      {!entry.delivery_unknown &&
+      canUndo(entry, now) &&
+      UNDO_EFFECT_LABELS[entry.kind] !== undefined ? (
+        <p className="text-xs text-muted">{UNDO_EFFECT_LABELS[entry.kind]}</p>
+      ) : null}
       {notice === null ? null : (
         <InlineNotice tone={notice.tone} text={notice.text} />
       )}

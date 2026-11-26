@@ -378,6 +378,12 @@ export function commandShapeReasons(command: DbCommand): string[] {
         // 取り消しは本人の画面操作が起点で、方針による自動承認では作らない（03 J12）。
         else if (auto !== null) reasons.push('undo_auto_approval');
       }
+      // 下書きの削除は、自動で作った下書きの取り消しの補償だけに使う（ADR 0156）。それ以外では作らない。
+      if (
+        command.operation_kind === 'mail.draft.delete' &&
+        (undo === undefined || undo === null)
+      )
+        reasons.push('undo_only_kind');
       const origin = command.candidate_origin;
       if (origin !== undefined && origin !== null) {
         if (
@@ -464,9 +470,13 @@ export function commandShapeReasons(command: DbCommand): string[] {
         (typeof command.step !== 'object' ||
           typeof command.step.step_id !== 'string' ||
           !/^[1-9][0-9]{0,3}-[a-z_]{1,32}$/u.test(command.step.step_id) ||
-          !['apply_labels', 'create_draft', 'send', 'create_task'].includes(
-            command.step.step_kind,
-          ))
+          ![
+            'apply_labels',
+            'create_draft',
+            'send',
+            'create_task',
+            'delete_draft',
+          ].includes(command.step.step_kind))
       )
         reasons.push('step_invalid');
       break;

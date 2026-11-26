@@ -6292,6 +6292,143 @@
     }
   },
   {
+    "id": "intent-draft-delete-as-operation",
+    "schema": "OperationIntent",
+    "valid": true,
+    "value": {
+      "schema": "buddy.operation.v1",
+      "operation_id": "00000000-0000-4000-8000-000000000101",
+      "content_version": "1",
+      "permission_revision": "1",
+      "provider": "mock",
+      "account_id": "00000000-0000-4000-8000-000000000002",
+      "target": {
+        "remote_id": "draft-0001",
+        "source_revision": "d1"
+      },
+      "action": {
+        "kind": "mail.draft.delete",
+        "created_by": {
+          "operation_id": "00000000-0000-4000-8000-0000000000a1",
+          "content_version": "1"
+        }
+      },
+      "effects": {
+        "external_recipients": [],
+        "reconcile_scope": "exact_target"
+      }
+    }
+  },
+  {
+    "id": "intent-draft-delete-with-recipients",
+    "schema": "OperationIntent",
+    "valid": false,
+    "value": {
+      "schema": "buddy.operation.v1",
+      "operation_id": "00000000-0000-4000-8000-000000000101",
+      "content_version": "1",
+      "permission_revision": "1",
+      "provider": "mock",
+      "account_id": "00000000-0000-4000-8000-000000000002",
+      "target": {
+        "remote_id": "draft-0001",
+        "source_revision": "d1"
+      },
+      "action": {
+        "kind": "mail.draft.delete",
+        "created_by": {
+          "operation_id": "00000000-0000-4000-8000-0000000000a1",
+          "content_version": "1"
+        }
+      },
+      "effects": {
+        "external_recipients": ["someone@example.invalid"],
+        "reconcile_scope": "exact_target"
+      }
+    }
+  },
+  {
+    "id": "intent-draft-delete-without-created-by",
+    "schema": "OperationIntent",
+    "valid": false,
+    "value": {
+      "schema": "buddy.operation.v1",
+      "operation_id": "00000000-0000-4000-8000-000000000101",
+      "content_version": "1",
+      "permission_revision": "1",
+      "provider": "mock",
+      "account_id": "00000000-0000-4000-8000-000000000002",
+      "target": {
+        "remote_id": "draft-0001",
+        "source_revision": "d1"
+      },
+      "action": {
+        "kind": "mail.draft.delete"
+      },
+      "effects": {
+        "external_recipients": [],
+        "reconcile_scope": "exact_target"
+      }
+    }
+  },
+  {
+    "id": "intent-draft-delete-marker-scope",
+    "schema": "OperationIntent",
+    "valid": false,
+    "value": {
+      "schema": "buddy.operation.v1",
+      "operation_id": "00000000-0000-4000-8000-000000000101",
+      "content_version": "1",
+      "permission_revision": "1",
+      "provider": "mock",
+      "account_id": "00000000-0000-4000-8000-000000000002",
+      "target": {
+        "remote_id": "draft-0001",
+        "source_revision": "d1"
+      },
+      "action": {
+        "kind": "mail.draft.delete",
+        "created_by": {
+          "operation_id": "00000000-0000-4000-8000-0000000000a1",
+          "content_version": "1"
+        }
+      },
+      "effects": {
+        "external_recipients": [],
+        "reconcile_scope": "operation_marker"
+      }
+    }
+  },
+  {
+    "id": "intent-draft-delete-of-itself",
+    "schema": "OperationIntent",
+    "valid": true,
+    "value": {
+      "schema": "buddy.operation.v1",
+      "operation_id": "00000000-0000-4000-8000-000000000101",
+      "content_version": "1",
+      "permission_revision": "1",
+      "provider": "mock",
+      "account_id": "00000000-0000-4000-8000-000000000002",
+      "target": {
+        "remote_id": "draft-0001",
+        "source_revision": "d1"
+      },
+      "action": {
+        "kind": "mail.draft.delete",
+        "created_by": {
+          "operation_id": "00000000-0000-4000-8000-000000000101",
+          "content_version": "1"
+        }
+      },
+      "effects": {
+        "external_recipients": [],
+        "reconcile_scope": "exact_target"
+      }
+    },
+    "semantic_errors": ["created_by_self"]
+  },
+  {
     "id": "intent-task-create-missing-body",
     "schema": "OperationIntent",
     "valid": false,
@@ -24835,7 +24972,9 @@
     "value": {
       "channel": "desktop.candidates_list",
       "request_id": "00000000-0000-4000-8000-000000000c80",
-      "payload": { "states": ["new"] }
+      "payload": {
+        "states": ["new"]
+      }
     }
   },
   {
@@ -25134,7 +25273,9 @@
     "value": {
       "channel": "desktop.connections_list",
       "request_id": "00000000-0000-4000-8000-000000000d80",
-      "payload": { "provider": "google" }
+      "payload": {
+        "provider": "google"
+      }
     }
   },
   {

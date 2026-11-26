@@ -66,6 +66,11 @@ export interface MockProviderTruth {
       readonly from?: string;
     },
   ): void;
+  /** 試験の状況づくり: 本人が下書きを編集した（件名・本文を変え、版を進める。ADR 0156）。変更の回数には数えない。 */
+  editDraft(
+    draftId: string,
+    change: { readonly subject?: string; readonly body?: string },
+  ): void;
   setPermission(permission: {
     readonly permission_revision?: string;
     readonly scopes?: readonly string[];
@@ -145,6 +150,13 @@ export async function createMockProvider(
     IN_USE.delete(key);
     throw error;
   }
+}
+
+// 版を持たない古い状態ファイルの下書きは、作成のときの版（d1）とみなす。
+function draftRevision(draft: MockDraft): string {
+  return typeof draft.revision === 'string' && draft.revision.length > 0
+    ? draft.revision
+    : 'd1';
 }
 
 async function startProvider(
@@ -269,6 +281,7 @@ async function startProvider(
           subject,
           body: text,
           status: 'draft',
+          revision: 'd1',
           send_count: 0,
         };
         state.drafts[draftId] = draft;
@@ -296,6 +309,36 @@ async function startProvider(
           status: 200,
           body: { draft_id: draftId, status: 'sent' },
           change: { kind: 'mail.draft.send', draft_id: draftId },
+        };
+      },
+    };
+  }
+
+  // 下書きの削除（ADR 0156）。版（source_revision）が今の版と同じで、送信していない下書きだけを消す（条件付き要求）。
+  function draftDeletePlan(
+    draftId: string,
+    body: Record<string, unknown>,
+  ): Plan {
+    const draft = state.drafts[draftId];
+    if (draft === undefined)
+      return { reject: { status: 404, body: { error: 'not_found' } } };
+    if (!hasScope(WRITE_SCOPES.draftDelete))
+      return { reject: { status: 403, body: { error: 'permission_denied' } } };
+    const revision = body['source_revision'];
+    if (typeof revision !== 'string' || revision.length === 0)
+      return { reject: { status: 400, body: { error: 'invalid_request' } } };
+    if (draft.status !== 'draft' || draftRevision(draft) !== revision)
+      return {
+        reject: { status: 409, body: { error: 'precondition_failed' } },
+      };
+    return {
+      apply: () => {
+        // 削除済みの下書きは一覧・ID の読み取りに出ない（受信記録には残る）。
+        delete state.drafts[draftId];
+        return {
+          status: 200,
+          body: { draft_id: draftId, deleted: true },
+          change: { kind: 'mail.draft.delete', draft_id: draftId },
         };
       },
     };
@@ -435,6 +478,12 @@ async function startProvider(
           ? send(res, 404, { error: 'not_found' })
           : send(res, 200, mail);
       }
+      if (parts.length === 4 && parts[1] === 'mail' && parts[2] === 'drafts') {
+        const draft = state.drafts[parts[3] ?? ''];
+        return draft === undefined
+          ? send(res, 404, { error: 'not_found' })
+          : send(res, 200, { ...draft, revision: draftRevision(draft) });
+      }
       if (parts.join('/') === 'v1/mail/drafts') {
         const operationId = url.searchParams.get('operation_id');
         const stepId = url.searchParams.get('step_id');
@@ -469,6 +518,12 @@ async function startProvider(
         return run(
           handleWrite(req, res, 'mail.draft.send', () =>
             draftSendPlan(parts[3] ?? ''),
+          ),
+        );
+      if (parts.length === 5 && parts[2] === 'drafts' && parts[4] === 'delete')
+        return run(
+          handleWrite(req, res, 'mail.draft.delete', (_ids, body) =>
+            draftDeletePlan(parts[3] ?? '', body),
           ),
         );
     }
@@ -513,6 +568,14 @@ async function startProvider(
         mail.source_revision = change.source_revision;
       if (change.subject !== undefined) mail.subject = change.subject;
       if (change.from !== undefined) mail.from = change.from;
+      persist();
+    },
+    editDraft(draftId, change) {
+      const draft = state.drafts[draftId];
+      if (draft === undefined) throw new Error(`知らない下書き: ${draftId}`);
+      if (change.subject !== undefined) draft.subject = change.subject;
+      if (change.body !== undefined) draft.body = change.body;
+      draft.revision = `d${String(Number(draftRevision(draft).slice(1)) + 1)}`;
       persist();
     },
     setPermission(permission) {

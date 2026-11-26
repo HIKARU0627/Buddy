@@ -12,7 +12,10 @@ export interface MinimalReadCapability {
 
 export interface MinimalWriteCapability {
   readonly action_kind:
-    'mail.labels.change' | 'mail.draft.create' | 'mail.draft.send';
+    | 'mail.labels.change'
+    | 'mail.draft.create'
+    | 'mail.draft.send'
+    | 'mail.draft.delete';
   readonly effect_kind: 'RemoteMutation';
   /** HTTP の自動再送の回数。書込みは常に 0。 */
   readonly automatic_http_retries: 0;
@@ -35,15 +38,18 @@ export const MOCK_CONNECTOR_CAPABILITY: MinimalConnectorCapability = {
     { kind: 'mail.draft', effect_kind: 'Read' },
     { kind: 'calendar.events', effect_kind: 'Read' },
   ],
-  writes: ['mail.labels.change', 'mail.draft.create', 'mail.draft.send'].map(
-    (action_kind) => ({
-      action_kind: action_kind as MinimalWriteCapability['action_kind'],
-      effect_kind: 'RemoteMutation' as const,
-      automatic_http_retries: 0 as const,
-      reconcile_scope:
-        action_kind === 'mail.draft.create'
-          ? ('operation_marker' as const)
-          : ('exact_target' as const),
-    }),
-  ),
+  writes: [
+    'mail.labels.change',
+    'mail.draft.create',
+    'mail.draft.send',
+    'mail.draft.delete',
+  ].map((action_kind) => ({
+    action_kind: action_kind as MinimalWriteCapability['action_kind'],
+    effect_kind: 'RemoteMutation' as const,
+    automatic_http_retries: 0 as const,
+    reconcile_scope:
+      action_kind === 'mail.draft.create'
+        ? ('operation_marker' as const)
+        : ('exact_target' as const),
+  })),
 };

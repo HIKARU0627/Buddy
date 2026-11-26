@@ -43,6 +43,7 @@ export const MAX_TURN_CHARS = 4_000;
 export const OPERATION_KIND_LABELS: Readonly<Record<string, string>> = {
   'mail.labels.change': 'メールのラベルの変更',
   'mail.draft.create': '返信の下書きの作成',
+  'mail.draft.delete': '返信の下書きの削除',
   'task.create': '用事の登録',
 };
 
@@ -56,6 +57,7 @@ export const SERVICE_LABELS: Readonly<Record<string, string>> = {
 export const TARGET_LABELS: Readonly<Record<string, string>> = {
   'mail.labels.change': 'メール',
   'mail.draft.create': '返信元のメール',
+  'mail.draft.delete': '下書き',
   'task.create': '登録先の一覧',
 };
 

@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  RECEIPT_CLIENT_TIMEOUT_MS,
+  RECEIPT_HUB_PRE_DISPATCH_MS,
+  RECEIPT_READ_TIMEOUT_MAX_MS,
+  householdHasLongDigits,
   readHouseholdReceiptReply,
   receiptImageInfo,
   receiptSendImageErrors,
@@ -179,9 +183,30 @@ test('本人が選んだファイルの検査（開く前）', () => {
     'image_dimensions_too_large',
   ]);
   // 短い辺の下限 64。
-  assert.deepEqual(receiptSourceImageErrors(png(64, 2000)), []);
+  assert.deepEqual(receiptSourceImageErrors(png(64, 1000)), []);
+  assert.deepEqual(receiptSourceImageErrors(png(63, 1000)), [
+    'image_too_small',
+  ]);
+  // 短い辺が下限より小さいときは、縦横の比より先に小さすぎると返す。
   assert.deepEqual(receiptSourceImageErrors(png(63, 2000)), [
     'image_too_small',
+  ]);
+});
+
+test('細長すぎる写真は選ぶ時点で理由を返す（長い辺は短い辺の 16 倍まで）', () => {
+  // 長い辺 1024 の段まで縮めても短い辺が 64 以上に残る比（1024 / 64 = 16）。ちょうどなら受ける。
+  assert.deepEqual(receiptSourceImageErrors(png(64, 1024)), []);
+  assert.deepEqual(receiptSourceImageErrors(png(1024, 64)), []);
+  assert.deepEqual(receiptSourceImageErrors(png(300, 4800)), []);
+  assert.deepEqual(receiptSourceImageErrors(png(64, 1025)), [
+    'image_aspect_ratio_too_large',
+  ]);
+  assert.deepEqual(receiptSourceImageErrors(png(301 * 16 + 1, 301)), [
+    'image_aspect_ratio_too_large',
+  ]);
+  // 見直しの例: 300×6400 は縮めると 60×1280 になり、小さすぎるとしか言えなかった。
+  assert.deepEqual(receiptSourceImageErrors(jpeg(300, 6400)), [
+    'image_aspect_ratio_too_large',
   ]);
 });
 
@@ -204,6 +229,73 @@ test('外部へ送る画像の検査（JPEG だけ・180 KiB・長い辺 1600）
     'image_dimensions_too_large',
   ]);
   assert.deepEqual(receiptSendImageErrors(jpeg(63, 1600)), ['image_too_small']);
+});
+
+// 合成の JPEG に、SOF の前（before）か後（after）へ区切りを差し込む。
+function withSegment(marker, payload, { at = 'before' } = {}) {
+  const base = [...jpeg(960, 1280)];
+  const segment = [0xff, marker, ...be16(payload.length + 2), ...payload];
+  // jpeg() の頭: SOI（2）・APP0（18）の後が SOF0（19 バイト）。
+  const index = at === 'before' ? 20 : 39;
+  return new Uint8Array([
+    ...base.slice(0, index),
+    ...segment,
+    ...base.slice(index),
+  ]);
+}
+const ascii = (text) => [...new TextEncoder().encode(text)];
+
+test('外部へ送る画像に付帯情報（APP1 の Exif・XMP、APP13）があれば送らない', () => {
+  const exif = withSegment(0xe1, [...ascii('Exif'), 0, 0, 0x4d, 0x4d, 0, 0x2a]);
+  const xmp = withSegment(0xe1, [
+    ...ascii('http://ns.adobe.com/xap/1.0/'),
+    0,
+    ...ascii('<x:xmpmeta/>'),
+  ]);
+  const iptc = withSegment(0xed, [...ascii('Photoshop 3.0'), 0, 0x38, 0x42]);
+  const afterFrame = withSegment(0xe1, [...ascii('Exif'), 0, 0], {
+    at: 'after',
+  });
+  for (const [name, bytes] of [
+    ['Exif', exif],
+    ['XMP', xmp],
+    ['APP13', iptc],
+    ['SOF の後の APP1', afterFrame],
+  ]) {
+    assert.deepEqual(
+      receiptSendImageErrors(bytes),
+      ['image_metadata_present'],
+      name,
+    );
+    // 本人が選ぶ元の写真は付帯情報を持つのがふつうなので、選ぶ時点では拒まない（main が JPEG にし直して落とす）。
+    assert.deepEqual(receiptSourceImageErrors(bytes), [], name);
+  }
+  // APP0（JFIF）・APP2（色の情報）・コメントのない画像は送る。
+  assert.deepEqual(
+    receiptSendImageErrors(withSegment(0xe2, [...ascii('ICC_PROFILE'), 0])),
+    [],
+  );
+  // 走査の始まり（SOS）まで区切りを確かめられない画像は送らない。
+  const cut = jpeg(960, 1280).subarray(0, 39);
+  assert.deepEqual(receiptImageInfo(cut), {
+    format: 'jpeg',
+    width: 960,
+    height: 1280,
+  });
+  assert.deepEqual(receiptSendImageErrors(cut), ['image_unreadable']);
+});
+
+test('端末の時間切れは中枢の送出意図の期限と読み取りの期限の和より長い', () => {
+  // 手で書いた値: 端末 150 秒、中枢の送出意図まで 10 秒、読み取りの期限の上限 60 秒。
+  assert.equal(RECEIPT_CLIENT_TIMEOUT_MS, 150_000);
+  assert.equal(RECEIPT_HUB_PRE_DISPATCH_MS, 10_000);
+  assert.equal(RECEIPT_READ_TIMEOUT_MAX_MS, 60_000);
+  // 要求の本文を受け取るまでの上限（中枢の requestTimeout 15 秒。Node は 30 秒ごとに確かめるので最大 45 秒）を足しても、
+  // 端末が待つのをやめる前に中枢の読み取りが終わる。
+  assert.ok(
+    RECEIPT_CLIENT_TIMEOUT_MS >
+      45_000 + RECEIPT_HUB_PRE_DISPATCH_MS + RECEIPT_READ_TIMEOUT_MAX_MS,
+  );
 });
 
 const TODAY = '2030-11-26';
@@ -354,6 +446,41 @@ test('読めない・矛盾する応答は候補にしない', () => {
       not('long_digits'),
       JSON.stringify(over),
     );
+  // 区切りの種類を問わない（記号・句読点・空白・長音記号・幅のない文字を区切りとして数える）。
+  for (const payment of [
+    'VISA 4111.1111.1111.1111',
+    '4111/1111/1111/1111',
+    '4111\u22121111\u22121111\u22121111',
+    '4111\u20101111\u20101111\u20101111',
+    '4111ー1111ー1111ー1111',
+    '4111ｰ1111ｰ1111ｰ1111',
+    '4111*1111*1111*1111',
+    '4111・1111・1111・1111',
+    '4111\u200b1111\u200b1111\u200b1111',
+    '４１１１／１１１１／１１１１／１１１１',
+    '4111 - 1111 _ 1111 + 1111',
+  ])
+    assert.deepEqual(
+      readHouseholdReceiptReply(reply({ payment }), TODAY),
+      not('long_digits'),
+      JSON.stringify(payment),
+    );
+  // 日付と時刻のような並びも、レシートの応答では候補にしない（数字の並びとして 12 桁）。
+  assert.deepEqual(
+    readHouseholdReceiptReply(
+      reply({
+        items: [
+          { name: '2030/11/25 12:34', amount: 300 },
+          { name: 'お茶', amount: 980 },
+        ],
+      }),
+      TODAY,
+    ),
+    not('long_digits'),
+  );
+  // 家計の記録全体の検査は広げていない（本人のメモの日付と時刻を拒まない。U342・U370）。
+  assert.equal(householdHasLongDigits('2030/11/25 12:34 立て替え'), false);
+  assert.equal(householdHasLongDigits('4111-1111-1111-1111'), true);
   // 11 桁までの並び（電話番号の写しなど）は拒まない。
   assert.deepEqual(
     readHouseholdReceiptReply(
@@ -361,6 +488,30 @@ test('読めない・矛盾する応答は候補にしない', () => {
       TODAY,
     ),
     candidate({ merchant: 'テスト商店 03123456789' }),
+  );
+});
+
+test('向きを変える制御文字のある応答は候補にしない', () => {
+  for (const over of [
+    { merchant: 'テスト\u202e商店' },
+    { merchant: '\u2067テスト商店\u2069' },
+    { payment: '現金\u200f' },
+    {
+      items: [
+        { name: 'おにぎり\u202d', amount: 300 },
+        { name: 'お茶', amount: 980 },
+      ],
+    },
+  ])
+    assert.deepEqual(
+      readHouseholdReceiptReply(reply(over), TODAY),
+      not('reply_invalid'),
+      JSON.stringify(over),
+    );
+  // 向きを変えない幅のない文字だけなら、店名の検査に任せる（拒まない）。
+  assert.deepEqual(
+    readHouseholdReceiptReply(reply({ merchant: 'テスト\u200b商店' }), TODAY),
+    candidate({ merchant: 'テスト\u200b商店' }),
   );
 });
 

@@ -72,6 +72,10 @@ const REASON_TEXT: Readonly<
     '写真の縦横が大きすぎるため、送っていません（1\u00a0辺 12,000\u00a0画素・5,000\u00a0万画素まで）。',
   image_too_small:
     '写真が小さすぎるため、送っていません（短い辺が 64\u00a0画素以上の写真を選んでください）。',
+  image_aspect_ratio_too_large:
+    '写真が細長すぎるため、送っていません（長い辺が短い辺の 16\u00a0倍までの写真を選んでください。長いレシートは、上と下に分けて撮ってください）。',
+  image_metadata_present:
+    '写真の付帯情報（撮影の日時・位置など）を取り除けなかったため、送っていません。別の写真を選んでください。',
 };
 
 const OUTCOME_TEXT: Readonly<
@@ -87,6 +91,8 @@ const OUTCOME_TEXT: Readonly<
     'レシートの写真を外部へ送る設定が切になっていたため、送っていません。',
   budget_held:
     '予算を予約できなかったため、写真を送っていません。予算の状態を確かめてください。',
+  not_sent:
+    '中枢が外部へ送る前に止めたため、写真は送っておらず、費用もかかっていません。少し待ってから、もう一度写真を選んでください。',
 };
 
 /** 候補にしなかった・送らなかったときの文（候補のときと、本人が選ばなかったときは null）。 */
@@ -95,7 +101,11 @@ export function receiptMessage(
 ): string | null {
   if (result.outcome === 'candidate' || result.outcome === 'cancelled')
     return null;
-  if (result.outcome === 'setting_off' || result.outcome === 'budget_held')
+  if (
+    result.outcome === 'setting_off' ||
+    result.outcome === 'budget_held' ||
+    result.outcome === 'not_sent'
+  )
     return OUTCOME_TEXT[result.outcome];
   const first = result.reasons[0];
   return first === undefined ? REASON_TEXT.reply_invalid : REASON_TEXT[first];

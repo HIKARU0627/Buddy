@@ -29788,5 +29788,55 @@
       "candidate": null,
       "reasons": ["blurry"]
     }
+  },
+  {
+    "id": "desktop-household-receipt-not-sent",
+    "schema": "DesktopHouseholdReceiptView",
+    "valid": true,
+    "value": {
+      "outcome": "not_sent",
+      "candidate": null,
+      "reasons": []
+    }
+  },
+  {
+    "id": "desktop-household-receipt-aspect-ratio",
+    "schema": "DesktopHouseholdReceiptView",
+    "valid": true,
+    "value": {
+      "outcome": "image_rejected",
+      "candidate": null,
+      "reasons": ["image_aspect_ratio_too_large"]
+    }
+  },
+  {
+    "id": "desktop-household-receipt-metadata",
+    "schema": "DesktopHouseholdReceiptView",
+    "valid": true,
+    "value": {
+      "outcome": "image_rejected",
+      "candidate": null,
+      "reasons": ["image_metadata_present"]
+    }
+  },
+  {
+    "id": "desktop-household-receipt-unknown-outcome",
+    "schema": "DesktopHouseholdReceiptView",
+    "valid": false,
+    "value": {
+      "outcome": "outcome_unknown",
+      "candidate": null,
+      "reasons": []
+    }
+  },
+  {
+    "id": "api-error-not-sent",
+    "schema": "ApiError",
+    "valid": true,
+    "value": {
+      "code": "not_sent",
+      "message": "外部へ送る前に止めました。",
+      "request_id": "00000000-0000-4000-8000-000000000001"
+    }
   }
 ]

@@ -544,7 +544,7 @@ export function householdFailureText(kind: Kind, reason: RejectReason): string {
   if (kind === 'receipt')
     switch (reason) {
       case 'outcome_unknown':
-        return '読み取りの結果を確かめられませんでした。自動では送り直しません。読み直すときは、もう一度写真を選んでください。';
+        return '写真を外部へ送ったかどうか、結果を確かめられませんでした。送っていれば費用がかかっています。自動では送り直しません。読み直すときは、もう一度写真を選んでください（もう一度費用がかかります）。';
       case 'core_rejected':
         return '中枢が読み取りを受け付けませんでした。少し待ってから、もう一度写真を選んでください。';
       case 'input_stopped':

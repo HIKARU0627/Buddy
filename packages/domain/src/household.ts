@@ -119,6 +119,8 @@ const CONTROL_EXCEPT_LINES = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/u;
 const LONE_SURROGATE =
   /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/u;
 // 数字が 12 桁以上続く並び（カード番号・口座番号の写し込みを拒否する）。区切りの空白・ハイフンも数字の並びとして数える。
+// ほかの記号（/・.・:）は区切りに数えない（本人のメモの「2030/11/25 12:34」を拒まない。U342）。レシートの写真の読み取りの
+// 応答は、より広い区切りで確かめる（household-receipt.ts の receiptHasLongDigits。U370）。
 const LONG_DIGITS = /[0-9０-９](?:[\s\-－]*[0-9０-９]){11,}/u;
 
 const isLeapYear = (year: number): boolean =>

@@ -1650,7 +1650,8 @@ async function startHttps(
   // 家計簿の月ごとの合計・1 か月・分類の変更・削除（ADR 0161）。データ鍵は保持せず要求ごとに読む。今月は本人の
   // タイムゾーン（気づきの一覧と同じ出所）で決め、決まっていなければ月ごとの合計を 503 で閉じる。
   // レシートの写真の読み取り（ADR 0177）。読み取りの口（provider と profile）は起動の設定で渡し、なければ使えない。
-  // 予算の門（本人の依頼の枠）と保存期限の掃除の門を通してから外部へ送る。設定は既定で切。
+  // 予算の門（本人の依頼の枠）と保存期限の掃除の門を通してから外部へ送る。設定は既定で切。掃除の門は待たない（掃除の
+  // 途中なら送らずに 503 not_sent。端末が待つのをやめた後に送らないため。ADR 0177 の追補）。
   const receiptSetup = https.household?.receiptReading ?? null;
   const householdReceipt = createHouseholdReceiptRoutes({
     setup: receiptSetup,
@@ -1662,9 +1663,6 @@ async function startHttps(
       ? {}
       : {
           cloudGate: {
-            ready: async () => {
-              await retention?.idle();
-            },
             open: () => (retention as RetentionSweeper).gate().cloud_send,
             lease: () => (retention as RetentionSweeper).lease(),
           },
@@ -1915,6 +1913,9 @@ async function startHttps(
       },
       eventStream: streams,
       ioState: (device, lock) => voice.ioState(device, lock),
+      // レシートの写真の読み取り（ADR 0177）だけ、端末の切断を経路の処理へ伝え、読んだ本文のバイト列を 0 で埋める。
+      abortOnCloseRoutes: ['readHouseholdReceipt'],
+      wipeBodyRoutes: ['readHouseholdReceipt'],
       ...(https.limits === undefined ? {} : { limits: https.limits }),
     });
   } catch (error) {

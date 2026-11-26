@@ -180,6 +180,8 @@ interface Call {
   readonly scoped?: boolean;
   readonly screenOperation?: boolean;
   readonly expectedScopeId?: string;
+  readonly timeoutMs?: number;
+  readonly signal?: AbortSignal;
 }
 
 interface Rig {
@@ -1879,4 +1881,160 @@ test('receipt read: the hub refusing because of the setting or the budget sends 
     reason: 'core_rejected',
   });
   assert.equal(budget.posts().length, 2);
+});
+
+// 見直しの指摘 1・5・7(a)(b)・4 の試験（ADR 0177 の追補）。期待値は手で書いた。
+
+test('receipt read: only the reading waits 150 seconds, and a lock, disconnect or input stop cuts the request', async () => {
+  const r = await receiptRig('on');
+  const read = () =>
+    r.bridge.readReceipt(
+      () => Promise.resolve(syntheticJpeg(3024, 4032)),
+      new MockCodec(),
+      () => true,
+    );
+  r.post = () => ({
+    kind: 'response',
+    status: 200,
+    body: { result: 'candidate', candidate: RECEIPT_CANDIDATE, reasons: [] },
+  });
+  assert.equal(ok(await read()).outcome, 'candidate');
+  const sent = r.posts()[0] as Call;
+  // 中枢の期限（送り始めるまで 10 秒・読み取りの期限 60 秒まで）より長く待つ。ほかの要求は既定（10 秒）のまま。
+  assert.equal(sent.timeoutMs, 150_000);
+  assert.ok(sent.signal instanceof AbortSignal);
+  assert.equal(sent.signal.aborted, false);
+  assert.ok(
+    r.calls
+      .filter((call) => call.path !== '/v1/household/receipt-readings')
+      .every((call) => call.timeoutMs === undefined),
+  );
+  // 送っている間に止める: 接続を切り（signal）、結果不明にする（送り直さない）。
+  for (const stop of [() => r.bridge.reset(), () => r.bridge.stopReceipt()]) {
+    ok(await r.bridge.show(null));
+    let seen: AbortSignal | undefined;
+    r.post = ((call: Call) =>
+      new Promise<Outcome>((resolve) => {
+        seen = call.signal;
+        call.signal?.addEventListener('abort', () =>
+          resolve({ kind: 'unknown' }),
+        );
+        setImmediate(stop);
+      })) as unknown as Rig['post'];
+    const before = r.posts().length;
+    assert.deepEqual(await read(), { ok: false, reason: 'outcome_unknown' });
+    assert.equal(seen?.aborted, true);
+    assert.equal(r.posts().length, before + 1);
+  }
+});
+
+test('receipt read: the hub stopping before sending is not_sent, apart from an unknown outcome', async () => {
+  const r = await receiptRig('on');
+  const read = () =>
+    r.bridge.readReceipt(
+      () => Promise.resolve(syntheticJpeg(3024, 4032)),
+      new MockCodec(),
+      () => true,
+    );
+  r.post = () => ({
+    kind: 'response',
+    status: 503,
+    body: { code: 'not_sent' },
+  });
+  const result = ok(await read());
+  assert.deepEqual(result, {
+    outcome: 'not_sent',
+    candidate: null,
+    reasons: [],
+  });
+  assert.deepEqual(
+    contract.responseErrors({
+      request_id: uuid(1),
+      channel: 'desktop.household_receipt_read',
+      outcome: 'ok',
+      receipt: result,
+    }),
+    [],
+  );
+  r.post = () => ({
+    kind: 'response',
+    status: 503,
+    body: { code: 'dependency_unavailable' },
+  });
+  assert.deepEqual(await read(), { ok: false, reason: 'outcome_unknown' });
+});
+
+test('receipt read: an unreadable file, a too narrow photo and metadata left after re-encoding are not sent', async () => {
+  const r = await receiptRig('on');
+  const codec = new MockCodec();
+  assert.deepEqual(
+    ok(
+      await r.bridge.readReceipt(
+        () => Promise.resolve('unreadable'),
+        codec,
+        () => true,
+      ),
+    ),
+    {
+      outcome: 'image_rejected',
+      candidate: null,
+      reasons: ['image_unreadable'],
+    },
+  );
+  // 300×6400 は縮めると 60×1280 になる。開く前に、細長すぎると理由を返す。
+  const narrow = syntheticJpeg(300, 6400);
+  assert.deepEqual(
+    ok(
+      await r.bridge.readReceipt(
+        () => Promise.resolve(narrow),
+        codec,
+        () => true,
+      ),
+    ),
+    {
+      outcome: 'image_rejected',
+      candidate: null,
+      reasons: ['image_aspect_ratio_too_large'],
+    },
+  );
+  assert.ok(narrow.every((byte) => byte === 0));
+  assert.equal(codec.opened.length, 0);
+  // JPEG にし直した画像に APP1（Exif）が残っていた: 送らない。
+  const withExif: ReceiptImageCodec = {
+    open: () => ({
+      width: 3024,
+      height: 4032,
+      jpeg: () => {
+        const plain = syntheticJpeg(960, 1280);
+        return new Uint8Array([
+          ...plain.subarray(0, 2),
+          0xff,
+          0xe1,
+          ...be16(8),
+          0x45,
+          0x78,
+          0x69,
+          0x66,
+          0,
+          0,
+          ...plain.subarray(2),
+        ]);
+      },
+    }),
+  };
+  assert.deepEqual(
+    ok(
+      await r.bridge.readReceipt(
+        () => Promise.resolve(syntheticJpeg(3024, 4032)),
+        withExif,
+        () => true,
+      ),
+    ),
+    {
+      outcome: 'image_rejected',
+      candidate: null,
+      reasons: ['image_metadata_present'],
+    },
+  );
+  assert.deepEqual(r.posts(), []);
 });

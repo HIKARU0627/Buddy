@@ -27,6 +27,7 @@ import { DEFAULT_BACKOFF, reconnectDelay } from './backoff.js';
 import type { BackoffPolicy } from './backoff.js';
 import type {
   CancelTimer,
+  ClientAbortSignal,
   ClientApiOutcome,
   ClientClock,
   ClientContract,
@@ -437,6 +438,9 @@ export class ClientConnection {
     readonly scoped?: boolean;
     // 本人が確かめたときの接続範囲。今の接続範囲と違えば（bootstrap をやり直した）送らない。
     readonly expectedScopeId?: string;
+    // 応答を待つ時間と中断（ClientApiRequest の同じ名前の欄へそのまま渡す）。
+    readonly timeoutMs?: number;
+    readonly signal?: ClientAbortSignal;
   }): Promise<
     | { readonly kind: 'not_sent'; readonly reason: 'not_connected' }
     | {
@@ -468,6 +472,10 @@ export class ClientConnection {
       lockState: this.#lockState,
       ...(request.screenOperation === true ? { screenOperation: true } : {}),
       ...(body === undefined ? {} : { body }),
+      ...(request.timeoutMs === undefined
+        ? {}
+        : { timeoutMs: request.timeoutMs }),
+      ...(request.signal === undefined ? {} : { signal: request.signal }),
     });
     if (outcome.kind === 'certificate_mismatch') {
       this.#fail(this.#generation, outcomeFailure(outcome));

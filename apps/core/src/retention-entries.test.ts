@@ -16,7 +16,7 @@ const SOURCE_DIR = dirname(fileURLToPath(import.meta.url)).replace(
 
 // 外部の読み取り・送出の口を使うモジュールの目印。
 const OUTBOUND =
-  /ProviderReader|ProviderWriter|LiveProvider|UsageReconciler|@buddy\/connectors|\bfetch\(/u;
+  /ProviderReader|ProviderWriter|LiveProvider|UsageReconciler|ReceiptImageReader|@buddy\/connectors|\bfetch\(/u;
 
 type Entry =
   | {
@@ -135,6 +135,13 @@ const ENTRIES: Readonly<Record<string, readonly Entry[]>> = {
       kind: 'gated',
       what: '家計簿の利用通知の取り込み（同期したメールの見出し・本文の読み取りと記録。ADR 0160）',
       anchors: ['options.retention.ready()', 'options.retention.lease()'],
+    },
+  ],
+  'household-receipt.ts': [
+    {
+      kind: 'gated',
+      what: 'レシートの写真の外部のモデルの画像の読み取りへの送信（ADR 0177）。掃除を待たず、送れないときは送らずに 503',
+      anchors: ['options.cloudGate.open()', 'options.cloudGate.lease()'],
     },
   ],
   'graph-mail-attachments.ts': [

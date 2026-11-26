@@ -37,6 +37,7 @@ import {
 import { adminConfirmText } from '../admin-confirm.js';
 import { ConnectionPublisher } from '../connection-publisher.js';
 import { writeHouseholdExportFile } from '../household-export-file.js';
+import { readReceiptImageFile } from '../receipt-image-file.js';
 import type {
   HouseholdExportSaver,
   ReceiptImageCodec,
@@ -924,10 +925,11 @@ async function pickHouseholdExportWithDialog(): Promise<Uint8Array | null> {
 }
 
 // レシートの写真（ADR 0177）。確認ダイアログと同じ窓を親にした OS のファイル選択で本人に 1 枚選ばせ、選んだファイルだけを
-// メモリーへ読む（一時ファイルは作らない）。上限（20 MiB）を超えるファイルは読まずに 'too_large'。親の窓がない・やめたときは
+// メモリーへ読む（一時ファイルは作らない）。開いたファイルを fstat で確かめ、上限（20 MiB）+1 バイトまでだけ読む
+// （receipt-image-file.ts）。上限を超えるファイルは 'too_large'、読めなければ 'unreadable'。親の窓がない・やめたときは
 // null（何も送らない）。形式・縦横の検査と縮めは household-bridge.ts が行う。
 async function pickReceiptImageWithDialog(): Promise<
-  Uint8Array | null | 'too_large'
+  Uint8Array | null | 'too_large' | 'unreadable'
 > {
   const parent = confirmDialogParent(uiMode, statusPanel.open);
   const window = parent === null ? null : liveWindow(parent);
@@ -941,19 +943,12 @@ async function pickReceiptImageWithDialog(): Promise<
   });
   const path = picked.filePaths[0];
   if (picked.canceled || path === undefined) return null;
-  const info = await stat(path);
-  if (!info.isFile()) return null;
-  if (info.size > RECEIPT_SOURCE_MAX_BYTES) return 'too_large';
-  const bytes = await readFile(path);
-  if (bytes.byteLength > RECEIPT_SOURCE_MAX_BYTES) {
-    bytes.fill(0);
-    return 'too_large';
-  }
-  return new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  return readReceiptImageFile(path, RECEIPT_SOURCE_MAX_BYTES);
 }
 
 // レシートの写真を開いて縮める口（ADR 0177）。nativeImage で開き、長い辺を縮めて JPEG にし直す（撮影の位置などの付帯情報は
-// 持ち越さない）。開けなければ null。
+// 持ち越さない。送る前に household-bridge.ts が付帯情報の区切りの有無を確かめ直す）。開けなければ null。nativeImage が
+// 持つ画素のメモリーは Chromium の側にあり、0 で埋められない（参照を手放して捨てる。ADR 0177 の追補）。
 const RECEIPT_IMAGE_CODEC: ReceiptImageCodec = {
   open(bytes) {
     const image = nativeImage.createFromBuffer(

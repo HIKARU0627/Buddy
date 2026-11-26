@@ -178,6 +178,19 @@ test('messages say why nothing was sent or why it is not a candidate', () => {
     message('not_candidate', ['currency_not_yen']) ?? '',
     /円の金額と確かめられませんでした/u,
   );
+  // 中枢が送る前に止めた: 送っておらず費用もかかっていないと伝える（結果不明の文と分ける）。
+  assert.equal(
+    message('not_sent'),
+    '中枢が外部へ送る前に止めたため、写真は送っておらず、費用もかかっていません。少し待ってから、もう一度写真を選んでください。',
+  );
+  assert.equal(
+    message('image_rejected', ['image_aspect_ratio_too_large']),
+    '写真が細長すぎるため、送っていません（長い辺が短い辺の 16\u00a0倍までの写真を選んでください。長いレシートは、上と下に分けて撮ってください）。',
+  );
+  assert.equal(
+    message('image_rejected', ['image_metadata_present']),
+    '写真の付帯情報（撮影の日時・位置など）を取り除けなかったため、送っていません。別の写真を選んでください。',
+  );
 });
 
 test('the setting is sent only as the other value, and never while unavailable', async () => {
@@ -323,7 +336,7 @@ test('an unknown outcome is not resent, and a picker closed without a file shows
   await settle();
   assert.equal(
     store.snapshot().notice?.text,
-    '読み取りの結果を確かめられませんでした。自動では送り直しません。読み直すときは、もう一度写真を選んでください。',
+    '写真を外部へ送ったかどうか、結果を確かめられませんでした。送っていれば費用がかかっています。自動では送り直しません。読み直すときは、もう一度写真を選んでください（もう一度費用がかかります）。',
   );
   assert.equal(store.snapshot().notice?.place, 'receipt');
   assert.equal(fake.sent.length, 2);

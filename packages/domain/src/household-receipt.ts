@@ -6,14 +6,15 @@
 //   （端末の main が縮める前）と、外部へ送る画像の上限（JPEG だけ・バイト数・長い辺）を分けて持つ。
 // - 応答の読み直し: 外部のモデルの応答は信用しない入力として扱い、決まった形かを確かめ、金額・日付・店名・支払い手段を
 //   家計の記録の検査（householdContentErrors・12 桁以上の数字の並びの拒否）で確かめ直す。読めない・矛盾する結果
-//   （円でない・合計と品目の和が違う・レシートが二枚以上・カード番号らしい数字の並び）は候補にしない。
+//   （円でない・合計と品目の和が違う・レシートが二枚以上・カード番号らしい数字の並び・向きを変える制御文字）は候補に
+//   しない。数字の並びは、家計の記録全体の検査より広く、数字の間の記号・句読点・空白・長音記号をすべて区切りとして数える
+//   （見直しの指摘 2。全体の検査は広げていない。U370）。
 // 候補は記録ではない。記録を作るのは、本人が手入力の欄（ADR 0167）で中身を確かめて「足す」を押したときだけ。
 // 品目は合計との突き合わせにだけ使い、候補に入れない（端末へ返さない）。
 
 import {
   HOUSEHOLD_AMOUNT_MAX,
   householdContentErrors,
-  householdHasLongDigits,
   householdMerchantErrors,
   isHouseholdDate,
 } from './household.js';
@@ -32,6 +33,20 @@ export const RECEIPT_SEND_MAX_BYTES = 180 * 1024;
 export const RECEIPT_SEND_MAX_SIDE = 1600;
 /** 画像の短い辺の下限（これより小さい画像は文字を読めない）。 */
 export const RECEIPT_MIN_SIDE = 64;
+
+// --- 端末の時間切れと中枢の期限（見直しの指摘 1）---
+// 端末が待つのをやめた後に中枢が外部へ送ることがないよう、この経路だけ端末の時間切れを中枢の期限の和より長くする。
+/** 中枢が経路の処理を始めてから送出意図（予算の門の dispatch）を記録して送り始めるまでの期限。過ぎたら送らない。 */
+export const RECEIPT_HUB_PRE_DISPATCH_MS = 10_000;
+/** 読み取りの profile の期限（timeout_ms）の上限。これより長い profile は使わない。 */
+export const RECEIPT_READ_TIMEOUT_MAX_MS = 60_000;
+/** 端末が読み取りの要求の応答を待つ時間（ほかの要求の 10 秒より長い）。 */
+export const RECEIPT_CLIENT_TIMEOUT_MS = 150_000;
+/**
+ * 本人が選ぶ画像の縦横の比の上限（長い辺 ÷ 短い辺）。端末の main は長い辺 1280、収まらなければ 1024 まで縮めるので、
+ * 1024 ÷ 64（短い辺の下限）= 16 までなら、どの段で縮めても短い辺が下限より小さくならない。
+ */
+export const RECEIPT_MAX_ASPECT_RATIO = 16;
 
 export type ReceiptImageFormat = 'jpeg' | 'png';
 
@@ -52,6 +67,10 @@ export const RECEIPT_IMAGE_PROBLEMS = [
   'image_dimensions_too_large',
   // 短い辺が下限より小さい。
   'image_too_small',
+  // 細長すぎる（長い辺が短い辺の RECEIPT_MAX_ASPECT_RATIO 倍を超える）。縮めると短い辺が下限より小さくなる。
+  'image_aspect_ratio_too_large',
+  // 外部へ送る JPEG に付帯情報（APP1 の Exif・XMP、APP13）がある。
+  'image_metadata_present',
 ] as const;
 
 export type ReceiptImageProblem = (typeof RECEIPT_IMAGE_PROBLEMS)[number];
@@ -119,6 +138,36 @@ function jpegInfo(bytes: Uint8Array): ReceiptImageInfo | null {
   return null;
 }
 
+/**
+ * JPEG の走査の始まり（SOS）までの区切りに、付帯情報の区切り（APP1: Exif・XMP など、APP13: Photoshop の情報・IPTC）が
+ * あるか。あれば true、SOS まで確かめてなければ false、区切りの並びが壊れていて SOS まで確かめられなければ null。
+ * APP1 は中身（Exif・XMP の識別子）を問わず付帯情報として扱う。SOS より後ろ（画像の終わりの後ろを含む）は見ない。
+ */
+export function receiptJpegHasMetadata(bytes: Uint8Array): boolean | null {
+  if (!(bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff))
+    return null;
+  let at = 2;
+  while (at + 4 <= bytes.length) {
+    if (bytes[at] !== 0xff) return null;
+    let markerAt = at + 1;
+    while (markerAt < bytes.length && bytes[markerAt] === 0xff) markerAt += 1;
+    if (markerAt >= bytes.length) return null;
+    const marker = bytes[markerAt] as number;
+    if (marker === 0x01 || (marker >= 0xd0 && marker <= 0xd8)) {
+      at = markerAt + 1;
+      continue;
+    }
+    if (marker === 0xda) return false;
+    if (marker === 0xd9) return null;
+    if (marker === 0xe1 || marker === 0xed) return true;
+    if (markerAt + 3 > bytes.length) return null;
+    const length = readUint16(bytes, markerAt + 1);
+    if (length < 2) return null;
+    at = markerAt + 1 + length;
+  }
+  return null;
+}
+
 /** 画像の形式（JPEG・PNG）と縦横の大きさを頭から読む。どちらの形式でもない・読めなければ null。 */
 export function receiptImageInfo(bytes: Uint8Array): ReceiptImageInfo | null {
   if (PNG_SIGNATURE.every((value, index) => bytes[index] === value))
@@ -139,6 +188,10 @@ function imageErrors(
     readonly maxSide: number;
     readonly maxPixels: number;
     readonly formats: readonly ReceiptImageFormat[];
+    // 縦横の比の上限を確かめる（本人が選ぶ画像だけ）。
+    readonly aspect: boolean;
+    // JPEG の付帯情報の区切りを拒む（外部へ送る画像だけ）。
+    readonly metadata: boolean;
   },
 ): ReceiptImageProblem[] {
   if (bytes.length > limits.maxBytes) return ['image_too_large'];
@@ -155,10 +208,24 @@ function imageErrors(
     return ['image_dimensions_too_large'];
   if (Math.min(info.width, info.height) < RECEIPT_MIN_SIDE)
     return ['image_too_small'];
+  if (
+    limits.aspect &&
+    Math.max(info.width, info.height) >
+      RECEIPT_MAX_ASPECT_RATIO * Math.min(info.width, info.height)
+  )
+    return ['image_aspect_ratio_too_large'];
+  if (limits.metadata && info.format === 'jpeg') {
+    const metadata = receiptJpegHasMetadata(bytes);
+    if (metadata === null) return ['image_unreadable'];
+    if (metadata) return ['image_metadata_present'];
+  }
   return [];
 }
 
-/** 本人が選んだファイルの検査（端末の main が画像を開く前）。JPEG と PNG を受ける。空なら開いてよい。 */
+/**
+ * 本人が選んだファイルの検査（端末の main が画像を開く前）。JPEG と PNG を受ける。細長すぎる画像は、縮めた後に小さすぎると
+ * しか言えなくなるので、ここで理由を返す。付帯情報は main が JPEG にし直して落とすので、ここでは拒まない。空なら開いてよい。
+ */
 export function receiptSourceImageErrors(
   bytes: Uint8Array,
 ): ReceiptImageProblem[] {
@@ -167,10 +234,15 @@ export function receiptSourceImageErrors(
     maxSide: RECEIPT_SOURCE_MAX_SIDE,
     maxPixels: RECEIPT_SOURCE_MAX_PIXELS,
     formats: ['jpeg', 'png'],
+    aspect: true,
+    metadata: false,
   });
 }
 
-/** 外部へ送る画像の検査（端末の main が縮めた後と、中枢が受け取った後）。JPEG だけを受ける。空なら送ってよい。 */
+/**
+ * 外部へ送る画像の検査（端末の main が縮めた後と、中枢が受け取った後）。JPEG だけを受け、付帯情報の区切り（APP1・APP13）が
+ * あれば送らない（main の JPEG にし直しで消えるはずのものを、main と中枢の両方で確かめる）。空なら送ってよい。
+ */
 export function receiptSendImageErrors(
   bytes: Uint8Array,
 ): ReceiptImageProblem[] {
@@ -179,6 +251,8 @@ export function receiptSendImageErrors(
     maxSide: RECEIPT_SEND_MAX_SIDE,
     maxPixels: RECEIPT_SEND_MAX_SIDE * RECEIPT_SEND_MAX_SIDE,
     formats: ['jpeg'],
+    aspect: false,
+    metadata: true,
   });
 }
 
@@ -241,6 +315,23 @@ const ITEM_KEYS = ['amount', 'name'].join(',');
 const LOCAL_TIME = /^([01][0-9]|2[0-3]):[0-5][0-9]$/u;
 // 品目名・店名・支払い手段の文字の長さの上限（応答の形の検査。記録に入れる店名・支払い手段は記録の検査でさらに絞る）。
 const REPLY_TEXT_LIMIT = 200;
+// 数字が 12 桁以上続く並び。数字と数字の間の記号・句読点・空白（\p{P}・\p{S}・\p{Z}・\s）、書式の文字（幅のない空白など。
+// \p{Cf}）、結合の文字（\p{M}）、長音記号（ー・ｰ）をすべて区切りとして数える。数字は NFKC で全角・丸数字を直した後の
+// 10 進の数字（\p{Nd}）。
+const RECEIPT_LONG_DIGITS =
+  /\p{Nd}(?:[\p{P}\p{S}\p{Z}\p{Cf}\p{M}\s\u30fc\uff70]*\p{Nd}){11,}/u;
+// 向きを変える制御文字（ALM・LRM・RLM・LRE・RLE・PDF・LRO・RLO・LRI・RLI・FSI・PDI）。
+const BIDI_CONTROL = /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/u;
+
+/**
+ * レシートの読み取りの応答の文字に、カード番号・口座番号らしい 12 桁以上の数字の並びがあるか。家計の記録全体の検査
+ * （householdHasLongDigits。区切りは空白・ハイフンだけ）より広く、数字と数字の間の記号・句読点・空白・長音記号を
+ * すべて区切りとして数える（「4111.1111.1111.1111」「4111/1111/…」「4111ー1111…」も拒む）。日付と時刻の並び
+ * （「2030/11/25 12:34」）も 12 桁になるので拒むが、レシートの応答では候補にしないだけで、本人が手で入れられる。
+ */
+export function receiptHasLongDigits(text: string): boolean {
+  return RECEIPT_LONG_DIGITS.test(text.normalize('NFKC'));
+}
 
 const notCandidate = (
   ...reasons: HouseholdReceiptReason[]
@@ -338,14 +429,16 @@ export function readHouseholdReceiptReply(
   if (!reply.readable || reply.receipt_count === 0)
     return notCandidate('unreadable');
   if (reply.receipt_count > 1) return notCandidate('several_receipts');
-  // 文字のどこかにカード番号らしい数字の並びがあれば、候補にしない（品目名も含めて、端末へ写さない）。
+  // 文字のどこかにカード番号らしい数字の並びがあれば、候補にしない（品目名も含めて、端末へ写さない）。区切りの種類を
+  // 問わない（receiptHasLongDigits）。向きを変える制御文字があれば、表示を偽れるので候補にしない。
   const texts = [
     reply.merchant,
     reply.payment,
     ...reply.items.map((item) => item.name),
   ].filter((text): text is string => text !== null);
-  if (texts.some((text) => householdHasLongDigits(text.normalize('NFKC'))))
-    return notCandidate('long_digits');
+  if (texts.some(receiptHasLongDigits)) return notCandidate('long_digits');
+  if (texts.some((text) => BIDI_CONTROL.test(text)))
+    return notCandidate('reply_invalid');
   if (reply.currency !== 'JPY') return notCandidate('currency_not_yen');
   const total = reply.total;
   if (total === null || total < 1 || total > HOUSEHOLD_AMOUNT_MAX)

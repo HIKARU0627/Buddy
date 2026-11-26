@@ -236,9 +236,12 @@ export interface DesktopCoreLinkOptions {
   // 選べないので、何も書かない。
   readonly saveHouseholdExport?: HouseholdExportSaver;
   // レシートの写真の読み取り（ADR 0177）。pickReceiptImage は本人に OS のファイル選択で写真を 1 枚選ばせて中身を返す（やめたら
-  // null、上限を超えるファイルは読まずに 'too_large'）。receiptImageCodec は写真を開いて縮める口。confirmReceiptSetting は
-  // 外部へ送る設定を入にする前の OS の確認ダイアログ（「送る設定にする」で true）。省略すると、写真を選べず・入にできない。
-  readonly pickReceiptImage?: () => Promise<Uint8Array | null | 'too_large'>;
+  // null、上限を超えるファイルは読まずに 'too_large'、読めなければ 'unreadable'）。receiptImageCodec は写真を開いて縮める口。
+  // confirmReceiptSetting は外部へ送る設定を入にする前の OS の確認ダイアログ（「送る設定にする」で true）。省略すると、
+  // 写真を選べず・入にできない。
+  readonly pickReceiptImage?: () => Promise<
+    Uint8Array | null | 'too_large' | 'unreadable'
+  >;
   readonly receiptImageCodec?: ReceiptImageCodec;
   readonly confirmReceiptSetting?: () => Promise<boolean>;
   // 発言の結果が会話の操作（照合表に当たった発言。session_control）のとき、その操作を音声の制御へ渡す（B05-05）。
@@ -2260,6 +2263,10 @@ export class DesktopCoreLink {
   // したら取り直す（キャンバスのモードだけ）。
   ioStateChanged(): void {
     if (this.#options.canvasMode === true) this.#canvas.ioChanged();
+    // 入出力を止めたら、中枢へ送っている途中のレシートの写真の読み取りを止める（ADR 0177 の追補）。
+    const io = this.#options.ioState?.();
+    if (io !== undefined && !desktopInputPermitted(io))
+      this.#household.stopReceipt();
   }
 
   // キャンバスの窓そのものが隠れた（hide・最小化。Electron の層が呼ぶ。UI-07）。画面が持つ本文と、main の参照・取っている途中の

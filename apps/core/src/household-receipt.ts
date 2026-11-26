@@ -5,19 +5,27 @@
 // ときだけ、既存の POST /v1/household/entries で作る）。
 // - 経路の検査（端末トークン・自宅判定・接続範囲・ロック解除・画面操作）は api-server の admission が先に行う。
 // - 送る前の最終の確かめ（この順）: 読み取りの口がある → 設定が入 → 同じ request_id を二度送らない・読み取り中の二つ目を
-//   受けない → 画像の形式・バイト数・長い辺（domain の receiptSendImageErrors）→ 本人のタイムゾーンの今日 → 保存期限の
-//   掃除の門（ADR 0053。cloud_send が開いていて貸し出しを取れる）→ 設定をもう一度（待ちをまたいだので）→ 予算の門
-//   （BudgetGate.run。予約・送出意図・期限・中断・精算・usage 不明の保持）。
-// - 結果が分からない（送ったか・応答が届いたか分からない）ときは 503 にし、自動では送り直さない。usage が分からなければ
-//   予算の門が予約を保持する。
+//   受けない → 画像の形式・バイト数・長い辺・付帯情報（domain の receiptSendImageErrors）→ 本人のタイムゾーンの今日 →
+//   保存期限の掃除の門（ADR 0053。待たずに、cloud_send が開いていて貸し出しを今取れるときだけ）→ 設定をもう一度 →
+//   予算の門（BudgetGate.run。予約・送出意図・期限・中断・精算・usage 不明の保持）。
+// - 端末が待つのをやめた後に送らない（見直しの指摘 1）: 端末が接続を切ったら（api-server の request.signal）、送出意図の
+//   前なら送らずにやめる。経路の処理を始めてから RECEIPT_HUB_PRE_DISPATCH_MS（10 秒）までに送り始めなければ送らない。
+//   読み取りの期限（profile.timeout_ms）は RECEIPT_READ_TIMEOUT_MAX_MS（60 秒）まで。端末はこの要求だけ
+//   RECEIPT_CLIENT_TIMEOUT_MS（150 秒）待つので、端末が結果不明にする前に中枢の読み取りは終わっている。
+// - 送る前に止めたときは 503 not_sent（費用はかかっていない）、結果が分からない（送ったか・応答が届いたか分からない）
+//   ときは 503 dependency_unavailable にし、どちらも自動では送り直さない。usage が分からなければ予算の門が予約を保持する。
 // - 外部の応答は信用しない入力として扱い、厳格な JSON として読み、domain の readHouseholdReceiptReply で家計の記録の検査を
 //   し直す。読めない・矛盾する結果は候補にしない。
-// - 画像も応答も保存しない。ログ・診断へも出さない。受け取った画像のバイト列は、処理の終わりに 0 で埋めて捨てる。
+// - 画像も応答も保存しない。ログ・診断へも出さない。受け取った画像のバイト列は、読み取りの口が終わってから（時間切れ・
+//   中断で予算の門が先に返っても、送っている途中の読み取りが終わるのを待って）0 で埋めて捨て、掃除の貸し出しを返す。
+//   base64 の文字列と JSON の文字列は JavaScript では 0 で埋められないので、参照を手放すだけ（ADR 0177 の追補）。
 // - 設定（入・切）は中枢のメモリーにだけ持つ。既定は切で、中枢を起動し直すと切に戻る（U364）。
 
 import type { ModelProfile, ModelUsage } from '@buddy/contracts';
 import type { AdapterResult, Cancellation } from '@buddy/ai';
 import {
+  RECEIPT_HUB_PRE_DISPATCH_MS,
+  RECEIPT_READ_TIMEOUT_MAX_MS,
   candidateLocalClock,
   readHouseholdReceiptReply,
   receiptSendImageErrors,
@@ -62,6 +70,8 @@ export interface ReceiptReadCommand {
 
 // 外部のモデルの画像の読み取りの口（provider ごとの実装は後で足す。試験は模擬で行う）。1 回の read で送るのは 1 回だけで、
 // timeout・利用不可・壊れた応答の後に自動で送り直さない（LlmAdapter と同じ。結果の形も AdapterResult と同じ）。
+// cancellation が中断されたら、すぐに送るのをやめて返すこと（返すまで画像のバイト列を 0 で埋めず、掃除の貸し出しも返さず、
+// 次の読み取りも受けない）。command.image.bytes は返すまで読んでよく、返した後は 0 で埋められる。
 export interface ReceiptImageReader {
   read(
     command: ReceiptReadCommand,
@@ -104,8 +114,12 @@ export interface ReceiptBudget {
   ): Promise<ReceiptBudgetOutcome>;
 }
 
-// 読み取りの設定が使えるか（出力の上限が決まっていなければ、予約の最大負担を決められないので使えない）。
+// 読み取りの設定が使えるか（出力の上限が決まっていなければ、予約の最大負担を決められないので使えない。期限が
+// RECEIPT_READ_TIMEOUT_MAX_MS を超える profile は、端末が待つのをやめた後まで読み取りが続くおそれがあるので使わない）。
 export const receiptSetupUsable = (setup: ReceiptReadingSetup): boolean =>
+  Number.isSafeInteger(setup.profile.timeout_ms) &&
+  setup.profile.timeout_ms > 0 &&
+  setup.profile.timeout_ms <= RECEIPT_READ_TIMEOUT_MAX_MS &&
   setup.profile.output_limit_tokens !== null &&
   Number.isSafeInteger(setup.profile.output_limit_tokens) &&
   setup.profile.output_limit_tokens > 0 &&
@@ -169,13 +183,15 @@ export interface HouseholdReceiptOptions {
   readonly zone: () => string | null;
   // いまの UTC のミリ秒。
   readonly now: () => number;
-  // 保存期限の掃除の門（ADR 0053）。ready は掃除が済むまで待ち、open は外部への送信が許されているか、lease は貸し出しを
-  // 取る（取れなければ null）。省略すると門を通さない（試験）。
+  // 保存期限の掃除の門（ADR 0053）。open は外部への送信が許されているか、lease は貸し出しを取る（掃除の途中・ゲートが
+  // 閉じているときは null）。掃除が済むのを待たない（待つ間に端末が待つのをやめるため。見直しの指摘 1）。省略すると門を
+  // 通さない（試験）。
   readonly cloudGate?: {
-    readonly ready: () => Promise<void>;
     readonly open: () => boolean;
     readonly lease: () => (() => void) | null;
   };
+  // 経路の処理を始めてから送り始めるまでの期限（ミリ秒）。省略すると RECEIPT_HUB_PRE_DISPATCH_MS（試験で短くする）。
+  readonly preDispatchMs?: number;
 }
 
 export interface HouseholdReceiptRoutes {
@@ -262,8 +278,9 @@ export function createHouseholdReceiptRoutes(
       status: number,
       code: Parameters<typeof apiErrorResponse>[1],
     ) => apiErrorResponse(status, code, requestId || null);
-    if (setup === null || budget === null)
-      return fail(503, 'dependency_unavailable');
+    // 外部へ送る前に止めた（費用はかかっていない）。結果の分からない 503 と分ける（見直しの指摘 5）。
+    const notSent = () => fail(503, 'not_sent');
+    if (setup === null || budget === null) return notSent();
     if (reading !== 'on') return fail(403, 'external_send_consent_required');
     // 同じ request_id は、結果を問わず二度送らない（結果不明の自動の再送をしない）。
     if (seen.has(requestId)) return fail(409, 'conflict');
@@ -282,51 +299,69 @@ export function createHouseholdReceiptRoutes(
     const controller = new AbortController();
     inFlight = controller;
     let release: (() => void) | null = null;
+    // 読み取りの口に渡した後、読み取りが終わる（成功・失敗・例外）までの待ち。予算の門が時間切れ・中断で先に返っても、
+    // これが終わるまで画像を 0 で埋めず、掃除の貸し出しを返さず、次の読み取りを受けない。
+    const flight: { sending: Promise<unknown> | null } = { sending: null };
+    // 端末が接続を切った: 送出意図の前なら送らない（後なら予算の門が結果を捨てる）。
+    const clientGone = () => controller.abort();
+    request.signal?.addEventListener('abort', clientGone, { once: true });
+    if (request.signal?.aborted === true) controller.abort();
+    // 送り始めるまでの期限。過ぎたら送らない（予算の門の受付・送出意図の記録が遅れても、端末が待つ間に送り終える）。
+    const deadline = setTimeout(
+      () => controller.abort(),
+      options.preDispatchMs ?? RECEIPT_HUB_PRE_DISPATCH_MS,
+    );
+    deadline.unref?.();
     try {
       const zone = options.zone();
       const today =
         zone === null ? null : candidateLocalClock(options.now(), zone);
-      if (today === null) return fail(503, 'dependency_unavailable');
-      // 保存期限の掃除が済むまで外部へ送らない（ADR 0053）。確かめと貸し出しは同じ区間で行う。
+      if (today === null) return notSent();
+      // 保存期限の掃除の門（ADR 0053）。掃除が済むのを待たず、今送れるときだけ貸し出しを取る。
       if (options.cloudGate !== undefined) {
-        await options.cloudGate.ready();
-        if (!options.cloudGate.open())
-          return fail(503, 'dependency_unavailable');
+        if (!options.cloudGate.open()) return notSent();
         release = options.cloudGate.lease();
-        if (release === null) return fail(503, 'dependency_unavailable');
+        if (release === null) return notSent();
       }
-      // 待ちの間に本人が切にした・止めた。
-      if (reading !== 'on' || controller.signal.aborted)
-        return fail(403, 'external_send_consent_required');
+      // 本人が切にした・止めた・端末が接続を切った・期限を過ぎた。
+      if (reading !== 'on') return fail(403, 'external_send_consent_required');
+      if (controller.signal.aborted) return notSent();
       const received: { value: AdapterResult | null } = { value: null };
       const outcome = await budget.run(
         requestId,
-        async (signal) => {
-          const result = await setup.reader.read(
-            {
-              request_id: requestId,
-              profile: setup.profile,
-              instructions: HOUSEHOLD_RECEIPT_INSTRUCTIONS,
-              image: { media_type: RECEIPT_MEDIA_TYPE, bytes },
-            },
-            signal,
-          );
-          received.value = result;
-          return {
-            usage: result.usage,
-            provider_request_id:
-              result.kind === 'response' ? result.provider_request_id : null,
-          };
+        (signal) => {
+          // 送出意図を記録した後に予算の門が呼ぶ。ここから先は送り始めるまでの期限で止めない（予算の門の期限が効く）。
+          clearTimeout(deadline);
+          const pendingRead = setup.reader
+            .read(
+              {
+                request_id: requestId,
+                profile: setup.profile,
+                instructions: HOUSEHOLD_RECEIPT_INSTRUCTIONS,
+                image: { media_type: RECEIPT_MEDIA_TYPE, bytes },
+              },
+              signal,
+            )
+            .then((result) => {
+              received.value = result;
+              return {
+                usage: result.usage,
+                provider_request_id:
+                  result.kind === 'response'
+                    ? result.provider_request_id
+                    : null,
+              };
+            });
+          flight.sending = pendingRead.catch(() => undefined);
+          return pendingRead;
         },
         controller.signal,
       );
       if (outcome.kind === 'rejected')
-        return outcome.budget_held
-          ? fail(422, 'budget_held')
-          : fail(503, 'dependency_unavailable');
+        return outcome.budget_held ? fail(422, 'budget_held') : notSent();
       if (outcome.kind === 'released')
         return reading === 'on'
-          ? fail(503, 'dependency_unavailable')
+          ? notSent()
           : fail(403, 'external_send_consent_required');
       const reply = received.value;
       // 応答が届いていない・中断した: 結果が分からないので 503（自動では送り直さない）。
@@ -361,18 +396,34 @@ export function createHouseholdReceiptRoutes(
           }),
         };
       }
+      // 今日は応答が届いた後に決め直す（送る前に決めた今日から日付が変わっていれば、新しい今日で確かめる）。
+      const zoneAfter = options.zone();
+      const todayAfter =
+        zoneAfter === null
+          ? null
+          : candidateLocalClock(options.now(), zoneAfter);
+      const reference =
+        todayAfter !== null && todayAfter.date > today.date
+          ? todayAfter.date
+          : today.date;
       return {
         status: 200,
-        body: resultBody(readHouseholdReceiptReply(value, today.date)),
+        body: resultBody(readHouseholdReceiptReply(value, reference)),
       };
     } catch {
       // 予算の門・読み取りの口が例外を投げた: 結果が分からないので 503（送り直さない）。
       return fail(503, 'dependency_unavailable');
     } finally {
-      // 画像は保存せず、処理の終わりに 0 で埋めて捨てる。
-      bytes.fill(0);
-      release?.();
-      if (inFlight === controller) inFlight = null;
+      clearTimeout(deadline);
+      request.signal?.removeEventListener('abort', clientGone);
+      // 画像は保存しない。読み取りの口が終わってから 0 で埋めて捨て、掃除の貸し出しを返し、次の読み取りを受ける。
+      const done = () => {
+        bytes.fill(0);
+        release?.();
+        if (inFlight === controller) inFlight = null;
+      };
+      if (flight.sending === null) done();
+      else void flight.sending.then(done, done);
     }
   };
 

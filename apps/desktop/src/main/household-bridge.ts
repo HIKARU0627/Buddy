@@ -33,6 +33,7 @@ import type {
 } from '@buddy/contracts';
 import type { ClientConnection } from '@buddy/client';
 import {
+  RECEIPT_CLIENT_TIMEOUT_MS,
   RECEIPT_SEND_MAX_BYTES,
   buildHouseholdCsv,
   householdExportFileName,
@@ -230,14 +231,18 @@ export class HouseholdBridge {
   #seq = 0;
   // 画面へ渡す値の通し番号（読み取りが終わるたび・世代が進むたびに増える。減らない）。
   #listSeq = 1;
+  // 中枢へ送っている途中のレシートの写真の読み取りの中断（ロック・切断・入出力の停止で接続を切る）。
+  #receiptAbort: AbortController | null = null;
 
   constructor(host: HouseholdHost) {
     this.#host = host;
   }
 
   // 表示の権限の世代が進んだ（ロック・切断）: 記録・参照・保留を捨てる。進行中の読み取りは反映しない。
+  // 中枢へ送っている途中のレシートの写真の読み取りは、接続を切って中枢に止めさせる。
   reset(): void {
     this.#gen += 1;
+    this.stopReceipt();
     this.#overview = null;
     this.#month = null;
     this.#records = new Map();
@@ -537,7 +542,7 @@ export class HouseholdBridge {
   // - 結果は候補だけで、記録は作らない。候補は main に持たず、そのまま画面へ渡す。
   // 画像のバイト列は送った後・送らなかったときとも 0 で埋めて捨て、一時ファイル・ログへは出さない。
   async readReceipt(
-    pick: () => Promise<Uint8Array | null | 'too_large'>,
+    pick: () => Promise<Uint8Array | null | 'too_large' | 'unreadable'>,
     codec: ReceiptImageCodec | null,
     stillPermitted: () => boolean,
   ): Promise<HouseholdOutcome<DesktopHouseholdReceiptView>> {
@@ -555,7 +560,7 @@ export class HouseholdBridge {
     // 設定が入でなければ、ファイルも選ばせない（入・切を読めていなければ送らない）。
     if (this.#overview?.receipt_reading !== 'on') return receipt('setting_off');
     if (codec === null) return fail('core_rejected');
-    let source: Uint8Array | null | 'too_large';
+    let source: Uint8Array | null | 'too_large' | 'unreadable';
     try {
       source = await pick();
     } catch {
@@ -565,6 +570,9 @@ export class HouseholdBridge {
     if (source === null) return receipt('cancelled');
     if (source === 'too_large')
       return receipt('image_rejected', ['image_too_large']);
+    // ファイルを読めなかった（開けない・読む途中で失敗した・読む間に変わった）。
+    if (source === 'unreadable')
+      return receipt('image_rejected', ['image_unreadable']);
     if (stale()) {
       source.fill(0);
       return receipt('cancelled');
@@ -591,17 +599,40 @@ export class HouseholdBridge {
         ? receipt('image_rejected', sendErrors)
         : receipt('cancelled');
     }
-    const data = Buffer.from(sendable).toString('base64');
+    // 写しを作らずに base64 にする（Buffer.from(sendable) は写しを作り、0 で埋められない）。base64 の文字列は
+    // JavaScript では 0 で埋められないので、送った後に参照を手放す。
+    const data = Buffer.from(
+      sendable.buffer,
+      sendable.byteOffset,
+      sendable.byteLength,
+    ).toString('base64');
     sendable.fill(0);
-    const outcome = await connection.request({
-      method: 'POST',
-      path: '/v1/household/receipt-readings',
-      body: { image: { media_type: 'image/jpeg', data_base64: data } },
-      scoped: true,
-      screenOperation: true,
-      expectedScopeId: scope,
-    });
+    // この要求だけ中枢の期限（送り始めるまで 10 秒・読み取りの期限 60 秒まで）より長く待つ。ロック・切断・入出力の
+    // 停止では接続を切り、中枢は送出意図の前なら送らない（ADR 0177 の追補）。
+    const abort = new AbortController();
+    this.#receiptAbort?.abort();
+    this.#receiptAbort = abort;
+    let outcome: Awaited<ReturnType<typeof connection.request>>;
+    try {
+      outcome = await connection.request({
+        method: 'POST',
+        path: '/v1/household/receipt-readings',
+        body: { image: { media_type: 'image/jpeg', data_base64: data } },
+        scoped: true,
+        screenOperation: true,
+        expectedScopeId: scope,
+        timeoutMs: RECEIPT_CLIENT_TIMEOUT_MS,
+        signal: abort.signal,
+      });
+    } finally {
+      if (this.#receiptAbort === abort) this.#receiptAbort = null;
+    }
     if (outcome.kind === 'not_sent') return fail('not_connected');
+    // 入出力の停止で切った: 中枢が送ったかどうか分からないので結果不明（送り直さない）。
+    if (abort.signal.aborted && gen === this.#gen) {
+      this.#host.log('household_receipt_outcome_unknown');
+      return fail('outcome_unknown');
+    }
     // ロック・切断をまたいだ結果は渡さない（送ったかもしれないので結果不明。送り直さない）。
     if (gen !== this.#gen) return fail('outcome_unknown');
     if (outcome.kind === 'response') {
@@ -635,11 +666,21 @@ export class HouseholdBridge {
       }
       if (outcome.status === 422 && code === 'budget_held')
         return receipt('budget_held');
+      // 中枢が外部へ送る前に止めた（費用はかかっていない）。結果不明と分けて伝える。
+      if (outcome.status === 503 && code === 'not_sent')
+        return receipt('not_sent');
       if (outcome.status >= 400 && outcome.status < 500)
         return fail('core_rejected');
     }
     this.#host.log('household_receipt_outcome_unknown');
     return fail('outcome_unknown');
+  }
+
+  // 中枢へ送っている途中のレシートの写真の読み取りを止める（接続を切る）。ロック・切断（reset）と、入出力の停止
+  // （core-link の ioStateChanged）で呼ぶ。中枢は切断を見て、送出意図の前なら送らず、後なら結果を捨てる。
+  stopReceipt(): void {
+    this.#receiptAbort?.abort();
+    this.#receiptAbort = null;
   }
 
   // 外部の家計簿サービスの書き出しを取り込む（ADR 0164）。read は本人にファイルを選ばせて中身を返す（やめたら null）。

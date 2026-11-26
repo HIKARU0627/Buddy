@@ -6,9 +6,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  DbWorkerClient,
   executeCommand,
+  executeSafetyOp,
+  listAutoActions,
   readSafetyState,
   resumeSafetyBreaker,
+  stopSafetyBreaker,
 } from './index.js';
 import type {
   ApproveOperationCommand,
@@ -17,6 +21,8 @@ import type {
   StoreOutcome,
 } from './index.js';
 import {
+  CONTENT_HASH,
+  STORE_GENERATION,
   approveCommand,
   createCommand,
   databasePath,
@@ -546,5 +552,330 @@ test('only a registered device can resume, at the current revision; resuming cle
       committed(exec(db, createCommand('op-22', { auto: true }), T0 + 3)),
       '1',
     );
+  });
+});
+
+// ---- 自動実行の一覧と worker の safety の通り道（ADR 0152） -------------------------------------------------
+
+// 自動実行を 5 件（取り消しなし・取り消し済み・取り消し中・取り消しの失敗・取り消しの結果不明）と、
+// 一覧に載らない操作（画面で承認した成功・方針で承認しただけで未完了）を置く。
+function seedAutoActions(db: SqliteDatabase): void {
+  const auto = (id: string, createdAt: number, finishedAt: number): void => {
+    committed(exec(db, createCommand(id, { auto: true }), createdAt));
+    finishAuto(db, id, finishedAt);
+  };
+  const undo = (
+    id: string,
+    of: string,
+    at: number,
+    to: 'succeeded' | 'not_executed' | 'unknown_held' | null,
+  ): void => {
+    committed(
+      exec(
+        db,
+        createCommand(id, {
+          undo_of: { undo_id: `undo-${id}`, operation_id: of },
+        }),
+        at,
+      ),
+    );
+    if (to !== null) finishScreen(db, id, at + 1, to);
+  };
+  auto('op-a', T0, T0 + 10);
+  auto('op-b', T0 + 1, T0 + 20);
+  undo('op-cb', 'op-b', T0 + 21, 'succeeded');
+  auto('op-c', T0 + 2, T0 + 30);
+  undo('op-cc', 'op-c', T0 + 31, null);
+  auto('op-d', T0 + 3, T0 + 40);
+  undo('op-cd', 'op-d', T0 + 41, 'not_executed');
+  auto('op-e', T0 + 4, T0 + 50);
+  undo('op-ce', 'op-e', T0 + 51, 'unknown_held');
+  committed(exec(db, createCommand('op-screen'), T0 + 5));
+  finishScreen(db, 'op-screen', T0 + 60, 'succeeded');
+  committed(exec(db, createCommand('op-pending', { auto: true }), T0 + 6));
+}
+
+// 完了の時刻（T0 + ms）の項目。結果の版は 5、内容版は 1（finishAuto と createCommand の値）。
+function item(
+  operationId: string,
+  completedIso: string,
+  deadlineIso: string,
+  undoState: string,
+): unknown {
+  return {
+    operation_id: operationId,
+    action_kind: 'label_mail',
+    policy_version: '3',
+    state_revision: '5',
+    completed_at: completedIso,
+    undo_state: undoState,
+    undo_deadline: deadlineIso,
+    undo_target: { content_version: '1', content_hash: CONTENT_HASH },
+  };
+}
+
+// 方針で自動承認した 6 件（op-a〜op-e と op-pending）。窓は T0 に始まる。
+const SIX_IN_WINDOW = {
+  window_started_at: '2027-01-15T08:00:00.000Z',
+  auto_approvals: 6,
+  limit: 20,
+  window_minutes: 10,
+};
+
+test('the automatic list is newest first and shows undo as undone, in progress, unavailable (no undo route yet) or expired', async () => {
+  await withStore((db) => {
+    assert.deepEqual(listAutoActions(db, T0), {
+      safety: {
+        state: 'running',
+        safety_revision: '0',
+        stop_reason: null,
+        stopped_at: null,
+        auto_approvals: null,
+      },
+      items: [],
+    });
+    seedAutoActions(db);
+    const items = (now: number): unknown => listAutoActions(db, now).items;
+    assert.deepEqual(listAutoActions(db, T0 + 100), {
+      safety: {
+        state: 'running',
+        safety_revision: '0',
+        stop_reason: null,
+        stopped_at: null,
+        auto_approvals: SIX_IN_WINDOW,
+      },
+      items: [
+        item(
+          'op-e',
+          '2027-01-15T08:00:00.050Z',
+          '2027-02-14T08:00:00.050Z',
+          'in_progress',
+        ),
+        item(
+          'op-d',
+          '2027-01-15T08:00:00.040Z',
+          '2027-02-14T08:00:00.040Z',
+          'unavailable',
+        ),
+        item(
+          'op-c',
+          '2027-01-15T08:00:00.030Z',
+          '2027-02-14T08:00:00.030Z',
+          'in_progress',
+        ),
+        item(
+          'op-b',
+          '2027-01-15T08:00:00.020Z',
+          '2027-02-14T08:00:00.020Z',
+          'undone',
+        ),
+        item(
+          'op-a',
+          '2027-01-15T08:00:00.010Z',
+          '2027-02-14T08:00:00.010Z',
+          'unavailable',
+        ),
+      ],
+    });
+    // 期限ちょうどはまだ期限内。1 ms 過ぎたら期限切れ。取り消し済み・取り消し中は期限の後もそのまま。
+    const states = (now: number): unknown =>
+      (items(now) as { operation_id: string; undo_state: string }[]).map(
+        (row) => [row.operation_id, row.undo_state],
+      );
+    assert.deepEqual(states(T0 + 10 + 2_592_000_000), [
+      ['op-e', 'in_progress'],
+      ['op-d', 'unavailable'],
+      ['op-c', 'in_progress'],
+      ['op-b', 'undone'],
+      ['op-a', 'unavailable'],
+    ]);
+    assert.deepEqual(states(T0 + 41 + 2_592_000_000), [
+      ['op-e', 'in_progress'],
+      ['op-d', 'expired'],
+      ['op-c', 'in_progress'],
+      ['op-b', 'undone'],
+      ['op-a', 'expired'],
+    ]);
+  });
+});
+
+test('the safety op reads the state and resumes only a stopped breaker at its revision, returning the state after resuming', async () => {
+  await withStore((db) => {
+    const context = { platform: 'macos' as const, halted: false };
+    assert.deepEqual(executeSafetyOp(db, { kind: 'safety.state' }, context), {
+      result: {
+        ok: true,
+        value: {
+          state: 'running',
+          safety_revision: '0',
+          stop_reason: null,
+          stopped_at: null,
+          auto_approvals: null,
+        },
+      },
+      halt: false,
+    });
+    const resume = (revision: string, device = 'dev-1') =>
+      executeSafetyOp(
+        db,
+        {
+          kind: 'safety.resume',
+          device_id: device,
+          expected_safety_revision: revision,
+          now: T0 + 5,
+        },
+        context,
+      );
+    assert.deepEqual(resume('0'), {
+      result: {
+        ok: false,
+        outcome: 'rejected',
+        reasons: ['safety_not_stopped'],
+      },
+      halt: false,
+    });
+    db.transaction(() => stopSafetyBreaker(db, T0, 'rate_exceeded'))();
+    assert.deepEqual(resume('0'), {
+      result: {
+        ok: false,
+        outcome: 'rejected',
+        reasons: ['safety_revision_changed'],
+      },
+      halt: false,
+    });
+    assert.deepEqual(resume('1', 'dev-9'), {
+      result: {
+        ok: false,
+        outcome: 'rejected',
+        reasons: ['device_not_registered'],
+      },
+      halt: false,
+    });
+    assert.deepEqual(resume('x'), {
+      result: {
+        ok: false,
+        outcome: 'rejected',
+        reasons: ['expected_safety_revision_invalid'],
+      },
+      halt: false,
+    });
+    assert.deepEqual(
+      executeSafetyOp(
+        db,
+        {
+          kind: 'safety.resume',
+          device_id: 'dev-1',
+          expected_safety_revision: '1',
+          now: T0 + 5,
+        },
+        { platform: 'macos', halted: true },
+      ),
+      {
+        result: { ok: false, outcome: 'rejected', reasons: ['worker_halted'] },
+        halt: false,
+      },
+    );
+    assert.equal(readSafetyState(db).state, 'stopped');
+    assert.deepEqual(resume('1'), {
+      result: {
+        ok: true,
+        value: {
+          state: 'running',
+          safety_revision: '2',
+          stop_reason: null,
+          stopped_at: null,
+          auto_approvals: null,
+        },
+      },
+      halt: false,
+    });
+    assert.deepEqual(breaker(db), {
+      state: 'running',
+      safety_revision: 2,
+      stop_reason: null,
+      stopped_at: null,
+      resumed_by_device_id: 'dev-1',
+    });
+  });
+});
+
+test('through the worker, the list and the resume reach the store', async () => {
+  await withTempDir(async (dir) => {
+    const path = databasePath(dir);
+    const db = openSeededDatabase(path);
+    try {
+      committed(exec(db, createCommand('op-a', { auto: true }), T0));
+      finishAuto(db, 'op-a', T0 + 10);
+      db.transaction(() =>
+        stopSafetyBreaker(db, T0 + 20, 'same_target_repeated'),
+      )();
+    } finally {
+      db.close();
+    }
+    const client = await DbWorkerClient.start({
+      path,
+      storeGeneration: STORE_GENERATION,
+      responseTimeoutMs: 10_000,
+    });
+    try {
+      assert.deepEqual(
+        await client.safety({ kind: 'safety.auto_actions', now: T0 + 100 }),
+        {
+          ok: true,
+          value: {
+            safety: {
+              state: 'stopped',
+              safety_revision: '1',
+              stop_reason: 'same_target_repeated',
+              stopped_at: T0 + 20,
+              auto_approvals: {
+                window_started_at: '2027-01-15T08:00:00.000Z',
+                auto_approvals: 1,
+                limit: 20,
+                window_minutes: 10,
+              },
+            },
+            items: [
+              item(
+                'op-a',
+                '2027-01-15T08:00:00.010Z',
+                '2027-02-14T08:00:00.010Z',
+                'unavailable',
+              ),
+            ],
+          },
+        },
+      );
+      assert.deepEqual(
+        await client.safety({
+          kind: 'safety.resume',
+          device_id: 'dev-1',
+          expected_safety_revision: '1',
+          now: T0 + 200,
+        }),
+        {
+          ok: true,
+          value: {
+            state: 'running',
+            safety_revision: '2',
+            stop_reason: null,
+            stopped_at: null,
+            auto_approvals: null,
+          },
+        },
+      );
+      assert.deepEqual(await client.safety({ kind: 'safety.state' }), {
+        ok: true,
+        value: {
+          state: 'running',
+          safety_revision: '2',
+          stop_reason: null,
+          stopped_at: null,
+          auto_approvals: null,
+        },
+      });
+    } finally {
+      await client.close();
+    }
   });
 });

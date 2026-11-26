@@ -179,6 +179,35 @@ export function autoActionKindFor(
     : null;
 }
 
+// 自動実行の一覧に出す取り消しの状態（設計 03「取り消しと安全停止」、J12、ADR 0152）。
+// - 取り消しの記録（undo_records）のうち有効なもの（in_progress・undone・unknown）は一つだけ（0001 の索引）。
+//   undone は取り消し済み。in_progress と unknown（補償の結果の確認中）は取り消しの途中として見せる。
+// - 有効な記録がなく（記録なし・失敗だけ）、期限（完了から 30 日）を過ぎていれば expired。
+// - 取り消しの経路がまだない間は unavailable にし、取り消せるように見せない（ADR 0152）。
+// - 外部の対象が変わったか（target_changed）は提供元を読まないと分からないので、ここでは決めない。
+export type AutoActionUndoState =
+  | 'available'
+  | 'target_changed'
+  | 'expired'
+  | 'in_progress'
+  | 'undone'
+  | 'unavailable';
+
+export type UndoRecordStatus = 'in_progress' | 'undone' | 'failed' | 'unknown';
+
+export function autoActionUndoState(facts: {
+  readonly now: number;
+  readonly undo_deadline: number;
+  // 有効な取り消しの記録の状態。有効な記録がなければ null（失敗だけの記録も null と同じ）。
+  readonly active_undo: Exclude<UndoRecordStatus, 'failed'> | null;
+  readonly undo_supported: boolean;
+}): AutoActionUndoState {
+  if (facts.active_undo === 'undone') return 'undone';
+  if (facts.active_undo !== null) return 'in_progress';
+  if (facts.now > facts.undo_deadline) return 'expired';
+  return facts.undo_supported ? 'available' : 'unavailable';
+}
+
 // 次の自動承認を記録してよいか。窓が過ぎていれば新しい窓として数え直す。
 export function autoApprovalAllowed(
   counter: AutoApprovalCounter | null | undefined,

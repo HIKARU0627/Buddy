@@ -37,6 +37,7 @@ import { executeHomeNetworkOp } from './home-network-store.js';
 import { executeConversationOp } from './conversation-store.js';
 import { executeBudgetOp } from './budget-store.js';
 import { executeVoiceOp } from './voice-store.js';
+import { executeSafetyOp } from './safety-store.js';
 import { executeRetentionOp } from './retention-store.js';
 import { executeMemoryOp } from './memory-store.js';
 import { executeIntentShadowOp } from './intent-shadow-store.js';
@@ -379,6 +380,35 @@ function main(): void {
     post({ type: 'voice_result', id: message.id, result, halted });
   };
 
+  // 自動実行の一覧と安全停止の解除（ADR 0152）。故障注入は音声の命令と同じ。
+  const handleSafety = (
+    message: Extract<MainToWorker, { type: 'safety' }>,
+  ): void => {
+    const op = message.op;
+    if (takeFault('ignore', op)) return;
+    if (takeFault('weakenDurability', op))
+      connection.pragma('synchronous = NORMAL');
+    let result;
+    try {
+      const run = executeSafetyOp(connection, op, {
+        platform: data.platform,
+        halted,
+        beforeCommit,
+      });
+      if (run.halt) halted = true;
+      result = run.result;
+    } catch {
+      // 照会の想定外の失敗。書込みは executeSafetyOp の中で巻き戻している。
+      result = {
+        ok: false as const,
+        outcome: 'rejected' as const,
+        reasons: ['safety_op_failed'],
+      };
+    }
+    if (result.ok && takeFault('exitAfterCommit', op)) process.exit(71);
+    post({ type: 'safety_result', id: message.id, result, halted });
+  };
+
   // 終わった操作の本文の削除・90 日の削除・用事の正本の移行（ADR 0051）。故障注入は予算の命令と同じ。
   const handleRetention = (
     message: Extract<MainToWorker, { type: 'retention' }>,
@@ -552,6 +582,7 @@ function main(): void {
     else if (message.type === 'conversation') handleConversation(message);
     else if (message.type === 'budget') handleBudget(message);
     else if (message.type === 'voice') handleVoice(message);
+    else if (message.type === 'safety') handleSafety(message);
     else if (message.type === 'retention') handleRetention(message);
     else if (message.type === 'memory') handleMemory(message);
     else if (message.type === 'intent_shadow') handleIntentShadow(message);

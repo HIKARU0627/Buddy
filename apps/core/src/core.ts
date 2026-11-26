@@ -47,6 +47,10 @@ import {
   CONNECTION_REVISION_CHECKED_ROUTES,
   createConnectionRoutes,
 } from './api-connections.js';
+import {
+  AUTO_ACTION_REVISION_CHECKED_ROUTES,
+  createAutoActionRoutes,
+} from './api-auto-actions.js';
 import { createConnectionDiscovery } from './connection-discovery.js';
 import type { TargetDiscoveryPort } from './connection-discovery.js';
 import { HomeNetworkKey, createHomeNetworkGate } from './api-home-network.js';
@@ -1550,6 +1554,12 @@ async function startHttps(
     },
     log,
   });
+  // 自動実行の一覧と安全停止の解除（B13-05、ADR 0152）。安全停止の版の照合は DB の現在値で行う。
+  // 取り消しの経路（undoAutoAction）はまだ作らない（一覧の undo_state は unavailable）。
+  const autoActionRoutes = createAutoActionRoutes({
+    store,
+    now: () => now().getTime(),
+  });
   const candidateHandlers = {
     ...candidateRoutes.handlers,
     listCandidates: candidateRefresh.wrap(
@@ -1566,9 +1576,11 @@ async function startHttps(
           ? budgetRoutes.revisionMatches(input)
           : CONNECTION_REVISION_CHECKED_ROUTES.has(input.operationId)
             ? connectionRoutes.revisionMatches(input)
-            : input.operationId === 'resumeIo'
-              ? voice.revisionMatches(input.device, input.body)
-              : base.revisionMatches(input),
+            : AUTO_ACTION_REVISION_CHECKED_ROUTES.has(input.operationId)
+              ? autoActionRoutes.revisionMatches(input)
+              : input.operationId === 'resumeIo'
+                ? voice.revisionMatches(input.device, input.body)
+                : base.revisionMatches(input),
   };
   const turnOptions = https.turns ?? {};
   // 影モード（B10-03 P3、ADR 0092・0110、B06-06e）。比較の記録の入口（onInterpreted）を SQLite の保存先につなぐ。
@@ -1749,6 +1761,7 @@ async function startHttps(
     budgetRoutes.handlers,
     connectionRoutes.handlers,
     candidateHandlers,
+    autoActionRoutes.handlers,
     voiceRoutes.handlers,
     ...(oauthService === undefined ? [] : [oauthService.handlers]),
   ].flatMap((handlers) => Object.keys(handlers));
@@ -1774,6 +1787,7 @@ async function startHttps(
         ...budgetRoutes.handlers,
         ...connectionRoutes.handlers,
         ...candidateHandlers,
+        ...autoActionRoutes.handlers,
         ...voiceRoutes.handlers,
         ...(oauthService === undefined ? {} : oauthService.handlers),
       },

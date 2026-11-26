@@ -173,6 +173,14 @@ function textErrors(
   return [];
 }
 
+/**
+ * 店名だけの検査（householdContentErrors の店名の分と同じ規則）。理由が空なら正しい。会話の一言から店名を読んだとき、
+ * 記録に入れられない店名（長すぎる・制御文字・12 桁以上の数字の並び）を入力欄に入れないために使う（ADR 0171）。
+ */
+export function householdMerchantErrors(value: string | null): string[] {
+  return textErrors(value, 'merchant', HOUSEHOLD_MERCHANT_LIMIT, false);
+}
+
 /** 記録の内容の検査。理由が空なら正しい。 */
 export function householdContentErrors(value: unknown): string[] {
   if (value === null || typeof value !== 'object' || Array.isArray(value))

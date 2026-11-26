@@ -12,6 +12,7 @@ import { AppProviders } from '../../app/AppProviders.js';
 import { INITIAL_WORK_STATE } from '../../state/work-state.js';
 import type { WorkActions, WorkViewState } from '../../state/work-state.js';
 import { WorkPanel } from './WorkPanel.js';
+import type { HouseholdCandidateLink } from './WorkPanel.js';
 
 const test = (name: string, fn: () => void) =>
   nodeTest(name, { timeout: 10_000 }, fn);
@@ -29,6 +30,7 @@ const NO_ACTIONS: WorkActions = {
   reconcile: () => undefined,
   retry: () => undefined,
   check: () => undefined,
+  dismissHouseholdCandidate: () => undefined,
 };
 
 const entry = (
@@ -68,6 +70,7 @@ const render = (
     readonly state?: WorkViewState;
     readonly link?: 'connected' | 'other';
     readonly stopped?: boolean;
+    readonly household?: HouseholdCandidateLink | null;
   } = {},
 ) =>
   renderToStaticMarkup(
@@ -78,6 +81,7 @@ const render = (
         operations={operations}
         link={options.link ?? 'connected'}
         stopped={options.stopped ?? false}
+        household={options.household ?? null}
       />
     </AppProviders>,
   );
@@ -122,6 +126,58 @@ test('the conversation shows the history, a clarification label and no IDs', () 
   assert.match(html, /Buddy（聞き返し）/u);
   assert.match(html, /用事の題名を教えてください。/u);
   assert.doesNotMatch(html, /00000000-0000-4000/u);
+});
+
+test('a household candidate from the last turn offers to open the household form; nothing is recorded yet', () => {
+  const state: WorkViewState = {
+    ...INITIAL_WORK_STATE,
+    householdCandidate: {
+      kind: 'draft',
+      draft: {
+        amount_yen: 1280,
+        occurred_on: '2030-11-25',
+        merchant: 'コンビニ',
+        payment: null,
+      },
+    },
+  };
+  const link = { canOpen: true, open: () => undefined };
+  const html = render([], { state, household: link });
+  assert.match(html, /aria-label="家計簿の記録の候補"/u);
+  assert.match(
+    html,
+    /支出 1,280\u00a0円・コンビニ・11\u00a0月\u00a025\u00a0日/u,
+  );
+  assert.match(html, /まだ記録していません。/u);
+  assert.deepEqual(buttons(html), ['閉じる', '家計簿の入力欄で開く', '送る']);
+  // 送るボタンだけが primary（候補のボタンは secondary）。
+  assert.equal([...html.matchAll(/button--primary/gu)].length, 1);
+  // 家計簿を読めていない・別の記録を足している間は開けない。
+  const blocked = render([], {
+    state,
+    household: { canOpen: false, open: () => undefined },
+  });
+  assert.match(blocked, /今は開けません/u);
+  assert.match(
+    blocked,
+    /<button[^>]*disabled=""[^>]*>家計簿の入力欄で開く<\/button>/u,
+  );
+  // 家計簿の口がなければ出さない。
+  assert.doesNotMatch(render([], { state }), /家計簿の記録の候補/u);
+});
+
+test('an unreadable household utterance says why and offers only closing', () => {
+  const state: WorkViewState = {
+    ...INITIAL_WORK_STATE,
+    householdCandidate: { kind: 'unreadable', reason: 'foreign_currency' },
+  };
+  const html = render([], {
+    state,
+    household: { canOpen: true, open: () => undefined },
+  });
+  assert.match(html, /円以外の通貨の金額は家計簿の記録の候補にしていません。/u);
+  assert.doesNotMatch(html, /foreign_currency/u);
+  assert.deepEqual(buttons(html), ['閉じる', '送る']);
 });
 
 test('a waiting operation shows its state with a symbol and the confirm and cancel buttons, and no resend', () => {

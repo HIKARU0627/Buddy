@@ -86,6 +86,8 @@ export const HOUSEHOLD_LABELS = {
   addOpen: '記録を手で足す',
   addNote:
     'メールにも書き出しにもない支出（現金など）や収入を足します。カード番号・口座番号は入れないでください。',
+  addFromConversationNote:
+    '会話の一言から読んだ値を入れました。まだ記録していません。金額・日付・店名を確かめ、分類を選んでから「足す」を押してください。',
   addSubmit: '足す',
   adding: '足しています…',
   addDirection: '向き',
@@ -378,6 +380,8 @@ export interface HouseholdViewState {
   readonly editingBudget: boolean;
   // 手入力の欄を出しているか。
   readonly adding: boolean;
+  // 手入力の欄に入れておく値（会話の一言からの候補。ADR 0171）。null は空の欄。
+  readonly addPrefill: ManualEntryInput | null;
   // 中身の変更の欄を出している行の参照（ADR 0169）。
   readonly editing: string | null;
 }
@@ -391,6 +395,7 @@ export const INITIAL_HOUSEHOLD_STATE: HouseholdViewState = {
   confirming: null,
   editingBudget: false,
   adding: false,
+  addPrefill: null,
   editing: null,
 };
 
@@ -550,6 +555,17 @@ export function applyFailure(
   };
 }
 
+// 会話の一言からの候補で手入力の欄を開けるか（ADR 0171）。家計簿を読めていて、送り中でなく、手入力の欄を開いていない
+// （本人が入れている途中の値を候補で書き換えない）とき。
+export function canStartAddFrom(state: HouseholdViewState): boolean {
+  return (
+    state.view !== null &&
+    state.view.fetch !== 'unavailable' &&
+    state.busy === null &&
+    !state.adding
+  );
+}
+
 // 中身を直す欄を開けるか（送り中・結果不明の行は開けない）。
 export function canEdit(
   state: HouseholdViewState,
@@ -587,6 +603,8 @@ export interface HouseholdActions {
   ) => void;
   // 手入力の欄を出す・しまう・足す（ADR 0167）。
   readonly startAdd: () => void;
+  // 会話の一言からの候補を入れた手入力の欄を出す（ADR 0171）。開けたら true。記録はまだ作らない。
+  readonly startAddFrom: (input: ManualEntryInput) => boolean;
   readonly cancelAdd: () => void;
   readonly addEntry: (entry: ManualEntry) => void;
   // 行の中身の入力欄を出す・しまう・直す（ADR 0169）。
@@ -642,9 +660,27 @@ export class HouseholdStore {
       saveBudget: (items) => this.#saveBudget(items),
       startAdd: () => {
         if (this.#state.view === null) return;
-        this.#set({ ...this.#state, adding: true, notice: null });
+        this.#set({
+          ...this.#state,
+          adding: true,
+          addPrefill: null,
+          notice: null,
+        });
       },
-      cancelAdd: () => this.#set({ ...this.#state, adding: false }),
+      startAddFrom: (input) => {
+        if (!canStartAddFrom(this.#state)) return false;
+        this.#set({
+          ...this.#state,
+          adding: true,
+          addPrefill: input,
+          confirming: null,
+          editing: null,
+          notice: null,
+        });
+        return true;
+      },
+      cancelAdd: () =>
+        this.#set({ ...this.#state, adding: false, addPrefill: null }),
       addEntry: (entry) => this.#addEntry(entry),
       startEdit: (ref) => {
         const entry = this.#state.view?.entries.find(
@@ -787,7 +823,9 @@ export class HouseholdStore {
         reread = response.outcome === 'rejected' && REREAD.has(response.reason);
         const next = applyChangeResponse(state, 'add', ADD_PLACE, response);
         // 足せたら欄をしまう。拒否なら残して直させる。
-        return response.outcome === 'ok' ? { ...next, adding: false } : next;
+        return response.outcome === 'ok'
+          ? { ...next, adding: false, addPrefill: null }
+          : next;
       },
       (state) => applyFailure(state, ADD_PLACE),
     ).then(() => {

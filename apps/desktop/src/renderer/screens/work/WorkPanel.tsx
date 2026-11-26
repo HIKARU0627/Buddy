@@ -20,6 +20,7 @@ import type {
   DesktopOperationEntry,
   DesktopOperationPreview,
 } from '@buddy/contracts';
+import type { HouseholdUtteranceDraft } from '@buddy/domain';
 import { InlineNotice } from '../../components/InlineNotice.js';
 import { Section } from '../../components/Section.js';
 import { StatusText } from '../../components/StatusText.js';
@@ -40,6 +41,11 @@ import type {
   WorkActions,
   WorkViewState,
 } from '../../state/work-state.js';
+import {
+  HOUSEHOLD_CANDIDATE_LABELS,
+  HOUSEHOLD_UNREADABLE_TEXT,
+  householdCandidateText,
+} from '../../state/household-candidate.js';
 
 export const WORK_LABELS = {
   conversation: '会話',
@@ -106,18 +112,88 @@ export function actionLabel(verb: string, entry: DesktopOperationEntry) {
   return `${verb}（${rowTitle(entry)}）`;
 }
 
+// 家計簿の入力欄を開く口（ADR 0171）。App が家計簿の欄の状態から渡す。
+export interface HouseholdCandidateLink {
+  // 今、家計簿の入力欄を開けるか。
+  readonly canOpen: boolean;
+  readonly open: (draft: HouseholdUtteranceDraft) => void;
+}
+
+// 会話の一言から読んだ家計の記録の候補（ADR 0171）。記録ではなく、「家計簿の入力欄で開く」で手入力の欄に値を入れるだけ。
+// 読めなかったときは、理由と家計簿の欄から入れることを書く。
+function HouseholdCandidateCard({
+  state,
+  actions,
+  link,
+}: {
+  readonly state: WorkViewState;
+  readonly actions: WorkActions;
+  readonly link: HouseholdCandidateLink | null;
+}) {
+  const candidate = state.householdCandidate;
+  if (candidate === null || link === null) return null;
+  return (
+    <div
+      role="group"
+      aria-label={HOUSEHOLD_CANDIDATE_LABELS.title}
+      className="flex max-w-prose flex-col gap-2 rounded-md border border-separator p-3 text-sm"
+    >
+      <span className="text-xs text-muted">
+        {HOUSEHOLD_CANDIDATE_LABELS.title}
+      </span>
+      {candidate.kind === 'draft' ? (
+        <>
+          <span className="tabular-nums">
+            {householdCandidateText(candidate.draft)}
+          </span>
+          <p className="text-xs text-muted">
+            {link.canOpen
+              ? HOUSEHOLD_CANDIDATE_LABELS.note
+              : HOUSEHOLD_CANDIDATE_LABELS.cannotOpen}
+          </p>
+        </>
+      ) : (
+        <p className="text-xs text-muted">
+          {HOUSEHOLD_UNREADABLE_TEXT[candidate.reason]}
+        </p>
+      )}
+      <div className="flex flex-wrap justify-end gap-2">
+        <Button
+          size="sm"
+          variant="secondary"
+          onPress={actions.dismissHouseholdCandidate}
+        >
+          {HOUSEHOLD_CANDIDATE_LABELS.dismiss}
+        </Button>
+        {candidate.kind === 'draft' ? (
+          <Button
+            size="sm"
+            variant="secondary"
+            isDisabled={!link.canOpen}
+            onPress={() => link.open(candidate.draft)}
+          >
+            {HOUSEHOLD_CANDIDATE_LABELS.open}
+          </Button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function Conversation({
   state,
   actions,
   canSend,
   blocked,
   previewOpen,
+  household,
 }: {
   readonly state: WorkViewState;
   readonly actions: WorkActions;
   readonly canSend: boolean;
   readonly blocked: string | null;
   readonly previewOpen: boolean;
+  readonly household: HouseholdCandidateLink | null;
 }) {
   const latest = [...state.messages]
     .reverse()
@@ -148,6 +224,11 @@ function Conversation({
           ))}
         </ol>
       )}
+      <HouseholdCandidateCard
+        state={state}
+        actions={actions}
+        link={household}
+      />
       {/* 新しい回答・聞き返しを、最新の追加分だけ控えめに読み上げる（履歴全体は読み上げない）。 */}
       <p role="status" aria-live="polite" className="sr-only">
         {latest === undefined ? '' : latest.text}
@@ -705,6 +786,7 @@ export function WorkPanel({
   operations,
   link,
   stopped,
+  household = null,
 }: {
   readonly state: WorkViewState;
   readonly actions: WorkActions;
@@ -713,6 +795,8 @@ export function WorkPanel({
   readonly link: 'connected' | 'other';
   // この端末の入出力が止まっている（発言と承認だけを止める）。
   readonly stopped: boolean;
+  // 家計の記録の候補を家計簿の入力欄で開く口（ADR 0171）。null なら候補を出さない。
+  readonly household?: HouseholdCandidateLink | null;
 }) {
   const connected = link === 'connected';
   const blocked = !connected
@@ -730,6 +814,7 @@ export function WorkPanel({
         canSend={connected && !stopped}
         blocked={blocked}
         previewOpen={previewOpen && state.preview?.preview?.approvable === true}
+        household={household}
       />
       {connected ? (
         <WorkOperations

@@ -10,9 +10,16 @@ import type {
   DesktopOperationPreview,
   DesktopTurnResult,
 } from '@buddy/contracts';
+import { readHouseholdUtterance } from '@buddy/domain';
+import type { HouseholdUtteranceReading } from '@buddy/domain';
 import { request } from '../desktop-api.js';
 import { REJECT_MESSAGES } from '../labels.js';
 import type { StatusLine } from '../tones.js';
+import {
+  householdCandidateFrom,
+  localDateText,
+} from './household-candidate.js';
+import type { HouseholdCandidate } from './household-candidate.js';
 
 type Channel = DesktopIpcRequest['channel'];
 type Rejected = Extract<DesktopIpcResponse, { outcome: 'rejected' }>;
@@ -375,6 +382,8 @@ export interface WorkViewState {
   readonly notices: Readonly<Record<string, Notice>>;
   // 取消・照合を送って結果を待っている操作の参照。
   readonly busy: readonly string[];
+  // 最後に受け付けた発言から読んだ家計の記録の候補（ADR 0171）。記録ではなく、画面のメモリーにだけ置く。
+  readonly householdCandidate: HouseholdCandidate | null;
 }
 
 export const INITIAL_WORK_STATE: WorkViewState = {
@@ -387,6 +396,7 @@ export const INITIAL_WORK_STATE: WorkViewState = {
   previewSeq: 0,
   notices: {},
   busy: [],
+  householdCandidate: null,
 };
 
 // ロック・切断・登録の取り消しで、会話と確認の内容を捨てる（ロック中は内容を隠す）。
@@ -485,9 +495,12 @@ const warn = (text: string, field = false): Notice => ({
 });
 
 // 発言の応答。送信中を解き、結果を会話に足す（失敗は入力欄の下に出し、入力は残す）。
+// household は送った発言を決まった規則で読んだ家計の記録の候補（ADR 0171）。受け付けられた発言の分だけ出し、前の候補と
+// 置き換える（拒否なら前の候補のまま）。
 export function applyTurnResponse(
   state: WorkViewState,
   response: DesktopIpcResponse,
+  household: HouseholdUtteranceReading = { kind: 'none' },
 ): WorkViewState {
   if (response.outcome === 'rejected')
     return {
@@ -519,6 +532,7 @@ export function applyTurnResponse(
     draft: '',
     sending: false,
     turnNotice: null,
+    householdCandidate: householdCandidateFrom(household),
   };
 }
 
@@ -746,6 +760,8 @@ export interface WorkActions {
   readonly reconcile: (ref: string) => void;
   readonly retry: (ref: string) => void;
   readonly check: (ref: string) => void;
+  // 家計の記録の候補をしまう（閉じた・家計簿の入力欄で開いた。ADR 0171）。
+  readonly dismissHouseholdCandidate: () => void;
 }
 
 export interface WorkSink {
@@ -760,6 +776,8 @@ export interface WorkSink {
     before: (state: WorkViewState) => WorkViewState,
   ) => void;
   readonly update: (change: (state: WorkViewState) => WorkViewState) => void;
+  // 今日の日付（YYYY-MM-DD）。家計の記録の候補の「今日」「昨日」を数える。省略は端末の時計。
+  readonly today?: () => string;
 }
 
 export function workActions(sink: WorkSink): WorkActions {
@@ -775,9 +793,15 @@ export function workActions(sink: WorkSink): WorkActions {
         }));
         return;
       }
+      const text = trimmed(current.draft);
+      // 送る発言を決まった規則で読む（LLM は使わない。記録は作らない）。受け付けられたら候補を出す。
+      const household = readHouseholdUtterance(
+        text,
+        sink.today?.() ?? localDateText(new Date()),
+      );
       sink.send(
-        request('desktop.turn_submit', { text: trimmed(current.draft) }),
-        applyTurnResponse,
+        request('desktop.turn_submit', { text }),
+        (state, response) => applyTurnResponse(state, response, household),
         applyTurnFailure,
         markTurnSending,
       );
@@ -824,6 +848,12 @@ export function workActions(sink: WorkSink): WorkActions {
     reconcile: (ref) => command(sink, 'desktop.operation_reconcile', ref),
     retry: (ref) => command(sink, 'desktop.operation_retry', ref),
     check: (ref) => command(sink, 'desktop.operation_check', ref),
+    dismissHouseholdCandidate: () =>
+      sink.update((state) =>
+        state.householdCandidate === null
+          ? state
+          : { ...state, householdCandidate: null },
+      ),
   };
 }
 
@@ -859,9 +889,10 @@ export class WorkStore {
   #epoch = 0;
   readonly actions: WorkActions;
 
-  constructor(api: WorkApi) {
+  constructor(api: WorkApi, today?: () => string) {
     this.#api = api;
     this.actions = workActions({
+      ...(today === undefined ? {} : { today }),
       state: () => this.#state,
       update: (change) => this.#set(change(this.#state)),
       send: (built, onResponse, onFailure, before) => {

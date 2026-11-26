@@ -93,6 +93,7 @@ const ACTIONS: HouseholdActions = {
   cancelBudget: noop,
   saveBudget: noop,
   startAdd: noop,
+  startAddFrom: () => false,
   cancelAdd: noop,
   addEntry: noop,
   startEdit: noop,
@@ -370,6 +371,34 @@ test('the add block offers to add a record and the form lists the fields', () =>
   assert.match(open, /id="household-add-direction"/u);
   assert(buttons(open).includes('足す'));
   assert.match(text(open), /カード番号・口座番号は入れないでください/u);
+});
+
+test('the add form opened from a conversation candidate holds its values and says nothing is recorded yet', () => {
+  const html = panel({
+    view: view([entry(0)]),
+    seq: 2,
+    adding: true,
+    addPrefill: {
+      direction: 'expense',
+      amount: '500',
+      date: '2030-11-26',
+      time: '',
+      category: 'uncategorized',
+      merchant: 'コンビニ',
+      memo: '',
+      payment: '現金',
+    },
+  });
+  assert.match(html, /id="household-add-amount"[^>]*value="500"/u);
+  assert.match(html, /id="household-add-date"[^>]*value="2030-11-26"/u);
+  assert.match(html, /id="household-add-merchant"[^>]*value="コンビニ"/u);
+  assert.match(html, /id="household-add-payment"[^>]*value="現金"/u);
+  assert.match(
+    text(html),
+    /会話の一言から読んだ値を入れました。まだ記録していません。/u,
+  );
+  assert.doesNotMatch(text(html), /カード番号・口座番号は入れないでください/u);
+  assert(buttons(html).includes('足す'));
 });
 
 test('rows that look like the same purchase from two sources are marked, and the list says so', () => {

@@ -37,6 +37,11 @@ import {
   runCandidateAutoExecution,
 } from './candidate-auto-execution.js';
 import type {
+  ProviderConnection,
+  ProviderMailTarget,
+  ProviderReader,
+} from './turn-ports.js';
+import type {
   CandidateAutoExecutionInput,
   CandidateAutoExecutionPorts,
   CandidateAutoExecutionResult,
@@ -48,7 +53,8 @@ const ZONE = 'Asia/Tokyo';
 const KEY: DataKeyMaterial = { keyId: 'k-test', key: randomBytes(32) };
 const sha256Hex = (material: string): string =>
   createHash('sha256').update(material).digest('hex');
-const ACCOUNT = 'acct-1';
+// 接続のアカウント ID（契約の Id の形、UUID v4）。
+const ACCOUNT = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const REQ = '11111111-1111-4111-8111-111111111111';
 const CAND = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const GROUP = 'group-1';
@@ -134,6 +140,7 @@ function input(
       budgetAvailable: true,
     },
     label_provider: 'google',
+    label_id: null,
     policy_current: true,
     permission_current: true,
     ...over,
@@ -143,8 +150,8 @@ function input(
 // 依頼（版 3、有効）・関連解析（版 2、ready、世代 5）・その版で作った候補。
 function seed(db: SqliteDatabase): void {
   db.prepare(
-    "INSERT INTO request_entities (request_entity_id, source_account_id, thread_id, origin_message_id, request_revision, state, recreation_suppressed, summary_blob_id, created_at, delete_at) VALUES (?, 'acct-1', 'thread-1', 'msg-1', 3, 'active', 0, NULL, ?, NULL)",
-  ).run(REQ, T0);
+    "INSERT INTO request_entities (request_entity_id, source_account_id, thread_id, origin_message_id, request_revision, state, recreation_suppressed, summary_blob_id, created_at, delete_at) VALUES (?, ?, 'thread-1', 'msg-1', 3, 'active', 0, NULL, ?, NULL)",
+  ).run(REQ, ACCOUNT, T0);
   db.prepare(
     "INSERT INTO related_analyses (group_id, analysis_revision, source_set_hash, published_generation, plan_complete, status) VALUES (?, 2, ?, 5, 1, 'ready')",
   ).run(GROUP, HASH);
@@ -160,9 +167,18 @@ interface Harness {
   readonly started: string[];
 }
 
+// 掃除のゲートの模擬。open が偽なら閉じている。貸し出しの数と返却の数を数える。
+interface RetentionFake {
+  open: boolean;
+  leases: number;
+  released: number;
+}
+
 function withHarness(
   policy: AutoExecutionPolicy,
   run: (harness: Harness) => Promise<void>,
+  provider: ProviderReader | null = null,
+  retention: RetentionFake = { open: true, leases: 0, released: 0 },
 ): Promise<void> {
   const dir = mkdtempSync(join(tmpdir(), 'buddy-auto-'));
   const db = openWriteConnection(join(dir, 'buddy.sqlite'), {
@@ -201,6 +217,24 @@ function withHarness(
     now: () => NOW,
     afterApproval: (operationId) => {
       started.push(operationId);
+    },
+    provider,
+    retention: {
+      ready: async () => {},
+      gate: () => ({
+        search: retention.open,
+        cloud_send: retention.open,
+        auto_use: retention.open,
+        reasons: retention.open ? [] : ['sweep_pending'],
+        use_blocked: [],
+      }),
+      lease: () => {
+        if (!retention.open) return null;
+        retention.leases += 1;
+        return () => {
+          retention.released += 1;
+        };
+      },
     },
   };
   return (async () => {
@@ -300,7 +334,7 @@ test('用事の登録だけ方針で有効なら、用事だけを方針によ�
         {
           request_entity_id: REQ,
           operation_kind: 'create_task',
-          account_id: 'acct-1',
+          account_id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
           calendar_id: '',
         },
       );
@@ -473,38 +507,308 @@ test('候補が無い・閉じた・依頼の版が変わったときは、ど�
   });
 });
 
-test('ラベルの付与は判定が通っても、書込みをつないでいないので操作を作らない', async () => {
+const POLICY_LABEL_ON: AutoExecutionPolicy = {
+  policy_version: '3',
+  rules: {
+    'task.register': false,
+    'event.create_own': false,
+    'mail.apply_existing_label': true,
+    'mail.save_draft': false,
+  },
+};
+
+const LABEL_CONTEXT = {
+  ownCalendarSelected: false,
+  labelAssigned: true,
+  draftExists: false,
+  budgetAvailable: true,
+};
+
+// 模擬の provider。接続・許可の版・対象のメールを差し替えられる。
+function fakeProvider(
+  over: {
+    connection?: ProviderConnection | null;
+    target?: ProviderMailTarget | null;
+  } = {},
+): ProviderReader {
+  const connection: ProviderConnection | null =
+    over.connection === undefined
+      ? {
+          provider: 'mock',
+          account_id: ACCOUNT,
+          status: 'active',
+          access: 'read_write',
+        }
+      : over.connection;
+  const target: ProviderMailTarget | null =
+    over.target === undefined
+      ? {
+          remote_id: 'msg-1',
+          source_revision: 'rev-1',
+          mailbox: 'INBOX',
+          labels: ['INBOX'],
+        }
+      : over.target;
+  return {
+    connection: async () => connection,
+    readPermission: async (accountId) => ({
+      account_id: accountId,
+      permission_revision: '7',
+      scopes: [],
+    }),
+    readTarget: async () => target,
+    listEvents: async () => [],
+  };
+}
+
+test('ラベルの付与が方針で有効なら、元のメールにラベルを 1 つ足す操作を方針による自動承認で作る', async () => {
   await withHarness(
-    {
-      policy_version: '3',
-      rules: {
-        'task.register': false,
-        'event.create_own': false,
-        'mail.apply_existing_label': true,
-        'mail.save_draft': false,
-      },
-    },
-    async ({ db, ports, started }) => {
+    POLICY_LABEL_ON,
+    async ({ db, submitted, started, ports }) => {
       const result = await runCandidateAutoExecution(
         ports,
         input({
-          context: {
-            ownCalendarSelected: false,
-            labelAssigned: true,
-            draftExists: false,
-            budgetAvailable: true,
-          },
+          context: LABEL_CONTEXT,
+          label_provider: 'mock',
+          label_id: 'Label_7',
         }),
       );
       assert.deepEqual(summary(result)[2], [
         'label_mail',
         'auto_eligible',
         [],
-        'not_wired',
+        'created',
       ]);
+      assert.equal(submitted.length, 1);
+      const command = submitted[0]!;
+      assert.equal(command.operation_kind, 'mail.labels.change');
+      assert.equal(command.effect_route, 'remote_mutation');
+      assert.equal(command.permission_revision, '7');
+      assert.equal(
+        command.auto_approval?.safety_target_key,
+        candidateSafetyTargetKey(
+          'label_mail',
+          'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+          'msg-1',
+          sha256Hex,
+        ),
+      );
+      const opened = openOperationIntent(
+        KEY,
+        { operationId: command.operation_id, contentVersion: 1 },
+        {
+          formatVersion: command.intent.format_version,
+          keyId: command.intent.key_id,
+          nonce: command.intent.nonce,
+          ciphertext: command.intent.ciphertext,
+          tag: command.intent.tag,
+        },
+        command.content_hash,
+      );
+      assert.equal(opened.ok, true);
+      // 確定 intent: 足すラベルは 1 つ、外すラベルは無し、対象は元のメールの今の版。
+      assert.deepEqual(JSON.parse(opened.ok ? opened.canonical : 'null'), {
+        account_id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+        action: {
+          add: ['Label_7'],
+          kind: 'mail.labels.change',
+          remove: [],
+        },
+        content_version: '1',
+        effects: { external_recipients: [], reconcile_scope: 'exact_target' },
+        operation_id: command.operation_id,
+        permission_revision: '7',
+        provider: 'mock',
+        schema: 'buddy.operation.v1',
+        target: { remote_id: 'msg-1', source_revision: 'rev-1' },
+      });
+      assert.deepEqual(started, [command.operation_id]);
+      assert.equal(
+        count(
+          db,
+          "SELECT count(*) AS n FROM operations WHERE kind = 'mail.labels.change'",
+        ),
+        1,
+      );
+      // 依頼から作った記録は「ラベルの付与」として残り、同じ依頼から二度作らない（11 §5B）。
+      assert.deepEqual(
+        db
+          .prepare(
+            'SELECT request_entity_id, operation_kind, account_id, calendar_id FROM request_entity_operations WHERE operation_id = ?',
+          )
+          .get(command.operation_id),
+        {
+          request_entity_id: REQ,
+          operation_kind: 'label_mail',
+          account_id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+          calendar_id: '',
+        },
+      );
+      const again = await runCandidateAutoExecution(
+        ports,
+        input({
+          context: LABEL_CONTEXT,
+          label_provider: 'mock',
+          label_id: 'Label_7',
+        }),
+      );
+      assert.equal(judged(again)[2]!.decision, 'notice_only');
+      assert.deepEqual(judged(again)[2]!.reason_codes, ['already_created']);
+    },
+    fakeProvider(),
+  );
+});
+
+test('ラベルが既に付いている・接続が使えない・メールが読めないときはラベルの操作を作らない', async () => {
+  const cases: [string, ProviderReader | null, string][] = [
+    [
+      'already',
+      fakeProvider({
+        target: {
+          remote_id: 'msg-1',
+          source_revision: 'rev-1',
+          mailbox: 'INBOX',
+          labels: ['INBOX', 'Label_7'],
+        },
+      }),
+      'no_change',
+    ],
+    ['no provider', null, 'connection_unavailable'],
+    [
+      'read only',
+      fakeProvider({
+        connection: {
+          provider: 'mock',
+          account_id: ACCOUNT,
+          status: 'active',
+          access: 'read',
+        },
+      }),
+      'connection_unavailable',
+    ],
+    [
+      'other account',
+      fakeProvider({
+        connection: {
+          provider: 'mock',
+          account_id: 'acct-2',
+          status: 'active',
+          access: 'read_write',
+        },
+      }),
+      'connection_unavailable',
+    ],
+    [
+      'provider changed',
+      fakeProvider({
+        connection: {
+          provider: 'gmail',
+          account_id: ACCOUNT,
+          status: 'active',
+          access: 'read_write',
+        },
+      }),
+      'label_provider_changed',
+    ],
+    ['target missing', fakeProvider({ target: null }), 'target_not_found'],
+  ];
+  for (const [name, provider, reason] of cases) {
+    await withHarness(
+      POLICY_LABEL_ON,
+      async ({ db, started, ports }) => {
+        const result = await runCandidateAutoExecution(
+          ports,
+          input({
+            context: LABEL_CONTEXT,
+            label_provider: 'mock',
+            label_id: 'Label_7',
+          }),
+        );
+        const label = judged(result)[2]!;
+        assert.deepEqual(
+          label.outcome,
+          { kind: 'not_created', reasons: [reason] },
+          name,
+        );
+        assert.deepEqual(started, [], name);
+        assert.equal(count(db, 'SELECT count(*) AS n FROM operations'), 0);
+      },
+      provider,
+    );
+  }
+});
+
+test('掃除が済むまではラベルのために provider を読まず、作らない。読み直しの間だけ貸し出しを持つ', async () => {
+  let reads = 0;
+  const base = fakeProvider();
+  const counting: ProviderReader = {
+    ...base,
+    connection: async () => {
+      reads += 1;
+      return base.connection();
+    },
+  };
+  const closed: RetentionFake = { open: false, leases: 0, released: 0 };
+  await withHarness(
+    POLICY_LABEL_ON,
+    async ({ db, ports, started }) => {
+      const result = await runCandidateAutoExecution(
+        ports,
+        input({
+          context: LABEL_CONTEXT,
+          label_provider: 'mock',
+          label_id: 'Label_7',
+        }),
+      );
+      assert.deepEqual(judged(result)[2]!.outcome, {
+        kind: 'not_created',
+        reasons: ['retention_blocked'],
+      });
+      assert.equal(reads, 0);
       assert.deepEqual(started, []);
       assert.equal(count(db, 'SELECT count(*) AS n FROM operations'), 0);
     },
+    counting,
+    closed,
+  );
+  const open: RetentionFake = { open: true, leases: 0, released: 0 };
+  await withHarness(
+    POLICY_LABEL_ON,
+    async ({ ports }) => {
+      const result = await runCandidateAutoExecution(
+        ports,
+        input({
+          context: LABEL_CONTEXT,
+          label_provider: 'mock',
+          label_id: 'Label_7',
+        }),
+      );
+      assert.equal(judged(result)[2]!.outcome.kind, 'created');
+      assert.equal(reads, 1);
+      assert.deepEqual([open.leases, open.released], [1, 1]);
+    },
+    counting,
+    open,
+  );
+});
+
+test('付けるラベルの ID が無ければ、割り当て済みとはせず気づきだけにする', async () => {
+  await withHarness(
+    POLICY_LABEL_ON,
+    async ({ db, ports }) => {
+      const result = await runCandidateAutoExecution(
+        ports,
+        input({ context: LABEL_CONTEXT, label_provider: 'mock' }),
+      );
+      assert.deepEqual(summary(result)[2], [
+        'label_mail',
+        'notice_only',
+        ['label_not_assigned'],
+        'not_eligible',
+      ]);
+      assert.equal(count(db, 'SELECT count(*) AS n FROM operations'), 0);
+    },
+    fakeProvider(),
   );
 });
 

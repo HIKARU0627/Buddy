@@ -6475,11 +6475,77 @@
         "truncated": {
           "type": "boolean",
           "description": "一度に読む件数の上限で記録を切ったか。切ったときの集計はその月の一部だけ。"
+        },
+        "bills": {
+          "$ref": "#/$defs/HouseholdMonthBills"
         }
       },
-      "required": ["month", "entries", "summary", "unreadable", "truncated"],
+      "required": [
+        "month",
+        "entries",
+        "summary",
+        "unreadable",
+        "truncated",
+        "bills"
+      ],
       "additionalProperties": false,
-      "description": "家計簿の 1 か月（GET /v1/household/months/{month}、ADR 0161）。記録はすべてその月の日付で、集計は返した記録から作る（意味検査）。"
+      "description": "家計簿の 1 か月（GET /v1/household/months/{month}、ADR 0161）。記録はすべてその月の日付で、集計は返した記録から作る（意味検査）。請求予定（bills、ADR 0176）は記録とは別で、集計に入れない。"
+    },
+    "HouseholdBill": {
+      "type": "object",
+      "properties": {
+        "issuer": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40,
+          "description": "請求したカード会社の表示名（送信元の一覧の名前）。"
+        },
+        "amount_yen": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9999999999,
+          "description": "請求の金額（円の正の整数）。"
+        },
+        "due_on": {
+          "type": "string",
+          "pattern": "^20[0-9]{2}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$",
+          "description": "引き落とし日（本人の地域の日付）。暦に実在する日かは意味検査で確かめる。"
+        }
+      },
+      "required": ["issuer", "amount_yen", "due_on"],
+      "additionalProperties": false,
+      "description": "請求予定 1 件（ADR 0176）。カード会社の請求のお知らせから読んだ、引き落としの予定。出所の識別子（メールの ID など）は返さない。"
+    },
+    "HouseholdMonthBills": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "$ref": "#/$defs/HouseholdBill"
+          },
+          "description": "引き落とし日がその月の請求予定。引き落とし日の早い順（同じなら会社の表示名の順、金額の小さい順）。"
+        },
+        "total_yen": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991,
+          "description": "請求予定の合計。支出の合計・予算・定期の支出には入れない。"
+        },
+        "unreadable": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "復号できなかった請求予定の数（並べず、合計に入れていない）。"
+        },
+        "truncated": {
+          "type": "boolean",
+          "description": "一度に読む上限（100 件）で請求予定を切ったか。"
+        }
+      },
+      "required": ["items", "total_yen", "unreadable", "truncated"],
+      "additionalProperties": false,
+      "description": "1 か月の請求予定（ADR 0176）。請求の金額は利用の記録（支払い済み）を後からまとめて知らせるものなので、家計の記録・月の集計・予算・定期の支出に入れない（二重に数えない）。合計は並べた請求予定の和で、どれも引き落とし日がその月（意味検査）。"
     },
     "HouseholdMonthTotals": {
       "type": "object",
@@ -17126,6 +17192,17 @@
           ],
           "description": "定期の支出と固定費の目安（ADR 0165）。読めていなければ null。"
         },
+        "bills": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HouseholdMonthBills"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "記録を出している月の請求予定（ADR 0176）。支出の合計とは別に見せる。読めていなければ null。"
+        },
         "last_import": {
           "anyOf": [
             {
@@ -17239,6 +17316,7 @@
       "required": [
         "budget",
         "recurring",
+        "bills",
         "last_import",
         "last_export",
         "mail_intake",

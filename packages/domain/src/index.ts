@@ -114,3 +114,5 @@ export * from './household-duplicates.js';
 export * from './household-utterance.js';
 // カード会社の利用通知メールの送り主の確かめと本文の読み取り（ADR 0159）。
 export * from './household-notice.js';
+// カード会社の請求のお知らせから読む請求予定（支払い済みの記録と分ける。ADR 0176）。
+export * from './household-bill.js';

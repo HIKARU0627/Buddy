@@ -1,13 +1,15 @@
 // 家計簿の欄（ADR 0162。API は ADR 0161）。標準の端末画面（従来の窓）の本体に置く。
 // 頭に取得状態と最終取得（経過）。次に選んでいる月の合計（支出・収入・収支・振替・件数）と分類ごとの支出。次に記録の行:
 // 日付・時刻・店名・金額・向き・支払い手段・出所と、分類の選択（向きが同じ分類だけ）と「削除する」（画面の中で
-// もう一度確かめてから送る）。最後に月ごとの合計（今月から 11 か月前まで）で、押すとその月の記録を出す。
+// もう一度確かめてから送る）。記録の後に、その月の請求予定（会社・金額・引き落とし日。ADR 0176）を支出の合計と分けて出す。
+// 最後に月ごとの合計（今月から 11 か月前まで）で、押すとその月の記録を出す。
 // 未取得・取得の失敗を「記録はありません」と言わない。理由のコード・API の名前・記録の ID は出さない。
 import { Button } from '@heroui/react';
 import { useEffect, useRef, useState } from 'react';
 import { householdBudgetUse } from '@buddy/domain';
 import type {
   DesktopHouseholdEntry,
+  HouseholdMonthBills,
   HouseholdRecurringSummary,
   HouseholdCategoryId,
   HouseholdMonthSummary,
@@ -22,6 +24,8 @@ import {
   ADD_PLACE,
   BUDGET_PLACE,
   addFromConversationNote,
+  billDueText,
+  billsUnreadableText,
   EXPORT_PLACE,
   EXPORT_RANGES,
   HOUSEHOLD_LABELS,
@@ -844,6 +848,54 @@ function RecurringBlock({
   );
 }
 
+// その月の請求予定（ADR 0176）。カード会社の請求のお知らせから中枢が読んだ会社・金額・引き落とし日を、支出の合計とは
+// 分けて出す（支出の合計・予算・定期の支出には入っていない）。画面からの変更・削除はない。
+function BillsBlock({ bills }: { readonly bills: HouseholdMonthBills }) {
+  return (
+    <div className="flex flex-col gap-1.5" data-bills="">
+      <h3 className="text-sm font-semibold">{HOUSEHOLD_LABELS.billsTitle}</h3>
+      <p className="text-xs text-muted">{HOUSEHOLD_LABELS.billsNote}</p>
+      {bills.items.length === 0 ? (
+        <p className="text-sm text-muted">{HOUSEHOLD_LABELS.billsEmpty}</p>
+      ) : (
+        <>
+          <p className="text-sm">
+            {`${HOUSEHOLD_LABELS.billsTotal} `}
+            <span className="font-semibold tabular-nums">
+              {yenText(bills.total_yen)}
+            </span>
+          </p>
+          <ul
+            aria-label={HOUSEHOLD_LABELS.billsTitle}
+            className="flex flex-col gap-0.5 text-sm"
+          >
+            {bills.items.map((bill, index) => (
+              <li
+                key={`${bill.due_on}|${bill.issuer}|${String(index)}`}
+                className="flex flex-wrap justify-between gap-2"
+              >
+                <span className="min-w-0 break-words">{bill.issuer}</span>
+                <span className="tabular-nums">
+                  {`${yenText(bill.amount_yen)} ・ ${billDueText(bill.due_on)}`}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      {bills.unreadable > 0 ? (
+        <InlineNotice
+          tone="warning"
+          text={billsUnreadableText(bills.unreadable)}
+        />
+      ) : null}
+      {bills.truncated ? (
+        <InlineNotice tone="warning" text={HOUSEHOLD_LABELS.billsTruncated} />
+      ) : null}
+    </div>
+  );
+}
+
 // 書き出しの取り込み（ADR 0164）。ファイルは main が OS のファイル選択で本人に選ばせる。結果は最後の取り込みの件数。
 function ImportBlock({
   state,
@@ -1037,6 +1089,7 @@ export function HouseholdPanel({
               ))}
             </ul>
           )}
+          {view.bills === null ? null : <BillsBlock bills={view.bills} />}
         </>
       )}
       {loaded ? <AddBlock state={state} actions={actions} /> : null}

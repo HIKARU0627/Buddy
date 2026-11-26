@@ -79,6 +79,7 @@ const view = (
   last_import: null,
   last_export: null,
   recurring: null,
+  bills: null,
   budget: null,
   ...overrides,
 });
@@ -368,6 +369,55 @@ test('the recurring block lists fixed costs with the monthly estimate, and says 
   assert.doesNotMatch(
     text(panel({ view: view([entry(0)]), seq: 2 })),
     /定期の支出/u,
+  );
+});
+
+test('the bills block shows the month bills by company, amount and debit day apart from the spending total (ADR 0176)', () => {
+  const html = text(
+    panel({
+      view: view([entry(0)], {
+        bills: {
+          items: [
+            { issuer: '合成カードA', amount_yen: 12345, due_on: '2030-11-10' },
+            { issuer: '合成カードB', amount_yen: 3000, due_on: '2030-11-27' },
+          ],
+          total_yen: 15345,
+          unreadable: 1,
+          truncated: true,
+        },
+      }),
+      seq: 2,
+    }),
+  );
+  assert.match(html, /請求予定/u);
+  assert.match(html, /支出の合計・予算・定期の支出には入れていません/u);
+  assert.match(html, /請求予定の合計 +15,345\u00a0円/u);
+  assert.match(
+    html,
+    /合成カードA *12,345\u00a0円 ・ 引き落とし\u00a011\u00a0月\u00a010\u00a0日/u,
+  );
+  assert.match(
+    html,
+    /合成カードB *3,000\u00a0円 ・ 引き落とし\u00a011\u00a0月\u00a027\u00a0日/u,
+  );
+  assert.match(html, /読めない請求予定が\u00a01\u00a0件あります/u);
+  assert.match(html, /請求予定が多いため、一部だけを出しています。/u);
+  // 支出の合計は記録の値のまま（請求予定を足さない）。
+  assert.doesNotMatch(html, /16,625/u);
+  const none = text(
+    panel({
+      view: view([entry(0)], {
+        bills: { items: [], total_yen: 0, unreadable: 0, truncated: false },
+      }),
+      seq: 2,
+    }),
+  );
+  assert.match(none, /この月に引き落とされる請求予定はありません。/u);
+  assert.doesNotMatch(none, /請求予定の合計/u);
+  // 読めていなければ出さない。
+  assert.doesNotMatch(
+    text(panel({ view: view([entry(0)]), seq: 2 })),
+    /請求予定/u,
   );
 });
 

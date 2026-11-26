@@ -77,6 +77,12 @@ export const HOUSEHOLD_LABELS = {
     '毎月決まって払っている支出です。直近 12 か月の記録から、3 か月以上続き、今月か先月にもある店を数えています。',
   recurringEmpty: 'まだ定期の支出は見つかっていません。',
   recurringTotal: '月の固定費の目安',
+  billsTitle: '請求予定',
+  billsNote:
+    'カード会社の請求のお知らせメールから読んだ、この月に引き落とされる予定の金額です。利用の記録を後からまとめて知らせるものなので、支出の合計・予算・定期の支出には入れていません。',
+  billsEmpty: 'この月に引き落とされる請求予定はありません。',
+  billsTotal: '請求予定の合計',
+  billsTruncated: '請求予定が多いため、一部だけを出しています。',
   budgetTitle: '予算',
   budgetEmpty: 'まだ予算を決めていません。',
   budgetEdit: '予算を決める',
@@ -428,6 +434,18 @@ export function monthText(month: string): string {
   const match = /^([0-9]{4})-([0-9]{2})$/u.exec(month);
   if (match === null) return month;
   return `${match[1] as string}\u00a0年\u00a0${String(Number(match[2]))}\u00a0月`;
+}
+
+// 請求予定の引き落とし日「引き落とし 12 月 10 日」（年は月の見出しにあるので出さない）。形が違えばそのまま。
+export function billDueText(dueOn: string): string {
+  const match = /^[0-9]{4}-([0-9]{2})-([0-9]{2})$/u.exec(dueOn);
+  if (match === null) return dueOn;
+  return `引き落とし\u00a0${String(Number(match[1]))}\u00a0月\u00a0${String(Number(match[2]))}\u00a0日`;
+}
+
+// 読めなかった請求予定の知らせ。
+export function billsUnreadableText(count: number): string {
+  return `読めない請求予定が\u00a0${String(count)}\u00a0件あります（合計には入れていません）。`;
 }
 
 // 「11 月 3 日 12:34」（年は月の見出しにあるので出さない）。

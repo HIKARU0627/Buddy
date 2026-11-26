@@ -7,11 +7,16 @@
 
 import { randomUUID } from 'node:crypto';
 import {
+  householdBillContentErrors,
   householdBudgetErrors,
   householdContentErrors,
   sortHouseholdBudget,
 } from '@buddy/domain';
-import type { HouseholdBudgetItem, HouseholdEntryContent } from '@buddy/domain';
+import type {
+  HouseholdBillContent,
+  HouseholdBudgetItem,
+  HouseholdEntryContent,
+} from '@buddy/domain';
 import type { SealedBlobInput } from './operation-commands.js';
 import { openBlob, sealBlob } from './sealed-blob.js';
 import type {
@@ -227,4 +232,88 @@ export function openHouseholdBudget(
   )
     return { ok: false, reason: 'content_invalid' };
   return { ok: true, items };
+}
+
+// --- 請求予定（ADR 0176、マイグレーション 0021） ---
+
+/** 請求予定の平文の形の版。 */
+export const HOUSEHOLD_BILL_SCHEMA = 'buddy.household_bill.v1';
+
+// 請求予定は書いたら変えないので、版はいつも 1。
+export function householdBillOwner(billId: string): SealedBlobOwner {
+  return {
+    ownerTable: 'household_bills',
+    ownerId: billId,
+    ownerVersion: 1,
+    purpose: 'household_bill',
+  };
+}
+
+/** 請求予定の中身（会社・金額・引き落とし日）を、その請求予定を所有者にして暗号化する。 */
+export function sealHouseholdBill(
+  dataKey: DataKeyMaterial,
+  billId: string,
+  content: HouseholdBillContent,
+  blobId: string = randomUUID(),
+): SealHouseholdContentResult {
+  if (householdBillContentErrors(content).length > 0)
+    return { ok: false, reason: 'content_invalid' };
+  const plaintext = JSON.stringify({
+    schema: HOUSEHOLD_BILL_SCHEMA,
+    issuer: content.issuer,
+    amount_yen: content.amount_yen,
+    due_on: content.due_on,
+  });
+  const sealed = sealBlob(
+    dataKey,
+    Buffer.from(plaintext, 'utf8'),
+    householdBillOwner(billId),
+  );
+  if (!sealed.ok) return { ok: false, reason: sealed.reason };
+  const envelope = sealed.envelope;
+  return {
+    ok: true,
+    content: {
+      blob_id: blobId,
+      format_version: envelope.formatVersion,
+      key_id: envelope.keyId,
+      nonce: envelope.nonce,
+      ciphertext: envelope.ciphertext,
+      tag: envelope.tag,
+    },
+  };
+}
+
+export type OpenHouseholdBillResult =
+  | { readonly ok: true; readonly content: HouseholdBillContent }
+  | {
+      readonly ok: false;
+      readonly reason: OpenFailureReason | 'content_invalid';
+    };
+
+/** 請求予定の暗号文を復号し、中身を確かめる。別の請求予定・別の用途の暗号文は認証で失敗する。 */
+export function openHouseholdBill(
+  dataKey: DataKeyMaterial,
+  billId: string,
+  envelope: SealedEnvelope,
+): OpenHouseholdBillResult {
+  const opened = openBlob(dataKey, envelope, householdBillOwner(billId));
+  if (!opened.ok) return opened;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(
+      new TextDecoder('utf-8', { fatal: true }).decode(opened.plaintext),
+    );
+  } catch {
+    return { ok: false, reason: 'content_invalid' };
+  }
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed))
+    return { ok: false, reason: 'content_invalid' };
+  const { schema, ...rest } = parsed as Record<string, unknown>;
+  if (
+    schema !== HOUSEHOLD_BILL_SCHEMA ||
+    householdBillContentErrors(rest).length > 0
+  )
+    return { ok: false, reason: 'content_invalid' };
+  return { ok: true, content: rest as unknown as HouseholdBillContent };
 }

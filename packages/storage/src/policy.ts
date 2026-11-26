@@ -347,6 +347,13 @@ export const TABLE_POLICIES: Readonly<Record<string, TablePolicy>> = {
     retention: 'until_replaced',
     transaction: 'household',
   },
+  // 0021（ADR 0176）。請求予定（会社・金額・引き落とし日は暗号文。平文は出所の種類と鍵・引き落とし日の月・作成時刻だけ）。
+  // 画面からの削除はまだなく、書いた行は変えずに残す（家計の記録と同じく、家計簿の正本の一部として持つ）。
+  household_bills: {
+    body: 'sealed_refs',
+    retention: 'permanent',
+    transaction: 'household',
+  },
 };
 
 // 本文・宛先・要約を平文で持ってはいけない列名。暗号文は *_blob_id で sealed_blobs を参照する。

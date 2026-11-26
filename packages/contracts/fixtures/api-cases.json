@@ -3058,7 +3058,24 @@
           "transfer_yen": 30000
         },
         "unreadable": 0,
-        "truncated": false
+        "truncated": false,
+        "bills": {
+          "items": [
+            {
+              "issuer": "合成のカード",
+              "amount_yen": 25800,
+              "due_on": "2030-11-10"
+            },
+            {
+              "issuer": "合成のカード",
+              "amount_yen": 4200,
+              "due_on": "2030-11-27"
+            }
+          ],
+          "total_yen": 30000,
+          "unreadable": 0,
+          "truncated": false
+        }
       },
       "rejections": [
         ["no_token", 401, "unauthenticated"],

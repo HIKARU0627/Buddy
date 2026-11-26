@@ -95,6 +95,7 @@ const view = (
   last_import: null,
   last_export: null,
   recurring: null,
+  bills: null,
   budget: null,
   ...overrides,
 });

@@ -11,6 +11,8 @@
 // - household.mail_pending / household.mail_checked: 利用通知メールの取り込みで、同期で保存したメールのうちまだ確かめて
 //   いないものを返す・確かめ済みにする（ADR 0160、マイグレーション 0017）。確かめ済みの行は同期のメールの行に結び付け、
 //   メールの行が消えれば一緒に消える。
+// - household.bill_record / household.bill_list: カード会社の請求のお知らせから読んだ請求予定（ADR 0176、マイグレーション 0021）。
+//   家計の記録とは別の表に置き、月の集計・予算・定期の支出に入れない。同じ出所の鍵の行があれば書かずに duplicate を返す。
 // 時刻は呼び出し側の値を信じる（DB は時計を持たない）。結果には ID・件数・状態だけを入れ、SQL・パスを入れない。
 
 import {
@@ -29,6 +31,8 @@ import { runImmediate } from './operation-store.js';
 
 // 一度に返す記録の上限。超えたら truncated にして月の古い方から切る。
 export const HOUSEHOLD_LIST_LIMIT = 5000;
+// 1 か月の請求予定を一度に返す上限。超えたら truncated にして新しく作った方を返す。
+export const HOUSEHOLD_BILL_LIST_LIMIT = 100;
 
 const ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
 const HEX64 = /^[0-9a-f]{64}$/u;
@@ -84,6 +88,25 @@ export interface HouseholdRevisionValue {
 
 export interface HouseholdListValue {
   readonly entries: readonly HouseholdEntryRecord[];
+  readonly truncated: boolean;
+}
+
+// 請求予定（ADR 0176）。暗号文は封筒のまま返す（復号は Core）。
+export interface HouseholdBillRecord {
+  readonly bill_id: string;
+  // 引き落とし日の月。
+  readonly month: string;
+  readonly created_at: string;
+  readonly content: HouseholdEnvelope | null;
+}
+
+export type HouseholdBillRecordValue =
+  | { readonly outcome: 'created'; readonly bill_id: string }
+  | { readonly outcome: 'duplicate'; readonly bill_id: string };
+
+export interface HouseholdBillListValue {
+  // 作った順（古い方から）。
+  readonly bills: readonly HouseholdBillRecord[];
   readonly truncated: boolean;
 }
 
@@ -167,7 +190,20 @@ export type HouseholdOp =
       readonly expected_revision: string;
       readonly mail_intake: HouseholdMailIntakeSetting;
       readonly now: string;
-    };
+    }
+  // 請求予定を 1 件作る（ADR 0176）。同じ出所の鍵があれば書かずに duplicate。
+  | {
+      readonly kind: 'household.bill_record';
+      readonly bill_id: string;
+      readonly source_key: string;
+      // 引き落とし日の月。
+      readonly month: string;
+      // 暗号文（所有者は bill_id、版 1）。
+      readonly content: SealedBlobInput;
+      readonly now: string;
+    }
+  // 1 か月（引き落とし日の月）の請求予定。
+  | { readonly kind: 'household.bill_list'; readonly month: string };
 
 export type HouseholdMailIntakeSetting = 'on' | 'off';
 
@@ -208,6 +244,7 @@ export const HOUSEHOLD_WRITE_OPS: ReadonlySet<HouseholdOpKind> = new Set([
   'household.mail_checked',
   'household.settings_set',
   'household.budget_set',
+  'household.bill_record',
 ]);
 
 export type HouseholdOpValue =
@@ -219,6 +256,8 @@ export type HouseholdOpValue =
   | HouseholdMailPendingValue
   | HouseholdSettingsValue
   | HouseholdBudgetValue
+  | HouseholdBillRecordValue
+  | HouseholdBillListValue
   | { readonly written: boolean }
   | null;
 
@@ -249,6 +288,8 @@ const OP_KINDS: ReadonlySet<string> = new Set<HouseholdOpKind>([
   'household.settings_set',
   'household.budget_get',
   'household.budget_set',
+  'household.bill_record',
+  'household.bill_list',
 ]);
 
 class HouseholdRejection extends Error {
@@ -379,6 +420,19 @@ export function householdOpShapeReasons(op: HouseholdOp): string[] {
       );
       needs(MAIL_INTAKE_SETTINGS.has(op.mail_intake), 'mail_intake_invalid');
       needs(isTime(op.now), 'now_invalid');
+      break;
+    case 'household.bill_record':
+      needs(isId(op.bill_id), 'bill_id_invalid');
+      needs(
+        typeof op.source_key === 'string' && HEX64.test(op.source_key),
+        'source_key_invalid',
+      );
+      needs(isHouseholdMonth(op.month), 'month_invalid');
+      needs(isSealedBlob(op.content), 'content_invalid');
+      needs(isTime(op.now), 'now_invalid');
+      break;
+    case 'household.bill_list':
+      needs(isHouseholdMonth(op.month), 'month_invalid');
       break;
   }
   return reasons;
@@ -766,6 +820,71 @@ function mailChecked(
   return { written: result.changes === 1 };
 }
 
+// 請求予定を作る。同じ出所の鍵の行があれば書かない。暗号文と行を同じ transaction で書く。
+function applyBillRecord(
+  db: SqliteDatabase,
+  op: Extract<HouseholdOp, { kind: 'household.bill_record' }>,
+): HouseholdBillRecordValue {
+  const existing = db
+    .prepare('SELECT bill_id FROM household_bills WHERE source_key = ?')
+    .get(op.source_key) as { bill_id: string } | undefined;
+  if (existing !== undefined)
+    return { outcome: 'duplicate', bill_id: existing.bill_id };
+  if (
+    db
+      .prepare('SELECT 1 FROM household_bills WHERE bill_id = ?')
+      .get(op.bill_id) !== undefined
+  )
+    throw new HouseholdRejection(['bill_id_reused']);
+  const now = Date.parse(op.now);
+  db.prepare(
+    "INSERT INTO sealed_blobs (blob_id, purpose, owner_table, owner_id, owner_version, format_version, key_id, nonce, ciphertext, tag, created_at, delete_at) VALUES (?, 'household_bill', 'household_bills', ?, 1, ?, ?, ?, ?, ?, ?, NULL)",
+  ).run(
+    op.content.blob_id,
+    op.bill_id,
+    op.content.format_version,
+    op.content.key_id,
+    bytes(op.content.nonce),
+    bytes(op.content.ciphertext),
+    bytes(op.content.tag),
+    now,
+  );
+  db.prepare(
+    "INSERT INTO household_bills (bill_id, source_kind, source_key, month, content_blob_id, created_at) VALUES (?, 'mail_bill', ?, ?, ?, ?)",
+  ).run(op.bill_id, op.source_key, op.month, op.content.blob_id, now);
+  return { outcome: 'created', bill_id: op.bill_id };
+}
+
+function listBills(
+  db: SqliteDatabase,
+  op: Extract<HouseholdOp, { kind: 'household.bill_list' }>,
+): HouseholdBillListValue {
+  // 新しく作った順に上限まで読み、作った順（古い方から）に並べ直して返す。
+  const rows = db
+    .prepare(
+      `SELECT bill_id, month, content_blob_id, created_at FROM household_bills
+        WHERE month = ? ORDER BY created_at DESC, bill_id DESC LIMIT ?`,
+    )
+    .all(op.month, HOUSEHOLD_BILL_LIST_LIMIT + 1) as {
+    bill_id: string;
+    month: string;
+    content_blob_id: string;
+    created_at: number;
+  }[];
+  return {
+    bills: rows
+      .slice(0, HOUSEHOLD_BILL_LIST_LIMIT)
+      .reverse()
+      .map((row) => ({
+        bill_id: row.bill_id,
+        month: row.month,
+        created_at: toIso(row.created_at),
+        content: readEnvelope(db, row.content_blob_id),
+      })),
+    truncated: rows.length > HOUSEHOLD_BILL_LIST_LIMIT,
+  };
+}
+
 function sqliteCode(error: unknown): string | null {
   return (error as { code?: string } | null)?.code ?? null;
 }
@@ -807,6 +926,8 @@ export function executeHouseholdOp(
     return { result: { ok: true, value: readSettings(db) }, halt: false };
   if (op.kind === 'household.budget_get')
     return { result: { ok: true, value: readBudget(db) }, halt: false };
+  if (op.kind === 'household.bill_list')
+    return { result: { ok: true, value: listBills(db, op) }, halt: false };
   // 書込みを止めた worker は書かない（ADR 0018）。照会は続ける。
   if (context.halted)
     return { result: rejected(['worker_halted']), halt: false };
@@ -835,6 +956,8 @@ export function executeHouseholdOp(
           return applySettings(db, op);
         case 'household.budget_set':
           return applyBudget(db, op);
+        case 'household.bill_record':
+          return applyBillRecord(db, op);
         default:
           throw new HouseholdRejection(['kind_invalid']);
       }

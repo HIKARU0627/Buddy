@@ -2770,7 +2770,29 @@
         "transfer_yen": 30000
       },
       "unreadable": 0,
-      "truncated": false
+      "truncated": false,
+      "bills": {
+        "items": [
+          {
+            "issuer": "合成カードA",
+            "amount_yen": 12345,
+            "due_on": "2030-11-10"
+          },
+          {
+            "issuer": "合成カードA",
+            "amount_yen": 500,
+            "due_on": "2030-11-27"
+          },
+          {
+            "issuer": "合成カードB",
+            "amount_yen": 3000,
+            "due_on": "2030-11-27"
+          }
+        ],
+        "total_yen": 15845,
+        "unreadable": 1,
+        "truncated": false
+      }
     }
   },
   {
@@ -2789,7 +2811,13 @@
         "transfer_yen": 0
       },
       "unreadable": 2,
-      "truncated": false
+      "truncated": false,
+      "bills": {
+        "items": [],
+        "total_yen": 0,
+        "unreadable": 0,
+        "truncated": false
+      }
     }
   },
   {
@@ -2880,7 +2908,13 @@
         "transfer_yen": 30000
       },
       "unreadable": -1,
-      "truncated": false
+      "truncated": false,
+      "bills": {
+        "items": [],
+        "total_yen": 0,
+        "unreadable": 0,
+        "truncated": false
+      }
     }
   },
   {
@@ -2971,7 +3005,13 @@
         "transfer_yen": 30000
       },
       "unreadable": 0,
-      "truncated": false
+      "truncated": false,
+      "bills": {
+        "items": [],
+        "total_yen": 0,
+        "unreadable": 0,
+        "truncated": false
+      }
     }
   },
   {
@@ -3012,7 +3052,13 @@
         "transfer_yen": 0
       },
       "unreadable": 0,
-      "truncated": false
+      "truncated": false,
+      "bills": {
+        "items": [],
+        "total_yen": 0,
+        "unreadable": 0,
+        "truncated": false
+      }
     },
     "semantic_errors": ["entry_month_mismatch"]
   },
@@ -3104,7 +3150,13 @@
         "transfer_yen": 30000
       },
       "unreadable": 0,
-      "truncated": false
+      "truncated": false,
+      "bills": {
+        "items": [],
+        "total_yen": 0,
+        "unreadable": 0,
+        "truncated": false
+      }
     },
     "semantic_errors": ["entry_order"]
   },
@@ -3181,7 +3233,13 @@
         "transfer_yen": 30000
       },
       "unreadable": 0,
-      "truncated": false
+      "truncated": false,
+      "bills": {
+        "items": [],
+        "total_yen": 0,
+        "unreadable": 0,
+        "truncated": false
+      }
     },
     "semantic_errors": ["summary_mismatch"]
   },
@@ -3278,9 +3336,210 @@
         "transfer_yen": 30000
       },
       "unreadable": 0,
-      "truncated": false
+      "truncated": false,
+      "bills": {
+        "items": [],
+        "total_yen": 0,
+        "unreadable": 0,
+        "truncated": false
+      }
     },
     "semantic_errors": ["category_not_expense", "summary_mismatch"]
+  },
+  {
+    "id": "household-month-missing-bills",
+    "schema": "HouseholdMonth",
+    "valid": false,
+    "value": {
+      "month": "2030-12",
+      "entries": [],
+      "summary": {
+        "expense_yen": 0,
+        "income_yen": 0,
+        "balance_yen": 0,
+        "entry_count": 0,
+        "expense_by_category": [],
+        "transfer_yen": 0
+      },
+      "unreadable": 2,
+      "truncated": false
+    }
+  },
+  {
+    "id": "household-month-bill-other-month",
+    "schema": "HouseholdMonth",
+    "valid": true,
+    "value": {
+      "month": "2030-12",
+      "entries": [],
+      "summary": {
+        "expense_yen": 0,
+        "income_yen": 0,
+        "balance_yen": 0,
+        "entry_count": 0,
+        "expense_by_category": [],
+        "transfer_yen": 0
+      },
+      "unreadable": 2,
+      "truncated": false,
+      "bills": {
+        "items": [
+          {
+            "issuer": "合成カードA",
+            "amount_yen": 1000,
+            "due_on": "2031-01-10"
+          }
+        ],
+        "total_yen": 1000,
+        "unreadable": 0,
+        "truncated": false
+      }
+    },
+    "semantic_errors": ["bill_month_mismatch"]
+  },
+  {
+    "id": "household-month-bill-zero-amount",
+    "schema": "HouseholdMonth",
+    "valid": false,
+    "value": {
+      "month": "2030-12",
+      "entries": [],
+      "summary": {
+        "expense_yen": 0,
+        "income_yen": 0,
+        "balance_yen": 0,
+        "entry_count": 0,
+        "expense_by_category": [],
+        "transfer_yen": 0
+      },
+      "unreadable": 2,
+      "truncated": false,
+      "bills": {
+        "items": [
+          {
+            "issuer": "合成カードA",
+            "amount_yen": 0,
+            "due_on": "2030-12-10"
+          }
+        ],
+        "total_yen": 0,
+        "unreadable": 0,
+        "truncated": false
+      }
+    }
+  },
+  {
+    "id": "household-month-bill-extra-field",
+    "schema": "HouseholdMonth",
+    "valid": false,
+    "value": {
+      "month": "2030-12",
+      "entries": [],
+      "summary": {
+        "expense_yen": 0,
+        "income_yen": 0,
+        "balance_yen": 0,
+        "entry_count": 0,
+        "expense_by_category": [],
+        "transfer_yen": 0
+      },
+      "unreadable": 2,
+      "truncated": false,
+      "bills": {
+        "items": [
+          {
+            "issuer": "合成カードA",
+            "amount_yen": 1000,
+            "due_on": "2030-12-10",
+            "bill_id": "00000000-0000-4000-8000-0000000d0001"
+          }
+        ],
+        "total_yen": 1000,
+        "unreadable": 0,
+        "truncated": false
+      }
+    }
+  },
+  {
+    "id": "household-month-bills-order",
+    "schema": "HouseholdMonthBills",
+    "valid": true,
+    "value": {
+      "items": [
+        {
+          "issuer": "合成カードB",
+          "amount_yen": 3000,
+          "due_on": "2030-12-27"
+        },
+        {
+          "issuer": "合成カードA",
+          "amount_yen": 500,
+          "due_on": "2030-12-27"
+        }
+      ],
+      "total_yen": 3500,
+      "unreadable": 0,
+      "truncated": false
+    },
+    "semantic_errors": ["bill_order"]
+  },
+  {
+    "id": "household-month-bills-total",
+    "schema": "HouseholdMonthBills",
+    "valid": true,
+    "value": {
+      "items": [
+        {
+          "issuer": "合成カードA",
+          "amount_yen": 500,
+          "due_on": "2030-12-10"
+        },
+        {
+          "issuer": "合成カードA",
+          "amount_yen": 700,
+          "due_on": "2030-12-10"
+        }
+      ],
+      "total_yen": 1000,
+      "unreadable": 0,
+      "truncated": true
+    },
+    "semantic_errors": ["bill_total_mismatch"]
+  },
+  {
+    "id": "household-month-bills-calendar",
+    "schema": "HouseholdMonthBills",
+    "valid": true,
+    "value": {
+      "items": [
+        {
+          "issuer": "合成カードA",
+          "amount_yen": 500,
+          "due_on": "2030-11-31"
+        }
+      ],
+      "total_yen": 500,
+      "unreadable": 0,
+      "truncated": false
+    },
+    "semantic_errors": ["due_on_invalid"]
+  },
+  {
+    "id": "household-month-bills-empty-issuer",
+    "schema": "HouseholdMonthBills",
+    "valid": false,
+    "value": {
+      "items": [
+        {
+          "issuer": "",
+          "amount_yen": 500,
+          "due_on": "2030-11-30"
+        }
+      ],
+      "total_yen": 500,
+      "unreadable": 0,
+      "truncated": false
+    }
   },
   {
     "id": "household-summary-balance",
@@ -5917,7 +6176,10 @@
     "value": {
       "channel": "desktop.household_export",
       "request_id": "00000000-0000-4000-8000-000000000a21",
-      "payload": { "from": "2029-12", "to": "2030-11" }
+      "payload": {
+        "from": "2029-12",
+        "to": "2030-11"
+      }
     }
   },
   {
@@ -5927,7 +6189,11 @@
     "value": {
       "channel": "desktop.household_export",
       "request_id": "00000000-0000-4000-8000-000000000a22",
-      "payload": { "from": "2029-12", "to": "2030-11", "path": "/tmp/a.csv" }
+      "payload": {
+        "from": "2029-12",
+        "to": "2030-11",
+        "path": "/tmp/a.csv"
+      }
     }
   },
   {
@@ -5937,7 +6203,9 @@
     "value": {
       "channel": "desktop.household_export",
       "request_id": "00000000-0000-4000-8000-000000000a23",
-      "payload": { "from": "2029-12" }
+      "payload": {
+        "from": "2029-12"
+      }
     }
   },
   {
@@ -5947,7 +6215,10 @@
     "value": {
       "channel": "desktop.household_export",
       "request_id": "00000000-0000-4000-8000-000000000a24",
-      "payload": { "from": "2029-13", "to": "2030-11" }
+      "payload": {
+        "from": "2029-13",
+        "to": "2030-11"
+      }
     }
   },
   {

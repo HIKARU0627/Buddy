@@ -151,6 +151,18 @@ const monthBody = (
         },
   unreadable: 0,
   truncated: false,
+  // 請求予定（ADR 0176）。2030-11 にだけ 1 件ある。記録・集計・書き出しには入らない。
+  bills:
+    month === '2030-11'
+      ? {
+          items: [
+            { issuer: '合成のカード', amount_yen: 25800, due_on: '2030-11-27' },
+          ],
+          total_yen: 25800,
+          unreadable: 0,
+          truncated: false,
+        }
+      : { items: [], total_yen: 0, unreadable: 0, truncated: false },
 });
 
 type Outcome =
@@ -275,6 +287,14 @@ test('the view carries refs and display values only, and reads the current month
     last_import: null,
     last_export: null,
     recurring: overview().recurring,
+    bills: {
+      items: [
+        { issuer: '合成のカード', amount_yen: 25800, due_on: '2030-11-27' },
+      ],
+      total_yen: 25800,
+      unreadable: 0,
+      truncated: false,
+    },
     budget: {
       items: [{ category: 'food', budget_yen: 40000 }],
       total_budget_yen: 40000,

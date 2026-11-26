@@ -6,17 +6,26 @@
 import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
 import test from 'node:test';
-import type { HouseholdEntryContent } from '@buddy/domain';
+import type {
+  HouseholdBillContent,
+  HouseholdEntryContent,
+} from '@buddy/domain';
 import {
   DbWorkerClient,
+  HOUSEHOLD_BILL_LIST_LIMIT,
   executeHouseholdOp,
+  openHouseholdBill,
   openHouseholdBudget,
   openHouseholdContent,
+  sealHouseholdBill,
   sealHouseholdBudget,
   sealHouseholdContent,
 } from './index.js';
 import type {
   DataKeyMaterial,
+  HouseholdBillListValue,
+  HouseholdBillRecord,
+  HouseholdBillRecordValue,
   HouseholdEntryRecord,
   HouseholdListValue,
   HouseholdMailPendingValue,
@@ -896,6 +905,246 @@ test('DB worker を通しても記録・読み取り・規則の命令が往復�
         }),
         { ok: true, value: { category: 'food', origin: 'user' } },
       );
+    } finally {
+      await client.close();
+    }
+  });
+});
+
+// --- 請求予定（ADR 0176、マイグレーション 0021） ---
+
+const BILL: HouseholdBillContent = {
+  issuer: '合成カードA',
+  amount_yen: 12345,
+  due_on: '2030-12-10',
+};
+
+function billOp(
+  billId: string,
+  over: Partial<Extract<HouseholdOp, { kind: 'household.bill_record' }>> = {},
+  content: HouseholdBillContent = BILL,
+): Extract<HouseholdOp, { kind: 'household.bill_record' }> {
+  const result = sealHouseholdBill(KEY, billId, content);
+  assert.equal(result.ok, true);
+  if (!result.ok) throw new Error('unreachable');
+  return {
+    kind: 'household.bill_record',
+    bill_id: billId,
+    source_key: SOURCE_A,
+    month: '2030-12',
+    content: result.content,
+    now: T0,
+    ...over,
+  };
+}
+
+function openBill(record: HouseholdBillRecord): HouseholdBillContent {
+  assert.ok(record.content);
+  const opened = openHouseholdBill(KEY, record.bill_id, {
+    formatVersion: record.content.format_version,
+    keyId: record.content.key_id,
+    nonce: record.content.nonce,
+    ciphertext: record.content.ciphertext,
+    tag: record.content.tag,
+  });
+  assert.equal(opened.ok, true);
+  if (!opened.ok) throw new Error('unreachable');
+  return opened.content;
+}
+
+function bills(db: SqliteDatabase, month: string): HouseholdBillListValue {
+  return value<HouseholdBillListValue>(
+    run(db, { kind: 'household.bill_list', month }),
+  );
+}
+
+test('household.bill_record: 請求予定と暗号文を書き、同じ出所の鍵では書かずに duplicate を返す。家計の記録には入らない', async () => {
+  await withDb((db) => {
+    const id = randomUUID();
+    assert.deepEqual(value<HouseholdBillRecordValue>(run(db, billOp(id))), {
+      outcome: 'created',
+      bill_id: id,
+    });
+    // 同じメールの読み直し（同じ出所の鍵・別の ID）。二つ目を作らない。
+    assert.deepEqual(
+      value<HouseholdBillRecordValue>(
+        run(db, billOp(randomUUID(), { now: T1 })),
+      ),
+      { outcome: 'duplicate', bill_id: id },
+    );
+    // 別の出所で同じ ID は使い回せない。
+    assert.deepEqual(reasons(run(db, billOp(id, { source_key: SOURCE_B }))), [
+      'bill_id_reused',
+    ]);
+    const listed = bills(db, '2030-12');
+    assert.equal(listed.truncated, false);
+    assert.equal(listed.bills.length, 1);
+    const [record] = listed.bills;
+    assert.ok(record);
+    assert.equal(record.bill_id, id);
+    assert.equal(record.month, '2030-12');
+    assert.equal(record.created_at, T0);
+    assert.deepEqual(openBill(record), BILL);
+    // 平文の列は出所の種類と鍵・月・時刻だけで、暗号文は household_bill の用途。
+    assert.deepEqual(
+      db
+        .prepare(
+          'SELECT source_kind, source_key, month FROM household_bills WHERE bill_id = ?',
+        )
+        .get(id),
+      { source_kind: 'mail_bill', source_key: SOURCE_A, month: '2030-12' },
+    );
+    assert.equal(
+      (
+        db
+          .prepare(
+            "SELECT count(*) AS n FROM sealed_blobs WHERE purpose = 'household_bill' AND owner_table = 'household_bills'",
+          )
+          .get() as { n: number }
+      ).n,
+      1,
+    );
+    // 別の月には出ない。家計の記録の読み取りにも出ない（月の集計・予算・定期の支出の元にならない）。
+    assert.deepEqual(bills(db, '2030-11').bills, []);
+    assert.deepEqual(
+      value<HouseholdListValue>(
+        run(db, {
+          kind: 'household.list',
+          month_from: '2030-01',
+          month_to: '2030-12',
+        }),
+      ).entries,
+      [],
+    );
+  });
+});
+
+test('household.bill_list: 1 か月の上限を超えたら新しく作った方を返して truncated にする', async () => {
+  await withDb((db) => {
+    for (let index = 0; index <= HOUSEHOLD_BILL_LIST_LIMIT; index += 1)
+      value(
+        run(
+          db,
+          billOp(randomUUID(), {
+            source_key: index.toString(16).padStart(64, '0'),
+            now: new Date(Date.parse(T0) + index * 1000).toISOString(),
+          }),
+        ),
+      );
+    const listed = bills(db, '2030-12');
+    assert.equal(HOUSEHOLD_BILL_LIST_LIMIT, 100);
+    assert.equal(listed.truncated, true);
+    assert.equal(listed.bills.length, 100);
+    // 一番古い 1 件（T0）を切り、残りを作った順に返す。
+    assert.equal(listed.bills[0]?.created_at, '2030-10-01T00:00:01.000Z');
+    assert.equal(listed.bills.at(-1)?.created_at, '2030-10-01T00:01:40.000Z');
+  });
+});
+
+test('household.bill_*: 形の誤りは書かずに拒否し、書込みを止めた worker は読み取りだけを続ける', async () => {
+  await withDb((db) => {
+    assert.deepEqual(
+      reasons(
+        run(
+          db,
+          billOp(randomUUID(), {
+            source_key: 'x',
+            month: '2030-13',
+            now: 'now',
+          }),
+        ),
+      ),
+      ['source_key_invalid', 'month_invalid', 'now_invalid'],
+    );
+    assert.deepEqual(reasons(run(db, billOp('not-a-uuid'))), [
+      'bill_id_invalid',
+    ]);
+    assert.deepEqual(
+      reasons(run(db, { kind: 'household.bill_list', month: '1999-12' })),
+      ['month_invalid'],
+    );
+    assert.deepEqual(reasons(run(db, billOp(randomUUID()), true)), [
+      'worker_halted',
+    ]);
+    assert.equal(
+      run(db, { kind: 'household.bill_list', month: '2030-12' }, true).ok,
+      true,
+    );
+    assert.deepEqual(bills(db, '2030-12').bills, []);
+  });
+});
+
+test('DB の trigger: 請求予定の行は変えられず消せず、暗号文は自分の請求予定のものだけを指す', async () => {
+  await withDb((db) => {
+    const id = randomUUID();
+    value(run(db, billOp(id)));
+    assert.throws(
+      () => db.prepare('DELETE FROM household_bills WHERE bill_id = ?').run(id),
+      /household_bill_no_delete/u,
+    );
+    assert.throws(
+      () =>
+        db
+          .prepare(
+            "UPDATE household_bills SET month = '2030-11' WHERE bill_id = ?",
+          )
+          .run(id),
+      /household_bill_fixed/u,
+    );
+    // 家計の記録の暗号文は請求予定から指せない。
+    const entryId = randomUUID();
+    value(run(db, recordOp(entryId, { source_key: SOURCE_B })));
+    const entryBlob = get(db, entryId).content?.blob_id;
+    assert.ok(entryBlob);
+    assert.throws(
+      () =>
+        db
+          .prepare(
+            "INSERT INTO household_bills (bill_id, source_kind, source_key, month, content_blob_id, created_at) VALUES (?, 'mail_bill', ?, '2030-12', ?, 1)",
+          )
+          .run(randomUUID(), 'd'.repeat(64), entryBlob),
+      /household_bill_blob_owner_mismatch/u,
+    );
+    // 出所の種類は mail_bill だけ。
+    const other = randomUUID();
+    const sealedBill = billOp(other, { source_key: 'e'.repeat(64) });
+    assert.throws(
+      () =>
+        db
+          .prepare(
+            "INSERT INTO household_bills (bill_id, source_kind, source_key, month, content_blob_id, created_at) VALUES (?, 'manual', ?, '2030-12', ?, 1)",
+          )
+          .run(other, 'e'.repeat(64), sealedBill.content.blob_id),
+      /CHECK|household_bill_blob_owner_mismatch/u,
+    );
+  });
+});
+
+test('DB worker を通しても請求予定の記録と読み取りが往復する', async () => {
+  await withTempDir(async (dir) => {
+    const path = databasePath(dir);
+    openSeededDatabase(path).close();
+    const client = await DbWorkerClient.start({
+      path,
+      storeGeneration: STORE_GENERATION,
+      responseTimeoutMs: 10_000,
+    });
+    try {
+      const id = randomUUID();
+      assert.deepEqual(await client.household(billOp(id)), {
+        ok: true,
+        value: { outcome: 'created', bill_id: id },
+      });
+      const listed = await client.household({
+        kind: 'household.bill_list',
+        month: '2030-12',
+      });
+      assert.equal(listed.ok, true);
+      if (!listed.ok) throw new Error('unreachable');
+      assert.equal(listed.value.bills.length, 1);
+      const [record] = listed.value.bills;
+      assert.ok(record);
+      assert.deepEqual(openBill(record), BILL);
     } finally {
       await client.close();
     }

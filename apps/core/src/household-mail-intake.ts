@@ -8,6 +8,9 @@
 //    で読み取る。
 // 3. 読み取った利用を recordHouseholdEntry で記録する（出所の鍵＝提供元・口座・メール ID・順番。同じメールから二つ目は
 //    作らない）。終わったメールは household.mail_checked で確かめ済みにする。
+// 4. 送り主の確かめに通り、件名が利用通知でなく請求のお知らせ（domain の householdBillSubject）のときは、本文を
+//    readHouseholdBill で読み、請求予定として recordHouseholdBill で記録する（ADR 0176）。請求予定は家計の記録に入れない
+//    （支払い済みの利用と二重に数えない）。取り込みの入・切と初回の基準は利用通知と同じ。
 // 読み取りの失敗（通信・提供元の誤り）や保存の失敗のときは確かめ済みにせず、次の公開の後にやり直す。
 // Outlook（Microsoft）のメールは段階 1 では読まない（Graph の読み取りに本文の取得が無い）。
 // 本文・店名・金額はログに出さない。ログは件数と理由の名前だけ。
@@ -15,7 +18,9 @@
 import { createHash, randomUUID } from 'node:crypto';
 import {
   checkHouseholdNoticeSender,
+  householdBillSubject,
   householdNoticeSubjectKind,
+  readHouseholdBill,
   readHouseholdNotice,
 } from '@buddy/domain';
 import { decodeBase64Url } from '@buddy/connectors';
@@ -30,8 +35,13 @@ import type {
   DataKeyMaterial,
   DbWorkerClient,
 } from '@buddy/storage';
+import { recordHouseholdBill } from './household-bills.js';
+import type { RecordedHouseholdBill } from './household-bills.js';
 import { recordHouseholdEntry } from './household-ledger.js';
-import type { HouseholdPorts } from './household-ledger.js';
+import type {
+  HouseholdPorts,
+  RecordedHouseholdEntry,
+} from './household-ledger.js';
 
 // Gmail が受信の時に付ける認証結果の識別子（authserv-id）。
 const GMAIL_AUTHSERV_ID = 'mx.google.com';
@@ -181,6 +191,8 @@ export interface HouseholdMailIntakeSummary {
   readonly checked: number;
   // 新しく作った記録の数。
   readonly recorded: number;
+  // 新しく作った請求予定の数（ADR 0176。記録の数には入れない）。
+  readonly bills: number;
 }
 
 export interface HouseholdMailIntakeOptions {
@@ -215,11 +227,41 @@ export interface HouseholdMailIntake {
 
 const DEFAULT_LIMIT = 50;
 
+interface Counts {
+  baseline: boolean;
+  checked: number;
+  recorded: number;
+  bills: number;
+}
+
 const summary = (
   outcome: HouseholdMailIntakeSummary['outcome'],
   reason: string | null,
-  counts: { baseline: boolean; checked: number; recorded: number },
+  counts: Counts,
 ): HouseholdMailIntakeSummary => ({ outcome, reason, ...counts });
+
+const emptyCounts = (): Counts => ({
+  baseline: false,
+  checked: 0,
+  recorded: 0,
+  bills: 0,
+});
+
+// 記録・請求予定を作れなかったとき、やり直すべきか。中身の誤り（拒否）はやり直しても変わらないので確かめ済みにする。
+// 保存の不明・停止・混み合いはやり直す。
+const retryable = (
+  recorded: Extract<
+    RecordedHouseholdEntry | RecordedHouseholdBill,
+    { readonly reasons: readonly string[] }
+  >,
+): boolean =>
+  recorded.outcome === 'unknown' ||
+  recorded.reasons.some(
+    (reason) =>
+      reason === 'worker_halted' ||
+      reason === 'database_busy' ||
+      reason.startsWith('worker_'),
+  );
 
 export function createHouseholdMailIntake(
   options: HouseholdMailIntakeOptions,
@@ -233,7 +275,7 @@ export function createHouseholdMailIntake(
   async function runOnce(
     target: HouseholdMailIntakeTarget,
   ): Promise<HouseholdMailIntakeSummary> {
-    const counts = { baseline: false, checked: 0, recorded: 0 };
+    const counts = emptyCounts();
     const { connection } = target;
     if (connection.provider !== 'google')
       return summary('skipped', 'provider_unsupported', counts);
@@ -292,10 +334,13 @@ export function createHouseholdMailIntake(
         options.issuers,
       );
       const subject = headerValues(head.payload, 'Subject')[0] ?? '';
-      if (
-        !sender.ok ||
-        householdNoticeSubjectKind(sender.issuer, subject) !== 'usage'
-      ) {
+      const subjectKind = sender.ok
+        ? householdNoticeSubjectKind(sender.issuer, subject)
+        : 'other';
+      // 利用通知でも速報でもない件名のうち、請求のお知らせの件名なら請求予定として読む（ADR 0176）。
+      const billNotice =
+        subjectKind === 'other' && householdBillSubject(subject);
+      if (!sender.ok || (subjectKind !== 'usage' && !billNotice)) {
         if (!(await markChecked(remoteId)))
           return summary('stopped', 'check_failed', counts);
         continue;
@@ -312,6 +357,45 @@ export function createHouseholdMailIntake(
         Number.isFinite(receivedMillis) ? receivedMillis : now().getTime(),
         timeZone,
       );
+      if (billNotice) {
+        const bill =
+          text === null
+            ? null
+            : readHouseholdBill({
+                issuer: sender.issuer,
+                subject,
+                text,
+                received_on: receivedOn,
+              });
+        if (bill?.outcome === 'bill') {
+          const recorded = await recordHouseholdBill(
+            ports,
+            {
+              provider: 'google',
+              account_id: target.account_id,
+              remote_id: remoteId,
+            },
+            bill.content,
+          );
+          if (recorded.outcome === 'created') counts.bills += 1;
+          else if (
+            recorded.outcome === 'rejected' ||
+            recorded.outcome === 'unknown'
+          ) {
+            if (retryable(recorded))
+              return summary('stopped', 'record_failed', counts);
+            log(
+              `家計簿の請求予定を作れませんでした（${recorded.reasons.join(', ')}）。`,
+            );
+          }
+        } else if (bill?.outcome === 'skipped')
+          log(
+            `家計簿の請求のお知らせを請求予定にしませんでした（${bill.reason}）。`,
+          );
+        if (!(await markChecked(remoteId)))
+          return summary('stopped', 'check_failed', counts);
+        continue;
+      }
       const reading =
         text === null
           ? null
@@ -336,16 +420,7 @@ export function createHouseholdMailIntake(
           );
           if (recorded.outcome === 'created') counts.recorded += 1;
           else if (recorded.outcome !== 'duplicate') {
-            // 中身の誤り（拒否）はやり直しても変わらないので確かめ済みにする。保存の不明・停止はやり直す。
-            if (
-              recorded.outcome === 'unknown' ||
-              recorded.reasons.some(
-                (reason) =>
-                  reason === 'worker_halted' ||
-                  reason === 'database_busy' ||
-                  reason.startsWith('worker_'),
-              )
-            )
+            if (retryable(recorded))
               return summary('stopped', 'record_failed', counts);
             log(
               `家計簿の利用通知の記録を作れませんでした（${recorded.reasons.join(', ')}）。`,
@@ -369,11 +444,7 @@ export function createHouseholdMailIntake(
     async run(target) {
       const key = `${target.connection.connection_id}\0${target.account_id}`;
       if (running.has(key))
-        return summary('skipped', 'already_running', {
-          baseline: false,
-          checked: 0,
-          recorded: 0,
-        });
+        return summary('skipped', 'already_running', emptyCounts());
       running.add(key);
       // 掃除が済むまでメールを読まない（ADR 0053）。ゲートの確認と貸し出しの取得は同じ区間で行い、
       // 読み取り・記録が終わるまで貸し出しを持つ。取れないときは読まず、次の公開の後に読む。
@@ -387,11 +458,7 @@ export function createHouseholdMailIntake(
             release = options.retention.lease();
           }
           if (release === null)
-            return summary('skipped', 'retention_closed', {
-              baseline: false,
-              checked: 0,
-              recorded: 0,
-            });
+            return summary('skipped', 'retention_closed', emptyCounts());
         }
         return await runOnce(target);
       } finally {

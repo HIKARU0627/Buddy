@@ -4937,7 +4937,7 @@ export interface HouseholdBudgetItem {
   budget_yen: number;
 }
 /**
- * 家計簿の 1 か月（GET /v1/household/months/{month}、ADR 0161）。記録はすべてその月の日付で、集計は返した記録から作る（意味検査）。
+ * 家計簿の 1 か月（GET /v1/household/months/{month}、ADR 0161）。記録はすべてその月の日付で、集計は返した記録から作る（意味検査）。請求予定（bills、ADR 0176）は記録とは別で、集計に入れない。
  */
 export interface HouseholdMonth {
   month: YearMonth;
@@ -4954,6 +4954,7 @@ export interface HouseholdMonth {
    * 一度に読む件数の上限で記録を切ったか。切ったときの集計はその月の一部だけ。
    */
   truncated: boolean;
+  bills: HouseholdMonthBills;
 }
 /**
  * 家計の記録 1 件（ADR 0158・0161）。Core が暗号文を開いて返す。分類の向きは記録の向きと同じ（意味検査）。
@@ -5018,6 +5019,46 @@ export interface HouseholdCategoryTotal {
   category: HouseholdCategoryId;
   total_yen: number;
   count: number;
+}
+/**
+ * 1 か月の請求予定（ADR 0176）。請求の金額は利用の記録（支払い済み）を後からまとめて知らせるものなので、家計の記録・月の集計・予算・定期の支出に入れない（二重に数えない）。合計は並べた請求予定の和で、どれも引き落とし日がその月（意味検査）。
+ */
+export interface HouseholdMonthBills {
+  /**
+   * 引き落とし日がその月の請求予定。引き落とし日の早い順（同じなら会社の表示名の順、金額の小さい順）。
+   *
+   * @maxItems 100
+   */
+  items: HouseholdBill[];
+  /**
+   * 請求予定の合計。支出の合計・予算・定期の支出には入れない。
+   */
+  total_yen: number;
+  /**
+   * 復号できなかった請求予定の数（並べず、合計に入れていない）。
+   */
+  unreadable: number;
+  /**
+   * 一度に読む上限（100 件）で請求予定を切ったか。
+   */
+  truncated: boolean;
+}
+/**
+ * 請求予定 1 件（ADR 0176）。カード会社の請求のお知らせから読んだ、引き落としの予定。出所の識別子（メールの ID など）は返さない。
+ */
+export interface HouseholdBill {
+  /**
+   * 請求したカード会社の表示名（送信元の一覧の名前）。
+   */
+  issuer: string;
+  /**
+   * 請求の金額（円の正の整数）。
+   */
+  amount_yen: number;
+  /**
+   * 引き落とし日（本人の地域の日付）。暦に実在する日かは意味検査で確かめる。
+   */
+  due_on: string;
 }
 /**
  * 家計の記録の分類の変更（POST /v1/household/entries/{entry_id}/category、ADR 0161）。本人の画面操作だけが送る。内容版が今と違えば 409。向きの違う分類は 422。店名があれば本人の規則として覚え、次から同じ店の未分類の利用に当てる（ADR 0158）。
@@ -8002,6 +8043,10 @@ export interface DesktopHouseholdView {
    * 定期の支出と固定費の目安（ADR 0165）。読めていなければ null。
    */
   recurring: HouseholdRecurringSummary | null;
+  /**
+   * 記録を出している月の請求予定（ADR 0176）。支出の合計とは別に見せる。読めていなければ null。
+   */
+  bills: HouseholdMonthBills | null;
   /**
    * この世代で最後に行った書き出しの取り込みの結果（ADR 0164）。まだなければ null。
    */

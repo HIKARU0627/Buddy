@@ -5,6 +5,7 @@
 // - 月ごとの合計（GET /v1/household/months）は今月から 11 か月前までの 12 か月。今月は本人のタイムゾーン（ADR 0131）で
 //   決め、決まっていなければ 503（端末の時計・UTC で代用しない）。
 // - 1 か月（GET /v1/household/months/{month}）は記録と集計。出所の識別子（メールの ID など）は返さない。
+//   引き落とし日がその月の請求予定（ADR 0176）は bills に分けて返す。記録・集計・予算・定期の支出には入れない。
 // - 分類の変更・削除は内容版で照合する。内容版の違い・削除済みは 409（画面は読み直す）、向きの違う分類・ない記録は 422。
 //   同じ request_id の再送は、成功済みなら内容版が進んでいる・削除済みなので 409 になり、二重に効かない。
 // - 中身の変更（POST /v1/household/entries/{entry_id}/content、ADR 0169）も内容版で照合する。向きの違い・検査に合わない中身は 422。
@@ -33,6 +34,7 @@ import {
 import type { DataKeyMaterial, DbWorkerClient } from '@buddy/storage';
 import { apiErrorResponse } from './api-server.js';
 import type { ApiRouteHandler } from './api-server.js';
+import { readHouseholdBills } from './household-bills.js';
 import {
   HouseholdMerchantKey,
   changeHouseholdCategory,
@@ -308,6 +310,12 @@ export function createHouseholdRoutes(
     const view = read.months[0];
     if (view === undefined || view.month !== month)
       return fail(503, 'dependency_unavailable');
+    // 請求予定（ADR 0176）。読めなければ月も返さない（請求予定がないように見せない）。
+    const bills = await readHouseholdBills(
+      { client: options.store, dataKey },
+      month,
+    );
+    if (bills.outcome !== 'ok') return fail(503, 'dependency_unavailable');
     return {
       status: 200,
       body: {
@@ -316,6 +324,16 @@ export function createHouseholdRoutes(
         summary: view.summary,
         unreadable: view.unreadable,
         truncated: read.truncated,
+        bills: {
+          items: bills.bills.items.map((bill) => ({
+            issuer: bill.issuer,
+            amount_yen: bill.amount_yen,
+            due_on: bill.due_on,
+          })),
+          total_yen: bills.bills.total_yen,
+          unreadable: bills.unreadable,
+          truncated: bills.truncated,
+        },
       },
     };
   };

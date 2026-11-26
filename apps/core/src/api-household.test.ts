@@ -26,6 +26,7 @@ import type {
 } from '@buddy/storage';
 import { createApiContract } from './api-contract.js';
 import { createHouseholdRoutes } from './api-household.js';
+import { recordHouseholdBill } from './household-bills.js';
 import type { HouseholdRoutesOptions } from './api-household.js';
 import type { ApiRouteHandler } from './api-server.js';
 import {
@@ -375,6 +376,108 @@ test('1 か月: 記録を新しい順に返し、出所の識別子を返さな�
   assert(!JSON.stringify(response.body).includes('acct-synthetic'));
 });
 
+test('1 か月: 請求予定は記録・集計と分けて返し、月の合計・予算・定期の支出には入れない（ADR 0176）', async (t) => {
+  const { store, dataKey, ports } = withDb(t);
+  const handlers = routes(store, dataKey);
+  await record(ports, { amount_yen: 1280, occurred_on: '2030-11-01' });
+  let mailIndex = 0;
+  const bill = (
+    over: Partial<{ issuer: string; amount_yen: number; due_on: string }>,
+    billPorts: HouseholdPorts = ports,
+  ) => {
+    mailIndex += 1;
+    return recordHouseholdBill(
+      billPorts,
+      {
+        provider: 'google',
+        account_id: 'acct-synthetic',
+        remote_id: `bill-${String(mailIndex)}`,
+      },
+      {
+        issuer: '合成のカード',
+        amount_yen: 25800,
+        due_on: '2030-11-27',
+        ...over,
+      },
+    );
+  };
+  assert.equal((await bill({})).outcome, 'created');
+  assert.equal(
+    (
+      await bill({
+        issuer: '合成の別カード',
+        amount_yen: 4200,
+        due_on: '2030-11-10',
+      })
+    ).outcome,
+    'created',
+  );
+  // 同じ請求の二通目は作らない。
+  assert.deepEqual(await bill({}), { outcome: 'same_bill' });
+  // 翌月の引き落としは翌月にだけ出る。
+  assert.equal((await bill({ due_on: '2030-12-10' })).outcome, 'created');
+  // 別のデータ鍵の請求予定は読めないものとして数だけ返す。
+  await bill(
+    { amount_yen: 999 },
+    { ...ports, dataKey: { keyId: 'k-other', key: randomBytes(32) } },
+  );
+  const response = await call(handlers.getHouseholdMonth, { month: '2030-11' });
+  assert.equal(response.status, 200);
+  assert(contract.valid('HouseholdMonth', response.body));
+  assert.deepEqual(response.body['bills'], {
+    items: [
+      { issuer: '合成の別カード', amount_yen: 4200, due_on: '2030-11-10' },
+      { issuer: '合成のカード', amount_yen: 25800, due_on: '2030-11-27' },
+    ],
+    total_yen: 30000,
+    unreadable: 1,
+    truncated: false,
+  });
+  // 支出の合計・件数は利用の記録だけ。
+  const summary = response.body['summary'] as Json;
+  assert.equal(summary['expense_yen'], 1280);
+  assert.equal(summary['entry_count'], 1);
+  assert.equal(response.body['unreadable'], 0);
+  assert(!JSON.stringify(response.body).includes('acct-synthetic'));
+  const december = await call(handlers.getHouseholdMonth, { month: '2030-12' });
+  assert.deepEqual((december.body['bills'] as Json)['items'], [
+    { issuer: '合成のカード', amount_yen: 25800, due_on: '2030-12-10' },
+  ]);
+  // 月ごとの合計・定期の支出・予算にも入らない。
+  const overview = await call(handlers.listHouseholdMonths);
+  assert.equal(overview.status, 200);
+  const months = overview.body['months'] as Json[];
+  assert.deepEqual(
+    months
+      .filter((month) => month['month'] === '2030-11')
+      .map((month) => [month['expense_yen'], month['entry_count']]),
+    [[1280, 1]],
+  );
+  assert.deepEqual(overview.body['recurring'], {
+    items: [],
+    monthly_total_yen: 0,
+  });
+  // 請求予定を読めないときは、記録を読めても月を返さない（請求予定がないように見せない）。
+  const billsBroken: Store = {
+    household: ((op: HouseholdOp) =>
+      op.kind === 'household.bill_list'
+        ? Promise.resolve({
+            ok: false,
+            outcome: 'rejected',
+            reasons: ['read_failed'],
+          })
+        : store.household(op as never)) as unknown as Store['household'],
+  };
+  assert.equal(
+    (
+      await call(routes(billsBroken, dataKey).getHouseholdMonth, {
+        month: '2030-11',
+      })
+    ).status,
+    503,
+  );
+});
+
 test('1 か月: 記録のない月は空で返す。2000〜2099 年の外は 422、データ鍵がなければ 503', async (t) => {
   const { store, dataKey } = withDb(t);
   const empty = await call(routes(store, dataKey).getHouseholdMonth, {
@@ -394,6 +497,7 @@ test('1 か月: 記録のない月は空で返す。2000〜2099 年の外は 422
     },
     unreadable: 0,
     truncated: false,
+    bills: { items: [], total_yen: 0, unreadable: 0, truncated: false },
   });
   for (const month of ['1999-12', '2100-01', '2030-13', '']) {
     const response = await call(routes(store, dataKey).getHouseholdMonth, {

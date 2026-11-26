@@ -49,6 +49,9 @@ const REQUEST_CHANNELS: readonly string[] = [
   'desktop.auto_actions_list',
   'desktop.auto_action_undo',
   'desktop.safety_resume',
+  'desktop.household_view',
+  'desktop.household_category',
+  'desktop.household_delete',
 ];
 const NOTIFICATION_CHANNELS: readonly string[] = [
   'desktop.state_changed',

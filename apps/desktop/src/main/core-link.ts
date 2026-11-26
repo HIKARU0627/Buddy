@@ -75,6 +75,7 @@ import type {
 import { BudgetBridge } from './budget-bridge.js';
 import type { BudgetConfirmRequest } from './budget-bridge.js';
 import { AutoActionBridge } from './auto-action-bridge.js';
+import { HouseholdBridge } from './household-bridge.js';
 import { CandidateBridge } from './candidate-bridge.js';
 import { ConnectionsBridge } from './connections-bridge.js';
 import { CanvasBridge } from './canvas-bridge.js';
@@ -140,6 +141,14 @@ export const AUTO_ACTION_CHANNELS: readonly DesktopIpcChannel[] = [
   'desktop.auto_actions_list',
   'desktop.auto_action_undo',
   'desktop.safety_resume',
+];
+
+// 家計簿の月ごとの合計と 1 か月の記録・分類の変更・削除のチャネル（ADR 0162）。登録済みでロック解除済みの端末なら、
+// 中枢の画面の端末でなくても使える（中枢が端末と画面の操作を確かめる）。
+export const HOUSEHOLD_CHANNELS: readonly DesktopIpcChannel[] = [
+  'desktop.household_view',
+  'desktop.household_category',
+  'desktop.household_delete',
 ];
 
 // 連携の接続の一覧と取得範囲の変更のチャネル（B08-02 P3・B09-05、ADR 0142）。中枢の画面の端末でだけ使える
@@ -386,6 +395,7 @@ export class DesktopCoreLink {
   readonly #candidates: CandidateBridge;
   // 自動実行の一覧・取り消し・安全停止の解除（参照だけを画面へ渡す。B13-05、ADR 0154）。
   readonly #autoActions: AutoActionBridge;
+  readonly #household: HouseholdBridge;
   // 連携の接続の一覧と取得範囲の変更（参照だけを画面へ渡す。B08-02 P3・B09-05、ADR 0142）。
   readonly #connections: ConnectionsBridge;
 
@@ -428,6 +438,13 @@ export class DesktopCoreLink {
       log: (code) => this.#log(code),
     });
     this.#autoActions = new AutoActionBridge({
+      contract: options.contract,
+      connection: () => this.#connection,
+      newRef: () => options.clock.newRequestId(),
+      now: () => options.clock.now(),
+      log: (code) => this.#log(code),
+    });
+    this.#household = new HouseholdBridge({
       contract: options.contract,
       connection: () => this.#connection,
       newRef: () => options.clock.newRequestId(),
@@ -1254,6 +1271,59 @@ export class DesktopCoreLink {
         raw.channel,
         result,
         (auto_actions) => ({ auto_actions }),
+      ),
+    );
+  }
+
+  // 家計簿の月ごとの合計と 1 か月の記録（ロック解除済み）・分類の変更と削除（ロック解除済みの画面操作。前面）（ADR 0162）。
+  // 変更と削除は中枢へ記録するだけで外部へ送らないので、この端末の入出力の停止中も受け付ける。ロック・切断をまたいだ
+  // 値は渡さない。
+  async handleHouseholdIpc(
+    ipcChannel: string,
+    raw: unknown,
+    sender: DesktopIpcSender,
+    ioState: DesktopIoState,
+  ): Promise<ConnectionIpcOutcome> {
+    const contract = this.#options.contract;
+    if (
+      !contract.isRequest(raw) ||
+      raw.channel !== ipcChannel ||
+      (raw.channel !== 'desktop.household_view' &&
+        raw.channel !== 'desktop.household_category' &&
+        raw.channel !== 'desktop.household_delete')
+    )
+      return this.#reject(
+        echoRequestId(raw),
+        echoChannel(raw, ipcChannel),
+        'invalid_request',
+      );
+    const admission = admitDesktopRequest(raw.channel, null, ioState, sender);
+    if (!admission.ok)
+      return this.#reject(raw.request_id, raw.channel, admission.reason);
+    const connection = this.#connection;
+    if (
+      connection === null ||
+      this.#registration !== 'registered' ||
+      connection.state.phase !== 'live'
+    )
+      return this.#reject(raw.request_id, raw.channel, 'not_connected');
+    const generation = this.#viewGeneration;
+    const result =
+      raw.channel === 'desktop.household_view'
+        ? await this.#household.show(raw.payload.month)
+        : raw.channel === 'desktop.household_category'
+          ? await this.#household.category(
+              raw.payload.ref,
+              raw.payload.category,
+            )
+          : await this.#household.remove(raw.payload.ref);
+    return this.#withinGeneration(
+      generation,
+      this.#operationOutcome(
+        raw.request_id,
+        raw.channel,
+        result,
+        (household) => ({ household }),
       ),
     );
   }
@@ -2194,6 +2264,7 @@ export class DesktopCoreLink {
     this.#cancelBudgetPoll();
     this.#candidates.reset();
     this.#autoActions.reset();
+    this.#household.reset();
     this.#connections.reset();
     this.#canvas.reset();
     this.#confirmAbort?.abort();

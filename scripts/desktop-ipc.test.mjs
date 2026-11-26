@@ -137,6 +137,22 @@ test('client quit, local IO stop and hub stop are separate; no token, device ID,
     assert(!(field in defs.DesktopAutoActionView.properties), field);
     assert(!(field in defs.DesktopSafetyView.properties), field);
   }
+  // 家計簿（ADR 0162）。記録の ID・内容版・出所の識別子は main の中にだけ持つ。
+  for (const name of ['DesktopHouseholdView', 'DesktopHouseholdEntry'])
+    walk(defs[name], name);
+  for (const field of [
+    'entry_id',
+    'content_revision',
+    'expected_content_revision',
+    'source_key',
+    'remote_id',
+    'account_id',
+    'created_at',
+    'updated_at',
+  ]) {
+    assert(!(field in defs.DesktopHouseholdEntry.properties), field);
+    assert(!(field in defs.DesktopHouseholdView.properties), field);
+  }
   // 入出力停止は local だけで、範囲を指定できない。
   const stop = fixture('desktop-ipc-io-stop');
   for (const scope of ['local', 'guest', 'global'])

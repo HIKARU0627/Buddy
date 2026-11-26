@@ -158,6 +158,10 @@ test('requests go only to the contract channels', async () => {
       'desktop.auto_actions_list',
       'desktop.auto_action_undo',
       'desktop.safety_resume',
+      // 家計簿の月ごとの合計と記録・分類の変更・削除（ADR 0162）。
+      'desktop.household_view',
+      'desktop.household_category',
+      'desktop.household_delete',
     ],
   );
   // 気づきの一覧・状態の変更（B11-05）は従来の窓（標準の端末画面）でも使う。連携の一覧・取得範囲の変更
@@ -173,6 +177,10 @@ test('requests go only to the contract channels', async () => {
     'desktop.auto_actions_list',
     'desktop.auto_action_undo',
     'desktop.safety_resume',
+    // 家計簿の月ごとの合計と記録・分類の変更・削除（ADR 0162）。
+    'desktop.household_view',
+    'desktop.household_category',
+    'desktop.household_delete',
   ];
   for (const channel of legacy) {
     const request = { channel, request_id: 'r', payload: null };
@@ -314,6 +322,10 @@ const EXPECTED_ROLE_CHANNELS: Readonly<Record<string, readonly string[]>> = {
     'desktop.auto_actions_list',
     'desktop.auto_action_undo',
     'desktop.safety_resume',
+    // 家計簿の月ごとの合計と記録・分類の変更・削除（ADR 0162）。
+    'desktop.household_view',
+    'desktop.household_category',
+    'desktop.household_delete',
   ],
 };
 const EXPECTED_ROLE_NOTIFICATIONS: Readonly<Record<string, readonly string[]>> =

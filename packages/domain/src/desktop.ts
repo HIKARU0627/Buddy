@@ -62,6 +62,10 @@ export const DESKTOP_IPC_CHANNELS = [
   'desktop.auto_actions_list',
   'desktop.auto_action_undo',
   'desktop.safety_resume',
+  // 家計簿の月ごとの合計と 1 か月の記録の取得・分類の変更・削除。従来の窓と状態の層から（ADR 0162）。
+  'desktop.household_view',
+  'desktop.household_category',
+  'desktop.household_delete',
 ] as const;
 
 export type DesktopIpcChannel = (typeof DESKTOP_IPC_CHANNELS)[number];
@@ -205,6 +209,10 @@ export const DESKTOP_PAIRING_SCREEN_CHANNELS: readonly DesktopIpcChannel[] = [
   // 記録して中枢の検査（安全停止・版の照合）を通るので、この端末の入出力の停止中も受け付ける（停止の検査はしない）。
   'desktop.auto_action_undo',
   'desktop.safety_resume',
+  // 家計の記録の分類の変更と削除も本人の画面操作（ADR 0162）。中枢へ記録するだけで外部へは送らないので、この端末の
+  // 入出力の停止中も受け付ける（停止の検査はしない）。
+  'desktop.household_category',
+  'desktop.household_delete',
 ];
 
 // ロック解除済みのときだけ受け付ける一覧（内容なので、ロック中・不明は出さない。B03-06）。
@@ -223,6 +231,8 @@ export const DESKTOP_UNLOCKED_CHANNELS: readonly DesktopIpcChannel[] = [
   // 自動実行の一覧と安全停止の状態（B13-05、ADR 0154）。何を自動で行ったかは内容なので、ロック中・不明は出さない。
   // 前面は求めない。
   'desktop.auto_actions_list',
+  // 家計簿の月ごとの合計と 1 か月の記録（ADR 0162）。金額・店名は内容なので、ロック中・不明は出さない。前面は求めない。
+  'desktop.household_view',
 ];
 
 // 要求を受け付けてよいか。最初に満たさない検査の拒否を返す。
@@ -332,6 +342,11 @@ export const DESKTOP_ROLE_CHANNELS: Readonly<
     'desktop.auto_actions_list',
     'desktop.auto_action_undo',
     'desktop.safety_resume',
+    // 家計簿（ADR 0162）。画面は従来の窓に置く。キャンバスの部品が家計の記録の変更・削除に見せかけられないよう、
+    // キャンバス・入力バーには渡さない。
+    'desktop.household_view',
+    'desktop.household_category',
+    'desktop.household_delete',
   ],
   input: ['desktop.get_state', 'desktop.turn_submit', 'desktop.canvas_summon'],
 };

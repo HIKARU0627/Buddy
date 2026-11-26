@@ -900,6 +900,78 @@
         "expected_io_epoch": null,
         "state": { "stopScope": "local" },
         "expected": { "ok": true }
+      },
+      {
+        "id": "household-view-unlocked-unfocused",
+        "refs": ["ADR 0162"],
+        "channel": "desktop.household_view",
+        "expected_io_epoch": null,
+        "sender": { "windowFocused": false },
+        "expected": { "ok": true }
+      },
+      {
+        "id": "household-view-while-locked",
+        "channel": "desktop.household_view",
+        "expected_io_epoch": null,
+        "state": { "lockState": "locked" },
+        "expected": { "ok": false, "reason": "device_locked" }
+      },
+      {
+        "id": "household-view-while-lock-unknown",
+        "channel": "desktop.household_view",
+        "expected_io_epoch": null,
+        "state": { "lockState": "unknown" },
+        "expected": { "ok": false, "reason": "device_locked" }
+      },
+      {
+        "id": "household-category-from-hidden-window",
+        "refs": ["ADR 0162"],
+        "channel": "desktop.household_category",
+        "expected_io_epoch": null,
+        "sender": { "windowFocused": false },
+        "expected": { "ok": false, "reason": "screen_operation_required" }
+      },
+      {
+        "id": "household-category-while-locked",
+        "channel": "desktop.household_category",
+        "expected_io_epoch": null,
+        "state": { "lockState": "locked" },
+        "expected": { "ok": false, "reason": "device_locked" }
+      },
+      {
+        "id": "household-category-while-stopped",
+        "refs": ["ADR 0162"],
+        "channel": "desktop.household_category",
+        "expected_io_epoch": null,
+        "state": { "stopScope": "local" },
+        "expected": { "ok": true }
+      },
+      {
+        "id": "household-delete-from-hidden-window",
+        "channel": "desktop.household_delete",
+        "expected_io_epoch": null,
+        "sender": { "windowFocused": false },
+        "expected": { "ok": false, "reason": "screen_operation_required" }
+      },
+      {
+        "id": "household-delete-while-lock-unknown",
+        "channel": "desktop.household_delete",
+        "expected_io_epoch": null,
+        "state": { "lockState": "unknown" },
+        "expected": { "ok": false, "reason": "device_locked" }
+      },
+      {
+        "id": "household-delete-focused",
+        "channel": "desktop.household_delete",
+        "expected_io_epoch": null,
+        "expected": { "ok": true }
+      },
+      {
+        "id": "household-delete-untrusted",
+        "channel": "desktop.household_delete",
+        "expected_io_epoch": null,
+        "sender": { "trustedSender": false },
+        "expected": { "ok": false, "reason": "untrusted_sender" }
       }
     ]
   },

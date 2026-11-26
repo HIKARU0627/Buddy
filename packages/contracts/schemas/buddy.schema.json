@@ -13150,9 +13150,12 @@
         "desktop.connection_targets_discover",
         "desktop.auto_actions_list",
         "desktop.auto_action_undo",
-        "desktop.safety_resume"
+        "desktop.safety_resume",
+        "desktop.household_view",
+        "desktop.household_category",
+        "desktop.household_delete"
       ],
-      "description": "UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014・0025）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。中枢との接続・ペアリングは用途別のチャネルだけで、要求の宛先・本文を Renderer が決められない。音声レンダラーの IPC（B05）は別に定める。 発言・承認表示の準備・承認・取消・照合は用途別のチャネルで、操作は main が持つ参照（ref）で指す（B04-05、ADR 0031）。 キャンバスを前に出す（canvas_summon）は状態の層と入力バーからだけ使う（UI-02、ADR 0032）。状態の層のパネルを出す・しまう（status_panel）は状態の層からだけ使う（UI-04、ADR 0032）。キャンバスのユーザーの操作（canvas_user_op）はキャンバスの窓からだけ、キャンバスが前に出ている間だけ使う（UI-06、ADR 0032）。 予算の確認（超過枠の承認・見送り budget_overage_decide、M 超過の確認 budget_overrun_review、不明な費用の手での精算 budget_manual_settle）は状態の層からだけ使う。承認・確認・精算は main の OS の確認ダイアログを 1 回だけ挟み、画面が持つのは main が作る参照（ref）だけ（B07-05、ADR 0039）。 音声（B05-06、ADR 0050）: 音声の状態の取得（get_voice）・呼びかけなしで音声の会話を始める「続ける」（voice_continue）・外部への送信の同意の取り消し（voice_consent_revoke）は状態の層からだけ使う。外部への送信の同意は main の OS の確認ダイアログで 1 回だけ取り、画面は同意を作れない。音声レンダラーへの IPC は VoiceRendererRequest で、このチャネルとは別。 気づき（B11-05、ADR 0132）: 一覧の取得（candidates_list）と状態の変更（candidate_state。開く・今回は扱わない・再通知）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バーは使えない。候補は main が作る参照（ref）で指し、候補 ID・expected_state・接続範囲は main が持つ。 連携の接続（B08-02 P3・B09-05、ADR 0142）: 一覧の取得（connections_list）と取得範囲の変更（connection_targets_update）は中枢の画面（接続・端末）でだけ使い、キャンバス・入力バーは使えない。接続は main が作る参照（ref）で指し、接続 ID・permission_revision は main が持つ。画面が送れるのは今の保存値と、この世代で中枢から読んだ選べる対象（connection_targets_discover）のうちの選択と、期間・添付の範囲だけ（ADR 0145）。選べる対象の読み取りは提供元への読み取りを伴うので、中枢の画面のロック解除済みの画面操作だけ。 自動実行（B13-05、ADR 0154）: 一覧と安全停止の状態の取得（auto_actions_list）・取り消し（auto_action_undo）・安全停止の解除（safety_resume）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バーは使えない。自動実行した操作と安全停止の状態は main が作る参照（ref）で指し、操作 ID・state_revision・safety_revision・接続範囲は main が持つ。"
+      "description": "UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014・0025）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。中枢との接続・ペアリングは用途別のチャネルだけで、要求の宛先・本文を Renderer が決められない。音声レンダラーの IPC（B05）は別に定める。 発言・承認表示の準備・承認・取消・照合は用途別のチャネルで、操作は main が持つ参照（ref）で指す（B04-05、ADR 0031）。 キャンバスを前に出す（canvas_summon）は状態の層と入力バーからだけ使う（UI-02、ADR 0032）。状態の層のパネルを出す・しまう（status_panel）は状態の層からだけ使う（UI-04、ADR 0032）。キャンバスのユーザーの操作（canvas_user_op）はキャンバスの窓からだけ、キャンバスが前に出ている間だけ使う（UI-06、ADR 0032）。 予算の確認（超過枠の承認・見送り budget_overage_decide、M 超過の確認 budget_overrun_review、不明な費用の手での精算 budget_manual_settle）は状態の層からだけ使う。承認・確認・精算は main の OS の確認ダイアログを 1 回だけ挟み、画面が持つのは main が作る参照（ref）だけ（B07-05、ADR 0039）。 音声（B05-06、ADR 0050）: 音声の状態の取得（get_voice）・呼びかけなしで音声の会話を始める「続ける」（voice_continue）・外部への送信の同意の取り消し（voice_consent_revoke）は状態の層からだけ使う。外部への送信の同意は main の OS の確認ダイアログで 1 回だけ取り、画面は同意を作れない。音声レンダラーへの IPC は VoiceRendererRequest で、このチャネルとは別。 気づき（B11-05、ADR 0132）: 一覧の取得（candidates_list）と状態の変更（candidate_state。開く・今回は扱わない・再通知）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バーは使えない。候補は main が作る参照（ref）で指し、候補 ID・expected_state・接続範囲は main が持つ。 連携の接続（B08-02 P3・B09-05、ADR 0142）: 一覧の取得（connections_list）と取得範囲の変更（connection_targets_update）は中枢の画面（接続・端末）でだけ使い、キャンバス・入力バーは使えない。接続は main が作る参照（ref）で指し、接続 ID・permission_revision は main が持つ。画面が送れるのは今の保存値と、この世代で中枢から読んだ選べる対象（connection_targets_discover）のうちの選択と、期間・添付の範囲だけ（ADR 0145）。選べる対象の読み取りは提供元への読み取りを伴うので、中枢の画面のロック解除済みの画面操作だけ。 自動実行（B13-05、ADR 0154）: 一覧と安全停止の状態の取得（auto_actions_list）・取り消し（auto_action_undo）・安全停止の解除（safety_resume）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バーは使えない。自動実行した操作と安全停止の状態は main が作る参照（ref）で指し、操作 ID・state_revision・safety_revision・接続範囲は main が持つ。 家計簿（ADR 0162）: 月ごとの合計と 1 か月の記録の取得（household_view）・分類の変更（household_category）・削除（household_delete）は従来の窓（標準の端末画面）から使い、キャンバス・入力バーは使えない。記録は main が作る参照（ref）で指し、記録の ID・内容版・接続範囲は main が持つ。"
     },
     "DesktopIpcRequest": {
       "oneOf": [
@@ -14189,6 +14192,92 @@
           "required": ["channel", "request_id", "payload"],
           "additionalProperties": false,
           "description": "安全停止を解除する（B13-05、ADR 0154。設計 03 取り消しと安全停止）。ref は画面が表示している安全停止の状態の参照で、停止の版が変わっていれば main は送らずに preview_stale を返す。ロック解除済みの画面操作だけ。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "channel": {
+              "type": "string",
+              "const": "desktop.household_view"
+            },
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "month": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/YearMonth"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "見る月。null は中枢が決めた今月。"
+                }
+              },
+              "required": ["month"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["channel", "request_id", "payload"],
+          "additionalProperties": false,
+          "description": "家計簿の月ごとの合計と、指定した月の記録と集計を中枢から読み直す（ADR 0161・0162）。ロック解除済みのときだけ（金額・店名は内容なので、前面は求めない）。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "channel": {
+              "type": "string",
+              "const": "desktop.household_category"
+            },
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "ref": {
+                  "$ref": "#/$defs/Id"
+                },
+                "category": {
+                  "$ref": "#/$defs/HouseholdCategoryId"
+                }
+              },
+              "required": ["ref", "category"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["channel", "request_id", "payload"],
+          "additionalProperties": false,
+          "description": "家計の記録の分類を変える（ADR 0161・0162）。ref は記録の行の参照。main は読んだ内容版で照合して送る。ロック解除済みの画面操作だけ。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "channel": {
+              "type": "string",
+              "const": "desktop.household_delete"
+            },
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "ref": {
+                  "$ref": "#/$defs/Id"
+                }
+              },
+              "required": ["ref"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["channel", "request_id", "payload"],
+          "additionalProperties": false,
+          "description": "家計の記録を消す（ADR 0161・0162）。ref は記録の行の参照。画面の中で一度確かめてから送る。同じ通知・同じ行からは作り直さない。ロック解除済みの画面操作だけ。"
         }
       ],
       "description": "UI レンダラーから main への要求（設計 10 §1、07 §2、02 停止、ADR 0014）。main は受け取ったら最初にこの定義で検査し、未知のチャネル・未知の項目・型違いは invalid_request で拒否する。引数のない要求の payload は null。端末 ID は名乗れず、送信元は main が webContents から判定する。"
@@ -15514,6 +15603,32 @@
           "type": "object",
           "properties": {
             "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "channel": {
+              "type": "string",
+              "enum": [
+                "desktop.household_view",
+                "desktop.household_category",
+                "desktop.household_delete"
+              ]
+            },
+            "outcome": {
+              "type": "string",
+              "const": "ok"
+            },
+            "household": {
+              "$ref": "#/$defs/DesktopHouseholdView"
+            }
+          },
+          "required": ["request_id", "channel", "outcome", "household"],
+          "additionalProperties": false,
+          "description": "受け付けた。家計簿の表示用の値を返す（変更・削除の後は読み直した値。読み直せなかったときは fetch が stale）。ADR 0162。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "request_id": {
               "anyOf": [
                 {
                   "$ref": "#/$defs/Id"
@@ -16116,6 +16231,202 @@
       ],
       "additionalProperties": false,
       "description": "自動実行した操作の 1 行の表示用の値（B13-05、ADR 0154）。操作 ID・state_revision・方針の版・取り消しの対象の内容版は main の中にだけ持ち、画面へ渡さない。本文は中枢も返さない。"
+    },
+    "DesktopHouseholdEntry": {
+      "type": "object",
+      "properties": {
+        "ref": {
+          "$ref": "#/$defs/Id",
+          "description": "main が作る参照（記録の ID ではない）。同じ記録のあいだ変えず、世代（ロック・切断）が進んだら捨てる。"
+        },
+        "position": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "中枢が並べた順（0 から。利用した日・時刻の新しい順）。"
+        },
+        "source_kind": {
+          "type": "string",
+          "enum": ["mail_notice", "csv_import", "manual"]
+        },
+        "direction": {
+          "$ref": "#/$defs/HouseholdDirection"
+        },
+        "amount_yen": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9999999999
+        },
+        "occurred_on": {
+          "type": "string",
+          "pattern": "^20[0-9]{2}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$"
+        },
+        "occurred_time": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "category": {
+          "$ref": "#/$defs/HouseholdCategoryId"
+        },
+        "merchant": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "memo": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "payment": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 40
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "delivery_unknown": {
+          "type": "boolean",
+          "description": "この記録の変更・削除の結果が分からない。次に読み直せるまで操作させない（自動では送り直さない）。"
+        }
+      },
+      "required": [
+        "ref",
+        "position",
+        "source_kind",
+        "direction",
+        "amount_yen",
+        "occurred_on",
+        "occurred_time",
+        "category",
+        "merchant",
+        "memo",
+        "payment",
+        "delivery_unknown"
+      ],
+      "additionalProperties": false,
+      "description": "家計の記録 1 行の表示用の値（ADR 0162）。記録の ID・内容版は main の中にだけ持ち、画面へ渡さない。"
+    },
+    "DesktopHouseholdView": {
+      "type": "object",
+      "properties": {
+        "fetch": {
+          "type": "string",
+          "enum": ["loaded", "stale", "unavailable"],
+          "description": "取得の状態。loaded は直近の読み取りが成功、stale は直近の読み取りに失敗して前に読めた値を出している、unavailable はこの世代でまだ読めていない（「記録なし」と区別する）。"
+        },
+        "fetched_at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UtcTime"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "最後に読めた時刻（main の時計）。読めていなければ null。"
+        },
+        "current_month": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/YearMonth"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "中枢が本人のタイムゾーンで決めた今月。読めていなければ null。"
+        },
+        "months": {
+          "type": "array",
+          "maxItems": 12,
+          "items": {
+            "$ref": "#/$defs/HouseholdMonthTotals"
+          },
+          "description": "今月から 11 か月前までの月ごとの合計（新しい月から）。読めていなければ空。"
+        },
+        "month": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/YearMonth"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "記録を出している月。読めていなければ null。"
+        },
+        "entries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DesktopHouseholdEntry"
+          }
+        },
+        "summary": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HouseholdMonthSummary"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "記録を出している月の集計。読めていなければ null。"
+        },
+        "unreadable": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "記録を出している月の、復号できなかった記録の数（集計に入れていない）。"
+        },
+        "truncated": {
+          "type": "boolean",
+          "description": "一度に読む件数の上限で記録を切ったか（月ごとの合計か、出している月）。"
+        },
+        "list_seq": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "main が付ける通し番号。画面はこれより小さい番号の応答を反映しない（ADR 0026 と同じ）。"
+        }
+      },
+      "required": [
+        "fetch",
+        "fetched_at",
+        "current_month",
+        "months",
+        "month",
+        "entries",
+        "summary",
+        "unreadable",
+        "truncated",
+        "list_seq"
+      ],
+      "additionalProperties": false,
+      "description": "家計簿の表示用の値（ADR 0162）。月ごとの合計と、1 か月の記録と集計。記録の ID・内容版・出所の識別子は含めない。"
     },
     "DesktopSafetyView": {
       "type": "object",

@@ -134,9 +134,11 @@ test('a household candidate from the last turn offers to open the household form
     householdCandidate: {
       kind: 'draft',
       draft: {
+        direction: 'expense',
         amount_yen: 1280,
         occurred_on: '2030-11-25',
         merchant: 'コンビニ',
+        memo: null,
         payment: null,
       },
     },
@@ -164,6 +166,51 @@ test('a household candidate from the last turn offers to open the household form
   );
   // 家計簿の口がなければ出さない。
   assert.doesNotMatch(render([], { state }), /家計簿の記録の候補/u);
+});
+
+test('an income candidate is written as income and says it is recorded as income once added', () => {
+  const state: WorkViewState = {
+    ...INITIAL_WORK_STATE,
+    householdCandidate: {
+      kind: 'draft',
+      draft: {
+        direction: 'income',
+        amount_yen: 250000,
+        occurred_on: '2030-11-25',
+        merchant: null,
+        memo: '給料',
+        payment: null,
+      },
+    },
+  };
+  const html = render([], {
+    state,
+    household: { canOpen: true, open: () => undefined },
+  });
+  assert.match(html, /収入 250,000\u00a0円・給料・11\u00a0月\u00a025\u00a0日/u);
+  assert.match(
+    html,
+    /まだ記録していません。家計簿の入力欄で中身を確かめてから「足す」を押すと、収入として記録します。/u,
+  );
+  assert.doesNotMatch(html, /支出 250,000/u);
+  assert.deepEqual(buttons(html), ['閉じる', '家計簿の入力欄で開く', '送る']);
+});
+
+test('an utterance with both spending and income says the direction is unclear and offers only closing', () => {
+  const state: WorkViewState = {
+    ...INITIAL_WORK_STATE,
+    householdCandidate: { kind: 'unreadable', reason: 'direction_unclear' },
+  };
+  const html = render([], {
+    state,
+    household: { canOpen: true, open: () => undefined },
+  });
+  assert.match(
+    html,
+    /支出か収入かを決められないため、家計簿の記録の候補にしていません。/u,
+  );
+  assert.doesNotMatch(html, /direction_unclear/u);
+  assert.deepEqual(buttons(html), ['閉じる', '送る']);
 });
 
 test('an unreadable household utterance says why and offers only closing', () => {

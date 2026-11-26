@@ -28,6 +28,7 @@ import type {
 import {
   HouseholdMerchantKey,
   changeHouseholdCategory,
+  changeHouseholdContent,
   deleteHouseholdEntry,
   householdRevisionNumber,
   nextHouseholdRevision,
@@ -281,6 +282,145 @@ test('分類の変更: 向きの違う分類・古い内容版・知らない分
   assert.equal(changed.outcome, 'changed');
   if (changed.outcome !== 'changed') throw new Error('unreachable');
   assert.equal(changed.rule_learned, false);
+});
+
+// 店名に覚えた分類（なければ null）。保存層へ直接聞き、記録の当て方（rule_applied）を経由しない。
+async function ruleOf(
+  ports: HouseholdPorts,
+  merchant: string,
+): Promise<string | null> {
+  const key = HouseholdMerchantKey.fromDataKey(ports.dataKey).merchant(
+    merchant,
+  );
+  assert.notEqual(key, null);
+  const got = await ports.client.household({
+    kind: 'household.rule_get',
+    merchant_key: key as string,
+  });
+  assert.equal(got.ok, true);
+  if (!got.ok) throw new Error('unreachable');
+  return got.value === null ? null : got.value.category;
+}
+
+// 本人の規則「合成フリマ → 日用品」を作る（支出の記録の分類を直す）。
+async function learnExpenseRule(ports: HouseholdPorts): Promise<void> {
+  const id = await created(
+    ports,
+    mail('rule-source'),
+    expense({ merchant: '合成フリマ' }),
+  );
+  const changed = await changeHouseholdCategory(ports, id, '1', 'daily_goods');
+  assert.equal(changed.outcome, 'changed');
+  assert.equal(await ruleOf(ports, '合成フリマ'), 'daily_goods');
+}
+
+test('規則の向き: 収入・振替の記録の分類を直しても、同じ店名の支出の規則を上書きしない（ADR 0175）', async (t) => {
+  const { ports } = withDb(t);
+  await learnExpenseRule(ports);
+  for (const [direction, category] of [
+    ['income', 'income'],
+    ['transfer', 'transfer'],
+  ] as const) {
+    const id = await created(
+      ports,
+      mail(`other-${direction}`),
+      expense({ direction, category, merchant: '合成フリマ' }),
+    );
+    const changed = await changeHouseholdCategory(ports, id, '1', category);
+    assert.deepEqual(changed, {
+      outcome: 'changed',
+      entry_id: id,
+      content_revision: '2',
+      rule_learned: false,
+    });
+    assert.equal(await ruleOf(ports, '合成フリマ'), 'daily_goods', direction);
+  }
+  // 規則が残っているので、次の同じ店名の支出の利用には今までどおり当たる。
+  const next = await recordHouseholdEntry(
+    ports,
+    mail('next'),
+    expense({ merchant: '合成フリマ' }),
+  );
+  assert.equal(next.outcome === 'created' && next.rule_applied, true);
+});
+
+test('規則の向き: 収入・振替の記録の中身を直しても、支出の規則を上書きせず、収入・振替の規則も作らない（ADR 0175）', async (t) => {
+  const { ports } = withDb(t);
+  await learnExpenseRule(ports);
+  for (const [direction, category] of [
+    ['income', 'income'],
+    ['transfer', 'transfer'],
+  ] as const) {
+    const merchant = '合成フリマ';
+    const entry = expense({ direction, category, merchant });
+    const id = await created(ports, mail(`edit-${direction}`), entry);
+    const changed = await changeHouseholdContent(ports, id, '1', {
+      ...entry,
+      amount_yen: 3000,
+    });
+    assert.deepEqual(changed, {
+      outcome: 'changed',
+      entry_id: id,
+      content_revision: '2',
+      rule_learned: false,
+    });
+    assert.equal(await ruleOf(ports, '合成フリマ'), 'daily_goods', direction);
+  }
+  // 収入だけの店名にも、収入の規則は作らない。
+  const only = expense({
+    direction: 'income',
+    category: 'income',
+    merchant: '合成の勤め先',
+  });
+  const id = await created(ports, mail('income-only'), only);
+  const changed = await changeHouseholdContent(ports, id, '1', {
+    ...only,
+    amount_yen: 250000,
+  });
+  assert.equal(changed.outcome === 'changed' && changed.rule_learned, false);
+  assert.equal(await ruleOf(ports, '合成の勤め先'), null);
+});
+
+test('規則の向き: 支出の記録の中身の変更は、今までどおり規則を覚える。未分類へ直したときは覚えない（ADR 0175）', async (t) => {
+  const { ports } = withDb(t);
+  const entry = expense({ merchant: '合成の本屋', category: 'hobby' });
+  const id = await created(ports, mail('book'), entry);
+  const changed = await changeHouseholdContent(ports, id, '1', {
+    ...entry,
+    category: 'education',
+  });
+  assert.equal(changed.outcome === 'changed' && changed.rule_learned, true);
+  assert.equal(await ruleOf(ports, '合成の本屋'), 'education');
+  const other = expense({ merchant: '合成の薬局', category: 'hobby' });
+  const otherId = await created(ports, mail('drug'), other);
+  const plain = await changeHouseholdContent(ports, otherId, '1', {
+    ...other,
+    category: 'uncategorized',
+  });
+  assert.equal(plain.outcome === 'changed' && plain.rule_learned, false);
+  assert.equal(await ruleOf(ports, '合成の薬局'), null);
+});
+
+test('規則の向き: 支出の記録の分類を未分類へ直すと、その店名の規則を未分類で上書きし、次の利用に分類を当てない（ADR 0158・0175）', async (t) => {
+  const { ports } = withDb(t);
+  const entry = expense({
+    merchant: '合成の雑貨店',
+    category: 'uncategorized',
+  });
+  const id = await created(ports, mail('goods-1'), entry);
+  const learned = await changeHouseholdCategory(ports, id, '1', 'daily_goods');
+  assert.equal(learned.outcome === 'changed' && learned.rule_learned, true);
+  assert.equal(await ruleOf(ports, '合成の雑貨店'), 'daily_goods');
+  // 本人が未分類へ戻すと、覚えた分類を未分類で上書きする（次から自動では分類しない）。
+  const reset = await changeHouseholdCategory(ports, id, '2', 'uncategorized');
+  assert.equal(reset.outcome === 'changed' && reset.rule_learned, true);
+  assert.equal(await ruleOf(ports, '合成の雑貨店'), 'uncategorized');
+  const nextId = await created(ports, mail('goods-2'), entry);
+  const view = await month(ports, '2030-10');
+  assert.equal(
+    view.entries.find((row) => row.entry_id === nextId)?.content.category,
+    'uncategorized',
+  );
 });
 
 test('削除: 記録は集計から消え、同じ出所からは作り直さない。消した記録は変えられない', async (t) => {

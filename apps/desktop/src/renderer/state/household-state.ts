@@ -98,6 +98,10 @@ export const HOUSEHOLD_LABELS = {
     'メールにも書き出しにもない支出（現金など）や収入を足します。カード番号・口座番号は入れないでください。',
   addFromConversationNote:
     '会話の一言から読んだ値を入れました。まだ記録していません。金額・日付・店名を確かめ、分類を選んでから「足す」を押してください。',
+  addFromConversationIncomeNote:
+    '会話の一言から読んだ値を、収入として入れました。まだ記録していません。向き・金額・日付・メモを確かめてから「足す」を押してください。',
+  addFromConversationTransferNote:
+    '会話の一言から読んだ値を入れました。まだ記録していません。向きは振替です。金額・日付を確かめてから「足す」を押してください。',
   addSubmit: '足す',
   adding: '足しています…',
   addDirection: '向き',
@@ -146,6 +150,20 @@ export interface ManualEntryInput {
   readonly merchant: string;
   readonly memo: string;
   readonly payment: string;
+}
+
+/**
+ * 会話の一言の候補で開いた手入力の欄の頭の説明（ADR 0171・0174）。候補の向きではなく今の入力の向きで選ぶ。収入の候補で
+ * 開いた後に本人が向きを支出へ変えたら、支出の説明（分類を選ぶ）に変える。
+ */
+export function addFromConversationNote(
+  direction: ManualEntryInput['direction'],
+): string {
+  if (direction === 'income')
+    return HOUSEHOLD_LABELS.addFromConversationIncomeNote;
+  if (direction === 'transfer')
+    return HOUSEHOLD_LABELS.addFromConversationTransferNote;
+  return HOUSEHOLD_LABELS.addFromConversationNote;
 }
 
 type ManualEntry = Extract<

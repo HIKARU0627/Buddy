@@ -21,6 +21,7 @@ import {
   FETCH_LABELS,
   ADD_PLACE,
   BUDGET_PLACE,
+  addFromConversationNote,
   EXPORT_PLACE,
   EXPORT_RANGES,
   HOUSEHOLD_LABELS,
@@ -429,7 +430,9 @@ function EntryForm({
 }: {
   readonly idPrefix: string;
   readonly title: string;
-  readonly note: string;
+  // 欄の頭の説明。今の入力の向きで変わるもの（会話の一言の候補で開いた欄）は、向きから選ぶ関数で渡す。
+  readonly note:
+    string | ((direction: ManualEntryInput['direction']) => string);
   readonly initial: ManualEntryInput;
   readonly lockDirection: boolean;
   // この欄の送り中か・何かの送り中か。
@@ -475,7 +478,9 @@ function EntryForm({
       aria-label={title}
       className="flex flex-col gap-2 rounded-md border border-separator p-3"
     >
-      <p className="text-xs text-muted">{note}</p>
+      <p className="text-xs text-muted">
+        {typeof note === 'string' ? note : note(input.direction)}
+      </p>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <label
           htmlFor={`${idPrefix}-direction`}
@@ -563,7 +568,7 @@ function EntryForm({
   );
 }
 
-// 手入力の欄（ADR 0167）。会話の一言からの候補（ADR 0171）で開いたときは、その値を入れ、金額の欄へフォーカスを移す
+// 手入力の欄（ADR 0167）。会話の一言からの候補（ADR 0171・0174）で開いたときは、その値を入れ、金額の欄へフォーカスを移す
 // （会話の欄から離れた家計簿の欄を見えるところへ出す）。
 function AddEntryForm({
   state,
@@ -587,9 +592,9 @@ function AddEntryForm({
         idPrefix="household-add"
         title={HOUSEHOLD_LABELS.addTitle}
         note={
-          prefilled
-            ? HOUSEHOLD_LABELS.addFromConversationNote
-            : HOUSEHOLD_LABELS.addNote
+          state.addPrefill === null
+            ? HOUSEHOLD_LABELS.addNote
+            : addFromConversationNote
         }
         initial={state.addPrefill ?? EMPTY_INPUT}
         lockDirection={false}

@@ -44,6 +44,7 @@ import type {
 import {
   HOUSEHOLD_CANDIDATE_LABELS,
   HOUSEHOLD_UNREADABLE_TEXT,
+  householdCandidateNote,
   householdCandidateText,
 } from '../../state/household-candidate.js';
 
@@ -112,14 +113,14 @@ export function actionLabel(verb: string, entry: DesktopOperationEntry) {
   return `${verb}（${rowTitle(entry)}）`;
 }
 
-// 家計簿の入力欄を開く口（ADR 0171）。App が家計簿の欄の状態から渡す。
+// 家計簿の入力欄を開く口（ADR 0171・0174）。App が家計簿の欄の状態から渡す。
 export interface HouseholdCandidateLink {
   // 今、家計簿の入力欄を開けるか。
   readonly canOpen: boolean;
   readonly open: (draft: HouseholdUtteranceDraft) => void;
 }
 
-// 会話の一言から読んだ家計の記録の候補（ADR 0171）。記録ではなく、「家計簿の入力欄で開く」で手入力の欄に値を入れるだけ。
+// 会話の一言から読んだ家計の記録の候補（支出か収入。ADR 0171・0174）。記録ではなく、「家計簿の入力欄で開く」で手入力の欄に値を入れるだけ。
 // 読めなかったときは、理由と家計簿の欄から入れることを書く。
 function HouseholdCandidateCard({
   state,
@@ -148,7 +149,7 @@ function HouseholdCandidateCard({
           </span>
           <p className="text-xs text-muted">
             {link.canOpen
-              ? HOUSEHOLD_CANDIDATE_LABELS.note
+              ? householdCandidateNote(candidate.draft)
               : HOUSEHOLD_CANDIDATE_LABELS.cannotOpen}
           </p>
         </>

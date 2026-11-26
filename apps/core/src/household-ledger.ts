@@ -18,6 +18,7 @@ import {
   householdMonthOf,
   householdMonthSpan,
   householdRuleApplies,
+  householdRuleLearnable,
   householdSourceKeyMaterial,
   normalizeHouseholdMerchant,
   summarizeHouseholdMonth,
@@ -400,9 +401,15 @@ export async function changeHouseholdCategory(
   });
   if (!updated.ok)
     return { outcome: updated.outcome, reasons: updated.reasons };
-  // 店名があれば本人の規則として覚える（次から同じ店の利用に当てる）。覚えられなくても分類の変更は済んでいる。
+  // 支出の記録に店名があれば本人の規則として覚える（次から同じ店の利用に当てる。収入・振替は覚えない。ADR 0175）。
+  // 支出を未分類へ直したときも書く（覚えた分類を未分類で上書きし、次から自動では分類しない。ADR 0158 からの動き）。
+  // 覚えられなくても分類の変更は済んでいる。
   let learned = false;
-  if (content.merchant !== null) {
+  if (
+    content.merchant !== null &&
+    (householdRuleLearnable(content.direction, category) ||
+      (content.direction === 'expense' && category === 'uncategorized'))
+  ) {
     const merchantKey = HouseholdMerchantKey.fromDataKey(
       ports.dataKey,
     ).merchant(content.merchant);
@@ -427,7 +434,7 @@ export async function changeHouseholdCategory(
 
 // 本人が記録の中身（金額・日付・時刻・店名・メモ・支払い手段・分類）を直す（ADR 0169）。今の中身を開いて向きが同じことを
 // 確かめ、新しい内容版で暗号化して差し替える。向きは変えられない（向きが違えば 422 にする。向きを変えたいときは削除して
-// 足し直す）。店名があり分類が未分類でなければ、本人の規則として覚える（分類の変更と同じ）。
+// 足し直す）。支出の記録で店名があり分類が未分類でなければ、本人の規則として覚える（分類の変更と同じ。収入・振替は覚えない。ADR 0175）。
 export async function changeHouseholdContent(
   ports: HouseholdPorts,
   entryId: string,
@@ -468,7 +475,10 @@ export async function changeHouseholdContent(
     return { outcome: updated.outcome, reasons: updated.reasons };
   // 覚えられなくても中身の変更は済んでいる。
   let learned = false;
-  if (next.merchant !== null && next.category !== 'uncategorized') {
+  if (
+    next.merchant !== null &&
+    householdRuleLearnable(next.direction, next.category)
+  ) {
     const merchantKey = HouseholdMerchantKey.fromDataKey(
       ports.dataKey,
     ).merchant(next.merchant);

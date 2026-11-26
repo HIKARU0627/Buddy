@@ -9,6 +9,7 @@ import {
   householdMonthShift,
   householdMonthSpan,
   householdRuleApplies,
+  householdRuleLearnable,
   householdRuleWritable,
   householdSourceKeyMaterial,
   isHouseholdDate,
@@ -251,6 +252,17 @@ test('店名の正規化と規則: 全角英数・大文字・空白をそろえ
   assert.equal(householdRuleApplies('expense', 'food'), true);
   assert.equal(householdRuleApplies('income', 'food'), false);
   assert.equal(householdRuleApplies('expense', 'unknown'), false);
+});
+
+test('規則を覚えてよい記録: 支出の記録で、支出の分類（未分類を除く）のときだけ。収入・振替・向きの違う分類・知らない分類は覚えない（ADR 0175）', () => {
+  assert.equal(householdRuleLearnable('expense', 'food'), true);
+  assert.equal(householdRuleLearnable('expense', 'other'), true);
+  assert.equal(householdRuleLearnable('expense', 'uncategorized'), false);
+  assert.equal(householdRuleLearnable('income', 'income'), false);
+  assert.equal(householdRuleLearnable('transfer', 'transfer'), false);
+  assert.equal(householdRuleLearnable('expense', 'income'), false);
+  assert.equal(householdRuleLearnable('expense', 'transfer'), false);
+  assert.equal(householdRuleLearnable('expense', 'unknown'), false);
 });
 
 test('月をずらす: 年をまたいでさかのぼり・進み、2000〜2099 年の外と形の誤りは null（ADR 0161）', () => {

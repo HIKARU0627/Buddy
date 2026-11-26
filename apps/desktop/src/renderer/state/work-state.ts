@@ -382,7 +382,7 @@ export interface WorkViewState {
   readonly notices: Readonly<Record<string, Notice>>;
   // 取消・照合を送って結果を待っている操作の参照。
   readonly busy: readonly string[];
-  // 最後に受け付けた発言から読んだ家計の記録の候補（ADR 0171）。記録ではなく、画面のメモリーにだけ置く。
+  // 最後に受け付けた発言から読んだ家計の記録の候補（支出か収入。ADR 0171・0174）。記録ではなく、画面のメモリーにだけ置く。
   readonly householdCandidate: HouseholdCandidate | null;
 }
 

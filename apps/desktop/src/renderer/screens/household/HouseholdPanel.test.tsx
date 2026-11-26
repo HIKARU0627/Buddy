@@ -11,7 +11,10 @@ import type {
   DesktopHouseholdView,
 } from '@buddy/contracts';
 import { AppProviders } from '../../app/AppProviders.js';
-import { INITIAL_HOUSEHOLD_STATE } from '../../state/household-state.js';
+import {
+  INITIAL_HOUSEHOLD_STATE,
+  addFromConversationNote,
+} from '../../state/household-state.js';
 import type {
   HouseholdActions,
   HouseholdViewState,
@@ -452,6 +455,78 @@ test('the add form opened from a conversation candidate holds its values and say
   );
   assert.doesNotMatch(text(html), /カード番号・口座番号は入れないでください/u);
   assert(buttons(html).includes('足す'));
+});
+
+test('the add form opened from an income candidate is set to income with the income category and the source in the memo', () => {
+  const html = panel({
+    view: view([entry(0)]),
+    seq: 2,
+    adding: true,
+    addPrefill: {
+      direction: 'income',
+      amount: '250000',
+      date: '2030-11-25',
+      time: '',
+      category: 'income',
+      merchant: '',
+      memo: '給料',
+      payment: '',
+    },
+  });
+  assert.match(
+    html,
+    /<select id="household-add-direction"[^>]*>[^]*?<option value="income" selected="">収入<\/option>/u,
+  );
+  // 収入の分類は「収入」だけなので、分類の選択は押せない。
+  assert.match(
+    html,
+    /<select id="household-add-category"[^>]*disabled=""[^>]*><option value="income" selected="">収入<\/option><\/select>/u,
+  );
+  assert.match(html, /id="household-add-amount"[^>]*value="250000"/u);
+  assert.match(html, /id="household-add-date"[^>]*value="2030-11-25"/u);
+  assert.match(html, /id="household-add-memo"[^>]*value="給料"/u);
+  assert.match(html, /id="household-add-merchant"[^>]*value=""/u);
+  assert.match(
+    text(html),
+    /会話の一言から読んだ値を、収入として入れました。まだ記録していません。/u,
+  );
+  assert.doesNotMatch(text(html), /分類を選んでから/u);
+});
+
+test('the note of the form opened from a conversation candidate follows the current direction, not the candidate', () => {
+  // 欄の頭の説明は今の入力の向きから選ぶ。収入の候補で開いた後に向きを支出へ変えたら、支出の説明になる
+  // （向きを変える操作そのものは HouseholdPanel.dom.test.tsx で確かめる）。
+  assert.equal(
+    addFromConversationNote('income'),
+    '会話の一言から読んだ値を、収入として入れました。まだ記録していません。向き・金額・日付・メモを確かめてから「足す」を押してください。',
+  );
+  assert.equal(
+    addFromConversationNote('expense'),
+    '会話の一言から読んだ値を入れました。まだ記録していません。金額・日付・店名を確かめ、分類を選んでから「足す」を押してください。',
+  );
+  assert.equal(
+    addFromConversationNote('transfer'),
+    '会話の一言から読んだ値を入れました。まだ記録していません。向きは振替です。金額・日付を確かめてから「足す」を押してください。',
+  );
+  // 候補の向きが支出でも、入力の向きが振替なら振替の説明を出す（候補の向きでは選ばない）。
+  const html = panel({
+    view: view([entry(0)]),
+    seq: 2,
+    adding: true,
+    addPrefill: {
+      direction: 'transfer',
+      amount: '30000',
+      date: '2030-11-26',
+      time: '',
+      category: 'transfer',
+      merchant: '',
+      memo: '',
+      payment: '',
+    },
+  });
+  assert.match(text(html), /向きは振替です。/u);
+  assert.doesNotMatch(text(html), /収入として入れました/u);
+  assert.doesNotMatch(text(html), /分類を選んでから/u);
 });
 
 test('rows that look like the same purchase from two sources are marked, and the list says so', () => {

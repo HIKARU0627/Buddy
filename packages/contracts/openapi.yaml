@@ -1999,6 +1999,50 @@ paths:
           $ref: '#/components/responses/RateLimited'
         '503':
           $ref: '#/components/responses/Unavailable'
+  /v1/household/entries/{entry_id}/content:
+    post:
+      operationId: changeHouseholdEntry
+      summary: 家計の記録の中身の変更
+      description: 本人がロック解除済みの画面で、記録の金額・日付・時刻・店名・メモ・支払い手段・分類を直す。向きは変えられない（向きが今と違う・家計の記録の検査に合わない中身・存在しない記録は 422。向きを変えたいときは削除して足し直す）。内容版（expected_content_revision）が今と違う・削除済みは 409（画面は読み直す）。店名があり分類が未分類でなければ、本人の規則として覚える。データ鍵が読めない・成否が不明なときは 503 で、成功にも競合にも見せない（ADR 0158・0161・0169）。
+      x-buddy-core-checks:
+        - device_token
+        - home_network
+        - command_scope
+        - unlocked
+        - screen_operation
+      parameters:
+        - $ref: '#/components/parameters/HouseholdEntryId'
+        - $ref: '#/components/parameters/InputOrigin'
+        - $ref: '#/components/parameters/LockState'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas/buddy.schema.json#/$defs/HouseholdEntryContentChangeRequest
+      responses:
+        '200':
+          description: 直した後の記録（内容版は進んでいる）。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/HouseholdEntry
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/Gone'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
   /v1/household/entries/{entry_id}/delete:
     post:
       operationId: deleteHouseholdEntry

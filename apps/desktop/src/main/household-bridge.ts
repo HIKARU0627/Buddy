@@ -10,6 +10,7 @@
 // - 分類の変更・削除は、読んだ内容版を expected_content_revision にして送る。受け付けられたら読み直す。表示が古かった
 //   （409）は preview_stale、中枢が受け付けなかった（422 など）は core_rejected にして読み直す。結果が分からない
 //   （届いたか分からない・5xx・形の違う 2xx）は自動では送り直さず、その記録を次の読み取りまで操作させない。
+// - 中身の変更（ADR 0169）も同じ流れで、受け付けたらその記録の月（日付を直したときは直した後の月）を読み直す。
 // - 利用通知の取り込みの入・切（ADR 0163）は、月ごとの合計で読んだ設定の版で照合して送る。
 // - 世代（ロック・切断）: reset で記録・参照・保留を捨て、非同期の処理は await の後に世代を照合する（またいだ読み取りは
 //   反映しない。またいだ変更は結果不明として返す）。
@@ -539,6 +540,25 @@ export class HouseholdBridge {
     return fail(outcome.status === 409 ? 'preview_stale' : 'core_rejected');
   }
 
+  // 記録の中身（金額・日付・時刻・店名・メモ・支払い手段・分類）を直す（ADR 0169）。向きは変えられない（中枢が 422）。読んだ
+  // 内容版で照合して送り、受け付けたらその記録の月を読み直す。結果が分からないときは送り直さず、その記録を次の読み取りまで
+  // 操作させない。
+  edit(
+    ref: string,
+    entry: HouseholdManualEntry,
+  ): Promise<HouseholdOutcome<DesktopHouseholdView>> {
+    return this.#change(ref, (entryId, current) => ({
+      path: `/v1/household/entries/${encodeURIComponent(entryId)}/content`,
+      body: {
+        expected_content_revision: current.content_revision,
+        entry: { ...entry },
+      },
+      result: 'HouseholdEntry',
+      same: false,
+      month: entry.occurred_on.slice(0, 7),
+    }));
+  }
+
   remove(ref: string): Promise<HouseholdOutcome<DesktopHouseholdView>> {
     return this.#change(ref, (entryId, entry) => ({
       path: `/v1/household/entries/${encodeURIComponent(entryId)}/delete`,
@@ -555,10 +575,12 @@ export class HouseholdBridge {
       entry: HouseholdEntry,
     ) => {
       readonly path: string;
-      readonly body: Record<string, string>;
+      readonly body: Record<string, unknown>;
       readonly result: string;
       // 今と同じ値（送らずに今の値を返す）。
       readonly same: boolean;
+      // 受け付けた後に読み直す月。省略すると今出している月。
+      readonly month?: string;
     },
   ): Promise<HouseholdOutcome<DesktopHouseholdView>> {
     const gen = this.#gen;
@@ -591,7 +613,9 @@ export class HouseholdBridge {
       outcome.status === 200 &&
       this.#host.contract.valid(built.result, outcome.body)
     ) {
-      await this.#reread();
+      await (built.month === undefined
+        ? this.#reread()
+        : this.#read(built.month));
       if (gen !== this.#gen) return fail('not_connected');
       return { ok: true, value: this.view() };
     }

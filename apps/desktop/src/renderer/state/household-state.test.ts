@@ -20,6 +20,7 @@ import {
   budgetUseText,
   dayText,
   importResultText,
+  inputFromEntry,
   manualEntryFromInput,
   monthText,
   yenText,
@@ -561,4 +562,185 @@ test('the add form opens only after a read, sends once and closes on success', a
     store.snapshot().notice?.text ?? '',
     /中身を受け付けませんでした/u,
   );
+});
+
+const EDITED = {
+  direction: 'expense' as const,
+  amount_yen: 1500,
+  occurred_on: '2030-12-02',
+  occurred_time: '09:05',
+  category: 'social' as const,
+  merchant: '合成の食堂',
+  memo: 'メモを直した',
+  payment: null,
+};
+
+test('the edit form is filled with the current values of the row', () => {
+  assert.deepEqual(inputFromEntry(entry(0)), {
+    direction: 'expense',
+    amount: '1280',
+    date: '2030-11-03',
+    time: '12:34',
+    category: 'food',
+    merchant: '合成の食堂',
+    memo: '',
+    payment: '合成のカード',
+  });
+  assert.deepEqual(
+    inputFromEntry(
+      entry(1, {
+        direction: 'income',
+        category: 'income',
+        occurred_time: null,
+        merchant: null,
+        payment: null,
+        memo: '賞与',
+      }),
+    ),
+    {
+      direction: 'income',
+      amount: '1280',
+      date: '2030-11-03',
+      time: '',
+      category: 'income',
+      merchant: '',
+      memo: '賞与',
+      payment: '',
+    },
+  );
+});
+
+test('the edit form opens on a row that can be changed, sends once by reference and closes on success', async () => {
+  const fake = fakeApi();
+  const store = new HouseholdStore(fake.api);
+  // まだ読んでいない・知らない参照では開かない。
+  store.actions.startEdit(id(0));
+  assert.equal(store.snapshot().editing, null);
+  store.actions.refresh();
+  fake.answer((request) =>
+    okResponse(request, view([entry(0), entry(1, { delivery_unknown: true })])),
+  );
+  await settle();
+  store.actions.startEdit(id(9));
+  assert.equal(store.snapshot().editing, null);
+  // 結果の分からない行は直させない。
+  store.actions.startEdit(id(1));
+  assert.equal(store.snapshot().editing, null);
+  // 欄を開く前は送らない。
+  store.actions.editEntry(id(0), EDITED);
+  assert.equal(fake.sent.length, 1);
+  store.actions.startEdit(id(0));
+  assert.equal(store.snapshot().editing, id(0));
+  store.actions.editEntry(id(0), EDITED);
+  store.actions.editEntry(id(0), EDITED);
+  assert.equal(fake.sent.length, 2);
+  assert.equal(fake.sent.at(-1)?.channel, 'desktop.household_edit');
+  assert.deepEqual(fake.sent.at(-1)?.payload, {
+    ref: id(0),
+    entry: EDITED,
+  });
+  assert.equal(store.snapshot().busy, id(0));
+  fake.answer((request) =>
+    okResponse(
+      request,
+      view([entry(0, { amount_yen: 1500 })], { list_seq: 3 }),
+    ),
+  );
+  await settle();
+  assert.equal(store.snapshot().editing, null);
+  assert.equal(store.snapshot().busy, null);
+  assert.equal(store.snapshot().notice?.tone, 'success');
+  // 日付を直すと別の月へ移ることがあるので、知らせは欄の頭に出す。
+  assert.equal(store.snapshot().notice?.place, null);
+  assert.match(store.snapshot().notice?.text ?? '', /中身を直しました/u);
+  assert.equal(store.snapshot().view?.entries[0]?.amount_yen, 1500);
+});
+
+test('a rejected edit keeps the form, a stale one re-reads, an unknown result closes the form and locks the row', async () => {
+  const fake = fakeApi();
+  const store = new HouseholdStore(fake.api);
+  store.actions.refresh();
+  fake.answer((request) => okResponse(request, view([entry(0)])));
+  await settle();
+  // 422（core_rejected）: 欄を残して直させる。読み直す。
+  store.actions.startEdit(id(0));
+  store.actions.editEntry(id(0), EDITED);
+  fake.answer((request) => rejected(request, 'core_rejected'));
+  await settle();
+  assert.equal(store.snapshot().editing, id(0));
+  assert.equal(store.snapshot().busy, null);
+  assert.equal(store.snapshot().notice?.tone, 'warning');
+  assert.equal(store.snapshot().notice?.place, id(0));
+  assert.match(
+    store.snapshot().notice?.text ?? '',
+    /中身を受け付けませんでした.*向きは変えられません/u,
+  );
+  assert.equal(fake.sent.at(-1)?.channel, 'desktop.household_view');
+  fake.answer((request) =>
+    okResponse(request, view([entry(0)], { list_seq: 3 })),
+  );
+  await settle();
+  assert.equal(store.snapshot().editing, id(0));
+  // 409（preview_stale）: 読み直して今の値を見せる。欄は残る。
+  store.actions.editEntry(id(0), EDITED);
+  fake.answer((request) => rejected(request, 'preview_stale'));
+  await settle();
+  assert.match(
+    store.snapshot().notice?.text ?? '',
+    /その後に変わっていました/u,
+  );
+  assert.equal(fake.sent.at(-1)?.channel, 'desktop.household_view');
+  fake.answer((request) =>
+    okResponse(request, view([entry(0, { amount_yen: 999 })], { list_seq: 4 })),
+  );
+  await settle();
+  assert.equal(store.snapshot().view?.entries[0]?.amount_yen, 999);
+  // 結果不明: 読み直しで行が「結果を確認できない」になれば、欄をしまい、その行は操作させない。
+  store.actions.editEntry(id(0), EDITED);
+  fake.answer((request) => rejected(request, 'outcome_unknown'));
+  await settle();
+  assert.match(store.snapshot().notice?.text ?? '', /送り直しません/u);
+  fake.answer((request) =>
+    okResponse(
+      request,
+      view([entry(0, { delivery_unknown: true })], { list_seq: 5 }),
+    ),
+  );
+  await settle();
+  assert.equal(store.snapshot().editing, null);
+  const sentBefore = fake.sent.length;
+  store.actions.startEdit(id(0));
+  store.actions.editEntry(id(0), EDITED);
+  assert.equal(store.snapshot().editing, null);
+  assert.equal(fake.sent.length, sentBefore);
+});
+
+test('cancelling closes the edit form, opening another action closes it, and a hide drops the form and the late answer', async () => {
+  const fake = fakeApi();
+  const store = new HouseholdStore(fake.api);
+  store.actions.refresh();
+  fake.answer((request) => okResponse(request, view([entry(0), entry(1)])));
+  await settle();
+  store.actions.startEdit(id(0));
+  store.actions.cancelEdit();
+  assert.equal(store.snapshot().editing, null);
+  store.actions.startEdit(id(0));
+  store.actions.startDelete(id(0));
+  assert.equal(store.snapshot().editing, null);
+  assert.equal(store.snapshot().confirming, id(0));
+  store.actions.cancelDelete();
+  // 送っている間はしまえず、別の行の欄も開けない。
+  store.actions.startEdit(id(0));
+  store.actions.editEntry(id(0), EDITED);
+  store.actions.cancelEdit();
+  assert.equal(store.snapshot().editing, id(0));
+  store.actions.startEdit(id(1));
+  assert.equal(store.snapshot().editing, id(0));
+  // ロック・切断をまたいだ遅い応答は反映しない。
+  store.hide();
+  fake.answer((request) =>
+    okResponse(request, view([entry(0)], { list_seq: 9 })),
+  );
+  await settle();
+  assert.deepEqual(store.snapshot(), INITIAL_HOUSEHOLD_STATE);
 });

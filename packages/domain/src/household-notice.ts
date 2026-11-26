@@ -190,7 +190,7 @@ export function householdNoticeSubjectKind(
 
 // --- 本文 ---
 
-type Field = 'date' | 'merchant' | 'amount';
+type Field = 'date' | 'merchant' | 'amount' | 'payment_amount';
 
 // 項目名（NFKC にした後の表記）。長いものから試す。
 const LABELS: readonly (readonly [string, Field])[] = (
@@ -219,10 +219,10 @@ const LABELS: readonly (readonly [string, Field])[] = (
     ['店舗名', 'merchant'],
     ['ご利用金額', 'amount'],
     ['利用金額', 'amount'],
-    ['お支払い金額', 'amount'],
-    ['お支払金額', 'amount'],
-    ['支払金額', 'amount'],
-    ['決済金額', 'amount'],
+    ['お支払い金額', 'payment_amount'],
+    ['お支払金額', 'payment_amount'],
+    ['支払金額', 'payment_amount'],
+    ['決済金額', 'payment_amount'],
   ] as const
 )
   .slice()
@@ -306,8 +306,9 @@ export interface HouseholdNoticeDate {
 const pad = (value: number): string => String(value).padStart(2, '0');
 
 /**
- * 日付の値を YYYY-MM-DD と HH:MM にする。年がない書式（11/26）は受信日の年を使い、受信日より後の月日なら前の年とする。
- * 読めなければ null。
+ * 日付の値を YYYY-MM-DD と HH:MM にする。年がない書式（11/26）は受信日の年を使い、受信日の年の月日が受信日より
+ * 7 日を超えて後なら前の年とする（年末年始の 12/31 の利用を 1/2 に受け取る場合）。7 日以内の先なら、タイムゾーンの違いで
+ * 1 日先になっただけとして受信日の年のままにする（ADR 0170）。読めなければ null。
  */
 export function parseHouseholdNoticeDate(
   value: string,
@@ -331,7 +332,13 @@ export function parseHouseholdNoticeDate(
     month = Number(short[1]);
     day = Number(short[2]);
     const receivedYear = Number(receivedOn.slice(0, 4));
-    const later = `${pad(month)}-${pad(day)}` > receivedOn.slice(5);
+    const sameYear = Date.UTC(receivedYear, month - 1, day);
+    const received = Date.UTC(
+      receivedYear,
+      Number(receivedOn.slice(5, 7)) - 1,
+      Number(receivedOn.slice(8, 10)),
+    );
+    const later = sameYear - received > 7 * 86_400_000;
     year = later ? receivedYear - 1 : receivedYear;
     rest = text.slice(short[0].length);
   } else return null;
@@ -402,10 +409,20 @@ export function readHouseholdNotice(
     return { outcome: 'ignored', reason: 'not_usage_notice' };
   if (kind === 'provisional')
     return { outcome: 'ignored', reason: 'provisional' };
+  // 利用の金額の項目（ご利用金額・利用金額）が一つでもあれば、支払いの金額の項目は読まない（同じ利用の二重の記録を避ける）。
+  // 利用の金額の項目がなければ、支払いの金額の項目を利用の金額として読む（ADR 0170）。
+  const allFields = fieldsOf(input.text);
+  const hasUsageAmount = allFields.some(({ field }) => field === 'amount');
+  const fields = allFields
+    .filter(({ field }) => !hasUsageAmount || field !== 'payment_amount')
+    .map(({ field, value }) => ({
+      field: field === 'payment_amount' ? ('amount' as const) : field,
+      value,
+    }));
   // 項目を利用ごとにまとめる。同じ項目が二度目に出たら、次の利用が始まったとみなす。
   const groups: Map<Field, string>[] = [];
   let current = new Map<Field, string>();
-  for (const { field, value } of fieldsOf(input.text)) {
+  for (const { field, value } of fields) {
     if (current.has(field)) {
       groups.push(current);
       current = new Map();

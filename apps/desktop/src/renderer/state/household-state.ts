@@ -2,7 +2,8 @@
 // 持ち主を置き、node:test で試験する。記録の ID・内容版は main が持つ。画面に来るのは main の参照（ref）と表示用の値だけ。
 // - 今月は中枢が本人のタイムゾーンで決めた値を使う（端末の時計で決めない。U331）。月は合計の一覧から選ぶ。
 // - 未取得・取得の失敗を「記録はありません」にしない。
-// - 分類の変更は選んだらすぐ送る（直せるので確かめない）。削除は同じ通知から作り直さないので、画面の中で一度確かめる。
+// - 分類の変更は選んだらすぐ送る（直せるので確かめない）。中身の変更（ADR 0169）は行の中に入力欄（今の値を入れた状態）を出し、
+//   送れたらしまう。拒否なら残して直させる。削除は同じ通知から作り直さないので、画面の中で一度確かめる。
 // 理由のコード・API の名前・記録の ID は画面に出さない。
 import type {
   DesktopHouseholdEntry,
@@ -75,6 +76,12 @@ export const HOUSEHOLD_LABELS = {
     '分類ごとの月の予算を円で入れてください。空のままの分類は予算なしにします。',
   budgetTotal: '予算の合計',
   budgetInvalid: '予算は 1\u00a0円以上の整数で入れてください。',
+  editOpen: '中身を直す',
+  editTitle: '記録の中身を直す',
+  editNote:
+    '金額・日付・時刻・店名・メモ・支払い手段・分類を直せます。向きは変えられません。向きを変えたいときは、削除して足し直してください。',
+  editSubmit: '直す',
+  editing: '直しています…',
   addTitle: '記録を足す',
   addOpen: '記録を手で足す',
   addNote:
@@ -133,6 +140,20 @@ type ManualEntry = Extract<
   DesktopIpcRequest,
   { channel: 'desktop.household_add' }
 >['payload']['entry'];
+
+/** 行の今の値を入力欄の文字にする（中身の変更の欄を開くとき。ADR 0169）。 */
+export function inputFromEntry(entry: DesktopHouseholdEntry): ManualEntryInput {
+  return {
+    direction: entry.direction,
+    amount: String(entry.amount_yen),
+    date: entry.occurred_on,
+    time: entry.occurred_time ?? '',
+    category: entry.category as HouseholdCategoryId,
+    merchant: entry.merchant ?? '',
+    memo: entry.memo ?? '',
+    payment: entry.payment ?? '',
+  };
+}
 
 /**
  * 入力欄の文字から手入力の記録を作る。金額は全角数字とコンマを受ける。空の店名・メモ・支払い手段は null。形が
@@ -357,6 +378,8 @@ export interface HouseholdViewState {
   readonly editingBudget: boolean;
   // 手入力の欄を出しているか。
   readonly adding: boolean;
+  // 中身の変更の欄を出している行の参照（ADR 0169）。
+  readonly editing: string | null;
 }
 
 export const INITIAL_HOUSEHOLD_STATE: HouseholdViewState = {
@@ -368,10 +391,18 @@ export const INITIAL_HOUSEHOLD_STATE: HouseholdViewState = {
   confirming: null,
   editingBudget: false,
   adding: false,
+  editing: null,
 };
 
 type Kind =
-  'view' | 'category' | 'delete' | 'intake' | 'import' | 'budget' | 'add';
+  | 'view'
+  | 'category'
+  | 'delete'
+  | 'intake'
+  | 'import'
+  | 'budget'
+  | 'add'
+  | 'edit';
 
 export function householdFailureText(kind: Kind, reason: RejectReason): string {
   switch (reason) {
@@ -386,6 +417,8 @@ export function householdFailureText(kind: Kind, reason: RejectReason): string {
     case 'outcome_unknown':
       return '結果を確かめられませんでした。自動では送り直しません。「読み直す」で今の内容を確かめてください。';
     case 'core_rejected':
+      if (kind === 'edit')
+        return '中身を受け付けませんでした。金額・日付・分類と、店名やメモにカード番号・口座番号のような長い数字が入っていないかを確かめてください。向きは変えられません。';
       if (kind === 'add')
         return '中身を受け付けませんでした。金額・日付・分類と、店名やメモにカード番号・口座番号のような長い数字が入っていないかを確かめてください。';
       return kind === 'category'
@@ -417,6 +450,14 @@ function withView(
     confirming:
       state.confirming !== null && refs.has(state.confirming)
         ? state.confirming
+        : null,
+    // 直している行が消えた・結果が分からなくなったら、入力欄をしまう（古い値のまま送らせない）。
+    editing:
+      state.editing !== null &&
+      view.entries.some(
+        (entry) => entry.ref === state.editing && !entry.delivery_unknown,
+      )
+        ? state.editing
         : null,
     // 消えた行の警告は捨てる（削除の成功の知らせは欄の頭に出す）。
     notice:
@@ -450,9 +491,10 @@ export function applyViewResponse(
   return withView(reading, response.household);
 }
 
-const SUCCESS_TEXT: Readonly<
-  Record<'category' | 'delete' | 'intake' | 'budget' | 'add', string>
-> = {
+type ChangeKind = 'category' | 'delete' | 'intake' | 'budget' | 'add' | 'edit';
+
+const SUCCESS_TEXT: Readonly<Record<ChangeKind, string>> = {
+  edit: '記録の中身を直しました。店名と分類のある記録は、同じ店の次の未分類の利用にもその分類を使います。',
   budget: '予算を保存しました。',
   add: '記録を足しました。',
   intake: '取り込みの設定を変えました。',
@@ -463,7 +505,7 @@ const SUCCESS_TEXT: Readonly<
 
 export function applyChangeResponse(
   state: HouseholdViewState,
-  kind: 'category' | 'delete' | 'intake' | 'budget' | 'add',
+  kind: ChangeKind,
   place: string,
   response: DesktopIpcResponse,
 ): HouseholdViewState {
@@ -488,8 +530,8 @@ export function applyChangeResponse(
       notice: {
         tone: 'success',
         text: SUCCESS_TEXT[kind],
-        // 削除した行は消えるので、欄の頭に出す。
-        place: kind === 'delete' ? null : place,
+        // 削除した行は消える。直した行も、日付を直すと別の月へ移るので、欄の頭に出す。
+        place: kind === 'delete' || kind === 'edit' ? null : place,
       },
     },
     response.household,
@@ -506,6 +548,14 @@ export function applyFailure(
     busy: place !== null && state.busy === place ? null : state.busy,
     notice: { tone: 'warning', text: HOUSEHOLD_IPC_FAILURE_MESSAGE, place },
   };
+}
+
+// 中身を直す欄を開けるか（送り中・結果不明の行は開けない）。
+export function canEdit(
+  state: HouseholdViewState,
+  entry: DesktopHouseholdEntry,
+): boolean {
+  return canChange(state, entry);
 }
 
 export function canChange(
@@ -539,6 +589,10 @@ export interface HouseholdActions {
   readonly startAdd: () => void;
   readonly cancelAdd: () => void;
   readonly addEntry: (entry: ManualEntry) => void;
+  // 行の中身の入力欄を出す・しまう・直す（ADR 0169）。
+  readonly startEdit: (ref: string) => void;
+  readonly cancelEdit: () => void;
+  readonly editEntry: (ref: string, entry: ManualEntry) => void;
 }
 
 export interface HouseholdApi {
@@ -569,7 +623,12 @@ export class HouseholdStore {
       changeCategory: (ref, category) => this.#category(ref, category),
       startDelete: (ref) => {
         if (this.#state.busy !== null) return;
-        this.#set({ ...this.#state, confirming: ref, notice: null });
+        this.#set({
+          ...this.#state,
+          confirming: ref,
+          editing: null,
+          notice: null,
+        });
       },
       cancelDelete: () => this.#set({ ...this.#state, confirming: null }),
       confirmDelete: () => this.#delete(),
@@ -587,6 +646,23 @@ export class HouseholdStore {
       },
       cancelAdd: () => this.#set({ ...this.#state, adding: false }),
       addEntry: (entry) => this.#addEntry(entry),
+      startEdit: (ref) => {
+        const entry = this.#state.view?.entries.find(
+          (item) => item.ref === ref,
+        );
+        if (entry === undefined || !canEdit(this.#state, entry)) return;
+        this.#set({
+          ...this.#state,
+          editing: ref,
+          confirming: null,
+          notice: null,
+        });
+      },
+      cancelEdit: () => {
+        if (this.#state.busy !== null) return;
+        this.#set({ ...this.#state, editing: null });
+      },
+      editEntry: (ref, entry) => this.#editEntry(ref, entry),
     };
   }
 
@@ -719,6 +795,31 @@ export class HouseholdStore {
     });
   }
 
+  // 行の中身を直す（ADR 0169）。送れたら入力欄をしまう。拒否なら残して直させる（main が読み直した値は受け取る）。
+  #editEntry(ref: string, entry: ManualEntry): void {
+    const row = this.#state.view?.entries.find((item) => item.ref === ref);
+    if (
+      row === undefined ||
+      this.#state.editing !== ref ||
+      !canChange(this.#state, row)
+    )
+      return;
+    this.#set({ ...this.#state, busy: ref, notice: null });
+    const epoch = this.#epoch;
+    let reread = false;
+    void this.#send(
+      request('desktop.household_edit', { ref, entry }),
+      (state, response) => {
+        reread = response.outcome === 'rejected' && REREAD.has(response.reason);
+        const next = applyChangeResponse(state, 'edit', ref, response);
+        return response.outcome === 'ok' ? { ...next, editing: null } : next;
+      },
+      (state) => applyFailure(state, ref),
+    ).then(() => {
+      if (reread && epoch === this.#epoch) this.#reread();
+    });
+  }
+
   #importExport(): void {
     if (this.#state.busy !== null || this.#state.view === null) return;
     this.#set({
@@ -752,11 +853,7 @@ export class HouseholdStore {
   }
 
   // 送った変更・削除の結果を反映し、拒否なら（main が読み直した）値を受け取る。
-  #change(
-    kind: 'category' | 'delete' | 'intake' | 'budget' | 'add',
-    ref: string,
-    built: DesktopIpcRequest,
-  ) {
+  #change(kind: ChangeKind, ref: string, built: DesktopIpcRequest) {
     const epoch = this.#epoch;
     let reread = false;
     void this.#send(

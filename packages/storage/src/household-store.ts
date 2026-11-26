@@ -702,7 +702,7 @@ function applySettings(
   return { mail_intake: op.mail_intake, settings_revision: String(next) };
 }
 
-// 確かめていないメール。初回（基準がない口座）は、いまある全部を確かめ済みにして基準を作る。本人が止めていれば
+// 確かめていないメール。初回（基準がない取得集合）は、その取得集合の同期済みのメールを確かめ済みにして基準を作る（ADR 0170）。本人が止めていれば
 // 何も返さず、基準も作らない（同じ transaction で設定を読む。ADR 0163）。
 function mailPending(
   db: SqliteDatabase,
@@ -713,18 +713,18 @@ function mailPending(
   const now = Date.parse(op.now);
   const baseline = db
     .prepare(
-      'SELECT 1 FROM household_mail_baselines WHERE provider = ? AND account_id = ?',
+      'SELECT 1 FROM household_mail_baselines WHERE provider = ? AND account_id = ? AND scope_id = ?',
     )
-    .get(op.provider, op.account_id);
+    .get(op.provider, op.account_id, op.scope_id);
   if (baseline === undefined) {
     db.prepare(
-      'INSERT INTO household_mail_baselines (provider, account_id, established_at) VALUES (?, ?, ?)',
-    ).run(op.provider, op.account_id, now);
+      'INSERT INTO household_mail_baselines (provider, account_id, scope_id, established_at) VALUES (?, ?, ?, ?)',
+    ).run(op.provider, op.account_id, op.scope_id, now);
     db.prepare(
       `INSERT OR IGNORE INTO household_mail_checks (provider, account_id, remote_id, checked_at)
        SELECT provider, account_id, remote_id, ? FROM source_items
-       WHERE provider = ? AND account_id = ?`,
-    ).run(now, op.provider, op.account_id);
+       WHERE provider = ? AND account_id = ? AND scope_id = ?`,
+    ).run(now, op.provider, op.account_id, op.scope_id);
     return { paused: false, baseline: true, remote_ids: [] };
   }
   const rows = db

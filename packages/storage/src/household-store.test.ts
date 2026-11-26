@@ -458,6 +458,42 @@ const checked = (db: SqliteDatabase, remoteId: string): HouseholdOpResult =>
     now: T2,
   });
 
+test('household.mail_pending: 口座の基準があっても、新しい取得集合の過去のメールは読まない（基準は取得集合ごと。ADR 0170）', async () => {
+  await withDb((db) => {
+    seedMail(db, 'm-old-1', 1000);
+    assert.deepEqual(pending(db), {
+      paused: false,
+      baseline: true,
+      remote_ids: [],
+    });
+    seedMail(db, 'm-new-1', 2000);
+    assert.deepEqual(pending(db).remote_ids, ['m-new-1']);
+    // 後から足した取得集合。口座の基準はあるが、この取得集合の基準はないので、いまあるメールを確かめ済みにして空を返す。
+    seedMail(db, 'm-scope2-old', 3000, 'sc-2');
+    assert.deepEqual(pending(db, { scope_id: 'sc-2' }), {
+      paused: false,
+      baseline: true,
+      remote_ids: [],
+    });
+    // 基準ができた後の新しいメールだけを返す。もとの取得集合の未確認は変わらない。
+    seedMail(db, 'm-scope2-new', 4000, 'sc-2');
+    assert.deepEqual(pending(db, { scope_id: 'sc-2' }), {
+      paused: false,
+      baseline: false,
+      remote_ids: ['m-scope2-new'],
+    });
+    assert.deepEqual(pending(db).remote_ids, ['m-new-1']);
+    assert.equal(
+      (
+        db
+          .prepare('SELECT count(*) AS n FROM household_mail_baselines')
+          .get() as { n: number }
+      ).n,
+      2,
+    );
+  });
+});
+
 test('household.mail_pending: 初回はいまあるメールを確かめ済みにして空を返し、その後は新しいメールだけを新しい順に返す', async () => {
   await withDb((db) => {
     seedMail(db, 'm-old-1', 1000);

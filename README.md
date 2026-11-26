@@ -33,6 +33,7 @@ npm は pnpm の初回導入だけに使います。hook の準備時に公式 G
 - [契約と設計・試験の対応表](docs/b00/contract-map.md)
 - [設計原本と公開資料の分離](docs/design/README.md)
 - [情報管理と公開前確認](docs/public-release.md)
+- [家計簿の実機・実データでの確かめの手順](docs/household/README.md)
 - [開発手順・Codex / Claude Code](docs/development.md)
 - [開発基盤の選定理由](docs/adr/0001-development-baseline.md)
 - [契約検証ツールと初回の具体化](docs/adr/0002-contract-validation.md)

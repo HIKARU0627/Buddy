@@ -6,6 +6,7 @@
 // - readHouseholdMonths: 月の範囲の記録を読み、復号して返す。月ごとの集計（domain の summarizeHouseholdMonth）も付ける。
 //   復号できない記録は数だけ返し、集計に入れない（壊れた記録を黙って 0 円として扱わない）。
 // - changeHouseholdCategory: 本人が分類を変える。内容版を照合して差し替え、店名があれば本人の規則として覚える。
+// - changeHouseholdContent: 本人が中身（金額・日付・時刻・店名・メモ・支払い手段・分類）を直す（ADR 0169）。向きは変えられない。
 // - deleteHouseholdEntry: 本人が記録を消す。行は残り、同じ出所から作り直さない（保存層）。
 // 店名の HMAC の鍵はデータ鍵から作る（自宅の登録値と同じ作り方。店名の平文を DB に置かない）。
 // 承認・実行経路・effect_kind は関わらない（家計の記録は Buddy 自身の記録で、外部を変えない）。
@@ -388,6 +389,69 @@ export async function changeHouseholdCategory(
         kind: 'household.rule_set',
         merchant_key: merchantKey,
         category,
+        origin: 'user',
+        now,
+      });
+      learned = rule.ok && rule.value.written;
+    }
+  }
+  return {
+    outcome: 'changed',
+    entry_id: entryId,
+    content_revision: updated.value.content_revision,
+    rule_learned: learned,
+  };
+}
+
+// 本人が記録の中身（金額・日付・時刻・店名・メモ・支払い手段・分類）を直す（ADR 0169）。今の中身を開いて向きが同じことを
+// 確かめ、新しい内容版で暗号化して差し替える。向きは変えられない（向きが違えば 422 にする。向きを変えたいときは削除して
+// 足し直す）。店名があり分類が未分類でなければ、本人の規則として覚える（分類の変更と同じ）。
+export async function changeHouseholdContent(
+  ports: HouseholdPorts,
+  entryId: string,
+  expectedRevision: string,
+  next: HouseholdEntryContent,
+): Promise<HouseholdChange> {
+  const errors = householdContentErrors(next);
+  if (errors.length > 0) return { outcome: 'rejected', reasons: errors };
+  const current = await readActive(ports, entryId, expectedRevision);
+  if (!current.ok)
+    return { outcome: current.outcome, reasons: current.reasons };
+  if (next.direction !== current.content.direction)
+    return { outcome: 'rejected', reasons: ['direction_mismatch'] };
+  const month = householdMonthOf(next.occurred_on);
+  if (month === null)
+    return { outcome: 'rejected', reasons: ['occurred_on_invalid'] };
+  const sealed = sealHouseholdContent(
+    ports.dataKey,
+    entryId,
+    Number(expectedRevision) + 1,
+    next,
+    ports.newId(),
+  );
+  if (!sealed.ok) return { outcome: 'rejected', reasons: [sealed.reason] };
+  const now = ports.now();
+  const updated = await ports.client.household({
+    kind: 'household.update',
+    entry_id: entryId,
+    expected_revision: expectedRevision,
+    month,
+    content: sealed.content,
+    now,
+  });
+  if (!updated.ok)
+    return { outcome: updated.outcome, reasons: updated.reasons };
+  // 覚えられなくても中身の変更は済んでいる。
+  let learned = false;
+  if (next.merchant !== null && next.category !== 'uncategorized') {
+    const merchantKey = HouseholdMerchantKey.fromDataKey(
+      ports.dataKey,
+    ).merchant(next.merchant);
+    if (merchantKey !== null) {
+      const rule = await ports.client.household({
+        kind: 'household.rule_set',
+        merchant_key: merchantKey,
+        category: next.category,
         origin: 'user',
         now,
       });

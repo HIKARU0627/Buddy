@@ -271,6 +271,13 @@ export const API_ROUTES: readonly ApiRoute[] = [
     body: 'HouseholdEntryCreateRequest',
     ...SCREEN,
   }),
+  // 家計の記録の中身の変更（ADR 0169）。
+  route(
+    'changeHouseholdEntry',
+    'POST',
+    '/v1/household/entries/{entry_id}/content',
+    { body: 'HouseholdEntryContentChangeRequest', ...SCREEN },
+  ),
 ];
 
 export type RouteMatch =

@@ -927,3 +927,199 @@ test('成否不明・保存の失敗は 503 にし、成功にも競合にも見
     503,
   );
 });
+
+const contentBody = (
+  expected: string,
+  over: Record<string, unknown> = {},
+): JsonObject =>
+  ({
+    request_id: '00000000-0000-4000-8000-0000000c0110',
+    command_scope_id: SCOPE,
+    expected_content_revision: expected,
+    entry: {
+      direction: 'expense',
+      amount_yen: 1500,
+      occurred_on: '2030-10-31',
+      occurred_time: '09:05',
+      category: 'food',
+      merchant: '合成のパン屋',
+      memo: '直した',
+      payment: '現金',
+      ...over,
+    },
+  }) as JsonObject;
+
+test('中身の変更: 金額・日付・店名・分類・メモを直し、月を移し、内容版を進め、店名の規則を覚える（ADR 0169）', async (t) => {
+  const { store, dataKey, ports } = withDb(t);
+  const handlers = routes(store, dataKey);
+  const entry = await record(ports, { merchant: '合成の食堂' });
+  const changed = await call(
+    handlers.changeHouseholdEntry,
+    { entry_id: entry },
+    contentBody('1'),
+  );
+  assert.equal(changed.status, 200);
+  assert(contract.valid('HouseholdEntry', changed.body));
+  assert.equal(changed.body['entry_id'], entry);
+  assert.equal(changed.body['content_revision'], '2');
+  // 出所の種類は変わらない。
+  assert.equal(changed.body['source_kind'], 'mail_notice');
+  assert.equal(changed.body['amount_yen'], 1500);
+  assert.equal(changed.body['occurred_on'], '2030-10-31');
+  assert.equal(changed.body['occurred_time'], '09:05');
+  assert.equal(changed.body['category'], 'food');
+  assert.equal(changed.body['merchant'], '合成のパン屋');
+  assert.equal(changed.body['memo'], '直した');
+  assert.equal(changed.body['payment'], '現金');
+  // 日付を 10 月に直したので、記録は 10 月へ移った。
+  const october = await call(handlers.getHouseholdMonth, { month: '2030-10' });
+  assert.deepEqual(
+    (october.body['entries'] as Json[]).map((item) => item['entry_id']),
+    [entry],
+  );
+  assert.deepEqual(
+    (await call(handlers.getHouseholdMonth, { month: '2030-11' })).body[
+      'entries'
+    ],
+    [],
+  );
+  // 店名と分類があるので規則を覚え、次の同じ店の未分類の利用に当たる。
+  const next = await recordHouseholdEntry(
+    ports,
+    mail(),
+    content({ merchant: '合成のパン屋' }),
+  );
+  assert.equal(next.outcome === 'created' && next.rule_applied, true);
+  // 古い内容版のままの再送は 409（二重に効かない）。
+  const replay = await call(
+    handlers.changeHouseholdEntry,
+    { entry_id: entry },
+    contentBody('1', { amount_yen: 9999 }),
+  );
+  assert.equal(replay.status, 409);
+  assert.equal(
+    (
+      (await call(handlers.getHouseholdMonth, { month: '2030-10' })).body[
+        'entries'
+      ] as Json[]
+    )[0]?.['amount_yen'],
+    1500,
+  );
+  // 分類が未分類なら規則は覚えない。
+  const other = await record(ports, { merchant: '合成の薬局' });
+  const plain = await call(
+    handlers.changeHouseholdEntry,
+    { entry_id: other },
+    contentBody('1', { merchant: '合成の薬局', category: 'uncategorized' }),
+  );
+  assert.equal(plain.status, 200);
+  const unmatched = await recordHouseholdEntry(
+    ports,
+    mail(),
+    content({ merchant: '合成の薬局' }),
+  );
+  assert.equal(
+    unmatched.outcome === 'created' && unmatched.rule_applied,
+    false,
+  );
+});
+
+test('中身の変更: 内容版の違い・削除済みは 409、向きの違い・検査に合わない中身・ない記録は 422（ADR 0169）', async (t) => {
+  const { store, dataKey, ports } = withDb(t);
+  const handlers = routes(store, dataKey);
+  const entry = await record(ports, { merchant: '合成の食堂' });
+  const send = (
+    id: string,
+    body: JsonObject,
+  ): Promise<{ status: number; body: Json }> =>
+    call(handlers.changeHouseholdEntry, { entry_id: id }, body);
+  // 内容版が今と違う。
+  assert.equal((await send(entry, contentBody('2'))).status, 409);
+  // 向きは変えられない（支出を収入にはできない）。
+  const direction = await send(
+    entry,
+    contentBody('1', { direction: 'income', category: 'income' }),
+  );
+  assert.equal(direction.status, 422);
+  assert.equal(direction.body['code'], 'invalid_input');
+  // 検査に合わない中身: 金額 0・向きと違う分類・口座番号らしい店名・存在しない日付・形の違う時刻。
+  for (const over of [
+    { amount_yen: 0 },
+    { category: 'income' },
+    { merchant: '振込 1234 5678 9012 3456' },
+    { occurred_on: '2030-02-30' },
+    { occurred_time: '9:5' },
+  ]) {
+    assert.equal(
+      (await send(entry, contentBody('1', over))).status,
+      422,
+      JSON.stringify(over),
+    );
+  }
+  // 内容版の形が違う（0 や小数）・ない記録。
+  for (const expected of ['0', '1.0']) {
+    assert.equal((await send(entry, contentBody(expected))).status, 422);
+  }
+  assert.equal((await send(MISSING, contentBody('1'))).status, 422);
+  // どれも記録は変わっていない。
+  const month = await call(handlers.getHouseholdMonth, { month: '2030-11' });
+  assert.equal((month.body['entries'] as Json[])[0]?.['content_revision'], '1');
+  assert.equal((month.body['entries'] as Json[])[0]?.['amount_yen'], 1000);
+  // 削除済みは 409。
+  const removed = await call(
+    handlers.deleteHouseholdEntry,
+    { entry_id: entry },
+    deleteBody('1'),
+  );
+  assert.equal(removed.status, 200);
+  assert.equal((await send(entry, contentBody('1'))).status, 409);
+});
+
+test('中身の変更: データ鍵が読めない・成否不明・保存の失敗は 503 にし、成功にも競合にも見せない（ADR 0169）', async (t) => {
+  const { store, dataKey, ports } = withDb(t);
+  const entry = await record(ports, { merchant: '合成の食堂' });
+  assert.equal(
+    (
+      await call(
+        routes(store, null).changeHouseholdEntry,
+        { entry_id: entry },
+        contentBody('1'),
+      )
+    ).status,
+    503,
+  );
+  const real = store.household as (op: HouseholdOp) => Promise<unknown>;
+  for (const outcome of ['unknown', 'rejected'] as const) {
+    const failing: Store = {
+      household: ((op: HouseholdOp) =>
+        op.kind === 'household.update'
+          ? Promise.resolve({
+              ok: false,
+              outcome,
+              reasons: [
+                outcome === 'unknown' ? 'commit_failed' : 'store_halted',
+              ],
+            })
+          : real(op)) as Store['household'],
+    };
+    const failed = await call(
+      routes(failing, dataKey).changeHouseholdEntry,
+      { entry_id: entry },
+      contentBody('1'),
+    );
+    assert.equal(failed.status, 503, outcome);
+    assert.equal(failed.body['code'], 'dependency_unavailable');
+  }
+  // 別のデータ鍵では今の中身を開けないので、変えない（503）。
+  const otherKey = routes(store, { keyId: 'k-other', key: randomBytes(32) });
+  assert.equal(
+    (
+      await call(
+        otherKey.changeHouseholdEntry,
+        { entry_id: entry },
+        contentBody('1'),
+      )
+    ).status,
+    503,
+  );
+});

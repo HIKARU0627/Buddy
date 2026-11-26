@@ -166,7 +166,10 @@ function storeMail(
     .run(value.id, fetchedAt);
 }
 
-function intake(fixture: Fixture) {
+function intake(
+  fixture: Fixture,
+  timeZone: () => string | null = () => 'Asia/Tokyo',
+) {
   const gmail = {
     getMessage: ({ id, format }: { id: string; format: string }) => {
       fixture.calls.push({ id, format });
@@ -181,7 +184,7 @@ function intake(fixture: Fixture) {
     store: fixture.client,
     gmailFor: () => gmail,
     dataKey: () => Promise.resolve(fixture.dataKey),
-    timeZone: () => 'Asia/Tokyo',
+    timeZone,
     now: () => NOW,
     issuers: ISSUERS,
   });
@@ -236,6 +239,32 @@ test('初回は過去のメールを読まずに基準を作り、その後に�
   // 確かめ済みのメールは読み直さない。
   assert.equal((await run.run(target)).checked, 0);
   assert.equal(fixture.calls.length, 2);
+});
+
+test('本人のタイムゾーンを読めない回は UTC で代用せず、読まずに skipped で返し、基準も作らない（ADR 0170）', async (t) => {
+  const fixture = setup(t);
+  storeMail(fixture, message('m-old', { text: USAGE }), 1000);
+  let zone: string | null = null;
+  const run = intake(fixture, () => zone);
+  assert.deepEqual(await run.run(target), {
+    outcome: 'skipped',
+    reason: 'zone_unavailable',
+    baseline: false,
+    checked: 0,
+    recorded: 0,
+  });
+  assert.deepEqual(fixture.calls, []);
+  assert.equal(
+    (
+      fixture.db
+        .prepare('SELECT count(*) AS n FROM household_mail_baselines')
+        .get() as { n: number }
+    ).n,
+    0,
+  );
+  // 読めるようになった回から、通常どおり基準を作る。
+  zone = 'Asia/Tokyo';
+  assert.equal((await run.run(target)).baseline, true);
 });
 
 test('本人が取り込みを止めている間はメールを読まず、再開すると止めていた間のメールを読まずに基準を作り直す（ADR 0163）', async (t) => {

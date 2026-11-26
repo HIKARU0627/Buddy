@@ -858,3 +858,165 @@ test('a manual entry is sent as typed and the month of the entry is read', async
   });
   assert.equal(r.posts().length, 3);
 });
+
+const EDITED = {
+  direction: 'expense' as const,
+  amount_yen: 1500,
+  occurred_on: '2030-11-02',
+  occurred_time: '09:05',
+  category: 'social' as const,
+  merchant: '合成の食堂',
+  memo: '直した',
+  payment: null,
+};
+
+test('a content edit sends the revision it read and the typed entry, then re-reads the month of the entry', async () => {
+  const r = rig();
+  const view = ok(await r.bridge.show(null));
+  const lunchRef = view.entries[0]?.ref as string;
+  r.post = () => ({
+    kind: 'response',
+    status: 200,
+    body: lunch({
+      ...EDITED,
+      content_revision: '4',
+      updated_at: '2030-11-05T00:00:00Z',
+    }),
+  });
+  r.month = () => ({
+    kind: 'response',
+    status: 200,
+    body: monthBody('2030-11', [
+      lunch({ ...EDITED, content_revision: '4' }),
+      salary(),
+    ]),
+  });
+  const changed = ok(await r.bridge.edit(lunchRef, EDITED));
+  assert.equal(changed.entries[0]?.amount_yen, 1500);
+  assert.equal(changed.entries[0]?.memo, '直した');
+  assert.equal(changed.entries[0]?.ref, lunchRef);
+  assert.deepEqual(r.posts(), [
+    {
+      method: 'POST',
+      path: `/v1/household/entries/${LUNCH}/content`,
+      body: { expected_content_revision: '3', entry: EDITED },
+      scoped: true,
+      screenOperation: true,
+      expectedScopeId: SCOPE,
+    },
+  ]);
+  assert.equal(r.calls.at(-1)?.path, '/v1/household/months/2030-11');
+  // 内容版は画面へ出さない。
+  assert.doesNotMatch(JSON.stringify(changed), /content_revision|"3"|"4"/u);
+});
+
+test('a content edit that moves the date reads the month it moved to', async () => {
+  const r = rig();
+  const view = ok(await r.bridge.show(null));
+  const moved = { ...EDITED, occurred_on: '2030-10-30' };
+  r.post = () => ({
+    kind: 'response',
+    status: 200,
+    body: lunch({ ...moved, content_revision: '4' }),
+  });
+  r.month = (month) => ({
+    kind: 'response',
+    status: 200,
+    body: monthBody(
+      month,
+      month === '2030-10' ? [lunch({ ...moved, content_revision: '4' })] : [],
+    ),
+  });
+  const after = ok(await r.bridge.edit(view.entries[0]?.ref as string, moved));
+  assert.equal(after.month, '2030-10');
+  assert.equal(after.entries[0]?.occurred_on, '2030-10-30');
+  assert.equal(r.calls.at(-1)?.path, '/v1/household/months/2030-10');
+});
+
+test('a content edit answered with 409 is preview_stale and with 422 core_rejected; both re-read the shown month without resending', async () => {
+  const r = rig();
+  ok(await r.bridge.show(null));
+  for (const [status, reason] of [
+    [409, 'preview_stale'],
+    [422, 'core_rejected'],
+  ] as const) {
+    r.post = () => ({ kind: 'response', status, body: { code: 'conflict' } });
+    const before = r.calls.length;
+    assert.deepEqual(await r.bridge.edit(uuid(0x100), EDITED), {
+      ok: false,
+      reason,
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    const after = r.calls.slice(before);
+    assert.equal(after.filter((call) => call.method === 'POST').length, 1);
+    assert(after.some((call) => call.path === '/v1/household/months'));
+    assert(after.some((call) => call.path === '/v1/household/months/2030-11'));
+  }
+});
+
+test('a content edit with an unknown outcome is not resent and holds the entry until a later read succeeds', async () => {
+  const r = rig();
+  ok(await r.bridge.show(null));
+  // 届いたか分からない。読み直しも失敗する。
+  r.post = () => ({ kind: 'unknown' });
+  r.overview = () => ({ kind: 'response', status: 503, body: {} });
+  assert.deepEqual(await r.bridge.edit(uuid(0x100), EDITED), {
+    ok: false,
+    reason: 'outcome_unknown',
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(r.bridge.view().entries[0]?.delivery_unknown, true);
+  assert.deepEqual(await r.bridge.edit(uuid(0x100), EDITED), {
+    ok: false,
+    reason: 'entry_not_found',
+  });
+  assert.equal(r.posts().length, 1);
+  assert(r.logs.includes('household_change_outcome_unknown'));
+  // 次の読み取りが成功すれば操作できる。5xx と形の違う 2xx も結果不明。
+  r.overview = () => ({ kind: 'response', status: 200, body: overview() });
+  ok(await r.bridge.show('2030-11'));
+  for (const outcome of [
+    { kind: 'response', status: 503, body: {} },
+    { kind: 'response', status: 200, body: { entry_id: LUNCH } },
+  ] as const) {
+    r.post = () => outcome;
+    assert.deepEqual(await r.bridge.edit(uuid(0x100), EDITED), {
+      ok: false,
+      reason: 'outcome_unknown',
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    ok(await r.bridge.show('2030-11'));
+  }
+});
+
+test('a content edit of an unknown reference or without a scope sends nothing, and one that crosses a reset is an unknown outcome', async () => {
+  const r = rig();
+  ok(await r.bridge.show(null));
+  assert.deepEqual(await r.bridge.edit(uuid(0xfff), EDITED), {
+    ok: false,
+    reason: 'entry_not_found',
+  });
+  assert.equal(r.posts().length, 0);
+  // 送った後にロック・切断で世代が進んだら、当たったか分からないので結果不明（送り直さない）。
+  r.post = () => {
+    r.bridge.reset();
+    return {
+      kind: 'response',
+      status: 200,
+      body: lunch({ ...EDITED, content_revision: '4' }),
+    };
+  };
+  assert.deepEqual(await r.bridge.edit(uuid(0x100), EDITED), {
+    ok: false,
+    reason: 'outcome_unknown',
+  });
+  assert.equal(r.posts().length, 1);
+  // 読み直したあとで接続範囲がなければ送らない。
+  ok(await r.bridge.show(null));
+  r.scope = null;
+  assert.deepEqual(await r.bridge.edit(uuid(0x100), EDITED), {
+    ok: false,
+    reason: 'not_connected',
+  });
+  assert.equal(r.posts().length, 1);
+});

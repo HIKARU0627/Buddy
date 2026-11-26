@@ -95,6 +95,9 @@ const ACTIONS: HouseholdActions = {
   startAdd: noop,
   cancelAdd: noop,
   addEntry: noop,
+  startEdit: noop,
+  cancelEdit: noop,
+  editEntry: noop,
 };
 
 const render = (node: ReactNode) =>
@@ -386,4 +389,61 @@ test('rows that look like the same purchase from two sources are marked, and the
     panel({ view: view([entry(0), entry(2, { amount_yen: 999 })]), seq: 2 }),
   );
   assert.doesNotMatch(single, /重なっているかもしれません/u);
+});
+
+test('each row offers to edit its content; the edit form is opened in the row with the current values and a fixed direction', () => {
+  const closed = panel({ view: view([entry(0)]), seq: 2 });
+  assert(buttons(closed).includes('中身を直す'));
+  assert.doesNotMatch(closed, /household-edit-/u);
+  const open = panel({ view: view([entry(0)]), seq: 2, editing: id(0) });
+  const prefix = `household-edit-${id(0)}`;
+  for (const name of ['amount', 'date', 'time', 'merchant', 'memo', 'payment'])
+    assert.match(open, new RegExp(`id="${prefix}-${name}"`, 'u'));
+  // 今の値が入っている。
+  assert.match(open, new RegExp(`id="${prefix}-amount"[^>]*value="1280"`, 'u'));
+  assert.match(
+    open,
+    new RegExp(`id="${prefix}-date"[^>]*value="2030-11-03"`, 'u'),
+  );
+  assert.match(open, new RegExp(`id="${prefix}-time"[^>]*value="12:34"`, 'u'));
+  assert.match(
+    open,
+    new RegExp(`id="${prefix}-merchant"[^>]*value="合成の食堂"`, 'u'),
+  );
+  // 向きは変えられない。
+  assert.match(
+    open,
+    new RegExp(`<select id="${prefix}-direction"[^>]*disabled`, 'u'),
+  );
+  assert.match(text(open), /向きは変えられません/u);
+  assert(buttons(open).includes('直す'));
+  assert(buttons(open).includes('やめる'));
+  // 手入力の欄とは別の id（重ならない）。
+  assert.doesNotMatch(open, /id="household-add-amount"/u);
+});
+
+test('the edit form shows the sending state, and a row whose result is unknown offers no edit', () => {
+  const sending = panel({
+    view: view([entry(0)]),
+    seq: 2,
+    editing: id(0),
+    busy: id(0),
+  });
+  assert(buttons(sending).includes('直しています…'));
+  const unknown = panel({
+    view: view([entry(0, { delivery_unknown: true })]),
+    seq: 2,
+  });
+  assert(!buttons(unknown).includes('中身を直す'));
+  // 送っている間は、ほかの行の「中身を直す」を押せない。
+  const other = panel({
+    view: view([entry(0), entry(1, { amount_yen: 300 })]),
+    seq: 2,
+    busy: id(0),
+  });
+  assert.equal(
+    (other.match(/<button[^>]*disabled[^>]*>\s*中身を直す/gu) ?? []).length +
+      (other.match(/<button[^>]*isDisabled[^>]*>\s*中身を直す/gu) ?? []).length,
+    2,
+  );
 });

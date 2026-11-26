@@ -3494,6 +3494,144 @@
           "entry_id": "00000000-0000-4000-8000-0000000c0106"
         }
       ]
+    },
+    "changeHouseholdEntry": {
+      "params": {
+        "entry_id": "00000000-0000-4000-8000-0000000c0002"
+      },
+      "request": {
+        "request_id": "00000000-0000-4000-8000-0000000c0107",
+        "command_scope_id": "00000000-0000-4000-8000-000000009002",
+        "expected_content_revision": "1",
+        "entry": {
+          "direction": "expense",
+          "amount_yen": 720,
+          "occurred_on": "2030-11-04",
+          "occurred_time": "08:20",
+          "category": "food",
+          "merchant": "合成のパン屋",
+          "memo": "現金",
+          "payment": null
+        }
+      },
+      "response": {
+        "entry_id": "00000000-0000-4000-8000-0000000c0002",
+        "content_revision": "2",
+        "source_kind": "mail_notice",
+        "direction": "expense",
+        "amount_yen": 720,
+        "occurred_on": "2030-11-04",
+        "occurred_time": "08:20",
+        "category": "food",
+        "merchant": "合成のパン屋",
+        "memo": "現金",
+        "payment": null,
+        "created_at": "2030-11-05T00:00:00Z",
+        "updated_at": "2030-11-06T00:00:00Z"
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"],
+        ["stale_scope", 410, "expired_scope"],
+        ["locked", 403, "device_locked"],
+        ["lock_unknown", 403, "device_locked"],
+        ["too_large", 413, "payload_too_large"],
+        ["voice_origin", 403, "screen_operation_required"],
+        ["chat_origin", 403, "screen_operation_required"],
+        ["system_origin", 403, "screen_operation_required"]
+      ],
+      "invalid_bodies": [
+        {
+          "request_id": "00000000-0000-4000-8000-0000000c0107",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "expected_content_revision": "1",
+          "entry": {
+            "direction": "expense",
+            "amount_yen": 0,
+            "occurred_on": "2030-11-04",
+            "occurred_time": "08:20",
+            "category": "food",
+            "merchant": "合成のパン屋",
+            "memo": "現金",
+            "payment": null
+          }
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-0000000c0107",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "expected_content_revision": "1",
+          "entry": {
+            "direction": "expense",
+            "amount_yen": 720,
+            "occurred_on": "2030-11-04",
+            "occurred_time": "08:20",
+            "category": "groceries",
+            "merchant": "合成のパン屋",
+            "memo": "現金",
+            "payment": null
+          }
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-0000000c0107",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "entry": {
+            "direction": "expense",
+            "amount_yen": 720,
+            "occurred_on": "2030-11-04",
+            "occurred_time": "08:20",
+            "category": "food",
+            "merchant": "合成のパン屋",
+            "memo": "現金",
+            "payment": null
+          }
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-0000000c0107",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "expected_content_revision": "1.0",
+          "entry": {
+            "direction": "expense",
+            "amount_yen": 720,
+            "occurred_on": "2030-11-04",
+            "occurred_time": "08:20",
+            "category": "food",
+            "merchant": "合成のパン屋",
+            "memo": "現金",
+            "payment": null
+          }
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-0000000c0107",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "expected_content_revision": "1",
+          "entry": {
+            "direction": "expense",
+            "amount_yen": 720,
+            "occurred_on": "2030-11-04",
+            "occurred_time": "08:20",
+            "category": "food",
+            "merchant": "合成のパン屋",
+            "memo": "現金",
+            "payment": null
+          },
+          "entry_id": "00000000-0000-4000-8000-0000000c0002"
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-0000000c0107",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "expected_content_revision": "1",
+          "entry": {
+            "direction": "expense",
+            "amount_yen": 720,
+            "occurred_on": "2030-11-04",
+            "occurred_time": "08:20",
+            "category": "food",
+            "merchant": "合成のパン屋",
+            "memo": "現金"
+          }
+        }
+      ]
     }
   }
 }

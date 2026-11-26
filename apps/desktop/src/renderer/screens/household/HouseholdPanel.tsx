@@ -34,6 +34,7 @@ import {
   duplicateRefs,
   elapsedText,
   importResultText,
+  inputFromEntry,
   manualEntryFromInput,
   monthText,
   monthsSeenText,
@@ -128,6 +129,7 @@ function EntryRow({
   const mine = state.busy === entry.ref;
   const enabled = canChange(state, entry);
   const confirming = state.confirming === entry.ref;
+  const editing = state.editing === entry.ref;
   const name =
     entry.merchant ?? entry.memo ?? DIRECTION_LABELS[entry.direction];
   const selectId = `household-category-${entry.ref}`;
@@ -179,6 +181,20 @@ function EntryRow({
             text: HOUSEHOLD_LABELS.unknown,
           }}
         />
+      ) : editing ? (
+        <EntryForm
+          idPrefix={`household-edit-${entry.ref}`}
+          title={HOUSEHOLD_LABELS.editTitle}
+          note={HOUSEHOLD_LABELS.editNote}
+          initial={inputFromEntry(entry)}
+          lockDirection
+          mine={mine}
+          busy={state.busy !== null}
+          submitLabel={HOUSEHOLD_LABELS.editSubmit}
+          submittingLabel={HOUSEHOLD_LABELS.editing}
+          onCancel={actions.cancelEdit}
+          onSubmit={(next) => actions.editEntry(entry.ref, next)}
+        />
       ) : (
         <div className="flex flex-wrap items-center justify-between gap-2">
           <label
@@ -211,15 +227,26 @@ function EntryRow({
             </span>
           ) : null}
           {confirming ? null : (
-            <Button
-              size="sm"
-              variant="ghost"
-              isDisabled={!enabled}
-              aria-label={`${HOUSEHOLD_LABELS.delete}（${dayText(entry)} ${name}）`}
-              onPress={() => actions.startDelete(entry.ref)}
-            >
-              {HOUSEHOLD_LABELS.delete}
-            </Button>
+            <div className="flex flex-wrap items-center gap-1">
+              <Button
+                size="sm"
+                variant="ghost"
+                isDisabled={!enabled}
+                aria-label={`${HOUSEHOLD_LABELS.editOpen}（${dayText(entry)} ${name}）`}
+                onPress={() => actions.startEdit(entry.ref)}
+              >
+                {HOUSEHOLD_LABELS.editOpen}
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                isDisabled={!enabled}
+                aria-label={`${HOUSEHOLD_LABELS.delete}（${dayText(entry)} ${name}）`}
+                onPress={() => actions.startDelete(entry.ref)}
+              >
+                {HOUSEHOLD_LABELS.delete}
+              </Button>
+            </div>
           )}
         </div>
       )}
@@ -369,26 +396,49 @@ function IntakeBlock({
 const FIELD_CLASS =
   'rounded-md border border-separator bg-transparent px-2 py-1 text-sm text-foreground';
 
-// 手入力の欄（ADR 0167）。向き・金額・日付・時刻・分類・店名・メモ・支払い手段。
-function AddEntryForm({
-  state,
-  actions,
+const EMPTY_INPUT: ManualEntryInput = {
+  direction: 'expense',
+  amount: '',
+  date: '',
+  time: '',
+  category: 'uncategorized',
+  merchant: '',
+  memo: '',
+  payment: '',
+};
+
+// 記録の入力欄（手入力 ADR 0167・中身の変更 ADR 0169 で共通）。向き・金額・日付・時刻・分類・店名・メモ・支払い手段。
+// 中身の変更では向きを固定する（向きは変えられない）。idPrefix は欄の id の頭（同じ画面に複数あっても重ならない）。
+function EntryForm({
+  idPrefix,
+  title,
+  note,
+  initial,
+  lockDirection,
+  mine,
+  busy,
+  submitLabel,
+  submittingLabel,
+  onCancel,
+  onSubmit,
 }: {
-  readonly state: HouseholdViewState;
-  readonly actions: HouseholdActions;
+  readonly idPrefix: string;
+  readonly title: string;
+  readonly note: string;
+  readonly initial: ManualEntryInput;
+  readonly lockDirection: boolean;
+  // この欄の送り中か・何かの送り中か。
+  readonly mine: boolean;
+  readonly busy: boolean;
+  readonly submitLabel: string;
+  readonly submittingLabel: string;
+  readonly onCancel: () => void;
+  readonly onSubmit: (
+    entry: NonNullable<ReturnType<typeof manualEntryFromInput>>,
+  ) => void;
 }) {
-  const [input, setInput] = useState<ManualEntryInput>({
-    direction: 'expense',
-    amount: '',
-    date: '',
-    time: '',
-    category: 'uncategorized',
-    merchant: '',
-    memo: '',
-    payment: '',
-  });
+  const [input, setInput] = useState<ManualEntryInput>(initial);
   const entry = manualEntryFromInput(input);
-  const mine = state.busy === ADD_PLACE;
   const set = (patch: Partial<ManualEntryInput>) =>
     setInput((prev) => ({ ...prev, ...patch }));
   const field = (
@@ -396,7 +446,7 @@ function AddEntryForm({
     label: string,
     extra: { readonly inputMode?: 'numeric'; readonly type?: string } = {},
   ) => {
-    const id = `household-add-${key}`;
+    const id = `${idPrefix}-${key}`;
     return (
       <label htmlFor={id} className="flex flex-col gap-0.5 text-xs text-muted">
         {label}
@@ -417,20 +467,20 @@ function AddEntryForm({
   return (
     <div
       role="group"
-      aria-label={HOUSEHOLD_LABELS.addTitle}
+      aria-label={title}
       className="flex flex-col gap-2 rounded-md border border-separator p-3"
     >
-      <p className="text-xs text-muted">{HOUSEHOLD_LABELS.addNote}</p>
+      <p className="text-xs text-muted">{note}</p>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <label
-          htmlFor="household-add-direction"
+          htmlFor={`${idPrefix}-direction`}
           className="flex flex-col gap-0.5 text-xs text-muted"
         >
           {HOUSEHOLD_LABELS.addDirection}
           <select
-            id="household-add-direction"
+            id={`${idPrefix}-direction`}
             value={input.direction}
-            disabled={mine}
+            disabled={mine || lockDirection}
             onChange={(event) => {
               const direction = event.currentTarget
                 .value as ManualEntryInput['direction'];
@@ -450,12 +500,12 @@ function AddEntryForm({
           </select>
         </label>
         <label
-          htmlFor="household-add-category"
+          htmlFor={`${idPrefix}-category`}
           className="flex flex-col gap-0.5 text-xs text-muted"
         >
           {HOUSEHOLD_LABELS.category}
           <select
-            id="household-add-category"
+            id={`${idPrefix}-category`}
             value={input.category}
             disabled={mine || categoryChoices(input.direction).length < 2}
             onChange={(event) =>
@@ -489,22 +539,47 @@ function AddEntryForm({
           size="sm"
           variant="secondary"
           isDisabled={mine}
-          onPress={actions.cancelAdd}
+          onPress={onCancel}
         >
           {HOUSEHOLD_LABELS.cancel}
         </Button>
         <Button
           size="sm"
           variant="primary"
-          isDisabled={mine || entry === null || state.busy !== null}
+          isDisabled={mine || entry === null || busy}
           onPress={() => {
-            if (entry !== null) actions.addEntry(entry);
+            if (entry !== null) onSubmit(entry);
           }}
         >
-          {mine ? HOUSEHOLD_LABELS.adding : HOUSEHOLD_LABELS.addSubmit}
+          {mine ? submittingLabel : submitLabel}
         </Button>
       </div>
     </div>
+  );
+}
+
+// 手入力の欄（ADR 0167）。
+function AddEntryForm({
+  state,
+  actions,
+}: {
+  readonly state: HouseholdViewState;
+  readonly actions: HouseholdActions;
+}) {
+  return (
+    <EntryForm
+      idPrefix="household-add"
+      title={HOUSEHOLD_LABELS.addTitle}
+      note={HOUSEHOLD_LABELS.addNote}
+      initial={EMPTY_INPUT}
+      lockDirection={false}
+      mine={state.busy === ADD_PLACE}
+      busy={state.busy !== null}
+      submitLabel={HOUSEHOLD_LABELS.addSubmit}
+      submittingLabel={HOUSEHOLD_LABELS.adding}
+      onCancel={actions.cancelAdd}
+      onSubmit={actions.addEntry}
+    />
   );
 }
 

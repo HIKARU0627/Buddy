@@ -117,6 +117,8 @@ export const ROUTE_CHECKS: Readonly<Record<string, readonly CoreCheck[]>> = {
   changeHouseholdBudget: SCREEN,
   // 家計の記録の手入力（ADR 0167）。本人の画面操作だけ。
   createHouseholdEntry: SCREEN,
+  // 家計の記録の中身の変更（ADR 0169）。本人の画面操作だけ。内容版の照合は経路の処理が行い、409 にする。
+  changeHouseholdEntry: SCREEN,
 };
 
 export interface RequestContext {

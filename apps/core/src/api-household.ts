@@ -7,6 +7,7 @@
 // - 1 か月（GET /v1/household/months/{month}）は記録と集計。出所の識別子（メールの ID など）は返さない。
 // - 分類の変更・削除は内容版で照合する。内容版の違い・削除済みは 409（画面は読み直す）、向きの違う分類・ない記録は 422。
 //   同じ request_id の再送は、成功済みなら内容版が進んでいる・削除済みなので 409 になり、二重に効かない。
+// - 中身の変更（POST /v1/household/entries/{entry_id}/content、ADR 0169）も内容版で照合する。向きの違い・検査に合わない中身は 422。
 // - 設定の変更（POST /v1/household/settings）は利用通知の取り込みの入・切（ADR 0163）。版の違いは 409。
 // - データ鍵が読めない・保存の失敗・成否不明は 503 dependency_unavailable にし、成功にも競合にも見せない。
 // 承認・実行経路・effect_kind は関わらない（家計の記録は Buddy 自身の記録で、外部を変えない。ADR 0158）。
@@ -34,6 +35,7 @@ import type { ApiRouteHandler } from './api-server.js';
 import {
   HouseholdMerchantKey,
   changeHouseholdCategory,
+  changeHouseholdContent,
   deleteHouseholdEntry,
   readHouseholdMonths,
   recordHouseholdEntry,
@@ -68,6 +70,7 @@ export interface HouseholdRoutes {
     readonly importHouseholdRows: ApiRouteHandler;
     readonly changeHouseholdBudget: ApiRouteHandler;
     readonly createHouseholdEntry: ApiRouteHandler;
+    readonly changeHouseholdEntry: ApiRouteHandler;
   };
 }
 
@@ -80,6 +83,7 @@ const CONFLICT_REASONS: ReadonlySet<string> = new Set([
 const INVALID_REASONS: ReadonlySet<string> = new Set([
   'category_invalid',
   'category_direction_mismatch',
+  'direction_mismatch',
   'entry_missing',
   'entry_id_invalid',
   'expected_revision_invalid',
@@ -459,6 +463,81 @@ export function createHouseholdRoutes(
     };
   };
 
+  // 記録の中身の変更（ADR 0169）。内容版で照合し、向きは変えられない（422）。店名があり分類が未分類でなければ、本人の
+  // 規則として覚える。直した後の記録を読み直して返す。
+  const changeEntry: ApiRouteHandler = async (request) => {
+    const body = request.body ?? {};
+    const fail = failWith(stringOf(body['request_id']));
+    const entryId = request.params['entry_id'] ?? '';
+    const expected = stringOf(body['expected_content_revision']);
+    if (!STORED_REVISION.test(expected)) return fail(422, 'invalid_input');
+    const raw = (body['entry'] ?? {}) as Record<string, unknown>;
+    const content = {
+      direction: raw['direction'],
+      amount_yen: raw['amount_yen'],
+      occurred_on: raw['occurred_on'],
+      occurred_time: raw['occurred_time'] ?? null,
+      category: raw['category'],
+      merchant: raw['merchant'] ?? null,
+      memo: raw['memo'] ?? null,
+      payment: raw['payment'] ?? null,
+    };
+    if (householdContentErrors(content).length > 0)
+      return fail(422, 'invalid_input');
+    const dataKey = await loadKey();
+    if (dataKey === null) return fail(503, 'dependency_unavailable');
+    const changed = await changeHouseholdContent(
+      {
+        client: options.store,
+        dataKey,
+        sha256Hex,
+        newId,
+        now: () => new Date(options.now()).toISOString(),
+      },
+      entryId,
+      expected,
+      content as HouseholdEntryContent,
+    );
+    if (changed.outcome !== 'changed') {
+      const failure = failureStatus(changed.outcome, changed.reasons);
+      return fail(failure.status, failure.code);
+    }
+    const got = await options.store.household({
+      kind: 'household.get',
+      entry_id: changed.entry_id,
+    });
+    if (!got.ok || got.value === null)
+      return fail(503, 'dependency_unavailable');
+    const record = got.value;
+    const envelope = record.content;
+    if (record.state !== 'active' || envelope === null)
+      return fail(503, 'dependency_unavailable');
+    const opened = openHouseholdContent(
+      dataKey,
+      record.entry_id,
+      Number(record.content_revision),
+      {
+        formatVersion: envelope.format_version,
+        keyId: envelope.key_id,
+        nonce: envelope.nonce,
+        ciphertext: envelope.ciphertext,
+        tag: envelope.tag,
+      },
+    );
+    if (!opened.ok) return fail(503, 'dependency_unavailable');
+    return {
+      status: 200,
+      body: entryBody({
+        entry_id: record.entry_id,
+        source_kind: record.source_kind,
+        content_revision: record.content_revision,
+        created_at: record.created_at,
+        updated_at: record.updated_at,
+        content: opened.content,
+      }),
+    };
+  };
+
   // 分類ごとの予算を丸ごと差し替える（ADR 0166）。版は保存層が同じ transaction で照合する。
   const changeBudget: ApiRouteHandler = async (request) => {
     const body = request.body ?? {};
@@ -625,6 +704,7 @@ export function createHouseholdRoutes(
       importHouseholdRows: importRows,
       changeHouseholdBudget: changeBudget,
       createHouseholdEntry: createEntry,
+      changeHouseholdEntry: changeEntry,
     },
   };
 }

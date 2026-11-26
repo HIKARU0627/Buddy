@@ -206,5 +206,41 @@ test('admission: locked, unfocused, malformed and unknown refs send nothing to t
     { io: { ...UNLOCKED, stopScope: 'local' } },
   );
   assert.equal(reason(stopped), 'entry_not_found');
+  // 中身の変更（ADR 0169）: 同じ受付。向きの変更は IPC の形では変えられない（項目は契約の形だけ）。
+  const entry = {
+    direction: 'expense',
+    amount_yen: 700,
+    occurred_on: '2030-11-04',
+    occurred_time: null,
+    category: 'food',
+    merchant: null,
+    memo: null,
+    payment: null,
+  };
+  const editHidden = await r.ipc(
+    'desktop.household_edit',
+    { ref: randomUUID(), entry },
+    { sender: { trustedSender: true, windowFocused: false } },
+  );
+  assert.equal(reason(editHidden), 'screen_operation_required');
+  const editLocked = await r.ipc(
+    'desktop.household_edit',
+    { ref: randomUUID(), entry },
+    { io: { ...UNLOCKED, lockState: 'locked' } },
+  );
+  assert.equal(reason(editLocked), 'device_locked');
+  for (const payload of [
+    { ref: randomUUID(), entry: { ...entry, amount_yen: 0 } },
+    { ref: randomUUID(), entry, entry_id: randomUUID() },
+    { entry },
+  ]) {
+    const malformed = await r.ipc('desktop.household_edit', payload);
+    assert.equal(reason(malformed), 'invalid_request');
+  }
+  const editUnknown = await r.ipc('desktop.household_edit', {
+    ref: randomUUID(),
+    entry,
+  });
+  assert.equal(reason(editUnknown), 'entry_not_found');
   assert.deepEqual(householdRequests(r), []);
 });

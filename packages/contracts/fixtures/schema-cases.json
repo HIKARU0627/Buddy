@@ -4744,6 +4744,66 @@
     }
   },
   {
+    "id": "household-entry-content-change",
+    "schema": "HouseholdEntryContentChangeRequest",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-0000000c0107",
+      "command_scope_id": "00000000-0000-4000-8000-000000009002",
+      "expected_content_revision": "1",
+      "entry": {
+        "direction": "expense",
+        "amount_yen": 720,
+        "occurred_on": "2030-11-04",
+        "occurred_time": "08:20",
+        "category": "food",
+        "merchant": "合成のパン屋",
+        "memo": "現金",
+        "payment": null
+      }
+    }
+  },
+  {
+    "id": "household-entry-content-change-no-revision",
+    "schema": "HouseholdEntryContentChangeRequest",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-0000000c0107",
+      "command_scope_id": "00000000-0000-4000-8000-000000009002",
+      "entry": {
+        "direction": "expense",
+        "amount_yen": 720,
+        "occurred_on": "2030-11-04",
+        "occurred_time": "08:20",
+        "category": "food",
+        "merchant": "合成のパン屋",
+        "memo": "現金",
+        "payment": null
+      }
+    }
+  },
+  {
+    "id": "household-entry-content-change-extra",
+    "schema": "HouseholdEntryContentChangeRequest",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-0000000c0107",
+      "command_scope_id": "00000000-0000-4000-8000-000000009002",
+      "expected_content_revision": "1",
+      "entry": {
+        "direction": "expense",
+        "amount_yen": 720,
+        "occurred_on": "2030-11-04",
+        "occurred_time": "08:20",
+        "category": "food",
+        "merchant": "合成のパン屋",
+        "memo": "現金",
+        "payment": null
+      },
+      "source_kind": "manual"
+    }
+  },
+  {
     "id": "sync-batch",
     "schema": "SyncBatch",
     "valid": true,

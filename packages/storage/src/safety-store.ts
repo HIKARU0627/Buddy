@@ -209,6 +209,44 @@ export function startUndo(
   return null;
 }
 
+// 補償の操作の状態の変化を取り消しの記録へ写す（状態を進める transaction の中で呼ぶ。U313、ADR 0155）。
+// - 送出の前に取消・置き換えで止まったら、取り消しの記録を failed にして、同じ自動実行を取り消し直せるようにする。
+//   失敗の連続（安全停止）には数えない（recordUndoOutcome の数え方）。
+// - 未実行（not_executed）の確定の後に本人が補償の操作をやり直すときは、記録を in_progress に戻す。その間に
+//   別の取り消しが始まっていれば、補償を二重にしないため、やり直しを拒否する（呼び出し側は retry_not_allowed）。
+// 補償の操作でなければ何もしない。
+export function syncUndoForTransition(
+  db: SqliteDatabase,
+  compensationOperationId: string,
+  from: string,
+  to: string,
+): 'undo_in_progress' | null {
+  if (to === 'cancelled' || to === 'superseded') {
+    db.prepare(
+      "UPDATE undo_records SET status = 'failed' WHERE compensation_operation_id = ? AND status = 'in_progress'",
+    ).run(compensationOperationId);
+    return null;
+  }
+  if (from !== 'not_executed') return null;
+  const record = db
+    .prepare(
+      'SELECT operation_id, status FROM undo_records WHERE compensation_operation_id = ?',
+    )
+    .get(compensationOperationId) as
+    { operation_id: string; status: string } | undefined;
+  if (record === undefined || record.status !== 'failed') return null;
+  const other = db
+    .prepare(
+      "SELECT 1 FROM undo_records WHERE operation_id = ? AND status IN ('in_progress', 'undone', 'unknown')",
+    )
+    .get(record.operation_id);
+  if (other !== undefined) return 'undo_in_progress';
+  db.prepare(
+    "UPDATE undo_records SET status = 'in_progress' WHERE compensation_operation_id = ? AND status = 'failed'",
+  ).run(compensationOperationId);
+  return null;
+}
+
 export type UndoStatus = 'undone' | 'failed' | 'unknown';
 
 // 補償の操作の結果を取り消しの記録へ写す（結果を記録する transaction の中で呼ぶ）。
@@ -225,9 +263,14 @@ export function recordUndoOutcome(
     )
     .run(status, compensationOperationId);
   if (updated.changes === 0 || status !== 'failed') return;
+  // 本人が取消・置き換えで止めた補償の操作は、失敗に数えない（U313、ADR 0155）。
   const recent = db
     .prepare(
-      "SELECT status FROM undo_records WHERE status IN ('undone', 'failed') ORDER BY requested_at DESC, rowid DESC LIMIT ?",
+      `SELECT u.status FROM undo_records u
+         LEFT JOIN operations o ON o.operation_id = u.compensation_operation_id
+        WHERE u.status IN ('undone', 'failed')
+          AND coalesce(o.state, '') NOT IN ('cancelled', 'superseded')
+        ORDER BY u.requested_at DESC, u.rowid DESC LIMIT ?`,
     )
     .pluck()
     .all(COMPENSATION_FAILURE_LIMIT) as string[];

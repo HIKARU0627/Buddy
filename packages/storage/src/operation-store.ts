@@ -34,6 +34,7 @@ import {
   recordUndoOutcome,
   safetyStopped,
   startUndo,
+  syncUndoForTransition,
 } from './safety-store.js';
 import type { UndoStatus } from './safety-store.js';
 import type { SqliteDatabase, StoragePlatform } from './connection.js';
@@ -668,6 +669,12 @@ function advance(
 ): number {
   if (!canTransition(operation.state, to, operation.effect_route))
     throw new CommandRejection(['transition_not_allowed']);
+  // 補償の操作なら、取り消しの記録を状態に合わせる（U313、ADR 0155）。
+  if (
+    syncUndoForTransition(db, operation.operation_id, operation.state, to) !==
+    null
+  )
+    throw new CommandRejection(['retry_not_allowed']);
   const next = operation.state_revision + 1;
   // completed_at は今の完了の状態に入った時刻（J5 の本文 7 日・レシート 90 日の起点。ADR 0040・0051）。
   // 未実行の確定（not_executed）も完了に数える。本人の再試行で完了でない状態へ戻れば NULL に戻す。

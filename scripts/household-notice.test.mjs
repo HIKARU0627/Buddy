@@ -228,6 +228,50 @@ test('日付: 各書式を YYYY-MM-DD と HH:MM にし、年のない書式は�
   assert.equal(parseHouseholdNoticeDate('近日中', '2030-10-05'), null);
 });
 
+test('日付: 年のない日付が受信日より後でも、7 日以内なら受信日の年のまま（ADR 0170）', () => {
+  // タイムゾーンの違いで 1 日先になっただけの日付は前の年にしない。
+  assert.deepEqual(parseHouseholdNoticeDate('12/01 00:10', '2030-11-30'), {
+    on: '2030-12-01',
+    time: '00:10',
+  });
+  // ちょうど 7 日先までは受信日の年、8 日先からは前の年。
+  assert.equal(
+    parseHouseholdNoticeDate('10/12', '2030-10-05')?.on,
+    '2030-10-12',
+  );
+  assert.equal(
+    parseHouseholdNoticeDate('10/13', '2030-10-05')?.on,
+    '2029-10-13',
+  );
+  // 月をまたぐ 7 日先と 8 日先。
+  assert.equal(
+    parseHouseholdNoticeDate('11/06', '2030-10-30')?.on,
+    '2030-11-06',
+  );
+  assert.equal(
+    parseHouseholdNoticeDate('11/07', '2030-10-30')?.on,
+    '2029-11-07',
+  );
+  // 年末年始: 12/31 の利用を 1/2 に受け取れば前の年。年内の 12/31 を 12/30 に受け取れば同じ年。
+  assert.equal(
+    parseHouseholdNoticeDate('12/31', '2031-01-02')?.on,
+    '2030-12-31',
+  );
+  assert.equal(
+    parseHouseholdNoticeDate('12/31', '2030-12-30')?.on,
+    '2030-12-31',
+  );
+  // 受信日と同じ・過去の日付は変わらない。
+  assert.equal(
+    parseHouseholdNoticeDate('10/05', '2030-10-05')?.on,
+    '2030-10-05',
+  );
+  assert.equal(
+    parseHouseholdNoticeDate('01/07', '2030-12-31')?.on,
+    '2030-01-07',
+  );
+});
+
 test('本文: 項目名と値を読み、記録の内容にする（同じ行の書式と次の行の書式）', () => {
   const sameLine = readHouseholdNotice({
     issuer: issuer('smbc_card'),
@@ -376,5 +420,56 @@ test('本文: 速報・利用の通知でない件名・金額のない本文は
       received_on: '2030-10-05',
     }),
     { outcome: 'ignored', reason: 'no_usage' },
+  );
+});
+
+test('本文: ご利用金額とお支払い金額が並ぶ通知は 1 件、支払いの金額だけの通知も 1 件、利用の金額が二つなら 2 件（ADR 0170）', () => {
+  const both = readHouseholdNotice({
+    issuer: issuer('smbc_card'),
+    subject: 'ご利用のお知らせ',
+    text: [
+      '◇利用日：2030/10/05 12:34',
+      '◇利用先：合成マート 駅前店',
+      '◇ご利用金額：1,200円',
+      '◇お支払い金額：1,200円',
+    ].join('\n'),
+    received_on: '2030-10-05',
+  });
+  assert.equal(both.outcome, 'entries');
+  assert.equal(both.entries.length, 1);
+  assert.equal(both.entries[0].content.amount_yen, 1200);
+  assert.equal(both.entries[0].content.merchant, '合成マート 駅前店');
+  assert.deepEqual(both.skipped, []);
+  const paymentOnly = readHouseholdNotice({
+    issuer: issuer('smbc_card'),
+    subject: 'ご利用のお知らせ',
+    text: [
+      '◇利用日：2030/10/05 12:34',
+      '◇利用先：合成書店',
+      '◇お支払金額：3,400円',
+    ].join('\n'),
+    received_on: '2030-10-05',
+  });
+  assert.equal(paymentOnly.outcome, 'entries');
+  assert.equal(paymentOnly.entries.length, 1);
+  assert.equal(paymentOnly.entries[0].content.amount_yen, 3400);
+  const twoUsages = readHouseholdNotice({
+    issuer: issuer('smbc_card'),
+    subject: 'ご利用のお知らせ',
+    text: [
+      '◇利用日：2030/10/05 12:34',
+      '◇利用先：合成マート',
+      '◇ご利用金額：500円',
+      '◇利用日：2030/10/05 13:00',
+      '◇利用先：合成書店',
+      '◇ご利用金額：700円',
+      '◇お支払い金額：1,200円',
+    ].join('\n'),
+    received_on: '2030-10-05',
+  });
+  assert.equal(twoUsages.outcome, 'entries');
+  assert.deepEqual(
+    twoUsages.entries.map((entry) => entry.content.amount_yen),
+    [500, 700],
   );
 });

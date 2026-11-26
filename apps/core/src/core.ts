@@ -1039,7 +1039,7 @@ export async function startCore(
               const keyResult = await options.keyStore.loadDataKey();
               return keyResult.ok ? keyResult.dataKey : null;
             },
-            timeZone: () => deviceTimeZone() ?? 'UTC',
+            timeZone: () => deviceTimeZone(),
             now,
             log,
             retention: {

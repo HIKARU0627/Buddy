@@ -171,7 +171,7 @@ export interface HouseholdMailIntakeTarget {
 
 export interface HouseholdMailIntakeSummary {
   readonly outcome: 'done' | 'skipped' | 'stopped';
-  // skipped・stopped の理由（provider_unsupported・reader_unavailable・key_unavailable・pending_failed・
+  // skipped・stopped の理由（provider_unsupported・reader_unavailable・key_unavailable・zone_unavailable・pending_failed・
   // read_failed・record_failed・check_failed・already_running・retention_closed・intake_off）。
   // intake_off は本人が家計簿の画面で取り込みを止めている（ADR 0163）。
   readonly reason: string | null;
@@ -190,7 +190,8 @@ export interface HouseholdMailIntakeOptions {
   // データ鍵（使うたびに読む）。null なら取り込まない。
   readonly dataKey: () => Promise<DataKeyMaterial | null>;
   // 本人のタイムゾーン（IANA）。
-  readonly timeZone: () => string;
+  // 読めないとき（null）は UTC などで代用せず、その回は読まない（zone_unavailable。device-time-zone.ts の方針）。
+  readonly timeZone: () => string | null;
   readonly now?: () => Date;
   readonly newId?: () => string;
   // 一度に確かめるメールの上限。
@@ -240,6 +241,10 @@ export function createHouseholdMailIntake(
     if (gmail === null) return summary('skipped', 'reader_unavailable', counts);
     const dataKey = await options.dataKey();
     if (dataKey === null) return summary('skipped', 'key_unavailable', counts);
+    // 受信日は本人の地域の日付で決める。タイムゾーンを読めない回は、代用せずに読まない（ADR 0170）。
+    const timeZone = options.timeZone();
+    if (timeZone === null)
+      return summary('skipped', 'zone_unavailable', counts);
     const ports: HouseholdPorts = {
       client: options.store,
       dataKey,
@@ -305,7 +310,7 @@ export function createHouseholdMailIntake(
       const receivedMillis = Number(full.internalDate ?? head.internalDate);
       const receivedOn = householdLocalDate(
         Number.isFinite(receivedMillis) ? receivedMillis : now().getTime(),
-        options.timeZone(),
+        timeZone,
       );
       const reading =
         text === null

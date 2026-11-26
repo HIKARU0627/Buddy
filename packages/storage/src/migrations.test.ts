@@ -125,6 +125,11 @@ const nineteenthBytes = readFileSync(
 const nineteenthSha = createHash('sha256')
   .update(nineteenthBytes)
   .digest('hex');
+// 0020（ADR 0170）: 利用通知メールの取り込みの基準を取得集合ごとにする。
+const twentiethBytes = readFileSync(
+  new URL('0020_household_mail_baselines_scope.sql', MIGRATIONS_DIR),
+);
+const twentiethSha = createHash('sha256').update(twentiethBytes).digest('hex');
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
 
 function withTempDir(run: (dir: string) => void): void {
@@ -185,7 +190,7 @@ function schemaSnapshot(db: SqliteDatabase): unknown {
   };
 }
 
-test('0001 to 0019 apply to a temporary file DB: 63 STRICT tables, version 19 and the content hashes', () => {
+test('0001 to 0020 apply to a temporary file DB: 63 STRICT tables, version 20 and the content hashes', () => {
   withTempDir((dir) => {
     const path = join(dir, 'buddy.sqlite');
     const db = openWriteConnection(path, { platform: 'macos' });
@@ -193,9 +198,9 @@ test('0001 to 0019 apply to a temporary file DB: 63 STRICT tables, version 19 an
       assert.equal(readSchemaVersion(db), 0);
       assert.deepEqual(applyMigrations(db), {
         from: 0,
-        to: 19,
+        to: 20,
         applied: [
-          1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
+          1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
         ],
       });
       const tables = tableNames(db);
@@ -228,20 +233,21 @@ test('0001 to 0019 apply to a temporary file DB: 63 STRICT tables, version 19 an
         'migration_sha256:0017': seventeenthSha,
         'migration_sha256:0018': eighteenthSha,
         'migration_sha256:0019': nineteenthSha,
-        schema_version: '19',
+        'migration_sha256:0020': twentiethSha,
+        schema_version: '20',
       });
       assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
       assert.equal(db.pragma('integrity_check', { simple: true }), 'ok');
     } finally {
       db.close();
     }
-    // 開き直しても版は 19 のまま、適用するものはない。
+    // 開き直しても版は 20 のまま、適用するものはない。
     const reopened = openWriteConnection(path, { platform: 'macos' });
     try {
-      assert.equal(readSchemaVersion(reopened), 19);
+      assert.equal(readSchemaVersion(reopened), 20);
       assert.deepEqual(applyMigrations(reopened), {
-        from: 19,
-        to: 19,
+        from: 20,
+        to: 20,
         applied: [],
       });
     } finally {
@@ -427,6 +433,7 @@ test('migration files are numbered from 1 without gaps and contain no transactio
       [17, '0017_household_mail_checks.sql'],
       [18, '0018_household_settings.sql'],
       [19, '0019_household_budgets.sql'],
+      [20, '0020_household_mail_baselines_scope.sql'],
     ],
   );
   withTempDir((dir) => {

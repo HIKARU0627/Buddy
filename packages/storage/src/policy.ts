@@ -329,7 +329,7 @@ export const TABLE_POLICIES: Readonly<Record<string, TablePolicy>> = {
     retention: 'source_body',
     transaction: 'household',
   },
-  // 口座ごとの取り込みの開始の時刻。
+  // 取得集合（provider, account_id, scope_id）ごとの取り込みの開始の時刻（0020。ADR 0170）。
   household_mail_baselines: {
     body: 'none',
     retention: 'until_replaced',

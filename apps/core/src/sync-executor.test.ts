@@ -46,6 +46,9 @@ interface Harness {
 
 async function start(t: test.TestContext): Promise<Harness> {
   const core = await startEventCore(t);
+  // 起動直後の保存期限の掃除（非同期）が済むまで待つ。待たないと、掃除の読み取りが後から入れる種の行
+  // （fetched_at が 1970 年の公開済み行は 24 時間の期限切れ）を消し、差分が 0 件になることがある。
+  await core.handle.retention.idle();
   const sql = <T>(
     body: (db: ReturnType<typeof openWriteConnection>) => T,
   ): T => {

@@ -3574,7 +3574,11 @@
           "unreadable": 0
         }
       ],
-      "truncated": false
+      "truncated": false,
+      "settings": {
+        "mail_intake": "on",
+        "settings_revision": "0"
+      }
     }
   },
   {
@@ -3686,7 +3690,11 @@
           "unreadable": 0
         }
       ],
-      "truncated": false
+      "truncated": false,
+      "settings": {
+        "mail_intake": "on",
+        "settings_revision": "0"
+      }
     }
   },
   {
@@ -3807,7 +3815,11 @@
           "unreadable": 0
         }
       ],
-      "truncated": false
+      "truncated": false,
+      "settings": {
+        "mail_intake": "on",
+        "settings_revision": "0"
+      }
     },
     "semantic_errors": ["months_sequence"]
   },
@@ -3929,7 +3941,11 @@
           "unreadable": 0
         }
       ],
-      "truncated": false
+      "truncated": false,
+      "settings": {
+        "mail_intake": "on",
+        "settings_revision": "0"
+      }
     },
     "semantic_errors": ["months_sequence"]
   },
@@ -4051,7 +4067,11 @@
           "unreadable": 0
         }
       ],
-      "truncated": false
+      "truncated": false,
+      "settings": {
+        "mail_intake": "on",
+        "settings_revision": "0"
+      }
     },
     "semantic_errors": ["balance_mismatch"]
   },
@@ -4124,6 +4144,292 @@
     "value": {
       "entry_id": "00000000-0000-4000-8000-0000000c0002",
       "state": "active"
+    }
+  },
+  {
+    "id": "household-settings",
+    "schema": "HouseholdSettings",
+    "valid": true,
+    "value": {
+      "mail_intake": "off",
+      "settings_revision": "3"
+    }
+  },
+  {
+    "id": "household-settings-unknown",
+    "schema": "HouseholdSettings",
+    "valid": false,
+    "value": {
+      "mail_intake": "paused",
+      "settings_revision": "3"
+    }
+  },
+  {
+    "id": "household-settings-revision",
+    "schema": "HouseholdSettings",
+    "valid": false,
+    "value": {
+      "mail_intake": "on",
+      "settings_revision": "-1"
+    }
+  },
+  {
+    "id": "household-settings-change",
+    "schema": "HouseholdSettingsChangeRequest",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-0000000c0103",
+      "command_scope_id": "00000000-0000-4000-8000-000000009002",
+      "expected_settings_revision": "0",
+      "mail_intake": "off"
+    }
+  },
+  {
+    "id": "household-settings-change-missing",
+    "schema": "HouseholdSettingsChangeRequest",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-0000000c0103",
+      "command_scope_id": "00000000-0000-4000-8000-000000009002",
+      "expected_settings_revision": "0"
+    }
+  },
+  {
+    "id": "household-overview-no-settings",
+    "schema": "HouseholdOverview",
+    "valid": false,
+    "value": {
+      "time_zone": "Pacific/Auckland",
+      "current_month": "2030-11",
+      "generated_at": "2030-11-05T00:00:00Z",
+      "months": [
+        {
+          "month": "2030-11",
+          "expense_yen": 1820,
+          "income_yen": 200000,
+          "balance_yen": 198180,
+          "transfer_yen": 30000,
+          "entry_count": 4,
+          "unreadable": 0
+        },
+        {
+          "month": "2030-10",
+          "expense_yen": 5000,
+          "income_yen": 0,
+          "balance_yen": -5000,
+          "transfer_yen": 0,
+          "entry_count": 2,
+          "unreadable": 1
+        },
+        {
+          "month": "2030-09",
+          "expense_yen": 0,
+          "income_yen": 0,
+          "balance_yen": 0,
+          "transfer_yen": 0,
+          "entry_count": 0,
+          "unreadable": 0
+        },
+        {
+          "month": "2030-08",
+          "expense_yen": 0,
+          "income_yen": 0,
+          "balance_yen": 0,
+          "transfer_yen": 0,
+          "entry_count": 0,
+          "unreadable": 0
+        },
+        {
+          "month": "2030-07",
+          "expense_yen": 0,
+          "income_yen": 0,
+          "balance_yen": 0,
+          "transfer_yen": 0,
+          "entry_count": 0,
+          "unreadable": 0
+        },
+        {
+          "month": "2030-06",
+          "expense_yen": 0,
+          "income_yen": 0,
+          "balance_yen": 0,
+          "transfer_yen": 0,
+          "entry_count": 0,
+          "unreadable": 0
+        },
+        {
+          "month": "2030-05",
+          "expense_yen": 0,
+          "income_yen": 0,
+          "balance_yen": 0,
+          "transfer_yen": 0,
+          "entry_count": 0,
+          "unreadable": 0
+        },
+        {
+          "month": "2030-04",
+          "expense_yen": 0,
+          "income_yen": 0,
+          "balance_yen": 0,
+          "transfer_yen": 0,
+          "entry_count": 0,
+          "unreadable": 0
+        },
+        {
+          "month": "2030-03",
+          "expense_yen": 0,
+          "income_yen": 0,
+          "balance_yen": 0,
+          "transfer_yen": 0,
+          "entry_count": 0,
+          "unreadable": 0
+        },
+        {
+          "month": "2030-02",
+          "expense_yen": 0,
+          "income_yen": 0,
+          "balance_yen": 0,
+          "transfer_yen": 0,
+          "entry_count": 0,
+          "unreadable": 0
+        },
+        {
+          "month": "2030-01",
+          "expense_yen": 0,
+          "income_yen": 0,
+          "balance_yen": 0,
+          "transfer_yen": 0,
+          "entry_count": 0,
+          "unreadable": 0
+        },
+        {
+          "month": "2029-12",
+          "expense_yen": 0,
+          "income_yen": 0,
+          "balance_yen": 0,
+          "transfer_yen": 0,
+          "entry_count": 0,
+          "unreadable": 0
+        }
+      ],
+      "truncated": false
+    }
+  },
+  {
+    "id": "household-import-row",
+    "schema": "HouseholdImportRow",
+    "valid": true,
+    "value": {
+      "row_id": "mf-row-1",
+      "direction": "expense",
+      "amount_yen": 1280,
+      "occurred_on": "2030-10-05",
+      "category": "food",
+      "merchant": "合成の食堂",
+      "memo": null,
+      "payment": "合成のカード"
+    }
+  },
+  {
+    "id": "household-import-row-transfer",
+    "schema": "HouseholdImportRow",
+    "valid": true,
+    "value": {
+      "row_id": "mf-row-2",
+      "direction": "transfer",
+      "amount_yen": 40000,
+      "occurred_on": "2030-10-05",
+      "category": "transfer",
+      "merchant": null,
+      "memo": null,
+      "payment": "合成のカード"
+    }
+  },
+  {
+    "id": "household-import-row-id-space",
+    "schema": "HouseholdImportRow",
+    "valid": false,
+    "value": {
+      "row_id": "mf row",
+      "direction": "expense",
+      "amount_yen": 1280,
+      "occurred_on": "2030-10-05",
+      "category": "food",
+      "merchant": "合成の食堂",
+      "memo": null,
+      "payment": "合成のカード"
+    }
+  },
+  {
+    "id": "household-import-row-zero",
+    "schema": "HouseholdImportRow",
+    "valid": false,
+    "value": {
+      "row_id": "mf-row-1",
+      "direction": "expense",
+      "amount_yen": 0,
+      "occurred_on": "2030-10-05",
+      "category": "food",
+      "merchant": "合成の食堂",
+      "memo": null,
+      "payment": "合成のカード"
+    }
+  },
+  {
+    "id": "household-import-request",
+    "schema": "HouseholdImportRequest",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-0000000c0104",
+      "command_scope_id": "00000000-0000-4000-8000-000000009002",
+      "origin": "moneyforward",
+      "rows": [
+        {
+          "row_id": "mf-row-1",
+          "direction": "expense",
+          "amount_yen": 1280,
+          "occurred_on": "2030-10-05",
+          "category": "food",
+          "merchant": "合成の食堂",
+          "memo": null,
+          "payment": "合成のカード"
+        }
+      ]
+    }
+  },
+  {
+    "id": "household-import-request-empty",
+    "schema": "HouseholdImportRequest",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-0000000c0104",
+      "command_scope_id": "00000000-0000-4000-8000-000000009002",
+      "origin": "moneyforward",
+      "rows": []
+    }
+  },
+  {
+    "id": "household-import-result",
+    "schema": "HouseholdImportResult",
+    "valid": true,
+    "value": {
+      "created": 1,
+      "duplicate": 0,
+      "matched": 0,
+      "rejected": 0,
+      "rules_learned": 1
+    }
+  },
+  {
+    "id": "household-import-result-negative",
+    "schema": "HouseholdImportResult",
+    "valid": false,
+    "value": {
+      "created": -1,
+      "duplicate": 0,
+      "matched": 0,
+      "rejected": 0,
+      "rules_learned": 1
     }
   },
   {

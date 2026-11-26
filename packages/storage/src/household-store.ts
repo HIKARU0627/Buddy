@@ -149,11 +149,29 @@ export type HouseholdOp =
       readonly account_id: string;
       readonly remote_id: string;
       readonly now: string;
+    }
+  // 本人の家計簿の設定（ADR 0163）。行がなければ取り込みは入、版は 0。
+  | { readonly kind: 'household.settings_get' }
+  // 設定を変える。版を照合し、切から入へ戻すときは取り込みの基準を消す（止めていた間のメールを読まない。U334）。
+  | {
+      readonly kind: 'household.settings_set';
+      readonly expected_revision: string;
+      readonly mail_intake: HouseholdMailIntakeSetting;
+      readonly now: string;
     };
+
+export type HouseholdMailIntakeSetting = 'on' | 'off';
+
+export interface HouseholdSettingsValue {
+  readonly mail_intake: HouseholdMailIntakeSetting;
+  readonly settings_revision: string;
+}
 
 export type HouseholdMailProvider = 'google' | 'microsoft';
 
 export interface HouseholdMailPendingValue {
+  // 本人が取り込みを止めている（何も返さず、基準も作らない。ADR 0163）。
+  readonly paused: boolean;
   // この呼び出しで基準を作った（いまある全部を確かめ済みにした）か。
   readonly baseline: boolean;
   // 新しく保存した順。
@@ -173,6 +191,7 @@ export const HOUSEHOLD_WRITE_OPS: ReadonlySet<HouseholdOpKind> = new Set([
   'household.rule_set',
   'household.mail_pending',
   'household.mail_checked',
+  'household.settings_set',
 ]);
 
 export type HouseholdOpValue =
@@ -182,6 +201,7 @@ export type HouseholdOpValue =
   | HouseholdEntryRecord
   | HouseholdRuleValue
   | HouseholdMailPendingValue
+  | HouseholdSettingsValue
   | { readonly written: boolean }
   | null;
 
@@ -208,6 +228,8 @@ const OP_KINDS: ReadonlySet<string> = new Set<HouseholdOpKind>([
   'household.rule_set',
   'household.mail_pending',
   'household.mail_checked',
+  'household.settings_get',
+  'household.settings_set',
 ]);
 
 class HouseholdRejection extends Error {
@@ -232,6 +254,9 @@ const REMOTE_TEXT = /^[\x21-\x7e]{1,512}$/u;
 const isRemoteText = (value: unknown): value is string =>
   typeof value === 'string' && REMOTE_TEXT.test(value);
 const MAIL_PROVIDERS: ReadonlySet<string> = new Set(['google', 'microsoft']);
+const MAIL_INTAKE_SETTINGS: ReadonlySet<string> = new Set(['on', 'off']);
+// 設定の版（行がなければ 0）。
+const SETTINGS_REVISION = /^(0|[1-9][0-9]{0,15})$/u;
 
 /** 命令の形の検査。理由が空なら形は正しい。 */
 export function householdOpShapeReasons(op: HouseholdOp): string[] {
@@ -313,6 +338,17 @@ export function householdOpShapeReasons(op: HouseholdOp): string[] {
       needs(MAIL_PROVIDERS.has(op.provider), 'provider_invalid');
       needs(isRemoteText(op.account_id), 'account_id_invalid');
       needs(isRemoteText(op.remote_id), 'remote_id_invalid');
+      needs(isTime(op.now), 'now_invalid');
+      break;
+    case 'household.settings_get':
+      break;
+    case 'household.settings_set':
+      needs(
+        typeof op.expected_revision === 'string' &&
+          SETTINGS_REVISION.test(op.expected_revision),
+        'expected_revision_invalid',
+      );
+      needs(MAIL_INTAKE_SETTINGS.has(op.mail_intake), 'mail_intake_invalid');
       needs(isTime(op.now), 'now_invalid');
       break;
   }
@@ -542,11 +578,53 @@ function listEntries(
   };
 }
 
-// 確かめていないメール。初回（基準がない口座）は、いまある全部を確かめ済みにして基準を作る。
+function readSettings(db: SqliteDatabase): HouseholdSettingsValue {
+  const row = db
+    .prepare(
+      'SELECT mail_intake, settings_revision FROM household_settings WHERE setting_id = 1',
+    )
+    .get() as
+    | { mail_intake: HouseholdMailIntakeSetting; settings_revision: number }
+    | undefined;
+  return row === undefined
+    ? { mail_intake: 'on', settings_revision: '0' }
+    : {
+        mail_intake: row.mail_intake,
+        settings_revision: String(row.settings_revision),
+      };
+}
+
+function applySettings(
+  db: SqliteDatabase,
+  op: Extract<HouseholdOp, { kind: 'household.settings_set' }>,
+): HouseholdSettingsValue {
+  const current = readSettings(db);
+  if (current.settings_revision !== op.expected_revision)
+    throw new HouseholdRejection(['revision_mismatch']);
+  const now = Date.parse(op.now);
+  const next = Number(current.settings_revision) + 1;
+  if (current.settings_revision === '0')
+    db.prepare(
+      'INSERT INTO household_settings (setting_id, mail_intake, settings_revision, updated_at) VALUES (1, ?, ?, ?)',
+    ).run(op.mail_intake, next, now);
+  else
+    db.prepare(
+      'UPDATE household_settings SET mail_intake = ?, settings_revision = ?, updated_at = ? WHERE setting_id = 1',
+    ).run(op.mail_intake, next, now);
+  // 切から入へ戻す: 止めていた間に届いたメールは読まない。基準を消し、次の取り込みでいまある全部を確かめ済みにする。
+  if (current.mail_intake === 'off' && op.mail_intake === 'on')
+    db.prepare('DELETE FROM household_mail_baselines').run();
+  return { mail_intake: op.mail_intake, settings_revision: String(next) };
+}
+
+// 確かめていないメール。初回（基準がない口座）は、いまある全部を確かめ済みにして基準を作る。本人が止めていれば
+// 何も返さず、基準も作らない（同じ transaction で設定を読む。ADR 0163）。
 function mailPending(
   db: SqliteDatabase,
   op: Extract<HouseholdOp, { kind: 'household.mail_pending' }>,
 ): HouseholdMailPendingValue {
+  if (readSettings(db).mail_intake === 'off')
+    return { paused: true, baseline: false, remote_ids: [] };
   const now = Date.parse(op.now);
   const baseline = db
     .prepare(
@@ -562,7 +640,7 @@ function mailPending(
        SELECT provider, account_id, remote_id, ? FROM source_items
        WHERE provider = ? AND account_id = ?`,
     ).run(now, op.provider, op.account_id);
-    return { baseline: true, remote_ids: [] };
+    return { paused: false, baseline: true, remote_ids: [] };
   }
   const rows = db
     .prepare(
@@ -577,7 +655,11 @@ function mailPending(
     .all(op.provider, op.account_id, op.scope_id, op.limit) as {
     remote_id: string;
   }[];
-  return { baseline: false, remote_ids: rows.map((row) => row.remote_id) };
+  return {
+    paused: false,
+    baseline: false,
+    remote_ids: rows.map((row) => row.remote_id),
+  };
 }
 
 function mailChecked(
@@ -636,6 +718,8 @@ export function executeHouseholdOp(
       .get(op.merchant_key) as HouseholdRuleValue | undefined;
     return { result: { ok: true, value: row ?? null }, halt: false };
   }
+  if (op.kind === 'household.settings_get')
+    return { result: { ok: true, value: readSettings(db) }, halt: false };
   // 書込みを止めた worker は書かない（ADR 0018）。照会は続ける。
   if (context.halted)
     return { result: rejected(['worker_halted']), halt: false };
@@ -660,6 +744,8 @@ export function executeHouseholdOp(
           return mailPending(db, op);
         case 'household.mail_checked':
           return mailChecked(db, op);
+        case 'household.settings_set':
+          return applySettings(db, op);
         default:
           throw new HouseholdRejection(['kind_invalid']);
       }

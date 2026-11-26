@@ -101,6 +101,7 @@ import type {
   HouseholdRecordValue,
   HouseholdRevisionValue,
   HouseholdMailPendingValue,
+  HouseholdSettingsValue,
   HouseholdRuleValue,
 } from './household-store.js';
 import type {
@@ -1180,6 +1181,12 @@ export class DbWorkerClient {
   household(
     op: Extract<HouseholdOp, { kind: 'household.mail_checked' }>,
   ): Promise<HouseholdOpOutcome<{ readonly written: boolean }>>;
+  household(
+    op: Extract<
+      HouseholdOp,
+      { kind: 'household.settings_get' | 'household.settings_set' }
+    >,
+  ): Promise<HouseholdOpOutcome<HouseholdSettingsValue>>;
   household(op: HouseholdOp): Promise<HouseholdOpResult> {
     return new Promise<HouseholdOpResult>((resolve) => {
       if (this.#state !== 'running') {

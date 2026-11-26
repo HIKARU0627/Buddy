@@ -134,6 +134,8 @@ export const BACKUP_INCLUDED_TABLES: readonly string[] = [
   // 店名の HMAC の鍵はデータ鍵から作るので、同じデータ鍵で復元すれば規則もそのまま使える。
   'household_entries',
   'household_category_rules',
+  // 0018（ADR 0163）: 本人の家計簿の設定。本人の決定なので含める。
+  'household_settings',
 ];
 
 const has = (record: object, key: string): boolean =>

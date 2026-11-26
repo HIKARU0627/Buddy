@@ -17,12 +17,15 @@ import {
   DIRECTION_LABELS,
   FETCH_LABELS,
   HOUSEHOLD_LABELS,
+  IMPORT_PLACE,
+  INTAKE_PLACE,
   SOURCE_LABELS,
   canChange,
   categoryChoices,
   categoryLabel,
   dayText,
   elapsedText,
+  importResultText,
   monthText,
   yenText,
 } from '../../state/household-state.js';
@@ -283,6 +286,100 @@ function MonthList({
   );
 }
 
+// 利用通知の取り込みの入・切（ADR 0163）。読めていなければ出さない（入・切を推測で見せない）。
+function IntakeBlock({
+  state,
+  actions,
+}: {
+  readonly state: HouseholdViewState;
+  readonly actions: HouseholdActions;
+}) {
+  const intake = state.view?.mail_intake ?? null;
+  if (intake === null) return null;
+  const notice = noticeAt(state, INTAKE_PLACE);
+  const mine = state.busy === INTAKE_PLACE;
+  return (
+    <div className="flex flex-col gap-1.5" data-intake={intake}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <StatusText
+          className="text-sm"
+          line={
+            intake === 'on'
+              ? {
+                  tone: 'success',
+                  mark: 'dot',
+                  text: HOUSEHOLD_LABELS.intakeOn,
+                }
+              : {
+                  tone: 'neutral',
+                  mark: 'circle',
+                  text: HOUSEHOLD_LABELS.intakeOff,
+                }
+          }
+        />
+        <Button
+          size="sm"
+          variant="secondary"
+          isDisabled={state.busy !== null}
+          onPress={() => actions.setIntake(intake === 'on' ? 'off' : 'on')}
+        >
+          {mine
+            ? HOUSEHOLD_LABELS.intakeChanging
+            : intake === 'on'
+              ? HOUSEHOLD_LABELS.intakeStop
+              : HOUSEHOLD_LABELS.intakeResume}
+        </Button>
+      </div>
+      {intake === 'off' ? (
+        <p className="text-xs text-muted">
+          {HOUSEHOLD_LABELS.intakeResumeNote}
+        </p>
+      ) : null}
+      {notice === null ? null : (
+        <InlineNotice tone={notice.tone} text={notice.text} />
+      )}
+    </div>
+  );
+}
+
+// 書き出しの取り込み（ADR 0164）。ファイルは main が OS のファイル選択で本人に選ばせる。結果は最後の取り込みの件数。
+function ImportBlock({
+  state,
+  actions,
+}: {
+  readonly state: HouseholdViewState;
+  readonly actions: HouseholdActions;
+}) {
+  const notice = noticeAt(state, IMPORT_PLACE);
+  const mine = state.busy === IMPORT_PLACE;
+  const result = state.view?.last_import ?? null;
+  return (
+    <div className="flex flex-col gap-1.5">
+      <h3 className="text-sm font-semibold">{HOUSEHOLD_LABELS.importTitle}</h3>
+      <p className="text-xs text-muted">{HOUSEHOLD_LABELS.importNote}</p>
+      <div className="flex justify-end">
+        <Button
+          size="sm"
+          variant="secondary"
+          isDisabled={state.busy !== null}
+          onPress={actions.importExport}
+        >
+          {mine ? HOUSEHOLD_LABELS.importing : HOUSEHOLD_LABELS.importButton}
+        </Button>
+      </div>
+      {result === null ? null : (
+        <InlineNotice
+          tone={result.outcome === 'done' ? 'success' : 'warning'}
+          text={importResultText(result)}
+        />
+      )}
+      {notice === null ? null : (
+        <InlineNotice tone={notice.tone} text={notice.text} />
+      )}
+    </div>
+  );
+}
+
 export function HouseholdPanel({
   state,
   actions,
@@ -326,6 +423,7 @@ export function HouseholdPanel({
       {headNotice === null ? null : (
         <InlineNotice tone={headNotice.tone} text={headNotice.text} />
       )}
+      {loaded ? <IntakeBlock state={state} actions={actions} /> : null}
       {!loaded || view.month === null || view.summary === null ? null : (
         <>
           <h3 className="text-sm font-semibold">
@@ -362,6 +460,7 @@ export function HouseholdPanel({
           )}
         </>
       )}
+      {loaded ? <ImportBlock state={state} actions={actions} /> : null}
       {!loaded || view.months.length === 0 ? null : (
         <MonthList
           months={view.months}

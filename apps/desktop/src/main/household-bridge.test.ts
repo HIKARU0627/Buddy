@@ -8,7 +8,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { ClientConnection } from '@buddy/client';
 import { createDesktopContract, loadContractSchema } from './contract.js';
-import { HouseholdBridge } from './household-bridge.js';
+import {
+  HouseholdBridge,
+  decodeHouseholdExport,
+  householdImportBatches,
+} from './household-bridge.js';
 import type { HouseholdHost } from './household-bridge.js';
 
 const contract = createDesktopContract(loadContractSchema());
@@ -61,6 +65,7 @@ const overview = () => ({
       : totals(month),
   ),
   truncated: false,
+  settings: { mail_intake: 'on', settings_revision: '2' },
 });
 
 const lunch = (fields: Record<string, unknown> = {}) => ({
@@ -244,6 +249,8 @@ test('the view carries refs and display values only, and reads the current month
     unreadable: 0,
     truncated: false,
     list_seq: 2,
+    mail_intake: 'on',
+    last_import: null,
   });
   assert.deepEqual(
     contract.responseErrors({
@@ -486,4 +493,241 @@ test('a read overtaken by a later read is not applied, and a reset drops everyth
     ok: false,
     reason: 'not_connected',
   });
+});
+
+test('the intake switch sends the settings revision it read and re-reads; the same value is not sent', async () => {
+  const r = rig();
+  // まだ読んでいなければ送らない。
+  assert.deepEqual(await r.bridge.intake('off'), {
+    ok: false,
+    reason: 'entry_not_found',
+  });
+  ok(await r.bridge.show(null));
+  ok(await r.bridge.intake('on'));
+  assert.equal(r.posts().length, 0);
+  r.post = () => ({
+    kind: 'response',
+    status: 200,
+    body: { mail_intake: 'off', settings_revision: '3' },
+  });
+  r.overview = () => ({
+    kind: 'response',
+    status: 200,
+    body: {
+      ...overview(),
+      settings: { mail_intake: 'off', settings_revision: '3' },
+    },
+  });
+  const after = ok(await r.bridge.intake('off'));
+  assert.equal(after.mail_intake, 'off');
+  assert.deepEqual(r.posts(), [
+    {
+      method: 'POST',
+      path: '/v1/household/settings',
+      body: { expected_settings_revision: '2', mail_intake: 'off' },
+      scoped: true,
+      screenOperation: true,
+      expectedScopeId: SCOPE,
+    },
+  ]);
+  assert.equal(JSON.stringify(after).includes('settings_revision'), false);
+  r.post = () => ({
+    kind: 'response',
+    status: 409,
+    body: { code: 'conflict' },
+  });
+  assert.deepEqual(await r.bridge.intake('on'), {
+    ok: false,
+    reason: 'preview_stale',
+  });
+  r.post = () => ({ kind: 'unknown' });
+  assert.deepEqual(await r.bridge.intake('on'), {
+    ok: false,
+    reason: 'outcome_unknown',
+  });
+  assert.equal(r.posts().length, 3);
+});
+
+const EXPORT_HEADER =
+  '"計算対象","日付","内容","金額（円）","保有金融機関","大項目","中項目","メモ","振替","ID"';
+
+const exportText = (rows: readonly string[][]): string =>
+  [
+    EXPORT_HEADER,
+    ...rows.map((cells) => cells.map((cell) => `"${cell}"`).join(',')),
+  ].join('\r\n');
+
+test('the export is read as UTF-8 when valid and as Shift_JIS otherwise', () => {
+  const text = '日付,内容';
+  assert.equal(decodeHouseholdExport(new TextEncoder().encode(text)), text);
+  // 「日付」を Shift_JIS で書いたバイト（93 FA 95 74）。
+  assert.equal(
+    decodeHouseholdExport(new Uint8Array([0x93, 0xfa, 0x95, 0x74])),
+    '日付',
+  );
+  assert.equal(decodeHouseholdExport(new Uint8Array([0xff, 0xff, 0xff])), null);
+});
+
+test('batches keep the rows of one day together and follow the date order', () => {
+  const row = (day: string, id: string) => ({
+    row_id: id,
+    content: {
+      direction: 'expense' as const,
+      amount_yen: 100,
+      occurred_on: day,
+      occurred_time: null,
+      category: 'food',
+      merchant: null,
+      memo: null,
+      payment: null,
+    },
+    categorized: true,
+  });
+  const rows = [
+    row('2030-10-02', 'a'),
+    row('2030-10-01', 'b'),
+    row('2030-10-02', 'c'),
+    row('2030-10-03', 'd'),
+  ];
+  assert.deepEqual(
+    householdImportBatches(rows, 3).map((batch) =>
+      batch.map((item) => item.row_id),
+    ),
+    [['b', 'a', 'c'], ['d']],
+  );
+  assert.deepEqual(
+    householdImportBatches(rows, 2).map((batch) =>
+      batch.map((item) => item.row_id),
+    ),
+    [['b'], ['a', 'c'], ['d']],
+  );
+  // 一日の行が上限を超えるときだけ分ける。
+  assert.deepEqual(
+    householdImportBatches(
+      [row('2030-10-01', 'x'), row('2030-10-01', 'y'), row('2030-10-01', 'z')],
+      2,
+    ).map((batch) => batch.map((item) => item.row_id)),
+    [['x', 'y'], ['z']],
+  );
+});
+
+test('an import sends the rows read from the chosen file, sums the results and re-reads', async () => {
+  const r = rig();
+  ok(await r.bridge.show(null));
+  const file = new TextEncoder().encode(
+    exportText([
+      [
+        '1',
+        '2030/11/02',
+        '合成の食堂',
+        '-1280',
+        '合成のカード',
+        '食費',
+        '',
+        '',
+        '0',
+        'mf-1',
+      ],
+      [
+        '0',
+        '2030/11/03',
+        '合成の売店',
+        '-100',
+        '合成のカード',
+        '食費',
+        '',
+        '',
+        '0',
+        'mf-2',
+      ],
+    ]),
+  );
+  r.post = () => ({
+    kind: 'response',
+    status: 200,
+    body: {
+      created: 1,
+      duplicate: 0,
+      matched: 0,
+      rejected: 0,
+      rules_learned: 1,
+    },
+  });
+  const view = ok(await r.bridge.importExport(() => Promise.resolve(file)));
+  assert.deepEqual(view.last_import, {
+    outcome: 'done',
+    created: 1,
+    duplicate: 0,
+    matched: 0,
+    rejected: 0,
+    skipped: 1,
+    rules_learned: 1,
+  });
+  assert.deepEqual(r.posts(), [
+    {
+      method: 'POST',
+      path: '/v1/household/imports',
+      body: {
+        origin: 'moneyforward',
+        rows: [
+          {
+            row_id: 'mf-1',
+            direction: 'expense',
+            amount_yen: 1280,
+            occurred_on: '2030-11-02',
+            category: 'food',
+            merchant: '合成の食堂',
+            memo: null,
+            payment: '合成のカード',
+          },
+        ],
+      },
+      scoped: true,
+      screenOperation: true,
+      expectedScopeId: SCOPE,
+    },
+  ]);
+  // 取り込みの後に読み直した。
+  assert.equal(r.calls.at(-1)?.method, 'GET');
+});
+
+test('a cancelled pick sends nothing, an unreadable file says so, and a failed batch stops without resending', async () => {
+  const r = rig();
+  ok(await r.bridge.show(null));
+  const cancelled = ok(
+    await r.bridge.importExport(() => Promise.resolve(null)),
+  );
+  assert.equal(cancelled.last_import, null);
+  const unreadable = ok(
+    await r.bridge.importExport(() =>
+      Promise.resolve(new TextEncoder().encode('日付,内容\n2030/11/01,a')),
+    ),
+  );
+  assert.equal(unreadable.last_import?.outcome, 'unreadable');
+  assert.equal(r.posts().length, 0);
+  // 2 つの日に分かれた行で、最初の組が成否不明。
+  const rows = Array.from({ length: 101 }, (_, i) => [
+    '1',
+    i < 100 ? '2030/11/02' : '2030/11/03',
+    '合成の店',
+    '-100',
+    '合成のカード',
+    '食費',
+    '',
+    '',
+    '0',
+    `mf-${String(i)}`,
+  ]);
+  r.post = () => ({ kind: 'unknown' });
+  const stopped = ok(
+    await r.bridge.importExport(() =>
+      Promise.resolve(new TextEncoder().encode(exportText(rows))),
+    ),
+  );
+  assert.equal(stopped.last_import?.outcome, 'stopped');
+  assert.equal(r.posts().length, 1);
+  assert(r.logs.includes('household_import_stopped'));
+  // 世代が進んだら結果も捨てる。
+  r.bridge.reset();
+  assert.equal(r.bridge.view().last_import, null);
 });

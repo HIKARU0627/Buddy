@@ -10,6 +10,7 @@
 // - 分類の変更・削除は、読んだ内容版を expected_content_revision にして送る。受け付けられたら読み直す。表示が古かった
 //   （409）は preview_stale、中枢が受け付けなかった（422 など）は core_rejected にして読み直す。結果が分からない
 //   （届いたか分からない・5xx・形の違う 2xx）は自動では送り直さず、その記録を次の読み取りまで操作させない。
+// - 利用通知の取り込みの入・切（ADR 0163）は、月ごとの合計で読んだ設定の版で照合して送る。
 // - 世代（ロック・切断）: reset で記録・参照・保留を捨て、非同期の処理は await の後に世代を照合する（またいだ読み取りは
 //   反映しない。またいだ変更は結果不明として返す）。
 // - 読み取りが重なったときは、後から始めた読み取りだけを反映する（古い月の応答で新しい月の表示を戻さない）。
@@ -23,7 +24,8 @@ import type {
   HouseholdOverview,
 } from '@buddy/contracts';
 import type { ClientConnection } from '@buddy/client';
-import type { DesktopIpcRejectReason } from '@buddy/domain';
+import { readMoneyforwardExport } from '@buddy/domain';
+import type { DesktopIpcRejectReason, HouseholdImportRow } from '@buddy/domain';
 import type { DesktopContract } from './contract.js';
 
 export interface HouseholdHost {
@@ -48,6 +50,62 @@ const fail = (
 
 const MONTH = /^20[0-9]{2}-(0[1-9]|1[0-2])$/u;
 
+// 中枢へ一度に送る行の数（契約の上限）。
+export const HOUSEHOLD_IMPORT_BATCH = 100;
+
+type LastImport = NonNullable<DesktopHouseholdView['last_import']>;
+
+/**
+ * 書き出しのファイルの中身を文字にする。UTF-8（BOM の有無を問わない）として正しければ UTF-8、そうでなければ Shift_JIS と
+ * して読む（書き出しの文字コードは公式の案内で確かめられていない。U336）。どちらでも読めなければ null。
+ */
+export function decodeHouseholdExport(bytes: Uint8Array): string | null {
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch {
+    // UTF-8 でない。
+  }
+  try {
+    return new TextDecoder('shift_jis', { fatal: true }).decode(bytes);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 行を送る組に分ける。同じ日の行は同じ組に入れる（中枢が同じ日・同じ金額の利用通知と一つずつ突き合わせるため。
+ * 一日の行が上限を超えるときだけ分ける）。日付の順。
+ */
+export function householdImportBatches(
+  rows: readonly HouseholdImportRow[],
+  size = HOUSEHOLD_IMPORT_BATCH,
+): HouseholdImportRow[][] {
+  const byDay = new Map<string, HouseholdImportRow[]>();
+  for (const row of rows) {
+    const day = byDay.get(row.content.occurred_on) ?? [];
+    day.push(row);
+    byDay.set(row.content.occurred_on, day);
+  }
+  const batches: HouseholdImportRow[][] = [];
+  let current: HouseholdImportRow[] = [];
+  for (const day of [...byDay.keys()].sort()) {
+    const dayRows = byDay.get(day) as HouseholdImportRow[];
+    if (current.length > 0 && current.length + dayRows.length > size) {
+      batches.push(current);
+      current = [];
+    }
+    for (const row of dayRows) {
+      if (current.length === size) {
+        batches.push(current);
+        current = [];
+      }
+      current.push(row);
+    }
+  }
+  if (current.length > 0) batches.push(current);
+  return batches;
+}
+
 interface HouseholdRecord {
   readonly entry: HouseholdEntry;
   // 中枢が並べた順。
@@ -65,6 +123,7 @@ export class HouseholdBridge {
   readonly #held = new Map<string, number>();
   #fetchedAt: string | null = null;
   #failed = false;
+  #lastImport: LastImport | null = null;
   #gen = 0;
   // 始めた読み取りの通し番号。
   #seq = 0;
@@ -85,6 +144,7 @@ export class HouseholdBridge {
     this.#held.clear();
     this.#fetchedAt = null;
     this.#failed = false;
+    this.#lastImport = null;
     this.#listSeq += 1;
   }
 
@@ -127,6 +187,8 @@ export class HouseholdBridge {
         (this.#overview?.truncated ?? false) ||
         (this.#month?.truncated ?? false),
       list_seq: this.#listSeq,
+      mail_intake: this.#overview?.settings.mail_intake ?? null,
+      last_import: this.#lastImport,
     };
   }
 
@@ -243,6 +305,142 @@ export class HouseholdBridge {
       result: 'HouseholdCategoryChangeResult',
       same: entry.category === category,
     }));
+  }
+
+  // 利用通知の取り込みを止める・再開する（ADR 0163）。読んだ設定の版で照合して送る。今と同じなら送らない。
+  async intake(
+    mailIntake: 'on' | 'off',
+  ): Promise<HouseholdOutcome<DesktopHouseholdView>> {
+    const gen = this.#gen;
+    const connection = this.#host.connection();
+    const scope = connection?.state.commandScopeId ?? null;
+    if (connection === null || scope === null) return fail('not_connected');
+    const settings = this.#overview?.settings ?? null;
+    if (settings === null) return fail('entry_not_found');
+    if (settings.mail_intake === mailIntake)
+      return { ok: true, value: this.view() };
+    const outcome = await connection.request({
+      method: 'POST',
+      path: '/v1/household/settings',
+      body: {
+        expected_settings_revision: settings.settings_revision,
+        mail_intake: mailIntake,
+      },
+      scoped: true,
+      screenOperation: true,
+      expectedScopeId: scope,
+    });
+    if (outcome.kind === 'not_sent') return fail('not_connected');
+    if (gen !== this.#gen) return fail('outcome_unknown');
+    if (
+      outcome.kind === 'response' &&
+      outcome.status === 200 &&
+      this.#host.contract.valid('HouseholdSettings', outcome.body)
+    ) {
+      await this.#reread();
+      if (gen !== this.#gen) return fail('not_connected');
+      return { ok: true, value: this.view() };
+    }
+    // 結果が分からない・表示が古い・受け付けなかった: 送り直さず、読み直して今の設定を見せる。
+    void this.#reread();
+    if (
+      outcome.kind === 'unknown' ||
+      outcome.status >= 500 ||
+      (outcome.status >= 200 && outcome.status < 300)
+    ) {
+      this.#host.log('household_settings_outcome_unknown');
+      return fail('outcome_unknown');
+    }
+    return fail(outcome.status === 409 ? 'preview_stale' : 'core_rejected');
+  }
+
+  // 外部の家計簿サービスの書き出しを取り込む（ADR 0164）。read は本人にファイルを選ばせて中身を返す（やめたら null）。
+  // 行を日付の順に組に分けて一つずつ送り、途中で送れなくなったら止める（取り込み直せば記録済みの行は増えない）。
+  // 結果は last_import に残し、最後に今の月を読み直す。
+  async importExport(
+    read: () => Promise<Uint8Array | null>,
+  ): Promise<HouseholdOutcome<DesktopHouseholdView>> {
+    const gen = this.#gen;
+    const connection = this.#host.connection();
+    const scope = connection?.state.commandScopeId ?? null;
+    if (connection === null || scope === null) return fail('not_connected');
+    let bytes: Uint8Array | null;
+    try {
+      bytes = await read();
+    } catch {
+      bytes = new Uint8Array();
+    }
+    if (gen !== this.#gen) return fail('not_connected');
+    // 本人がファイルを選ばなかった。
+    if (bytes === null) return { ok: true, value: this.view() };
+    const totals: LastImport = {
+      outcome: 'done',
+      created: 0,
+      duplicate: 0,
+      matched: 0,
+      rejected: 0,
+      skipped: 0,
+      rules_learned: 0,
+    };
+    const text = decodeHouseholdExport(bytes);
+    const parsed = text === null ? null : readMoneyforwardExport(text);
+    if (parsed === null || !parsed.ok) {
+      this.#finishImport({ ...totals, outcome: 'unreadable' });
+      return { ok: true, value: this.view() };
+    }
+    totals.skipped =
+      parsed.skipped.excluded +
+      parsed.skipped.zero_amount +
+      parsed.skipped.unreadable;
+    for (const batch of householdImportBatches(parsed.rows)) {
+      const outcome = await connection.request({
+        method: 'POST',
+        path: '/v1/household/imports',
+        body: {
+          origin: 'moneyforward',
+          rows: batch.map((row) => ({
+            row_id: row.row_id,
+            direction: row.content.direction,
+            amount_yen: row.content.amount_yen,
+            occurred_on: row.content.occurred_on,
+            category: row.content.category,
+            merchant: row.content.merchant,
+            memo: row.content.memo,
+            payment: row.content.payment,
+          })),
+        },
+        scoped: true,
+        screenOperation: true,
+        expectedScopeId: scope,
+      });
+      if (gen !== this.#gen) return fail('outcome_unknown');
+      if (
+        outcome.kind !== 'response' ||
+        outcome.status !== 200 ||
+        !this.#host.contract.valid('HouseholdImportResult', outcome.body)
+      ) {
+        // 送れなかった・結果が分からない: 自動では送り直さず止める（取り込み直しても記録済みの行は増えない）。
+        this.#host.log('household_import_stopped');
+        this.#finishImport({ ...totals, outcome: 'stopped' });
+        void this.#reread();
+        return { ok: true, value: this.view() };
+      }
+      const result = outcome.body as Omit<LastImport, 'outcome' | 'skipped'>;
+      totals.created += result.created;
+      totals.duplicate += result.duplicate;
+      totals.matched += result.matched;
+      totals.rejected += result.rejected;
+      totals.rules_learned += result.rules_learned;
+    }
+    this.#finishImport(totals);
+    await this.#reread();
+    if (gen !== this.#gen) return fail('not_connected');
+    return { ok: true, value: this.view() };
+  }
+
+  #finishImport(result: LastImport): void {
+    this.#lastImport = result;
+    this.#listSeq += 1;
   }
 
   remove(ref: string): Promise<HouseholdOutcome<DesktopHouseholdView>> {

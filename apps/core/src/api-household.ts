@@ -7,22 +7,29 @@
 // - 1 か月（GET /v1/household/months/{month}）は記録と集計。出所の識別子（メールの ID など）は返さない。
 // - 分類の変更・削除は内容版で照合する。内容版の違い・削除済みは 409（画面は読み直す）、向きの違う分類・ない記録は 422。
 //   同じ request_id の再送は、成功済みなら内容版が進んでいる・削除済みなので 409 になり、二重に効かない。
+// - 設定の変更（POST /v1/household/settings）は利用通知の取り込みの入・切（ADR 0163）。版の違いは 409。
 // - データ鍵が読めない・保存の失敗・成否不明は 503 dependency_unavailable にし、成功にも競合にも見せない。
 // 承認・実行経路・effect_kind は関わらない（家計の記録は Buddy 自身の記録で、外部を変えない。ADR 0158）。
 
 import { createHash, randomUUID } from 'node:crypto';
 import {
   candidateLocalClock,
+  householdContentErrors,
+  householdMonthOf,
   householdMonthShift,
+  householdNoticeMatchKey,
   isHouseholdMonth,
 } from '@buddy/domain';
+import type { HouseholdEntryContent } from '@buddy/domain';
 import type { DataKeyMaterial, DbWorkerClient } from '@buddy/storage';
 import { apiErrorResponse } from './api-server.js';
 import type { ApiRouteHandler } from './api-server.js';
 import {
+  HouseholdMerchantKey,
   changeHouseholdCategory,
   deleteHouseholdEntry,
   readHouseholdMonths,
+  recordHouseholdEntry,
 } from './household-ledger.js';
 import type {
   HouseholdEntryView,
@@ -50,6 +57,8 @@ export interface HouseholdRoutes {
     readonly getHouseholdMonth: ApiRouteHandler;
     readonly changeHouseholdCategory: ApiRouteHandler;
     readonly deleteHouseholdEntry: ApiRouteHandler;
+    readonly changeHouseholdSettings: ApiRouteHandler;
+    readonly importHouseholdRows: ApiRouteHandler;
   };
 }
 
@@ -172,6 +181,11 @@ export function createHouseholdRoutes(
     const months = read.months.map(monthTotals);
     if (months.length !== HOUSEHOLD_OVERVIEW_MONTHS)
       return fail(503, 'dependency_unavailable');
+    // 利用通知の取り込みの入・切（ADR 0163）。読めなければ合計も返さない（入・切を推測で見せない）。
+    const settings = await options.store.household({
+      kind: 'household.settings_get',
+    });
+    if (!settings.ok) return fail(503, 'dependency_unavailable');
     return {
       status: 200,
       body: {
@@ -180,6 +194,7 @@ export function createHouseholdRoutes(
         generated_at: new Date(at).toISOString(),
         months,
         truncated: read.truncated,
+        settings: settings.value,
       },
     };
   };
@@ -271,12 +286,150 @@ export function createHouseholdRoutes(
     };
   };
 
+  // 利用通知の取り込みを止める・再開する（ADR 0163）。版は保存層が同じ transaction で照合する。
+  const changeSettings: ApiRouteHandler = async (request) => {
+    const body = request.body ?? {};
+    const fail = failWith(stringOf(body['request_id']));
+    const expected = stringOf(body['expected_settings_revision']);
+    const mailIntake = stringOf(body['mail_intake']);
+    if (mailIntake !== 'on' && mailIntake !== 'off')
+      return fail(422, 'invalid_input');
+    const changed = await options.store.household({
+      kind: 'household.settings_set',
+      expected_revision: expected,
+      mail_intake: mailIntake,
+      now: new Date(options.now()).toISOString(),
+    });
+    if (!changed.ok) {
+      const failure = failureStatus(changed.outcome, changed.reasons);
+      return fail(failure.status, failure.code);
+    }
+    return { status: 200, body: changed.value };
+  };
+
+  // 外部の家計簿サービスの書き出しの取り込み（ADR 0164）。行ごとに家計の記録の検査をし直し、出所（書き出しの行の ID）で
+  // 二度記録しない。同じ日・同じ金額の利用通知の記録がある支出は取り込まない（一つの通知に一つの行。U335）。支出の分類が
+  // 決まっている行は、店名の規則として覚える（取り込みの規則は本人の規則を上書きしない。ADR 0158）。
+  const importRows: ApiRouteHandler = async (request) => {
+    const body = request.body ?? {};
+    const fail = failWith(stringOf(body['request_id']));
+    if (body['origin'] !== 'moneyforward') return fail(422, 'invalid_input');
+    const rows = Array.isArray(body['rows']) ? body['rows'] : [];
+    const dataKey = await loadKey();
+    if (dataKey === null) return fail(503, 'dependency_unavailable');
+    const ports = {
+      client: options.store,
+      dataKey,
+      sha256Hex,
+      newId,
+      now: () => new Date(options.now()).toISOString(),
+    };
+    const counts = {
+      created: 0,
+      duplicate: 0,
+      matched: 0,
+      rejected: 0,
+      rules_learned: 0,
+    };
+    const valid: { rowId: string; content: HouseholdEntryContent }[] = [];
+    for (const raw of rows) {
+      const row = (raw ?? {}) as Record<string, unknown>;
+      const content = {
+        direction: row['direction'],
+        amount_yen: row['amount_yen'],
+        occurred_on: row['occurred_on'],
+        occurred_time: null,
+        category: row['category'],
+        merchant: row['merchant'],
+        memo: row['memo'],
+        payment: row['payment'],
+      };
+      if (
+        typeof row['row_id'] !== 'string' ||
+        householdContentErrors(content).length > 0
+      ) {
+        counts.rejected += 1;
+        continue;
+      }
+      valid.push({
+        rowId: row['row_id'],
+        content: content as HouseholdEntryContent,
+      });
+    }
+    // 利用通知の記録の日付と金額（月ごとに読む）。読めなければ二重の記録を避けられないので止める。
+    const notices = new Map<string, number>();
+    const months = new Set(
+      valid.map((item) => householdMonthOf(item.content.occurred_on) ?? ''),
+    );
+    for (const month of months) {
+      if (month === '') continue;
+      const read = await readHouseholdMonths(ports, month, month);
+      if (read.outcome !== 'ok') return fail(503, 'dependency_unavailable');
+      for (const entry of read.months[0]?.entries ?? []) {
+        if (entry.source_kind !== 'mail_notice') continue;
+        const key = householdNoticeMatchKey(entry.content);
+        if (key !== null) notices.set(key, (notices.get(key) ?? 0) + 1);
+      }
+    }
+    const merchantKey = HouseholdMerchantKey.fromDataKey(dataKey);
+    for (const item of valid) {
+      const key = householdNoticeMatchKey(item.content);
+      const left = key === null ? 0 : (notices.get(key) ?? 0);
+      if (key !== null && left > 0) {
+        notices.set(key, left - 1);
+        counts.matched += 1;
+        continue;
+      }
+      const recorded = await recordHouseholdEntry(
+        ports,
+        { kind: 'csv_import', origin: 'moneyforward', row_id: item.rowId },
+        item.content,
+      );
+      if (recorded.outcome === 'duplicate') {
+        counts.duplicate += 1;
+        continue;
+      }
+      if (recorded.outcome === 'rejected') {
+        // 中身は上で検査済みなので、残る形の誤りは書き出しの行の ID（出所）だけ。保存の失敗は途中で止める
+        // （取り込み直せば記録済みの行は増えない）。
+        if (recorded.reasons.includes('source_invalid')) {
+          counts.rejected += 1;
+          continue;
+        }
+        return fail(503, 'dependency_unavailable');
+      }
+      if (recorded.outcome !== 'created')
+        return fail(503, 'dependency_unavailable');
+      counts.created += 1;
+      const { content } = item;
+      if (
+        content.direction !== 'expense' ||
+        content.category === 'uncategorized' ||
+        content.merchant === null
+      )
+        continue;
+      const merchant = merchantKey.merchant(content.merchant);
+      if (merchant === null) continue;
+      const rule = await options.store.household({
+        kind: 'household.rule_set',
+        merchant_key: merchant,
+        category: content.category,
+        origin: 'import',
+        now: ports.now(),
+      });
+      if (rule.ok && rule.value.written) counts.rules_learned += 1;
+    }
+    return { status: 200, body: counts };
+  };
+
   return {
     handlers: {
       listHouseholdMonths,
       getHouseholdMonth,
       changeHouseholdCategory: changeCategory,
       deleteHouseholdEntry: deleteEntry,
+      changeHouseholdSettings: changeSettings,
+      importHouseholdRows: importRows,
     },
   };
 }

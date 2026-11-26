@@ -251,6 +251,16 @@ export const API_ROUTES: readonly ApiRoute[] = [
     '/v1/household/entries/{entry_id}/delete',
     { body: 'HouseholdEntryDeleteRequest', ...SCREEN },
   ),
+  // 家計簿の設定（利用通知の取り込みの入・切。ADR 0163）。
+  route('changeHouseholdSettings', 'POST', '/v1/household/settings', {
+    body: 'HouseholdSettingsChangeRequest',
+    ...SCREEN,
+  }),
+  // 外部の家計簿サービスの書き出しの取り込み（ADR 0164）。
+  route('importHouseholdRows', 'POST', '/v1/household/imports', {
+    body: 'HouseholdImportRequest',
+    ...SCREEN,
+  }),
 ];
 
 export type RouteMatch =

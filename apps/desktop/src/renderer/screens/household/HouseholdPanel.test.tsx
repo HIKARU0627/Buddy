@@ -72,6 +72,8 @@ const view = (
   unreadable: 0,
   truncated: false,
   list_seq: 2,
+  mail_intake: 'on',
+  last_import: null,
   ...overrides,
 });
 
@@ -83,6 +85,8 @@ const ACTIONS: HouseholdActions = {
   startDelete: noop,
   cancelDelete: noop,
   confirmDelete: noop,
+  setIntake: noop,
+  importExport: noop,
 };
 
 const render = (node: ReactNode) =>
@@ -216,4 +220,45 @@ test('a stale read, unreadable records and truncation are said', () => {
   assert.match(html, /最新の取得に失敗しました/u);
   assert.match(html, /読めない記録が\u00a02\u00a0件あります/u);
   assert.match(html, /一部の記録を読み込めていません/u);
+});
+
+test('the intake line says whether card notices are read and offers to stop or resume', () => {
+  const on = panel({ view: view([entry(0)]), seq: 2 });
+  assert.match(text(on), /カードの利用通知メールを取り込んでいます。/u);
+  assert(buttons(on).includes('取り込みを止める'));
+  assert.doesNotMatch(text(on), /止めていた間に届いた通知は読みません/u);
+  const off = panel({ view: view([entry(0)], { mail_intake: 'off' }), seq: 2 });
+  assert.match(text(off), /取り込みを止めています。/u);
+  assert(buttons(off).includes('取り込みを再開する'));
+  assert.match(text(off), /止めていた間に届いた通知は読みません/u);
+  // 読めていなければ入・切を出さない。
+  const unknown = text(
+    panel({ view: view([entry(0)], { mail_intake: null }), seq: 2 }),
+  );
+  assert.doesNotMatch(unknown, /取り込んでいます|止めています/u);
+});
+
+test('the import block offers to pick a file and shows the last result', () => {
+  const none = panel({ view: view([entry(0)]), seq: 2 });
+  assert(buttons(none).includes('ファイルを選んで取り込む'));
+  assert.match(text(none), /入出金履歴の CSV を取り込みます/u);
+  const done = text(
+    panel({
+      view: view([entry(0)], {
+        last_import: {
+          outcome: 'done',
+          created: 3,
+          duplicate: 0,
+          matched: 1,
+          rejected: 0,
+          skipped: 0,
+          rules_learned: 0,
+        },
+      }),
+      seq: 2,
+    }),
+  );
+  assert.match(done, /取り込みました（新しく記録\u00a03\u00a0件/u);
+  // 読めていなければ取り込みの欄を出さない。
+  assert.doesNotMatch(text(panel({})), /ファイルを選んで取り込む/u);
 });

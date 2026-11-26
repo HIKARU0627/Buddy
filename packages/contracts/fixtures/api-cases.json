@@ -2939,7 +2939,11 @@
             "unreadable": 0
           }
         ],
-        "truncated": false
+        "truncated": false,
+        "settings": {
+          "mail_intake": "on",
+          "settings_revision": "0"
+        }
       },
       "rejections": [
         ["no_token", 401, "unauthenticated"],
@@ -3141,6 +3145,154 @@
           "command_scope_id": "00000000-0000-4000-8000-000000009002",
           "expected_content_revision": "1",
           "state": "deleted"
+        }
+      ]
+    },
+    "changeHouseholdSettings": {
+      "request": {
+        "request_id": "00000000-0000-4000-8000-0000000c0103",
+        "command_scope_id": "00000000-0000-4000-8000-000000009002",
+        "expected_settings_revision": "0",
+        "mail_intake": "off"
+      },
+      "response": {
+        "mail_intake": "off",
+        "settings_revision": "1"
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"],
+        ["stale_scope", 410, "expired_scope"],
+        ["locked", 403, "device_locked"],
+        ["lock_unknown", 403, "device_locked"],
+        ["too_large", 413, "payload_too_large"],
+        ["voice_origin", 403, "screen_operation_required"],
+        ["chat_origin", 403, "screen_operation_required"],
+        ["system_origin", 403, "screen_operation_required"]
+      ],
+      "invalid_bodies": [
+        {
+          "request_id": "00000000-0000-4000-8000-0000000c0103",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "expected_settings_revision": "0",
+          "mail_intake": "paused"
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-0000000c0103",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "mail_intake": "off"
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-0000000c0103",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "expected_settings_revision": "01",
+          "mail_intake": "off"
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-0000000c0103",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "expected_settings_revision": "0",
+          "mail_intake": "off",
+          "category": "food"
+        }
+      ]
+    },
+    "importHouseholdRows": {
+      "request": {
+        "request_id": "00000000-0000-4000-8000-0000000c0104",
+        "command_scope_id": "00000000-0000-4000-8000-000000009002",
+        "origin": "moneyforward",
+        "rows": [
+          {
+            "row_id": "mf-row-1",
+            "direction": "expense",
+            "amount_yen": 1280,
+            "occurred_on": "2030-10-05",
+            "category": "food",
+            "merchant": "合成の食堂",
+            "memo": null,
+            "payment": "合成のカード"
+          }
+        ]
+      },
+      "response": {
+        "created": 1,
+        "duplicate": 0,
+        "matched": 0,
+        "rejected": 0,
+        "rules_learned": 1
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"],
+        ["stale_scope", 410, "expired_scope"],
+        ["locked", 403, "device_locked"],
+        ["lock_unknown", 403, "device_locked"],
+        ["too_large", 413, "payload_too_large"],
+        ["voice_origin", 403, "screen_operation_required"],
+        ["chat_origin", 403, "screen_operation_required"],
+        ["system_origin", 403, "screen_operation_required"]
+      ],
+      "invalid_bodies": [
+        {
+          "request_id": "00000000-0000-4000-8000-0000000c0104",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "origin": "moneyforward",
+          "rows": []
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-0000000c0104",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "origin": "zaim",
+          "rows": [
+            {
+              "row_id": "mf-row-1",
+              "direction": "expense",
+              "amount_yen": 1280,
+              "occurred_on": "2030-10-05",
+              "category": "food",
+              "merchant": "合成の食堂",
+              "memo": null,
+              "payment": "合成のカード"
+            }
+          ]
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-0000000c0104",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "origin": "moneyforward",
+          "rows": [
+            {
+              "row_id": "行",
+              "direction": "expense",
+              "amount_yen": 1280,
+              "occurred_on": "2030-10-05",
+              "category": "food",
+              "merchant": "合成の食堂",
+              "memo": null,
+              "payment": "合成のカード"
+            }
+          ]
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-0000000c0104",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "origin": "moneyforward",
+          "rows": [
+            {
+              "row_id": "mf-row-1",
+              "direction": "expense",
+              "amount_yen": 1280,
+              "occurred_on": "2030-10-05",
+              "category": "food",
+              "merchant": "合成の食堂",
+              "memo": null,
+              "payment": "合成のカード",
+              "occurred_time": "12:00"
+            }
+          ]
         }
       ]
     }

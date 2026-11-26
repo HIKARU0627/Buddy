@@ -563,7 +563,7 @@ function EntryForm({
   );
 }
 
-// 手入力の欄（ADR 0167）。会話の一言からの候補（ADR 0171）で開いたときは、その値を入れ、金額の欄へフォーカスを移す
+// 手入力の欄（ADR 0167）。会話の一言からの候補（ADR 0171・0174）で開いたときは、その値を入れ、金額の欄へフォーカスを移す
 // （会話の欄から離れた家計簿の欄を見えるところへ出す）。
 function AddEntryForm({
   state,
@@ -587,9 +587,11 @@ function AddEntryForm({
         idPrefix="household-add"
         title={HOUSEHOLD_LABELS.addTitle}
         note={
-          prefilled
-            ? HOUSEHOLD_LABELS.addFromConversationNote
-            : HOUSEHOLD_LABELS.addNote
+          state.addPrefill === null
+            ? HOUSEHOLD_LABELS.addNote
+            : state.addPrefill.direction === 'income'
+              ? HOUSEHOLD_LABELS.addFromConversationIncomeNote
+              : HOUSEHOLD_LABELS.addFromConversationNote
         }
         initial={state.addPrefill ?? EMPTY_INPUT}
         lockDirection={false}

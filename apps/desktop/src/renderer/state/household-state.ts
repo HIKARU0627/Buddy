@@ -98,6 +98,8 @@ export const HOUSEHOLD_LABELS = {
     'メールにも書き出しにもない支出（現金など）や収入を足します。カード番号・口座番号は入れないでください。',
   addFromConversationNote:
     '会話の一言から読んだ値を入れました。まだ記録していません。金額・日付・店名を確かめ、分類を選んでから「足す」を押してください。',
+  addFromConversationIncomeNote:
+    '会話の一言から読んだ値を、収入として入れました。まだ記録していません。向き・金額・日付・メモを確かめてから「足す」を押してください。',
   addSubmit: '足す',
   adding: '足しています…',
   addDirection: '向き',

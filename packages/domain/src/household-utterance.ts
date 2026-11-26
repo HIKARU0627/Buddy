@@ -1,18 +1,25 @@
-// 会話の一言からの家計の記録の候補（家計簿 段階 3 の一部、ADR 0171）。
+// 会話の一言からの家計の記録の候補（家計簿 段階 3 の一部、ADR 0171・0174）。
 //
-// 本人が会話で言った一言（「コンビニで 500 円使った」）を、決まった規則だけで読み、手入力の欄（ADR 0167）に入れる値の
-// 候補を作る。LLM は使わない。候補は記録ではない。記録を作るのは、本人が家計簿の欄で中身を確かめて「足す」を押したとき
-// （POST /v1/household/entries）だけ。
-// - 支出だけを読む。支出を表す言い方（使った・払った・買った・かかった・購入した）がなければ読まない（none）。
-//   問い（「使ったっけ」「？」で終わる）と仮定（「使ったら」）も読まない。円・¥・通貨の言葉がなければ読まない。
+// 本人が会話で言った一言（「コンビニで 500 円使った」「給料が 25 万円入った」）を、決まった規則だけで読み、手入力の欄
+// （ADR 0167）に入れる値の候補を作る。LLM は使わない。候補は記録ではない。記録を作るのは、本人が家計簿の欄で中身を確かめて
+// 「足す」を押したとき（POST /v1/household/entries）だけ。
+// - 支出と収入を読む。支出を表す言い方（使った・払った・買った・かかった・購入した）か、収入を表す言い方（入った・
+//   振り込まれた・もらった・売れた・売った・稼いだなど。ADR 0174）がなければ読まない（none）。問い（「使ったっけ」「？」で
+//   終わる）と仮定（「使ったら」「もらったら」）も読まない。円・¥・通貨の言葉がなければ読まない。
+// - 収入の言い方は、節の終わりにあるときだけ数える（「1000 円入った財布」「売ったお金」は数えない）。「〜てもらった」
+//   （おごってもらった・返してもらった）、お釣り・立て替え・割り勘・精算・貸し借り・返済・ポイント・商品券・振替の言葉が
+//   あれば収入として数えない。支出と収入の言い方が両方ある一言と、「戻ってきた」「返ってきた」（返金か収入か決められない）は
+//   候補にせず、理由を返す（direction_unclear）。振替は読まない。
 // - 金額は円の正の整数を一つだけ読む（「500 円」「1,280 円」「¥500」「1 万 2000 円」「3 千円」）。取り消し・返金の言葉、
 //   円以外の通貨、負の金額、複数の金額、0 円・桁の多すぎる金額・3 桁ごとでないコンマ、読めない金額（漢数字・小数）は
-//   候補にせず、理由を返す（unreadable）。
+//   候補にせず、理由を返す（unreadable）。返金・払い戻しは収入にもしない。
 // - 日付は「今日」「昨日」「昨夜」「おととい」「さきおととい」だけを読み、日付の言葉がなければ今日にする。読めない日付の言葉
 //   （「3 日」「先週」「去年」）や違う日付の言葉が二つあれば null（本人が入れる）。数の後の「円ショップ」「円札」「円引き」などは金額にしない。
-// - 店名は金額のすぐ前の「〜で」の部分（読点か文の頭まで。頭の「今日は」などの時の言葉を除く）。記録に入れられない店名
-//   （長すぎる・制御文字・12 桁以上の数字の並び）は入れない。支払い手段は「現金で」「カードで」などの決まった言葉だけを読む。
-// - 分類は読まない（未分類のまま。店名の規則は中枢が当てる。ADR 0167）。
+// - 支出の店名は金額のすぐ前の「〜で」の部分（読点か文の頭まで。頭の「今日は」などの時の言葉を除く）。収入の出どころは
+//   金額のすぐ前の「〜で」「〜から」「〜が」「〜を」の部分で、店名・相手の欄ではなくメモに入れる（ADR 0174）。記録に
+//   入れられない文字（長すぎる・制御文字・12 桁以上の数字の並び）は入れない。支払い手段は「現金で」「カードで」などの決まった
+//   言葉だけを読む。
+// - 分類は読まない（支出は未分類のまま。店名の規則は中枢が当てる。収入は向きの分類「収入」が一つだけ。ADR 0167）。
 // 時計は呼び出し側が渡す今日の日付（YYYY-MM-DD）だけを使う。
 
 import {
@@ -20,12 +27,18 @@ import {
   householdMerchantErrors,
   isHouseholdDate,
 } from './household.js';
+import type { HouseholdDirection } from './household.js';
 
 export interface HouseholdUtteranceDraft {
+  // 支出か収入か。振替は読まない。
+  readonly direction: Exclude<HouseholdDirection, 'transfer'>;
   readonly amount_yen: number;
-  // 利用した日。読めない日付の言葉があれば null。
+  // 利用した日（収入は受け取った日）。読めない日付の言葉があれば null。
   readonly occurred_on: string | null;
+  // 支出の店名。収入では null（出どころはメモに入れる）。
   readonly merchant: string | null;
+  // 収入の出どころ（「給料」「フリマ」）。支出では null。
+  readonly memo: string | null;
   readonly payment: string | null;
 }
 
@@ -35,7 +48,8 @@ export type HouseholdUtteranceUnreadable =
   | 'several_amounts'
   | 'negative_amount'
   | 'foreign_currency'
-  | 'cancellation';
+  | 'cancellation'
+  | 'direction_unclear';
 
 export type HouseholdUtteranceReading =
   | { readonly kind: 'none' }
@@ -48,6 +62,31 @@ export type HouseholdUtteranceReading =
 // 支出を表す言い方。後ろに「ら」「り」が続けば仮定・例示なので読まない。
 const SPENDING =
   /(?:使った|使いました|つかった|払った|払いました|はらった|買った|買いました|かかった|かかりました|購入した|購入しました)(?!ら|り)/u;
+// 節の終わり（文の終わり・句読点・空白・終助詞・「けど」「から」「ので」など）。収入の言い方の後がこれでなければ、
+// 物の説明（「1000 円入った財布」「売ったお金」）か仮定（「もらったら」「入ったなら」）なので数えない。
+const CLAUSE_END =
+  '(?=$|[\\s。、,.!?…~〜ー♪]|よ|ね|わ|ぞ|ぜ|な(?!い|ら)|けど|けれど|から|ので|のに|んだ|んです|の(?=$|[\\s。、,.!?])|し(?=[\\s、,]))';
+// 収入を表す言い方（ADR 0174）。「〜てもらった」（おごってもらった・返してもらった・払ってもらった）は、本人のお金が
+// 増えた話ではないので数えない。
+const INCOME = new RegExp(
+  `(?:(?<!て)(?:もらった|もらいました|もらえた|もらえました|貰った|貰いました|いただいた|いただきました|頂いた|頂きました)|入った|入りました|振り込まれた|振り込まれました|振込まれた|振込まれました|売れた|売れました|売った|売りました|稼いだ|稼ぎました)${CLAUSE_END}`,
+  'u',
+);
+// 収入の言い方があっても収入として数えない言葉（お釣り・立て替えの精算・貸し借りの返済・ポイントなどお金でないもの・
+// 口座の間の振替）。
+const NOT_INCOME =
+  /お釣り|おつり|釣り銭|つり銭|立て替|立替|割り勘|割勘|精算|清算|貸し|借り|返済|ポイント|商品券|ギフト券|ギフトカード|クーポン|振替|振り替|移した|移し替|おろした|下ろした|引き出|入金した|入金して|チャージ|預けた|預け入/u;
+// 支出と収入の取り違えを防ぐための、広い言い方の一覧。片方の向きの言い方で読めても、もう片方の向きの話が一言の中に
+// あれば（「3000 円で売った後、本を買った」「メルカリで買った服が 2000 円で売れた」）、金額がどちらの話か決められない。
+// 収入の側の「入っ」は、前が「円」「が」「は」「も」のときだけ数える（「店に入って 500 円使った」は支出のまま）。
+// 「売って」の後に「た」「い」「る」が続く「売ってた」（店で売っていた）と「売れ残り」は数えない。
+const SPENDING_MENTION =
+  /使[っい]|つか[っい]|払[っい]|はら[っい]|買[っい]|かか[っり]|購入/u;
+const INCOME_MENTION =
+  /(?<!て)(?:もら[っいえ]|貰|いただ[いき]|頂[いき])|売っ(?!て[たいる])|売れ(?!残)|稼[いぎ]|振り?込まれ|(?:円|が|は|も)\s*入[っり]/u;
+// 返金か収入か決められない言い方。
+const DIRECTION_UNCLEAR =
+  /(?:戻|返|もど)って(?:き|来)(?:た|ました)|(?:戻|もど)(?:った|りました)/u;
 // 問い。
 const QUESTION = /[?]\s*$|っけ/u;
 // 円の金額の話か。「円安」のような数のない「円」は数えない（漢数字の金額は数える。読めないと知らせる）。
@@ -204,47 +243,77 @@ function withoutLeadingTime(phrase: string): string {
   return current.trim();
 }
 
-// 金額のすぐ前の「〜で」の部分（読点か文の頭まで）。「で」で終わらなければ null。
-function phraseBefore(prefix: string): string | null {
+// 金額のすぐ前の「〜で」（収入では「〜から」「〜が」「〜を」も）の部分（読点か文の頭まで）。助詞で終わらなければ null。
+function phraseBefore(
+  prefix: string,
+  particles: readonly string[],
+): { readonly phrase: string; readonly particle: string } | null {
   const trimmed = prefix.replace(/[\s、,]+$/u, '');
-  if (!trimmed.endsWith('で')) return null;
-  const body = trimmed.slice(0, -1);
-  return withoutLeadingTime(/[^、,。.!]*$/u.exec(body)?.[0] ?? '');
+  const particle = particles.find((word) => trimmed.endsWith(word));
+  if (particle === undefined) return null;
+  const body = trimmed.slice(0, -particle.length);
+  return {
+    phrase: withoutLeadingTime(/[^、,。.!]*$/u.exec(body)?.[0] ?? ''),
+    particle,
+  };
 }
 
-// 店名と支払い手段。「コンビニで現金で」「現金でコンビニで」「コンビニで」「現金で」を読む。
-function readPlace(prefix: string): {
-  readonly merchant: string | null;
+// 記録の店名・メモに入れられる文字か（長すぎる・制御文字・12 桁以上の数字の並びは入れない）。メモにも店名と同じ検査を
+// 使う（メモの上限 500 文字より短い 100 文字までにそろう）。
+const placeText = (text: string | null): string | null =>
+  text === null || text === '' || householdMerchantErrors(text).length > 0
+    ? null
+    : text;
+
+// 「〜で」の部分の店名と支払い手段。「コンビニで現金で」「現金でコンビニで」「コンビニで」「現金で」を読む。
+function readPlace(phrase: string): {
+  readonly place: string | null;
   readonly payment: string | null;
 } {
-  const phrase = phraseBefore(prefix);
-  if (phrase === null || phrase === '')
-    return { merchant: null, payment: null };
-  let merchant: string | null = phrase;
+  if (phrase === '') return { place: null, payment: null };
+  let place: string | null = phrase;
   let payment: string | null = null;
   for (const word of PAYMENT_WORDS) {
     if (phrase === word) {
       payment = word;
-      merchant = null;
+      place = null;
     } else if (phrase.endsWith(`で${word}`)) {
       payment = word;
-      merchant = withoutLeadingTime(phrase.slice(0, -(word.length + 1)));
+      place = withoutLeadingTime(phrase.slice(0, -(word.length + 1)));
     } else if (phrase.startsWith(`${word}で`)) {
       payment = word;
-      merchant = withoutLeadingTime(phrase.slice(word.length + 1));
+      place = withoutLeadingTime(phrase.slice(word.length + 1));
     } else continue;
     break;
   }
-  if (
-    merchant !== null &&
-    (merchant === '' || householdMerchantErrors(merchant).length > 0)
-  )
-    merchant = null;
-  return { merchant, payment };
+  return { place: placeText(place), payment };
+}
+
+// 支出は店名と支払い手段、収入は出どころ（メモ）と支払い手段を読む。
+function readSource(
+  prefix: string,
+  direction: HouseholdUtteranceDraft['direction'],
+): Pick<HouseholdUtteranceDraft, 'merchant' | 'memo' | 'payment'> {
+  const nothing = { merchant: null, memo: null, payment: null };
+  if (direction === 'expense') {
+    const found = phraseBefore(prefix, ['で']);
+    if (found === null) return nothing;
+    const read = readPlace(found.phrase);
+    return { merchant: read.place, memo: null, payment: read.payment };
+  }
+  // 収入の出どころは、店名・相手の欄に入れるとその名前の規則（分類「収入」）を中枢が覚え、同じ名前の支出の規則を
+  // 上書きするので、メモに入れる（ADR 0174、U353）。
+  const found = phraseBefore(prefix, ['で', 'から', 'が', 'を']);
+  if (found === null) return nothing;
+  if (found.particle === 'で') {
+    const read = readPlace(found.phrase);
+    return { merchant: null, memo: read.place, payment: read.payment };
+  }
+  return { merchant: null, memo: placeText(found.phrase), payment: null };
 }
 
 /**
- * 会話の一言を決まった規則で読み、家計の記録（支出）の候補を返す。today は呼び出し側の今日の日付（YYYY-MM-DD）。
+ * 会話の一言を決まった規則で読み、家計の記録（支出か収入）の候補を返す。today は呼び出し側の今日の日付（YYYY-MM-DD）。
  * 候補は手入力の欄に入れる値で、記録ではない（本人が確かめて足すまで何も保存しない）。
  */
 export function readHouseholdUtterance(
@@ -252,8 +321,12 @@ export function readHouseholdUtterance(
   today: string,
 ): HouseholdUtteranceReading {
   const text = utterance.normalize('NFKC').trim();
+  const spending = SPENDING.test(text);
+  const notIncome = NOT_INCOME.test(text);
+  const income = INCOME.test(text) && !notIncome;
+  const unclear = DIRECTION_UNCLEAR.test(text);
   if (
-    !SPENDING.test(text) ||
+    !(spending || income || unclear) ||
     QUESTION.test(text) ||
     !(YEN_MONEY.test(text) || FOREIGN.test(text))
   )
@@ -261,7 +334,12 @@ export function readHouseholdUtterance(
   const unreadable = (
     reason: HouseholdUtteranceUnreadable,
   ): HouseholdUtteranceReading => ({ kind: 'unreadable', reason });
+  // 返金・払い戻し・取り消しは、支出にも収入にもしない。
   if (CANCELLATION.test(text)) return unreadable('cancellation');
+  const mixed =
+    (spending && INCOME_MENTION.test(text) && !notIncome) ||
+    (income && SPENDING_MENTION.test(text));
+  if (unclear || mixed) return unreadable('direction_unclear');
   if (FOREIGN.test(text)) return unreadable('foreign_currency');
   const amounts = amountMatches(text);
   if (amounts.length === 0) return unreadable('amount_missing');
@@ -275,14 +353,14 @@ export function readHouseholdUtterance(
     amount.value > HOUSEHOLD_AMOUNT_MAX
   )
     return unreadable('amount_invalid');
-  const place = readPlace(text.slice(0, amount.start));
+  const direction = income ? 'income' : 'expense';
   return {
     kind: 'draft',
     draft: {
+      direction,
       amount_yen: amount.value,
       occurred_on: readDate(text, today),
-      merchant: place.merchant,
-      payment: place.payment,
+      ...readSource(text.slice(0, amount.start), direction),
     },
   };
 }

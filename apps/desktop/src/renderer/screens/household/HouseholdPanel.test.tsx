@@ -454,6 +454,42 @@ test('the add form opened from a conversation candidate holds its values and say
   assert(buttons(html).includes('足す'));
 });
 
+test('the add form opened from an income candidate is set to income with the income category and the source in the memo', () => {
+  const html = panel({
+    view: view([entry(0)]),
+    seq: 2,
+    adding: true,
+    addPrefill: {
+      direction: 'income',
+      amount: '250000',
+      date: '2030-11-25',
+      time: '',
+      category: 'income',
+      merchant: '',
+      memo: '給料',
+      payment: '',
+    },
+  });
+  assert.match(
+    html,
+    /<select id="household-add-direction"[^>]*>[^]*?<option value="income" selected="">収入<\/option>/u,
+  );
+  // 収入の分類は「収入」だけなので、分類の選択は押せない。
+  assert.match(
+    html,
+    /<select id="household-add-category"[^>]*disabled=""[^>]*><option value="income" selected="">収入<\/option><\/select>/u,
+  );
+  assert.match(html, /id="household-add-amount"[^>]*value="250000"/u);
+  assert.match(html, /id="household-add-date"[^>]*value="2030-11-25"/u);
+  assert.match(html, /id="household-add-memo"[^>]*value="給料"/u);
+  assert.match(html, /id="household-add-merchant"[^>]*value=""/u);
+  assert.match(
+    text(html),
+    /会話の一言から読んだ値を、収入として入れました。まだ記録していません。/u,
+  );
+  assert.doesNotMatch(text(html), /分類を選んでから/u);
+});
+
 test('rows that look like the same purchase from two sources are marked, and the list says so', () => {
   const html = text(
     panel({

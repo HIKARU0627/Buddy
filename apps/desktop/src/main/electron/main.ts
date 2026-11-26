@@ -29,11 +29,18 @@ import {
   createNodeCommandRunner,
 } from '@buddy/platform/home-fingerprint';
 import { fileURLToPath } from 'node:url';
-import { DESKTOP_IPC_CHANNELS, type DesktopPowerEvent } from '@buddy/domain';
+import {
+  DESKTOP_IPC_CHANNELS,
+  RECEIPT_SOURCE_MAX_BYTES,
+  type DesktopPowerEvent,
+} from '@buddy/domain';
 import { adminConfirmText } from '../admin-confirm.js';
 import { ConnectionPublisher } from '../connection-publisher.js';
 import { writeHouseholdExportFile } from '../household-export-file.js';
-import type { HouseholdExportSaver } from '../household-bridge.js';
+import type {
+  HouseholdExportSaver,
+  ReceiptImageCodec,
+} from '../household-bridge.js';
 import { createDesktopContract, loadContractSchema } from '../contract.js';
 import type { DesktopCanvasDisplaySettings } from '@buddy/contracts';
 import {
@@ -879,6 +886,9 @@ function createLink(
     confirmAdmin: confirmAdminWithDialog,
     pickHouseholdExport: pickHouseholdExportWithDialog,
     saveHouseholdExport: saveHouseholdExportWithDialog,
+    pickReceiptImage: pickReceiptImageWithDialog,
+    receiptImageCodec: RECEIPT_IMAGE_CODEC,
+    confirmReceiptSetting: confirmReceiptSettingWithDialog,
     // キャンバスのモード（開発用のフラグ）では、入力バーの発言を流れへ送り、キャンバスの記述をキャンバスの窓だけへ渡す
     // （役割の表 DESKTOP_ROLE_NOTIFICATIONS。状態の層・入力バーへは送らない）。
     canvasMode: uiMode === 'canvas',
@@ -911,6 +921,89 @@ async function pickHouseholdExportWithDialog(): Promise<Uint8Array | null> {
   if (!info.isFile() || info.size > HOUSEHOLD_EXPORT_MAX_BYTES)
     return new Uint8Array();
   return new Uint8Array(await readFile(path));
+}
+
+// レシートの写真（ADR 0177）。確認ダイアログと同じ窓を親にした OS のファイル選択で本人に 1 枚選ばせ、選んだファイルだけを
+// メモリーへ読む（一時ファイルは作らない）。上限（20 MiB）を超えるファイルは読まずに 'too_large'。親の窓がない・やめたときは
+// null（何も送らない）。形式・縦横の検査と縮めは household-bridge.ts が行う。
+async function pickReceiptImageWithDialog(): Promise<
+  Uint8Array | null | 'too_large'
+> {
+  const parent = confirmDialogParent(uiMode, statusPanel.open);
+  const window = parent === null ? null : liveWindow(parent);
+  if (window === null) return null;
+  const picked = await dialog.showOpenDialog(window, {
+    title: '読み取るレシートの写真を 1\u00a0枚選ぶ',
+    properties: ['openFile'],
+    filters: [
+      { name: '写真（JPEG・PNG）', extensions: ['jpg', 'jpeg', 'png'] },
+    ],
+  });
+  const path = picked.filePaths[0];
+  if (picked.canceled || path === undefined) return null;
+  const info = await stat(path);
+  if (!info.isFile()) return null;
+  if (info.size > RECEIPT_SOURCE_MAX_BYTES) return 'too_large';
+  const bytes = await readFile(path);
+  if (bytes.byteLength > RECEIPT_SOURCE_MAX_BYTES) {
+    bytes.fill(0);
+    return 'too_large';
+  }
+  return new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+}
+
+// レシートの写真を開いて縮める口（ADR 0177）。nativeImage で開き、長い辺を縮めて JPEG にし直す（撮影の位置などの付帯情報は
+// 持ち越さない）。開けなければ null。
+const RECEIPT_IMAGE_CODEC: ReceiptImageCodec = {
+  open(bytes) {
+    const image = nativeImage.createFromBuffer(
+      Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength),
+    );
+    if (image.isEmpty()) return null;
+    const { width, height } = image.getSize();
+    return {
+      width,
+      height,
+      jpeg(longSide, quality) {
+        const scale = Math.min(1, longSide / Math.max(width, height));
+        const resized =
+          scale < 1
+            ? image.resize({
+                width: Math.max(1, Math.round(width * scale)),
+                height: Math.max(1, Math.round(height * scale)),
+                quality: 'good',
+              })
+            : image;
+        const encoded = resized.toJPEG(quality);
+        return new Uint8Array(
+          encoded.buffer,
+          encoded.byteOffset,
+          encoded.byteLength,
+        );
+      },
+    };
+  },
+};
+
+// レシートの写真を外部へ送る設定を入にする前の本人の確認（ADR 0177）。「やめる」を既定・取り消しにし、「送る設定にする」を
+// 選んだときだけ true。親の窓がなければ確認できないので false（入にしない）。
+async function confirmReceiptSettingWithDialog(): Promise<boolean> {
+  const parent = confirmDialogParent(uiMode, statusPanel.open);
+  const window = parent === null ? null : liveWindow(parent);
+  if (window === null) return false;
+  const result = await dialog.showMessageBox(window, {
+    type: 'warning',
+    title: 'レシートの写真を外部へ送る設定',
+    message:
+      'レシートの写真を、外部のモデルの画像の読み取りへ送る設定にしますか？',
+    detail:
+      '入にすると、家計簿の欄で「レシートの写真から読む」を押して選んだ写真 1\u00a0枚を、その都度、外部のモデルの提供元へ送ります。写真には店名・金額・品目などが写ります。読み取りには予算を使います。写真と読み取りの結果は Buddy に保存せず、読み取った値は記録にせず入力欄に入れるだけです。いつでも切にできます。',
+    buttons: ['やめる', '送る設定にする'],
+    defaultId: 0,
+    cancelId: 0,
+    noLink: true,
+  });
+  return result.response === 1;
 }
 
 // 家計の記録の CSV の書き出し先（ADR 0172）。OS の保存先の選択で本人に選ばせ、選んだ場所へだけ書く（一時ファイルは作らない）。

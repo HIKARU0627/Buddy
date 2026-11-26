@@ -333,6 +333,7 @@ test(
       const sent = await provider.send({
         request_id: uuid(1),
         reservation_id: ticket.reservation_id,
+        price_version: ticket.price_version,
         signal: new AbortController().signal,
       });
       assert.equal(

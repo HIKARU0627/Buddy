@@ -31,7 +31,10 @@ import {
   HOUSEHOLD_LABELS,
   IMPORT_PLACE,
   INTAKE_PLACE,
+  RECEIPT_PLACE,
+  RECEIPT_SETTING_PLACE,
   SOURCE_LABELS,
+  canStartAddFrom,
   budgetItemsFromInput,
   budgetUseText,
   canChange,
@@ -55,6 +58,13 @@ import type {
   HouseholdViewState,
   ManualEntryInput,
 } from '../../state/household-state.js';
+import {
+  RECEIPT_LABELS,
+  inputFromReceipt,
+  receiptCandidateText,
+  receiptMessage,
+  receiptStateText,
+} from '../../state/household-receipt.js';
 import type { StatusLine } from '../../tones.js';
 
 const FETCH_LINES: Readonly<Record<string, StatusLine>> = {
@@ -598,7 +608,9 @@ function AddEntryForm({
         note={
           state.addPrefill === null
             ? HOUSEHOLD_LABELS.addNote
-            : addFromConversationNote
+            : state.addFromReceipt
+              ? RECEIPT_LABELS.addNote
+              : addFromConversationNote
         }
         initial={state.addPrefill ?? EMPTY_INPUT}
         lockDirection={false}
@@ -639,6 +651,131 @@ function AddBlock({
       )}
       {notice === null ? null : (
         <InlineNotice tone={notice.tone} text={notice.text} />
+      )}
+    </div>
+  );
+}
+
+// レシートの写真の読み取り（ADR 0177）。入・切と「写真を選んで読む」、読んだ候補（記録ではない）と「家計簿の入力欄で開く」。
+// 写真・ファイルのパスは画面に来ない。候補は画面のメモリーにだけ置く。読めていなければ出さない。
+function ReceiptBlock({
+  state,
+  actions,
+}: {
+  readonly state: HouseholdViewState;
+  readonly actions: HouseholdActions;
+}) {
+  const reading = state.view?.receipt_reading ?? null;
+  if (reading === null) return null;
+  const settingNotice = noticeAt(state, RECEIPT_SETTING_PLACE);
+  const readNotice = noticeAt(state, RECEIPT_PLACE);
+  const result = state.receipt;
+  const message = result === null ? null : receiptMessage(result);
+  const openable = canStartAddFrom(state);
+  return (
+    <div className="flex flex-col gap-1.5" data-receipt-reading={reading}>
+      <h3 className="text-sm font-semibold">{RECEIPT_LABELS.title}</h3>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <StatusText
+          className="text-sm"
+          line={
+            reading === 'on'
+              ? {
+                  tone: 'warning',
+                  mark: 'dot',
+                  text: receiptStateText(reading),
+                }
+              : {
+                  tone: 'neutral',
+                  mark: 'circle',
+                  text: receiptStateText(reading),
+                }
+          }
+        />
+        {reading === 'unavailable' ? null : (
+          <Button
+            size="sm"
+            variant="secondary"
+            isDisabled={state.busy !== null}
+            onPress={() =>
+              actions.setReceiptReading(reading === 'on' ? 'off' : 'on')
+            }
+          >
+            {state.busy === RECEIPT_SETTING_PLACE
+              ? RECEIPT_LABELS.changing
+              : reading === 'on'
+                ? RECEIPT_LABELS.turnOff
+                : RECEIPT_LABELS.turnOn}
+          </Button>
+        )}
+      </div>
+      {reading === 'unavailable' ? null : (
+        <p className="text-xs text-muted">
+          {reading === 'on' ? RECEIPT_LABELS.noteOn : RECEIPT_LABELS.noteOff}
+        </p>
+      )}
+      {settingNotice === null ? null : (
+        <InlineNotice tone={settingNotice.tone} text={settingNotice.text} />
+      )}
+      {reading !== 'on' ? null : (
+        <div className="flex justify-end">
+          <Button
+            size="sm"
+            variant="secondary"
+            isDisabled={state.busy !== null}
+            onPress={actions.readReceipt}
+          >
+            {state.busy === RECEIPT_PLACE
+              ? RECEIPT_LABELS.reading
+              : RECEIPT_LABELS.read}
+          </Button>
+        </div>
+      )}
+      {result === null || result.candidate === null ? null : (
+        <div
+          className="flex flex-col gap-1.5 rounded-md border border-separator p-2"
+          data-receipt-candidate
+        >
+          <p className="text-sm font-semibold">
+            {RECEIPT_LABELS.candidateTitle}
+          </p>
+          <p className="text-sm tabular-nums">
+            {receiptCandidateText(result.candidate)}
+          </p>
+          <p className="text-xs text-muted">{RECEIPT_LABELS.candidateNote}</p>
+          {openable ? null : (
+            <p className="text-xs text-muted">{RECEIPT_LABELS.cannotOpen}</p>
+          )}
+          <div className="flex justify-end gap-2">
+            <Button size="sm" variant="ghost" onPress={actions.dismissReceipt}>
+              {RECEIPT_LABELS.dismiss}
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              isDisabled={!openable}
+              onPress={() => {
+                if (result.candidate !== null)
+                  actions.openReceipt(inputFromReceipt(result.candidate));
+              }}
+            >
+              {RECEIPT_LABELS.open}
+            </Button>
+          </div>
+        </div>
+      )}
+      {message === null ? null : (
+        <div className="flex flex-col gap-1.5">
+          <InlineNotice tone="warning" text={message} />
+          <div className="flex justify-end">
+            <Button size="sm" variant="ghost" onPress={actions.dismissReceipt}>
+              {RECEIPT_LABELS.dismiss}
+            </Button>
+          </div>
+        </div>
+      )}
+      {readNotice === null ? null : (
+        <InlineNotice tone={readNotice.tone} text={readNotice.text} />
       )}
     </div>
   );
@@ -1093,6 +1230,7 @@ export function HouseholdPanel({
         </>
       )}
       {loaded ? <AddBlock state={state} actions={actions} /> : null}
+      {loaded ? <ReceiptBlock state={state} actions={actions} /> : null}
       {loaded ? <BudgetBlock state={state} actions={actions} /> : null}
       {!loaded || view.recurring === null ? null : (
         <RecurringBlock recurring={view.recurring} />

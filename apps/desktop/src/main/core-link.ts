@@ -76,7 +76,10 @@ import { BudgetBridge } from './budget-bridge.js';
 import type { BudgetConfirmRequest } from './budget-bridge.js';
 import { AutoActionBridge } from './auto-action-bridge.js';
 import { HouseholdBridge } from './household-bridge.js';
-import type { HouseholdExportSaver } from './household-bridge.js';
+import type {
+  HouseholdExportSaver,
+  ReceiptImageCodec,
+} from './household-bridge.js';
 import { CandidateBridge } from './candidate-bridge.js';
 import { ConnectionsBridge } from './connections-bridge.js';
 import { CanvasBridge } from './canvas-bridge.js';
@@ -156,6 +159,8 @@ export const HOUSEHOLD_CHANNELS: readonly DesktopIpcChannel[] = [
   'desktop.household_add',
   'desktop.household_edit',
   'desktop.household_export',
+  'desktop.household_receipt_setting',
+  'desktop.household_receipt_read',
 ];
 
 // 連携の接続の一覧と取得範囲の変更のチャネル（B08-02 P3・B09-05、ADR 0142）。中枢の画面の端末でだけ使える
@@ -230,6 +235,12 @@ export interface DesktopCoreLinkOptions {
   // 家計の記録の CSV の書き出しで、本人に OS の保存先の選択を出して選んだ場所へだけ書く（ADR 0172）。省略すると保存先を
   // 選べないので、何も書かない。
   readonly saveHouseholdExport?: HouseholdExportSaver;
+  // レシートの写真の読み取り（ADR 0177）。pickReceiptImage は本人に OS のファイル選択で写真を 1 枚選ばせて中身を返す（やめたら
+  // null、上限を超えるファイルは読まずに 'too_large'）。receiptImageCodec は写真を開いて縮める口。confirmReceiptSetting は
+  // 外部へ送る設定を入にする前の OS の確認ダイアログ（「送る設定にする」で true）。省略すると、写真を選べず・入にできない。
+  readonly pickReceiptImage?: () => Promise<Uint8Array | null | 'too_large'>;
+  readonly receiptImageCodec?: ReceiptImageCodec;
+  readonly confirmReceiptSetting?: () => Promise<boolean>;
   // 発言の結果が会話の操作（照合表に当たった発言。session_control）のとき、その操作を音声の制御へ渡す（B05-05）。
   // 画面のボタンと同じ処理を通す。省略すると何もしない（音声を使わない組み立て）。
   readonly onSessionControl?: (action: SessionControlAction) => void;
@@ -1309,7 +1320,9 @@ export class DesktopCoreLink {
         raw.channel !== 'desktop.household_budget' &&
         raw.channel !== 'desktop.household_add' &&
         raw.channel !== 'desktop.household_edit' &&
-        raw.channel !== 'desktop.household_export')
+        raw.channel !== 'desktop.household_export' &&
+        raw.channel !== 'desktop.household_receipt_setting' &&
+        raw.channel !== 'desktop.household_receipt_read')
     )
       return this.#reject(
         echoRequestId(raw),
@@ -1327,6 +1340,28 @@ export class DesktopCoreLink {
     )
       return this.#reject(raw.request_id, raw.channel, 'not_connected');
     const generation = this.#viewGeneration;
+    // レシートの写真の読み取り（ADR 0177）。結果は家計簿の表示ではなく候補なので、別の形で返す。写真を選ぶ間・縮める間に
+    // ロック・入出力の停止があれば送らない。
+    if (raw.channel === 'desktop.household_receipt_read') {
+      const read = await this.#household.readReceipt(
+        this.#options.pickReceiptImage ?? (() => Promise.resolve(null)),
+        this.#options.receiptImageCodec ?? null,
+        () =>
+          this.#lockState === 'unlocked' &&
+          desktopInputPermitted(this.#options.ioState?.() ?? ioState),
+      );
+      return this.#withinGeneration(
+        generation,
+        this.#operationOutcome(
+          raw.request_id,
+          raw.channel,
+          read,
+          (receipt) => ({
+            receipt,
+          }),
+        ),
+      );
+    }
     const result =
       raw.channel === 'desktop.household_view'
         ? await this.#household.show(raw.payload.month)
@@ -1355,10 +1390,16 @@ export class DesktopCoreLink {
                           this.#options.saveHouseholdExport ??
                             (() => Promise.resolve('cancelled')),
                         )
-                      : await this.#household.edit(
-                          raw.payload.ref,
-                          raw.payload.entry,
-                        );
+                      : raw.channel === 'desktop.household_receipt_setting'
+                        ? await this.#household.receiptSetting(
+                            raw.payload.receipt_reading,
+                            this.#options.confirmReceiptSetting ??
+                              (() => Promise.resolve(false)),
+                          )
+                        : await this.#household.edit(
+                            raw.payload.ref,
+                            raw.payload.entry,
+                          );
     return this.#withinGeneration(
       generation,
       this.#operationOutcome(

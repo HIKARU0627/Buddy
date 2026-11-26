@@ -78,6 +78,9 @@ export const DESKTOP_IPC_CHANNELS = [
   'desktop.household_edit',
   // 家計の記録の CSV への書き出し（ADR 0172）。
   'desktop.household_export',
+  // レシートの写真の読み取りの入・切と、写真 1 枚の読み取り（ADR 0177）。
+  'desktop.household_receipt_setting',
+  'desktop.household_receipt_read',
 ] as const;
 
 export type DesktopIpcChannel = (typeof DESKTOP_IPC_CHANNELS)[number];
@@ -237,6 +240,16 @@ export const DESKTOP_PAIRING_SCREEN_CHANNELS: readonly DesktopIpcChannel[] = [
   'desktop.household_edit',
   // 家計の記録の CSV への書き出し（ADR 0172）も本人の画面操作。保存先は main が OS の保存先の選択で本人に選ばせる。
   'desktop.household_export',
+  // レシートの写真の読み取りの入・切と読み取り（ADR 0177）も本人の画面操作。入にするときは main が OS の確認ダイアログを
+  // 挟む。写真は main が OS のファイル選択で本人に選ばせる。
+  'desktop.household_receipt_setting',
+  'desktop.household_receipt_read',
+];
+
+// 外部へ送る画面操作（ADR 0177）。この端末の入出力の停止中は受け付けない（停止は外部への送信を止める操作なので）。
+// 発言（turn_submit）の停止の検査は main が別に行う。
+export const DESKTOP_EXTERNAL_SEND_CHANNELS: readonly DesktopIpcChannel[] = [
+  'desktop.household_receipt_read',
 ];
 
 // ロック解除済みのときだけ受け付ける一覧（内容なので、ロック中・不明は出さない。B03-06）。
@@ -281,6 +294,11 @@ export function admitDesktopRequest(
   if (DESKTOP_PAIRING_SCREEN_CHANNELS.includes(channel)) {
     if (state.lockState !== 'unlocked') return reject('device_locked');
     if (!sender.windowFocused) return reject('screen_operation_required');
+    if (
+      DESKTOP_EXTERNAL_SEND_CHANNELS.includes(channel) &&
+      state.stopScope !== 'none'
+    )
+      return reject('input_stopped');
     return { ok: true };
   }
   if (channel !== 'desktop.io_resume') return { ok: true };
@@ -377,6 +395,8 @@ export const DESKTOP_ROLE_CHANNELS: Readonly<
     'desktop.household_add',
     'desktop.household_edit',
     'desktop.household_export',
+    'desktop.household_receipt_setting',
+    'desktop.household_receipt_read',
   ],
   input: ['desktop.get_state', 'desktop.turn_submit', 'desktop.canvas_summon'],
 };

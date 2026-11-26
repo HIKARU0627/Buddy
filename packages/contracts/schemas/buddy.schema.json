@@ -224,6 +224,21 @@
       "$ref": "#/$defs/HouseholdEntryContentChangeRequest"
     },
     {
+      "$ref": "#/$defs/HouseholdReceiptSettingRequest"
+    },
+    {
+      "$ref": "#/$defs/HouseholdReceiptSetting"
+    },
+    {
+      "$ref": "#/$defs/HouseholdReceiptImageRequest"
+    },
+    {
+      "$ref": "#/$defs/HouseholdReceiptResult"
+    },
+    {
+      "$ref": "#/$defs/DesktopHouseholdReceiptView"
+    },
+    {
       "$ref": "#/$defs/CandidateEvidenceRequest"
     },
     {
@@ -6628,6 +6643,9 @@
         },
         "budget": {
           "$ref": "#/$defs/HouseholdBudget"
+        },
+        "receipt_reading": {
+          "$ref": "#/$defs/HouseholdReceiptReadingState"
         }
       },
       "required": [
@@ -6638,7 +6656,8 @@
         "truncated",
         "settings",
         "recurring",
-        "budget"
+        "budget",
+        "receipt_reading"
       ],
       "additionalProperties": false,
       "description": "家計簿の月ごとの合計（GET /v1/household/months、ADR 0161）。今月は Core が本人のタイムゾーンで決め、端末の時計で代用しない。月は今月から 1 か月ずつさかのぼる（意味検査）。"
@@ -7183,6 +7202,208 @@
       "required": ["entry_id", "state"],
       "additionalProperties": false,
       "description": "削除の結果。"
+    },
+    "HouseholdReceiptReadingState": {
+      "type": "string",
+      "enum": ["on", "off", "unavailable"],
+      "description": "レシートの写真を外部のモデルの画像の読み取りへ送る設定（ADR 0177、U363）。既定は off（送らない）。on は本人が家計簿の欄で明示的に入にした状態で、本人が選んだ一枚の写真をその都度の画面操作でだけ送る。unavailable は中枢に読み取りの口（provider と profile）がないので入にできない。中枢のメモリーにだけ持ち、中枢を起動し直すと off に戻る（U364）。"
+    },
+    "HouseholdReceiptSettingRequest": {
+      "type": "object",
+      "properties": {
+        "request_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "command_scope_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "receipt_reading": {
+          "type": "string",
+          "enum": ["on", "off"]
+        }
+      },
+      "required": ["request_id", "command_scope_id", "receipt_reading"],
+      "additionalProperties": false,
+      "description": "レシートの写真の読み取りの入・切（POST /v1/household/receipt-setting、ADR 0177）。本人の画面操作だけが送る。望む値をそのまま送るので、今と同じ値なら何も変えない。読み取りの口がないときに on を求めると 503。切にすると、送っている途中の読み取りを止める（送る前なら送らない）。"
+    },
+    "HouseholdReceiptSetting": {
+      "type": "object",
+      "properties": {
+        "receipt_reading": {
+          "$ref": "#/$defs/HouseholdReceiptReadingState"
+        }
+      },
+      "required": ["receipt_reading"],
+      "additionalProperties": false,
+      "description": "レシートの写真の読み取りの今の設定（ADR 0177）。"
+    },
+    "HouseholdReceiptImageRequest": {
+      "type": "object",
+      "properties": {
+        "request_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "command_scope_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "image": {
+          "type": "object",
+          "properties": {
+            "media_type": {
+              "type": "string",
+              "const": "image/jpeg"
+            },
+            "data_base64": {
+              "type": "string",
+              "minLength": 4,
+              "maxLength": 245760,
+              "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$",
+              "description": "端末の main が縮めて JPEG にし直した画像（180 KiB まで）の base64。中枢は形式・バイト数・長い辺（1600）を確かめ直す。"
+            }
+          },
+          "required": ["media_type", "data_base64"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["request_id", "command_scope_id", "image"],
+      "additionalProperties": false,
+      "description": "レシートの写真 1 枚の読み取り（POST /v1/household/receipt-readings、ADR 0177）。本人の画面操作だけが送る。設定が off なら 403 external_send_consent_required で送らない。同じ request_id は二度送らない（409）。中枢は画像も読み取りの結果も保存せず、送った後に捨てる。結果は記録ではなく、手入力の欄に入れる候補だけ。"
+    },
+    "HouseholdReceiptReason": {
+      "type": "string",
+      "enum": [
+        "unreadable",
+        "several_receipts",
+        "currency_not_yen",
+        "total_unreadable",
+        "items_total_mismatch",
+        "long_digits",
+        "reply_invalid",
+        "refused"
+      ],
+      "description": "読み取りの結果を候補にしなかった理由（ADR 0177）。unreadable は写真から読めなかった、several_receipts は一枚にレシートが二枚以上、currency_not_yen は円と確かめられない、total_unreadable は合計を読めない、items_total_mismatch は品目の和が合計と合わない、long_digits はカード番号らしい 12 桁以上の数字の並びがある、reply_invalid は応答が決まった形でない・記録の検査に合わない、refused は外部のモデルが断った。"
+    },
+    "HouseholdReceiptImageProblem": {
+      "type": "string",
+      "enum": [
+        "image_format_unsupported",
+        "image_unreadable",
+        "image_too_large",
+        "image_dimensions_too_large",
+        "image_too_small"
+      ],
+      "description": "端末の main が画像を送らなかった理由（ADR 0177）。形式が JPEG・PNG でない、壊れている、大きすぎる（20 MiB を超える、縮めても 180 KiB に収まらない）、縦横が大きすぎる（1 辺 12,000 または 5,000 万画素を超える）、小さすぎる（短い辺が 64 未満）。"
+    },
+    "HouseholdReceiptCandidate": {
+      "type": "object",
+      "properties": {
+        "amount_yen": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9999999999
+        },
+        "occurred_on": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^20[0-9]{2}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "読めない・今日より後なら null（本人が入れる）。"
+        },
+        "occurred_time": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "merchant": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "payment": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 40
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "amount_yen",
+        "occurred_on",
+        "occurred_time",
+        "merchant",
+        "payment"
+      ],
+      "additionalProperties": false,
+      "description": "レシートの写真から読んだ、手入力の欄に入れる値の候補（ADR 0177）。記録ではない。向きは支出、分類は未分類で、本人が欄で確かめて「足す」を押したときだけ記録になる。品目は合計との突き合わせにだけ使い、ここに入れない。"
+    },
+    "HouseholdReceiptResult": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "type": "string",
+              "const": "candidate"
+            },
+            "candidate": {
+              "$ref": "#/$defs/HouseholdReceiptCandidate"
+            },
+            "reasons": {
+              "type": "array",
+              "maxItems": 0
+            }
+          },
+          "required": ["result", "candidate", "reasons"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "result": {
+              "type": "string",
+              "const": "not_candidate"
+            },
+            "candidate": {
+              "type": "null"
+            },
+            "reasons": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/$defs/HouseholdReceiptReason"
+              }
+            }
+          },
+          "required": ["result", "candidate", "reasons"],
+          "additionalProperties": false
+        }
+      ],
+      "description": "レシートの写真 1 枚の読み取りの結果（ADR 0177）。外部のモデルの応答を中枢が家計の記録の検査で確かめ直した後の値で、候補か、候補にしなかった理由。"
     },
     "SyncBatch": {
       "type": "object",
@@ -13723,9 +13944,11 @@
         "desktop.household_budget",
         "desktop.household_add",
         "desktop.household_edit",
-        "desktop.household_export"
+        "desktop.household_export",
+        "desktop.household_receipt_setting",
+        "desktop.household_receipt_read"
       ],
-      "description": "UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014・0025）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。中枢との接続・ペアリングは用途別のチャネルだけで、要求の宛先・本文を Renderer が決められない。音声レンダラーの IPC（B05）は別に定める。 発言・承認表示の準備・承認・取消・照合は用途別のチャネルで、操作は main が持つ参照（ref）で指す（B04-05、ADR 0031）。 キャンバスを前に出す（canvas_summon）は状態の層と入力バーからだけ使う（UI-02、ADR 0032）。状態の層のパネルを出す・しまう（status_panel）は状態の層からだけ使う（UI-04、ADR 0032）。キャンバスのユーザーの操作（canvas_user_op）はキャンバスの窓からだけ、キャンバスが前に出ている間だけ使う（UI-06、ADR 0032）。 予算の確認（超過枠の承認・見送り budget_overage_decide、M 超過の確認 budget_overrun_review、不明な費用の手での精算 budget_manual_settle）は状態の層からだけ使う。承認・確認・精算は main の OS の確認ダイアログを 1 回だけ挟み、画面が持つのは main が作る参照（ref）だけ（B07-05、ADR 0039）。 音声（B05-06、ADR 0050）: 音声の状態の取得（get_voice）・呼びかけなしで音声の会話を始める「続ける」（voice_continue）・外部への送信の同意の取り消し（voice_consent_revoke）は状態の層からだけ使う。外部への送信の同意は main の OS の確認ダイアログで 1 回だけ取り、画面は同意を作れない。音声レンダラーへの IPC は VoiceRendererRequest で、このチャネルとは別。 気づき（B11-05、ADR 0132）: 一覧の取得（candidates_list）と状態の変更（candidate_state。開く・今回は扱わない・再通知）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バーは使えない。候補は main が作る参照（ref）で指し、候補 ID・expected_state・接続範囲は main が持つ。 連携の接続（B08-02 P3・B09-05、ADR 0142）: 一覧の取得（connections_list）と取得範囲の変更（connection_targets_update）は中枢の画面（接続・端末）でだけ使い、キャンバス・入力バーは使えない。接続は main が作る参照（ref）で指し、接続 ID・permission_revision は main が持つ。画面が送れるのは今の保存値と、この世代で中枢から読んだ選べる対象（connection_targets_discover）のうちの選択と、期間・添付の範囲だけ（ADR 0145）。選べる対象の読み取りは提供元への読み取りを伴うので、中枢の画面のロック解除済みの画面操作だけ。 自動実行（B13-05、ADR 0154）: 一覧と安全停止の状態の取得（auto_actions_list）・取り消し（auto_action_undo）・安全停止の解除（safety_resume）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バーは使えない。自動実行した操作と安全停止の状態は main が作る参照（ref）で指し、操作 ID・state_revision・safety_revision・接続範囲は main が持つ。 家計簿（ADR 0162）: 月ごとの合計と 1 か月の記録の取得（household_view）・分類の変更（household_category）・削除（household_delete）・利用通知の取り込みの入・切（household_intake、ADR 0163）・書き出しの取り込み（household_import、ADR 0164。ファイルは main が OS のファイル選択で本人に選ばせ、画面はパスも中身も渡さない）・分類ごとの予算の変更（household_budget、ADR 0166）・記録の手入力（household_add、ADR 0167）・記録の中身の変更（household_edit、ADR 0169）・記録の CSV への書き出し（household_export、ADR 0172。保存先は main が OS の保存先の選択で本人に選ばせ、画面はパスも中身も渡さない）は従来の窓（標準の端末画面）から使い、キャンバス・入力バーは使えない。記録は main が作る参照（ref）で指し、記録の ID・内容版・接続範囲は main が持つ。"
+      "description": "UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014・0025）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。中枢との接続・ペアリングは用途別のチャネルだけで、要求の宛先・本文を Renderer が決められない。音声レンダラーの IPC（B05）は別に定める。 発言・承認表示の準備・承認・取消・照合は用途別のチャネルで、操作は main が持つ参照（ref）で指す（B04-05、ADR 0031）。 キャンバスを前に出す（canvas_summon）は状態の層と入力バーからだけ使う（UI-02、ADR 0032）。状態の層のパネルを出す・しまう（status_panel）は状態の層からだけ使う（UI-04、ADR 0032）。キャンバスのユーザーの操作（canvas_user_op）はキャンバスの窓からだけ、キャンバスが前に出ている間だけ使う（UI-06、ADR 0032）。 予算の確認（超過枠の承認・見送り budget_overage_decide、M 超過の確認 budget_overrun_review、不明な費用の手での精算 budget_manual_settle）は状態の層からだけ使う。承認・確認・精算は main の OS の確認ダイアログを 1 回だけ挟み、画面が持つのは main が作る参照（ref）だけ（B07-05、ADR 0039）。 音声（B05-06、ADR 0050）: 音声の状態の取得（get_voice）・呼びかけなしで音声の会話を始める「続ける」（voice_continue）・外部への送信の同意の取り消し（voice_consent_revoke）は状態の層からだけ使う。外部への送信の同意は main の OS の確認ダイアログで 1 回だけ取り、画面は同意を作れない。音声レンダラーへの IPC は VoiceRendererRequest で、このチャネルとは別。 気づき（B11-05、ADR 0132）: 一覧の取得（candidates_list）と状態の変更（candidate_state。開く・今回は扱わない・再通知）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バーは使えない。候補は main が作る参照（ref）で指し、候補 ID・expected_state・接続範囲は main が持つ。 連携の接続（B08-02 P3・B09-05、ADR 0142）: 一覧の取得（connections_list）と取得範囲の変更（connection_targets_update）は中枢の画面（接続・端末）でだけ使い、キャンバス・入力バーは使えない。接続は main が作る参照（ref）で指し、接続 ID・permission_revision は main が持つ。画面が送れるのは今の保存値と、この世代で中枢から読んだ選べる対象（connection_targets_discover）のうちの選択と、期間・添付の範囲だけ（ADR 0145）。選べる対象の読み取りは提供元への読み取りを伴うので、中枢の画面のロック解除済みの画面操作だけ。 自動実行（B13-05、ADR 0154）: 一覧と安全停止の状態の取得（auto_actions_list）・取り消し（auto_action_undo）・安全停止の解除（safety_resume）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バーは使えない。自動実行した操作と安全停止の状態は main が作る参照（ref）で指し、操作 ID・state_revision・safety_revision・接続範囲は main が持つ。 家計簿（ADR 0162）: 月ごとの合計と 1 か月の記録の取得（household_view）・分類の変更（household_category）・削除（household_delete）・利用通知の取り込みの入・切（household_intake、ADR 0163）・書き出しの取り込み（household_import、ADR 0164。ファイルは main が OS のファイル選択で本人に選ばせ、画面はパスも中身も渡さない）・分類ごとの予算の変更（household_budget、ADR 0166）・記録の手入力（household_add、ADR 0167）・記録の中身の変更（household_edit、ADR 0169）・記録の CSV への書き出し（household_export、ADR 0172。保存先は main が OS の保存先の選択で本人に選ばせ、画面はパスも中身も渡さない）・レシートの写真の読み取りの入・切（household_receipt_setting、ADR 0177。入にするときは main の OS の確認ダイアログを挟む）・レシートの写真の読み取り（household_receipt_read、ADR 0177。写真は main が OS のファイル選択で本人に選ばせ、画面はパスも中身も渡さない。結果は手入力の欄に入れる候補だけ）は従来の窓（標準の端末画面）から使い、キャンバス・入力バーは使えない。記録は main が作る参照（ref）で指し、記録の ID・内容版・接続範囲は main が持つ。"
     },
     "DesktopIpcRequest": {
       "oneOf": [
@@ -15002,6 +15225,50 @@
           "required": ["channel", "request_id", "payload"],
           "additionalProperties": false,
           "description": "家計の記録を月の範囲（from から to まで。両端を含み、120 か月まで）で CSV ファイルに書き出す（ADR 0172）。main が月ごとに既存の読み取りで記録を読み、すべて読めたときだけ OS の保存先の選択を出して本人に選ばせ、選んだ場所へだけ平文で書く。画面はパスも中身も渡さない。ロック解除済みの画面操作だけ。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "channel": {
+              "type": "string",
+              "const": "desktop.household_receipt_setting"
+            },
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "receipt_reading": {
+                  "type": "string",
+                  "enum": ["on", "off"]
+                }
+              },
+              "required": ["receipt_reading"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["channel", "request_id", "payload"],
+          "additionalProperties": false,
+          "description": "レシートの写真を外部のモデルの画像の読み取りへ送る設定を入・切にする（ADR 0177）。入にするときは main が OS の確認ダイアログを出し、本人が「送る設定にする」を選んだときだけ中枢へ送る。ロック解除済みの画面操作だけ。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "channel": {
+              "type": "string",
+              "const": "desktop.household_receipt_read"
+            },
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "payload": {
+              "type": "null"
+            }
+          },
+          "required": ["channel", "request_id", "payload"],
+          "additionalProperties": false,
+          "description": "レシートの写真 1 枚を読む（ADR 0177）。main が OS のファイル選択を出して本人に選ばせ、形式・大きさを確かめて縮め、JPEG にし直して中枢へ送る。画面はパスも中身も渡さない。結果は手入力の欄に入れる候補だけで、記録は作らない。ロック解除済みの画面操作で、入出力の停止中は受け付けない。"
         }
       ],
       "description": "UI レンダラーから main への要求（設計 10 §1、07 §2、02 停止、ADR 0014）。main は受け取ったら最初にこの定義で検査し、未知のチャネル・未知の項目・型違いは invalid_request で拒否する。引数のない要求の payload は null。端末 ID は名乗れず、送信元は main が webContents から判定する。"
@@ -16340,7 +16607,8 @@
                 "desktop.household_budget",
                 "desktop.household_add",
                 "desktop.household_edit",
-                "desktop.household_export"
+                "desktop.household_export",
+                "desktop.household_receipt_setting"
               ]
             },
             "outcome": {
@@ -16354,6 +16622,28 @@
           "required": ["request_id", "channel", "outcome", "household"],
           "additionalProperties": false,
           "description": "受け付けた。家計簿の表示用の値を返す（変更・削除の後は読み直した値。読み直せなかったときは fetch が stale）。ADR 0162。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "channel": {
+              "type": "string",
+              "enum": ["desktop.household_receipt_read"]
+            },
+            "outcome": {
+              "type": "string",
+              "const": "ok"
+            },
+            "receipt": {
+              "$ref": "#/$defs/DesktopHouseholdReceiptView"
+            }
+          },
+          "required": ["request_id", "channel", "outcome", "receipt"],
+          "additionalProperties": false,
+          "description": "受け付けた。レシートの写真の読み取りの結果（候補か、送らなかった・候補にしなかった理由）を返す（ADR 0177）。結果が分からない（送ったか・応答が届いたか分からない）ときは outcome_unknown で拒否し、自動では送り直さない。"
         },
         {
           "type": "object",
@@ -17154,6 +17444,17 @@
           ],
           "description": "カードの利用通知メールの取り込みの入・切（ADR 0163）。読めていなければ null（入・切を推測で見せない）。設定の版は main の中にだけ持つ。"
         },
+        "receipt_reading": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HouseholdReceiptReadingState"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "レシートの写真を外部のモデルの画像の読み取りへ送る設定（ADR 0177）。読めていなければ null。"
+        },
         "budget": {
           "anyOf": [
             {
@@ -17320,6 +17621,7 @@
         "last_import",
         "last_export",
         "mail_intake",
+        "receipt_reading",
         "fetch",
         "fetched_at",
         "current_month",
@@ -17333,6 +17635,50 @@
       ],
       "additionalProperties": false,
       "description": "家計簿の表示用の値（ADR 0162）。月ごとの合計と、1 か月の記録と集計。記録の ID・内容版・出所の識別子は含めない。"
+    },
+    "DesktopHouseholdReceiptView": {
+      "type": "object",
+      "properties": {
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "candidate",
+            "not_candidate",
+            "cancelled",
+            "image_rejected",
+            "setting_off",
+            "budget_held"
+          ],
+          "description": "candidate は候補を読めた、not_candidate は読めたが候補にしなかった、cancelled は本人がファイルを選ばなかった・選ぶ間にロック・切断した（何も送っていない）、image_rejected は画像の検査に合わず送らなかった、setting_off は中枢の設定が切で送らなかった、budget_held は予算を予約できず送らなかった。"
+        },
+        "candidate": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HouseholdReceiptCandidate"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reasons": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/HouseholdReceiptReason"
+              },
+              {
+                "$ref": "#/$defs/HouseholdReceiptImageProblem"
+              }
+            ]
+          }
+        }
+      },
+      "required": ["outcome", "candidate", "reasons"],
+      "additionalProperties": false,
+      "description": "レシートの写真の読み取りの結果の表示用の値（ADR 0177）。候補は画面のメモリーにだけ置き、main は持たない。画像とファイルのパスは含めない。"
     },
     "DesktopSafetyView": {
       "type": "object",

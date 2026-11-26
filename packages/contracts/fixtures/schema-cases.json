@@ -3834,6 +3834,7 @@
         }
       ],
       "truncated": false,
+      "receipt_reading": "off",
       "settings": {
         "mail_intake": "on",
         "settings_revision": "0"
@@ -3959,6 +3960,7 @@
         }
       ],
       "truncated": false,
+      "receipt_reading": "off",
       "settings": {
         "mail_intake": "on",
         "settings_revision": "0"
@@ -4093,6 +4095,7 @@
         }
       ],
       "truncated": false,
+      "receipt_reading": "off",
       "settings": {
         "mail_intake": "on",
         "settings_revision": "0"
@@ -4228,6 +4231,7 @@
         }
       ],
       "truncated": false,
+      "receipt_reading": "off",
       "settings": {
         "mail_intake": "on",
         "settings_revision": "0"
@@ -4363,6 +4367,7 @@
         }
       ],
       "truncated": false,
+      "receipt_reading": "off",
       "settings": {
         "mail_intake": "on",
         "settings_revision": "0"
@@ -29543,6 +29548,245 @@
       "channel": "desktop.auto_action_undo",
       "outcome": "rejected",
       "reason": "undo_target_changed"
+    }
+  },
+  {
+    "id": "household-receipt-setting-change",
+    "schema": "HouseholdReceiptSettingRequest",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-0000000c0109",
+      "command_scope_id": "00000000-0000-4000-8000-000000009002",
+      "receipt_reading": "on"
+    }
+  },
+  {
+    "id": "household-receipt-setting-change-unavailable",
+    "schema": "HouseholdReceiptSettingRequest",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-0000000c0109",
+      "command_scope_id": "00000000-0000-4000-8000-000000009002",
+      "receipt_reading": "unavailable"
+    }
+  },
+  {
+    "id": "household-receipt-setting",
+    "schema": "HouseholdReceiptSetting",
+    "valid": true,
+    "value": {
+      "receipt_reading": "unavailable"
+    }
+  },
+  {
+    "id": "household-receipt-setting-unknown",
+    "schema": "HouseholdReceiptSetting",
+    "valid": false,
+    "value": {
+      "receipt_reading": "paused"
+    }
+  },
+  {
+    "id": "household-receipt-image",
+    "schema": "HouseholdReceiptImageRequest",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-0000000c0109",
+      "command_scope_id": "00000000-0000-4000-8000-000000009002",
+      "image": {
+        "media_type": "image/jpeg",
+        "data_base64": "/9j/wAARCAUAA8ADASIAAhEBAxEB/9oACAEBAAA/AP/Z"
+      }
+    }
+  },
+  {
+    "id": "household-receipt-image-png",
+    "schema": "HouseholdReceiptImageRequest",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-0000000c0109",
+      "command_scope_id": "00000000-0000-4000-8000-000000009002",
+      "image": {
+        "media_type": "image/png",
+        "data_base64": "/9j/wAARCAUAA8ADASIAAhEBAxEB/9oACAEBAAA/AP/Z"
+      }
+    }
+  },
+  {
+    "id": "household-receipt-image-not-base64",
+    "schema": "HouseholdReceiptImageRequest",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-0000000c0109",
+      "command_scope_id": "00000000-0000-4000-8000-000000009002",
+      "image": {
+        "media_type": "image/jpeg",
+        "data_base64": "/9j/4AA"
+      }
+    }
+  },
+  {
+    "id": "household-receipt-result-candidate",
+    "schema": "HouseholdReceiptResult",
+    "valid": true,
+    "value": {
+      "result": "candidate",
+      "candidate": {
+        "amount_yen": 1280,
+        "occurred_on": "2030-11-04",
+        "occurred_time": "12:34",
+        "merchant": "合成の商店",
+        "payment": "現金"
+      },
+      "reasons": []
+    }
+  },
+  {
+    "id": "household-receipt-result-candidate-no-date",
+    "schema": "HouseholdReceiptResult",
+    "valid": true,
+    "value": {
+      "result": "candidate",
+      "candidate": {
+        "amount_yen": 1280,
+        "occurred_on": null,
+        "occurred_time": null,
+        "merchant": null,
+        "payment": null
+      },
+      "reasons": []
+    }
+  },
+  {
+    "id": "household-receipt-result-not-candidate",
+    "schema": "HouseholdReceiptResult",
+    "valid": true,
+    "value": {
+      "result": "not_candidate",
+      "candidate": null,
+      "reasons": ["items_total_mismatch"]
+    }
+  },
+  {
+    "id": "household-receipt-result-candidate-with-reason",
+    "schema": "HouseholdReceiptResult",
+    "valid": false,
+    "value": {
+      "result": "candidate",
+      "candidate": {
+        "amount_yen": 1280,
+        "occurred_on": "2030-11-04",
+        "occurred_time": "12:34",
+        "merchant": "合成の商店",
+        "payment": "現金"
+      },
+      "reasons": ["long_digits"]
+    }
+  },
+  {
+    "id": "household-receipt-result-not-candidate-without-reason",
+    "schema": "HouseholdReceiptResult",
+    "valid": false,
+    "value": {
+      "result": "not_candidate",
+      "candidate": null,
+      "reasons": []
+    }
+  },
+  {
+    "id": "household-receipt-result-not-candidate-with-candidate",
+    "schema": "HouseholdReceiptResult",
+    "valid": false,
+    "value": {
+      "result": "not_candidate",
+      "candidate": {
+        "amount_yen": 1280,
+        "occurred_on": "2030-11-04",
+        "occurred_time": "12:34",
+        "merchant": "合成の商店",
+        "payment": "現金"
+      },
+      "reasons": ["refused"]
+    }
+  },
+  {
+    "id": "household-receipt-result-items",
+    "schema": "HouseholdReceiptResult",
+    "valid": false,
+    "value": {
+      "result": "candidate",
+      "candidate": {
+        "amount_yen": 1280,
+        "occurred_on": "2030-11-04",
+        "occurred_time": "12:34",
+        "merchant": "合成の商店",
+        "payment": "現金",
+        "items": []
+      },
+      "reasons": []
+    }
+  },
+  {
+    "id": "household-receipt-result-zero",
+    "schema": "HouseholdReceiptResult",
+    "valid": false,
+    "value": {
+      "result": "candidate",
+      "candidate": {
+        "amount_yen": 0,
+        "occurred_on": "2030-11-04",
+        "occurred_time": "12:34",
+        "merchant": "合成の商店",
+        "payment": "現金"
+      },
+      "reasons": []
+    }
+  },
+  {
+    "id": "desktop-household-receipt-candidate",
+    "schema": "DesktopHouseholdReceiptView",
+    "valid": true,
+    "value": {
+      "outcome": "candidate",
+      "candidate": {
+        "amount_yen": 1280,
+        "occurred_on": "2030-11-04",
+        "occurred_time": "12:34",
+        "merchant": "合成の商店",
+        "payment": "現金"
+      },
+      "reasons": []
+    }
+  },
+  {
+    "id": "desktop-household-receipt-image-rejected",
+    "schema": "DesktopHouseholdReceiptView",
+    "valid": true,
+    "value": {
+      "outcome": "image_rejected",
+      "candidate": null,
+      "reasons": ["image_too_large"]
+    }
+  },
+  {
+    "id": "desktop-household-receipt-path",
+    "schema": "DesktopHouseholdReceiptView",
+    "valid": false,
+    "value": {
+      "outcome": "cancelled",
+      "candidate": null,
+      "reasons": [],
+      "path": "receipt.jpg"
+    }
+  },
+  {
+    "id": "desktop-household-receipt-unknown-reason",
+    "schema": "DesktopHouseholdReceiptView",
+    "valid": false,
+    "value": {
+      "outcome": "not_candidate",
+      "candidate": null,
+      "reasons": ["blurry"]
     }
   }
 ]

@@ -77,6 +77,11 @@ export type BuddyContract =
   | HouseholdBudget
   | HouseholdEntryCreateRequest
   | HouseholdEntryContentChangeRequest
+  | HouseholdReceiptSettingRequest
+  | HouseholdReceiptSetting
+  | HouseholdReceiptImageRequest
+  | HouseholdReceiptResult
+  | DesktopHouseholdReceiptView
   | CandidateEvidenceRequest
   | WebSearchRequest
   | WebSearchResponse
@@ -733,6 +738,10 @@ export type HouseholdCategoryId =
  */
 export type HouseholdBudgetRevision = string;
 /**
+ * レシートの写真を外部のモデルの画像の読み取りへ送る設定（ADR 0177、U363）。既定は off（送らない）。on は本人が家計簿の欄で明示的に入にした状態で、本人が選んだ一枚の写真をその都度の画面操作でだけ送る。unavailable は中枢に読み取りの口（provider と profile）がないので入にできない。中枢のメモリーにだけ持ち、中枢を起動し直すと off に戻る（U364）。
+ */
+export type HouseholdReceiptReadingState = 'on' | 'off' | 'unavailable';
+/**
  * 家計の記録の内容版（ADR 0003 の共通の 10 進の形。保存する値は 1 から始まり、分類を変えるたびに 1 進む。ADR 0158）。変更・削除の照合に使う。
  */
 export type HouseholdRevision = string;
@@ -740,6 +749,47 @@ export type HouseholdRevision = string;
  * 家計の記録の向き（ADR 0158）。振替（カードの引き落とし・口座間の移動）は支出・収入の合計に入れない（U321）。
  */
 export type HouseholdDirection = 'expense' | 'income' | 'transfer';
+/**
+ * レシートの写真 1 枚の読み取りの結果（ADR 0177）。外部のモデルの応答を中枢が家計の記録の検査で確かめ直した後の値で、候補か、候補にしなかった理由。
+ */
+export type HouseholdReceiptResult =
+  | {
+      result: 'candidate';
+      candidate: HouseholdReceiptCandidate;
+      /**
+       * @maxItems 0
+       */
+      reasons: [];
+    }
+  | {
+      result: 'not_candidate';
+      candidate: null;
+      /**
+       * @minItems 1
+       */
+      reasons: [HouseholdReceiptReason, ...HouseholdReceiptReason[]];
+    };
+/**
+ * 読み取りの結果を候補にしなかった理由（ADR 0177）。unreadable は写真から読めなかった、several_receipts は一枚にレシートが二枚以上、currency_not_yen は円と確かめられない、total_unreadable は合計を読めない、items_total_mismatch は品目の和が合計と合わない、long_digits はカード番号らしい 12 桁以上の数字の並びがある、reply_invalid は応答が決まった形でない・記録の検査に合わない、refused は外部のモデルが断った。
+ */
+export type HouseholdReceiptReason =
+  | 'unreadable'
+  | 'several_receipts'
+  | 'currency_not_yen'
+  | 'total_unreadable'
+  | 'items_total_mismatch'
+  | 'long_digits'
+  | 'reply_invalid'
+  | 'refused';
+/**
+ * 端末の main が画像を送らなかった理由（ADR 0177）。形式が JPEG・PNG でない、壊れている、大きすぎる（20 MiB を超える、縮めても 180 KiB に収まらない）、縦横が大きすぎる（1 辺 12,000 または 5,000 万画素を超える）、小さすぎる（短い辺が 64 未満）。
+ */
+export type HouseholdReceiptImageProblem =
+  | 'image_format_unsupported'
+  | 'image_unreadable'
+  | 'image_too_large'
+  | 'image_dimensions_too_large'
+  | 'image_too_small';
 /**
  * 検索語の機械検査が拒否した理由（B12-02、ADR 0127）。検査は下限で、氏名・予定の詳細などの私的情報を見分けられない。見分けられない分は、検索語の入力元を本人の質問に限る前提で守る。
  */
@@ -1591,6 +1641,18 @@ export type DesktopIpcRequest =
         from: YearMonth;
         to: YearMonth;
       };
+    }
+  | {
+      channel: 'desktop.household_receipt_setting';
+      request_id: Id;
+      payload: {
+        receipt_reading: 'on' | 'off';
+      };
+    }
+  | {
+      channel: 'desktop.household_receipt_read';
+      request_id: Id;
+      payload: null;
     };
 export type DesktopHubHost = string;
 export type DesktopHubHost1 = string;
@@ -1784,9 +1846,16 @@ export type DesktopIpcResponse =
         | 'desktop.household_budget'
         | 'desktop.household_add'
         | 'desktop.household_edit'
-        | 'desktop.household_export';
+        | 'desktop.household_export'
+        | 'desktop.household_receipt_setting';
       outcome: 'ok';
       household: DesktopHouseholdView;
+    }
+  | {
+      request_id: Id;
+      channel: 'desktop.household_receipt_read';
+      outcome: 'ok';
+      receipt: DesktopHouseholdReceiptView;
     }
   | {
       request_id: Id | null;
@@ -2028,7 +2097,7 @@ export type DesktopVoiceView =
       reply_mode: 'voice' | 'text';
     };
 /**
- * UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014・0025）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。中枢との接続・ペアリングは用途別のチャネルだけで、要求の宛先・本文を Renderer が決められない。音声レンダラーの IPC（B05）は別に定める。 発言・承認表示の準備・承認・取消・照合は用途別のチャネルで、操作は main が持つ参照（ref）で指す（B04-05、ADR 0031）。 キャンバスを前に出す（canvas_summon）は状態の層と入力バーからだけ使う（UI-02、ADR 0032）。状態の層のパネルを出す・しまう（status_panel）は状態の層からだけ使う（UI-04、ADR 0032）。キャンバスのユーザーの操作（canvas_user_op）はキャンバスの窓からだけ、キャンバスが前に出ている間だけ使う（UI-06、ADR 0032）。 予算の確認（超過枠の承認・見送り budget_overage_decide、M 超過の確認 budget_overrun_review、不明な費用の手での精算 budget_manual_settle）は状態の層からだけ使う。承認・確認・精算は main の OS の確認ダイアログを 1 回だけ挟み、画面が持つのは main が作る参照（ref）だけ（B07-05、ADR 0039）。 音声（B05-06、ADR 0050）: 音声の状態の取得（get_voice）・呼びかけなしで音声の会話を始める「続ける」（voice_continue）・外部への送信の同意の取り消し（voice_consent_revoke）は状態の層からだけ使う。外部への送信の同意は main の OS の確認ダイアログで 1 回だけ取り、画面は同意を作れない。音声レンダラーへの IPC は VoiceRendererRequest で、このチャネルとは別。 気づき（B11-05、ADR 0132）: 一覧の取得（candidates_list）と状態の変更（candidate_state。開く・今回は扱わない・再通知）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バーは使えない。候補は main が作る参照（ref）で指し、候補 ID・expected_state・接続範囲は main が持つ。 連携の接続（B08-02 P3・B09-05、ADR 0142）: 一覧の取得（connections_list）と取得範囲の変更（connection_targets_update）は中枢の画面（接続・端末）でだけ使い、キャンバス・入力バーは使えない。接続は main が作る参照（ref）で指し、接続 ID・permission_revision は main が持つ。画面が送れるのは今の保存値と、この世代で中枢から読んだ選べる対象（connection_targets_discover）のうちの選択と、期間・添付の範囲だけ（ADR 0145）。選べる対象の読み取りは提供元への読み取りを伴うので、中枢の画面のロック解除済みの画面操作だけ。 自動実行（B13-05、ADR 0154）: 一覧と安全停止の状態の取得（auto_actions_list）・取り消し（auto_action_undo）・安全停止の解除（safety_resume）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バーは使えない。自動実行した操作と安全停止の状態は main が作る参照（ref）で指し、操作 ID・state_revision・safety_revision・接続範囲は main が持つ。 家計簿（ADR 0162）: 月ごとの合計と 1 か月の記録の取得（household_view）・分類の変更（household_category）・削除（household_delete）・利用通知の取り込みの入・切（household_intake、ADR 0163）・書き出しの取り込み（household_import、ADR 0164。ファイルは main が OS のファイル選択で本人に選ばせ、画面はパスも中身も渡さない）・分類ごとの予算の変更（household_budget、ADR 0166）・記録の手入力（household_add、ADR 0167）・記録の中身の変更（household_edit、ADR 0169）・記録の CSV への書き出し（household_export、ADR 0172。保存先は main が OS の保存先の選択で本人に選ばせ、画面はパスも中身も渡さない）は従来の窓（標準の端末画面）から使い、キャンバス・入力バーは使えない。記録は main が作る参照（ref）で指し、記録の ID・内容版・接続範囲は main が持つ。
+ * UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014・0025）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。中枢との接続・ペアリングは用途別のチャネルだけで、要求の宛先・本文を Renderer が決められない。音声レンダラーの IPC（B05）は別に定める。 発言・承認表示の準備・承認・取消・照合は用途別のチャネルで、操作は main が持つ参照（ref）で指す（B04-05、ADR 0031）。 キャンバスを前に出す（canvas_summon）は状態の層と入力バーからだけ使う（UI-02、ADR 0032）。状態の層のパネルを出す・しまう（status_panel）は状態の層からだけ使う（UI-04、ADR 0032）。キャンバスのユーザーの操作（canvas_user_op）はキャンバスの窓からだけ、キャンバスが前に出ている間だけ使う（UI-06、ADR 0032）。 予算の確認（超過枠の承認・見送り budget_overage_decide、M 超過の確認 budget_overrun_review、不明な費用の手での精算 budget_manual_settle）は状態の層からだけ使う。承認・確認・精算は main の OS の確認ダイアログを 1 回だけ挟み、画面が持つのは main が作る参照（ref）だけ（B07-05、ADR 0039）。 音声（B05-06、ADR 0050）: 音声の状態の取得（get_voice）・呼びかけなしで音声の会話を始める「続ける」（voice_continue）・外部への送信の同意の取り消し（voice_consent_revoke）は状態の層からだけ使う。外部への送信の同意は main の OS の確認ダイアログで 1 回だけ取り、画面は同意を作れない。音声レンダラーへの IPC は VoiceRendererRequest で、このチャネルとは別。 気づき（B11-05、ADR 0132）: 一覧の取得（candidates_list）と状態の変更（candidate_state。開く・今回は扱わない・再通知）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バーは使えない。候補は main が作る参照（ref）で指し、候補 ID・expected_state・接続範囲は main が持つ。 連携の接続（B08-02 P3・B09-05、ADR 0142）: 一覧の取得（connections_list）と取得範囲の変更（connection_targets_update）は中枢の画面（接続・端末）でだけ使い、キャンバス・入力バーは使えない。接続は main が作る参照（ref）で指し、接続 ID・permission_revision は main が持つ。画面が送れるのは今の保存値と、この世代で中枢から読んだ選べる対象（connection_targets_discover）のうちの選択と、期間・添付の範囲だけ（ADR 0145）。選べる対象の読み取りは提供元への読み取りを伴うので、中枢の画面のロック解除済みの画面操作だけ。 自動実行（B13-05、ADR 0154）: 一覧と安全停止の状態の取得（auto_actions_list）・取り消し（auto_action_undo）・安全停止の解除（safety_resume）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バーは使えない。自動実行した操作と安全停止の状態は main が作る参照（ref）で指し、操作 ID・state_revision・safety_revision・接続範囲は main が持つ。 家計簿（ADR 0162）: 月ごとの合計と 1 か月の記録の取得（household_view）・分類の変更（household_category）・削除（household_delete）・利用通知の取り込みの入・切（household_intake、ADR 0163）・書き出しの取り込み（household_import、ADR 0164。ファイルは main が OS のファイル選択で本人に選ばせ、画面はパスも中身も渡さない）・分類ごとの予算の変更（household_budget、ADR 0166）・記録の手入力（household_add、ADR 0167）・記録の中身の変更（household_edit、ADR 0169）・記録の CSV への書き出し（household_export、ADR 0172。保存先は main が OS の保存先の選択で本人に選ばせ、画面はパスも中身も渡さない）・レシートの写真の読み取りの入・切（household_receipt_setting、ADR 0177。入にするときは main の OS の確認ダイアログを挟む）・レシートの写真の読み取り（household_receipt_read、ADR 0177。写真は main が OS のファイル選択で本人に選ばせ、画面はパスも中身も渡さない。結果は手入力の欄に入れる候補だけ）は従来の窓（標準の端末画面）から使い、キャンバス・入力バーは使えない。記録は main が作る参照（ref）で指し、記録の ID・内容版・接続範囲は main が持つ。
  */
 export type DesktopIpcChannel =
   | 'desktop.get_state'
@@ -2082,7 +2151,9 @@ export type DesktopIpcChannel =
   | 'desktop.household_budget'
   | 'desktop.household_add'
   | 'desktop.household_edit'
-  | 'desktop.household_export';
+  | 'desktop.household_export'
+  | 'desktop.household_receipt_setting'
+  | 'desktop.household_receipt_read';
 /**
  * main から UI レンダラーへの通知（設計 10 §1、07 §2、ADR 0014）。本文・端末 ID・認証情報を含めない。
  */
@@ -4641,6 +4712,7 @@ export interface HouseholdOverview {
   settings: HouseholdSettings;
   recurring: HouseholdRecurringSummary;
   budget: HouseholdBudget;
+  receipt_reading: HouseholdReceiptReadingState;
 }
 /**
  * 月ごとの合計（一覧用）。差額は収入 − 支出（意味検査）。
@@ -5401,6 +5473,64 @@ export interface HouseholdEntryContentChangeRequest {
   command_scope_id: Id;
   expected_content_revision: HouseholdRevision;
   entry: HouseholdManualEntry;
+}
+/**
+ * レシートの写真の読み取りの入・切（POST /v1/household/receipt-setting、ADR 0177）。本人の画面操作だけが送る。望む値をそのまま送るので、今と同じ値なら何も変えない。読み取りの口がないときに on を求めると 503。切にすると、送っている途中の読み取りを止める（送る前なら送らない）。
+ */
+export interface HouseholdReceiptSettingRequest {
+  request_id: Id;
+  command_scope_id: Id;
+  receipt_reading: 'on' | 'off';
+}
+/**
+ * レシートの写真の読み取りの今の設定（ADR 0177）。
+ */
+export interface HouseholdReceiptSetting {
+  receipt_reading: HouseholdReceiptReadingState;
+}
+/**
+ * レシートの写真 1 枚の読み取り（POST /v1/household/receipt-readings、ADR 0177）。本人の画面操作だけが送る。設定が off なら 403 external_send_consent_required で送らない。同じ request_id は二度送らない（409）。中枢は画像も読み取りの結果も保存せず、送った後に捨てる。結果は記録ではなく、手入力の欄に入れる候補だけ。
+ */
+export interface HouseholdReceiptImageRequest {
+  request_id: Id;
+  command_scope_id: Id;
+  image: {
+    media_type: 'image/jpeg';
+    /**
+     * 端末の main が縮めて JPEG にし直した画像（180 KiB まで）の base64。中枢は形式・バイト数・長い辺（1600）を確かめ直す。
+     */
+    data_base64: string;
+  };
+}
+/**
+ * レシートの写真から読んだ、手入力の欄に入れる値の候補（ADR 0177）。記録ではない。向きは支出、分類は未分類で、本人が欄で確かめて「足す」を押したときだけ記録になる。品目は合計との突き合わせにだけ使い、ここに入れない。
+ */
+export interface HouseholdReceiptCandidate {
+  amount_yen: number;
+  /**
+   * 読めない・今日より後なら null（本人が入れる）。
+   */
+  occurred_on: string | null;
+  occurred_time: string | null;
+  merchant: string | null;
+  payment: string | null;
+}
+/**
+ * レシートの写真の読み取りの結果の表示用の値（ADR 0177）。候補は画面のメモリーにだけ置き、main は持たない。画像とファイルのパスは含めない。
+ */
+export interface DesktopHouseholdReceiptView {
+  /**
+   * candidate は候補を読めた、not_candidate は読めたが候補にしなかった、cancelled は本人がファイルを選ばなかった・選ぶ間にロック・切断した（何も送っていない）、image_rejected は画像の検査に合わず送らなかった、setting_off は中枢の設定が切で送らなかった、budget_held は予算を予約できず送らなかった。
+   */
+  outcome:
+    | 'candidate'
+    | 'not_candidate'
+    | 'cancelled'
+    | 'image_rejected'
+    | 'setting_off'
+    | 'budget_held';
+  candidate: HouseholdReceiptCandidate | null;
+  reasons: (HouseholdReceiptReason | HouseholdReceiptImageProblem)[];
 }
 /**
  * 気づきの根拠の再取得の要求（設計 11 §4、ADR 0073・0130）。許可範囲から取り直すので接続範囲を本文で示す（postCanvasContent と同じ）。
@@ -7830,6 +7960,10 @@ export interface DesktopHouseholdView {
    * カードの利用通知メールの取り込みの入・切（ADR 0163）。読めていなければ null（入・切を推測で見せない）。設定の版は main の中にだけ持つ。
    */
   mail_intake: ('on' | 'off') | null;
+  /**
+   * レシートの写真を外部のモデルの画像の読み取りへ送る設定（ADR 0177）。読めていなければ null。
+   */
+  receipt_reading: HouseholdReceiptReadingState | null;
   /**
    * 分類ごとの予算（ADR 0166）。読めていなければ null。予算の版は main の中にだけ持つ。
    */

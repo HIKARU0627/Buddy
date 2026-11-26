@@ -122,6 +122,7 @@ async function admitAndSend(
   const outcome = await provider.send({
     request_id: request.request_id,
     reservation_id: admitted.ticket.reservation_id,
+    price_version: admitted.ticket.price_version,
     signal: new AbortController().signal,
   });
   return { ticket: admitted.ticket, outcome };

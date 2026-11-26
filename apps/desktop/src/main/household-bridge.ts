@@ -13,13 +13,17 @@
 //   （届いたか分からない・5xx・形の違う 2xx）は自動では送り直さず、その記録を次の読み取りまで操作させない。
 // - 中身の変更（ADR 0169）も同じ流れで、受け付けたらその記録の月（日付を直したときは直した後の月）を読み直す。
 // - 利用通知の取り込みの入・切（ADR 0163）は、月ごとの合計で読んだ設定の版で照合して送る。
+// - レシートの写真の読み取り（ADR 0177）は、設定が入のときだけ写真を選ばせ、縮めた JPEG を一度だけ送り、候補を画面へ渡す
+//   （main は候補も写真も持たない）。記録は作らない。入にするときは OS の確認ダイアログを挟む。
 // - 世代（ロック・切断）: reset で記録・参照・保留を捨て、非同期の処理は await の後に世代を照合する（またいだ読み取りは
 //   反映しない。またいだ変更は結果不明として返す）。
 // - 読み取りが重なったときは、後から始めた読み取りだけを反映する（古い月の応答で新しい月の表示を戻さない）。
 // Electron に依存しない（node:test で試験する）。
 import type {
   DesktopHouseholdEntry,
+  DesktopHouseholdReceiptView,
   DesktopHouseholdView,
+  HouseholdReceiptResult,
   HouseholdBudgetItem,
   HouseholdCategoryId,
   HouseholdManualEntry,
@@ -29,10 +33,13 @@ import type {
 } from '@buddy/contracts';
 import type { ClientConnection } from '@buddy/client';
 import {
+  RECEIPT_SEND_MAX_BYTES,
   buildHouseholdCsv,
   householdExportFileName,
   householdExportMonths,
   readMoneyforwardExport,
+  receiptSendImageErrors,
+  receiptSourceImageErrors,
 } from '@buddy/domain';
 import type {
   DesktopIpcRejectReason,
@@ -63,6 +70,56 @@ const fail = (
 });
 
 const MONTH = /^20[0-9]{2}-(0[1-9]|1[0-2])$/u;
+
+// 中枢の拒否の本文のコード（ApiError の code）。読めなければ null。
+const errorCodeOf = (body: unknown): string | null =>
+  body !== null &&
+  typeof body === 'object' &&
+  typeof (body as { code?: unknown }).code === 'string'
+    ? (body as { code: string }).code
+    : null;
+
+/** 本人が選んだ画像を開いて縮める口（Electron の層が nativeImage で作る。試験は模擬）。 */
+export interface ReceiptImageCodec {
+  // 開けなければ null。
+  open(bytes: Uint8Array): ReceiptOpenedImage | null;
+}
+
+export interface ReceiptOpenedImage {
+  readonly width: number;
+  readonly height: number;
+  // 長い辺を longSide 以下に縮め（大きくはしない）、品質 quality（0〜100）の JPEG にする。元の画像の付帯情報（撮影の
+  // 位置など）は持ち越さない。
+  jpeg(longSide: number, quality: number): Uint8Array;
+}
+
+/** 縮める長い辺と JPEG の品質の順（外部へ送る上限 180 KiB に収まるまで順に試す）。 */
+export const RECEIPT_ENCODE_STEPS: readonly (readonly [number, number])[] = [
+  [1280, 80],
+  [1280, 65],
+  [1024, 65],
+  [1024, 50],
+];
+
+/**
+ * 本人が選んだ画像を開き、上限（RECEIPT_SEND_MAX_BYTES）に収まるまで縮めた JPEG にし直す。開けなければ null。どの段でも
+ * 収まらなければ最後の段の結果を返す（呼び出し側の receiptSendImageErrors が image_too_large にする）。途中の段の結果は
+ * 0 で埋めて捨てる。
+ */
+export function shrinkReceiptImage(
+  codec: ReceiptImageCodec,
+  bytes: Uint8Array,
+): Uint8Array | null {
+  const opened = codec.open(bytes);
+  if (opened === null || opened.width < 1 || opened.height < 1) return null;
+  let last: Uint8Array | null = null;
+  for (const [longSide, quality] of RECEIPT_ENCODE_STEPS) {
+    last?.fill(0);
+    last = opened.jpeg(longSide, quality);
+    if (last.length <= RECEIPT_SEND_MAX_BYTES) return last;
+  }
+  return last;
+}
 
 // 中枢へ一度に送る行の数（契約の上限）。
 export const HOUSEHOLD_IMPORT_BATCH = 100;
@@ -233,6 +290,7 @@ export class HouseholdBridge {
         (this.#month?.truncated ?? false),
       list_seq: this.#listSeq,
       mail_intake: this.#overview?.settings.mail_intake ?? null,
+      receipt_reading: this.#overview?.receipt_reading ?? null,
       recurring: this.#overview?.recurring ?? null,
       bills:
         this.#month === null
@@ -410,6 +468,178 @@ export class HouseholdBridge {
       return fail('outcome_unknown');
     }
     return fail(outcome.status === 409 ? 'preview_stale' : 'core_rejected');
+  }
+
+  // レシートの写真を外部のモデルの画像の読み取りへ送る設定を入・切にする（ADR 0177）。入にするときは confirm（Electron の層の
+  // OS の確認ダイアログ）で本人が「送る設定にする」を選んだときだけ送る。今と同じ値・読み取りの口がない（unavailable）なら
+  // 送らない。拒否・結果不明は送り直さず、読み直して今の設定を見せる。
+  async receiptSetting(
+    value: 'on' | 'off',
+    confirm: () => Promise<boolean>,
+  ): Promise<HouseholdOutcome<DesktopHouseholdView>> {
+    const gen = this.#gen;
+    const connection = this.#host.connection();
+    const scope = connection?.state.commandScopeId ?? null;
+    if (connection === null || scope === null) return fail('not_connected');
+    const current = this.#overview?.receipt_reading ?? null;
+    if (current === null) return fail('entry_not_found');
+    if (current === value || (current === 'unavailable' && value === 'off'))
+      return { ok: true, value: this.view() };
+    if (current === 'unavailable') return fail('core_rejected');
+    if (value === 'on') {
+      let confirmed: boolean;
+      try {
+        confirmed = await confirm();
+      } catch {
+        confirmed = false;
+      }
+      // 確かめの間にロック・切断した: 送らない。
+      if (gen !== this.#gen) return fail('not_connected');
+      if (!confirmed) return fail('confirmation_declined');
+    }
+    const outcome = await connection.request({
+      method: 'POST',
+      path: '/v1/household/receipt-setting',
+      body: { receipt_reading: value },
+      scoped: true,
+      screenOperation: true,
+      expectedScopeId: scope,
+    });
+    if (outcome.kind === 'not_sent') return fail('not_connected');
+    if (gen !== this.#gen) return fail('outcome_unknown');
+    if (
+      outcome.kind === 'response' &&
+      outcome.status === 200 &&
+      this.#host.contract.valid('HouseholdReceiptSetting', outcome.body)
+    ) {
+      await this.#reread();
+      if (gen !== this.#gen) return fail('not_connected');
+      return { ok: true, value: this.view() };
+    }
+    void this.#reread();
+    if (
+      outcome.kind === 'unknown' ||
+      outcome.status >= 500 ||
+      (outcome.status >= 200 && outcome.status < 300)
+    ) {
+      this.#host.log('household_receipt_setting_outcome_unknown');
+      return fail('outcome_unknown');
+    }
+    return fail('core_rejected');
+  }
+
+  // レシートの写真 1 枚を読む（ADR 0177）。設定が入のときだけ、pick（Electron の層の OS のファイル選択）で本人に選ばせ、
+  // 形式・大きさを確かめてから codec で縮めて JPEG にし直し、外部へ送る上限を確かめてから中枢へ 1 回だけ送る。
+  // - 本人が選ばなかった・選ぶ間にロック・切断・入出力の停止があった: 何も送らない（cancelled）。
+  // - 画像の検査に合わない: 送らない（image_rejected と理由）。
+  // - 結果が分からない（送ったか・応答が届いたか分からない）: 自動では送り直さない（outcome_unknown）。要求ごとに新しい
+  //   request_id を付けるので、本人がもう一度押せば新しい写真の読み取りになる。
+  // - 結果は候補だけで、記録は作らない。候補は main に持たず、そのまま画面へ渡す。
+  // 画像のバイト列は送った後・送らなかったときとも 0 で埋めて捨て、一時ファイル・ログへは出さない。
+  async readReceipt(
+    pick: () => Promise<Uint8Array | null | 'too_large'>,
+    codec: ReceiptImageCodec | null,
+    stillPermitted: () => boolean,
+  ): Promise<HouseholdOutcome<DesktopHouseholdReceiptView>> {
+    const gen = this.#gen;
+    const connection = this.#host.connection();
+    const scope = connection?.state.commandScopeId ?? null;
+    if (connection === null || scope === null) return fail('not_connected');
+    const receipt = (
+      outcome: DesktopHouseholdReceiptView['outcome'],
+      reasons: DesktopHouseholdReceiptView['reasons'] = [],
+    ): HouseholdOutcome<DesktopHouseholdReceiptView> => ({
+      ok: true,
+      value: { outcome, candidate: null, reasons },
+    });
+    // 設定が入でなければ、ファイルも選ばせない（入・切を読めていなければ送らない）。
+    if (this.#overview?.receipt_reading !== 'on') return receipt('setting_off');
+    if (codec === null) return fail('core_rejected');
+    let source: Uint8Array | null | 'too_large';
+    try {
+      source = await pick();
+    } catch {
+      source = null;
+    }
+    const stale = (): boolean => gen !== this.#gen || !stillPermitted();
+    if (source === null) return receipt('cancelled');
+    if (source === 'too_large')
+      return receipt('image_rejected', ['image_too_large']);
+    if (stale()) {
+      source.fill(0);
+      return receipt('cancelled');
+    }
+    const sourceErrors = receiptSourceImageErrors(source);
+    if (sourceErrors.length > 0) {
+      source.fill(0);
+      return receipt('image_rejected', sourceErrors);
+    }
+    let sendable: Uint8Array | null;
+    try {
+      sendable = shrinkReceiptImage(codec, source);
+    } catch {
+      sendable = null;
+    } finally {
+      source.fill(0);
+    }
+    if (sendable === null)
+      return receipt('image_rejected', ['image_unreadable']);
+    const sendErrors = receiptSendImageErrors(sendable);
+    if (sendErrors.length > 0 || stale()) {
+      sendable.fill(0);
+      return sendErrors.length > 0
+        ? receipt('image_rejected', sendErrors)
+        : receipt('cancelled');
+    }
+    const data = Buffer.from(sendable).toString('base64');
+    sendable.fill(0);
+    const outcome = await connection.request({
+      method: 'POST',
+      path: '/v1/household/receipt-readings',
+      body: { image: { media_type: 'image/jpeg', data_base64: data } },
+      scoped: true,
+      screenOperation: true,
+      expectedScopeId: scope,
+    });
+    if (outcome.kind === 'not_sent') return fail('not_connected');
+    // ロック・切断をまたいだ結果は渡さない（送ったかもしれないので結果不明。送り直さない）。
+    if (gen !== this.#gen) return fail('outcome_unknown');
+    if (outcome.kind === 'response') {
+      if (
+        outcome.status === 200 &&
+        this.#host.contract.valid('HouseholdReceiptResult', outcome.body)
+      ) {
+        const result = outcome.body as HouseholdReceiptResult;
+        return {
+          ok: true,
+          value:
+            result.result === 'candidate'
+              ? {
+                  outcome: 'candidate',
+                  candidate: { ...result.candidate },
+                  reasons: [],
+                }
+              : {
+                  outcome: 'not_candidate',
+                  candidate: null,
+                  reasons: [...result.reasons],
+                },
+        };
+      }
+      const code = errorCodeOf(outcome.body);
+      if (outcome.status === 403 && code === 'external_send_consent_required') {
+        // 中枢の設定が切だった（別の端末で切にした・中枢を起動し直した）。読み直して今の設定を見せる。
+        await this.#reread();
+        if (gen !== this.#gen) return fail('not_connected');
+        return receipt('setting_off');
+      }
+      if (outcome.status === 422 && code === 'budget_held')
+        return receipt('budget_held');
+      if (outcome.status >= 400 && outcome.status < 500)
+        return fail('core_rejected');
+    }
+    this.#host.log('household_receipt_outcome_unknown');
+    return fail('outcome_unknown');
   }
 
   // 外部の家計簿サービスの書き出しを取り込む（ADR 0164）。read は本人にファイルを選ばせて中身を返す（やめたら null）。

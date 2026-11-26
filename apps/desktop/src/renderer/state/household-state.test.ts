@@ -72,6 +72,7 @@ const view = (
   truncated: false,
   list_seq: 2,
   mail_intake: 'on',
+  receipt_reading: 'off',
   last_import: null,
   last_export: null,
   recurring: null,

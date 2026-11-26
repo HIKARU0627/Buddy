@@ -278,6 +278,17 @@ export const API_ROUTES: readonly ApiRoute[] = [
     '/v1/household/entries/{entry_id}/content',
     { body: 'HouseholdEntryContentChangeRequest', ...SCREEN },
   ),
+  // レシートの写真の読み取りの入・切と、写真 1 枚の読み取り（ADR 0177）。
+  route(
+    'changeHouseholdReceiptSetting',
+    'POST',
+    '/v1/household/receipt-setting',
+    { body: 'HouseholdReceiptSettingRequest', ...SCREEN },
+  ),
+  route('readHouseholdReceipt', 'POST', '/v1/household/receipt-readings', {
+    body: 'HouseholdReceiptImageRequest',
+    ...SCREEN,
+  }),
 ];
 
 export type RouteMatch =

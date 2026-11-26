@@ -85,6 +85,11 @@ import { DeviceConnections } from './device-connections.js';
 import { deviceTimeZone } from './device-time-zone.js';
 import { createHouseholdMailIntake } from './household-mail-intake.js';
 import {
+  createHouseholdReceiptRoutes,
+  receiptBudgetOf,
+} from './household-receipt.js';
+import type { ReceiptReadingSetup } from './household-receipt.js';
+import {
   TaskMigrationError,
   migrateTaskContents,
 } from './task-content-migration.js';
@@ -286,6 +291,13 @@ export interface CoreHttpsOptions {
   // 音声の制御（B05-03、ADR 0046）。省略したものは、provider・予算の門の境界はなし（Live の接続は 503）、同意は
   // missing（開かない）、表示先はなし、時計は performance.now と実際のタイマー。
   readonly voice?: CoreVoiceOptions;
+  // 家計簿（ADR 0177）。省略したものは、レシートの写真の読み取りの口なし（設定は unavailable）。
+  readonly household?: CoreHouseholdOptions;
+}
+
+export interface CoreHouseholdOptions {
+  // レシートの写真の読み取りの口と profile（実際の provider の実装は後で足す。今は試験の模擬だけ）。
+  readonly receiptReading?: ReceiptReadingSetup;
 }
 
 export interface CoreVoiceOptions {
@@ -1637,6 +1649,27 @@ async function startHttps(
   });
   // 家計簿の月ごとの合計・1 か月・分類の変更・削除（ADR 0161）。データ鍵は保持せず要求ごとに読む。今月は本人の
   // タイムゾーン（気づきの一覧と同じ出所）で決め、決まっていなければ月ごとの合計を 503 で閉じる。
+  // レシートの写真の読み取り（ADR 0177）。読み取りの口（provider と profile）は起動の設定で渡し、なければ使えない。
+  // 予算の門（本人の依頼の枠）と保存期限の掃除の門を通してから外部へ送る。設定は既定で切。
+  const receiptSetup = https.household?.receiptReading ?? null;
+  const householdReceipt = createHouseholdReceiptRoutes({
+    setup: receiptSetup,
+    budget:
+      receiptSetup === null ? null : receiptBudgetOf(budget, receiptSetup),
+    zone: () => deviceTimeZone(),
+    now: () => now().getTime(),
+    ...(retention === null
+      ? {}
+      : {
+          cloudGate: {
+            ready: async () => {
+              await retention?.idle();
+            },
+            open: () => (retention as RetentionSweeper).gate().cloud_send,
+            lease: () => (retention as RetentionSweeper).lease(),
+          },
+        }),
+  });
   const householdRoutes = createHouseholdRoutes({
     store,
     dataKey: async () => {
@@ -1645,6 +1678,7 @@ async function startHttps(
     },
     zone: () => deviceTimeZone(),
     now: () => now().getTime(),
+    receipt: householdReceipt,
   });
   const candidateHandlers = {
     ...candidateRoutes.handlers,

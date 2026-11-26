@@ -76,6 +76,7 @@ const view = (
   truncated: false,
   list_seq: 2,
   mail_intake: 'on',
+  receipt_reading: 'off',
   last_import: null,
   last_export: null,
   recurring: null,
@@ -105,6 +106,10 @@ const ACTIONS: HouseholdActions = {
   startEdit: noop,
   cancelEdit: noop,
   editEntry: noop,
+  setReceiptReading: noop,
+  readReceipt: noop,
+  openReceipt: () => false,
+  dismissReceipt: noop,
 };
 
 const render = (node: ReactNode) =>
@@ -653,4 +658,105 @@ test('the edit form shows the sending state, and a row whose result is unknown o
       (other.match(/<button[^>]*isDisabled[^>]*>\s*中身を直す/gu) ?? []).length,
     2,
   );
+});
+
+// --- レシートの写真の読み取り（ADR 0177） ---
+
+const RECEIPT_CANDIDATE = {
+  amount_yen: 1280,
+  occurred_on: '2030-11-04',
+  occurred_time: '12:34',
+  merchant: '合成の商店',
+  payment: '現金',
+};
+
+test('the receipt block shows the setting; while off it offers only to turn it on, and nothing when unavailable', () => {
+  const off = panel({ view: view([entry(0)]), seq: 2 });
+  assert.match(
+    text(off),
+    /レシートの写真を外部のモデルへ送る設定: 切（写真を外部へ送りません）/u,
+  );
+  assert(buttons(off).includes('送る設定にする'));
+  assert.equal(buttons(off).includes('写真を選んで読む'), false);
+  const on = panel({
+    view: view([entry(0)], { receipt_reading: 'on' }),
+    seq: 2,
+  });
+  assert.match(text(on), /レシートの写真を外部のモデルへ送る設定: 入/u);
+  assert.match(text(on), /選んだ写真 1\s枚だけを外部のモデルへ送ります/u);
+  assert(buttons(on).includes('送らない設定にする'));
+  assert(buttons(on).includes('写真を選んで読む'));
+  const unavailable = panel({
+    view: view([entry(0)], { receipt_reading: 'unavailable' }),
+    seq: 2,
+  });
+  assert.match(text(unavailable), /写真の読み取りの口がないため/u);
+  assert.equal(buttons(unavailable).includes('送る設定にする'), false);
+  assert.equal(buttons(unavailable).includes('写真を選んで読む'), false);
+});
+
+test('a receipt candidate is shown as values to open in the form, with no record made', () => {
+  const html = panel({
+    view: view([entry(0)], { receipt_reading: 'on' }),
+    seq: 2,
+    receipt: {
+      outcome: 'candidate',
+      candidate: RECEIPT_CANDIDATE,
+      reasons: [],
+    },
+  });
+  const plain = text(html).replace(/\s+/gu, ' ');
+  assert.match(plain, /支出 1,280 円・合成の商店・現金・11 月 4 日/u);
+  assert.match(plain, /まだ記録していません。/u);
+  assert(buttons(html).includes('家計簿の入力欄で開く'));
+  assert(buttons(html).includes('閉じる'));
+  // 手入力の欄を開いている間は開けない。
+  const busy = panel({
+    view: view([entry(0)], { receipt_reading: 'on' }),
+    seq: 2,
+    adding: true,
+    receipt: {
+      outcome: 'candidate',
+      candidate: RECEIPT_CANDIDATE,
+      reasons: [],
+    },
+  });
+  assert.match(text(busy), /別の記録を足している途中のため、今は開けません/u);
+  // 入力欄をレシートの候補で開いたときの説明。
+  const form = panel({
+    view: view([entry(0)], { receipt_reading: 'on' }),
+    seq: 2,
+    adding: true,
+    addFromReceipt: true,
+    addPrefill: {
+      direction: 'expense',
+      amount: '1280',
+      date: '2030-11-04',
+      time: '12:34',
+      category: 'uncategorized',
+      merchant: '合成の商店',
+      memo: '',
+      payment: '現金',
+    },
+  });
+  assert.match(
+    text(form),
+    /レシートの写真から読んだ値を入れました。まだ記録していません。/u,
+  );
+  assert.match(form, /id="household-add-amount"[^>]*value="1280"/u);
+});
+
+test('a reading that was not a candidate says why and offers no form', () => {
+  const html = panel({
+    view: view([entry(0)], { receipt_reading: 'on' }),
+    seq: 2,
+    receipt: {
+      outcome: 'not_candidate',
+      candidate: null,
+      reasons: ['items_total_mismatch'],
+    },
+  });
+  assert.match(text(html), /品目の金額の和が合計と合わなかったため/u);
+  assert.equal(buttons(html).includes('家計簿の入力欄で開く'), false);
+  assert(buttons(html).includes('閉じる'));
 });

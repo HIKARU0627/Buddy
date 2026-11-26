@@ -181,6 +181,14 @@ export function householdMerchantErrors(value: string | null): string[] {
   return textErrors(value, 'merchant', HOUSEHOLD_MERCHANT_LIMIT, false);
 }
 
+/**
+ * 12 桁以上の数字の並び（カード番号・口座番号らしいもの）を含むか（householdContentErrors と同じ規則）。レシートの写真の
+ * 読み取りの結果の品目名など、記録に入れない文字にも同じ拒否を当てるために使う（ADR 0177）。
+ */
+export function householdHasLongDigits(value: string): boolean {
+  return LONG_DIGITS.test(value);
+}
+
 /** 記録の内容の検査。理由が空なら正しい。 */
 export function householdContentErrors(value: unknown): string[] {
   if (value === null || typeof value !== 'object' || Array.isArray(value))

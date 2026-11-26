@@ -94,6 +94,8 @@ const AUTO_ACTIONS = [
   'desktop.household_add',
   'desktop.household_edit',
   'desktop.household_export',
+  'desktop.household_receipt_setting',
+  'desktop.household_receipt_read',
 ];
 const ALL_CHANNELS = [
   ...LEGACY_CHANNELS,

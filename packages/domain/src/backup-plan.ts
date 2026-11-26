@@ -126,6 +126,10 @@ export const BACKUP_INCLUDED_TABLES: readonly string[] = [
   'research_screenings',
   'research_attempts',
   'research_sources',
+  // 家計の記録と店名からの分類の規則（0016、ADR 0158）。家計簿の正本なので含める（内容は暗号文、規則は店名の HMAC）。
+  // 店名の HMAC の鍵はデータ鍵から作るので、同じデータ鍵で復元すれば規則もそのまま使える。
+  'household_entries',
+  'household_category_rules',
 ];
 
 const has = (record: object, key: string): boolean =>

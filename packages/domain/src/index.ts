@@ -102,3 +102,5 @@ export * from './web-query-screening.js';
 export * from './web-research-status.js';
 // B12-02 P2: 公開 Web 調査の上限の数え方と、失敗・0 件・完了の最終状態の決め方（ADR 0128・0129）。
 export * from './web-research-limits.js';
+// 家計簿の記録の分類・内容・月の集計・出所の鍵・店名からの分類の規則（ADR 0158）。
+export * from './household.js';

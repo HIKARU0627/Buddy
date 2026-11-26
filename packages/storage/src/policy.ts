@@ -310,6 +310,19 @@ export const TABLE_POLICIES: Readonly<Record<string, TablePolicy>> = {
     retention: 'permanent',
     transaction: 'deployment',
   },
+  // 0016（家計簿の段階 1、ADR 0158）。記録の内容は暗号文。平文は出所の種類と鍵・月・状態・版・時刻だけ。
+  // 本人が消すまで残す（削除は行を残して暗号文を消し、出所の鍵で作り直しを止める）。
+  household_entries: {
+    body: 'sealed_refs',
+    retention: 'until_user_deletes',
+    transaction: 'household',
+  },
+  // 店名（HMAC）→ 分類の規則。店名の平文は持たない。
+  household_category_rules: {
+    body: 'none',
+    retention: 'until_replaced',
+    transaction: 'household',
+  },
 };
 
 // 本文・宛先・要約を平文で持ってはいけない列名。暗号文は *_blob_id で sealed_blobs を参照する。

@@ -2,12 +2,13 @@
 //
 // - 候補を保存した後に呼ぶ。DB の現在値（安全停止・時間窓・候補・依頼・作成済みの操作）を読み、Core が別に確かめた
 //   事実（方針・許可の版・抽出の根拠・関連解析の計画）と合わせて、4 種類の操作それぞれを judgeAutoExecution で判定する。
-// - 今つなぐのは Buddy 内の用事の登録（create_task、LocalCommand）だけ。判定が auto_eligible のとき、確定 intent を
+// - 今つなぐのは Buddy 内の用事の登録（create_task、LocalCommand）と、既存のラベルの付与（label_mail、Gmail と模擬の
+//   RemoteMutation、ADR 0150）。判定が auto_eligible のとき、確定 intent を
 //   契約で確かめて暗号化し、方針による自動承認（auto_approval）と候補の起点（candidate_origin）を付けて
 //   operation.create へ送る。作成と承認と一度だけの記録は保存層の一つの transaction で行い、保存層が候補の行から
 //   版を読み直して照合する（ADR 0148 の最終ガード）。ここでの判定は最終ガードを省略する理由にならない。
-// - ラベル・下書き・予定は、判定の結果を返すだけで操作を作らない（not_wired）。書込みの内容（付けるラベル、下書きの
-//   本文、予定のカレンダー）を決める口がまだない。
+// - 下書き・予定は、判定の結果を返すだけで操作を作らない（not_wired）。書込みの内容（下書きの本文、予定の内容）を
+//   決める口がまだない。
 // - 拒否・成否不明の操作を自動で作り直さない（U302）。結果は呼び出し側が記録・表示に使う。
 // - 本文（題・抄録・メール本文）をログに出さない。用事の本文（body）は空にし、メールの文を写さない。
 import type { Deadline } from '@buddy/contracts';
@@ -23,6 +24,7 @@ import type {
   EntityRecord,
   LabelProvider,
   ResolvedChange,
+  StartupGateDecision,
 } from '@buddy/domain';
 import { sealOperationIntent } from '@buddy/storage';
 import type {
@@ -34,6 +36,12 @@ import type {
 } from '@buddy/storage';
 import type { ApiContract } from './api-contract.js';
 import { mailCandidateTitle } from './candidate-intake.js';
+import { canRead, canWrite } from './turn-ports.js';
+import type {
+  ProviderConnection,
+  ProviderMailTarget,
+  ProviderReader,
+} from './turn-ports.js';
 
 // 判定する操作の順（判定表の行の順）。
 export const CANDIDATE_AUTO_OPERATIONS: readonly AutoOperation[] = [
@@ -69,6 +77,8 @@ export interface CandidateAutoExecutionInput {
   readonly calendar_id: string | null;
   readonly context: AutoOperationContext;
   readonly label_provider: LabelProvider | null;
+  // 本人が割り当てた既存のラベル（provider のラベル ID）。無ければ null（ラベルの行は label_not_assigned で気づきだけ）。
+  readonly label_id: string | null;
   // 判定に使う方針・許可の版が現在の版か（Core が別に確かめる）。
   readonly policy_current: boolean;
   readonly permission_current: boolean;
@@ -98,6 +108,16 @@ export interface CandidateAutoExecutionPorts {
   readonly newId: () => string;
   // いまの UTC 時刻（ISO 8601）。
   readonly now: () => string;
+  // 連携の provider の読み取り（接続・許可の版・対象のメール）。ラベルの付与で使う。無ければ null。
+  readonly provider: ProviderReader | null;
+  // 保存期限の掃除のゲート（ADR 0053・0058）。ラベルの付与で provider を読む前に掃除が済むのを待ち、閉じていれば
+  // 作らない（retention_blocked）。発言の入口（api-turns.ts）と同じ口。用事の登録は Buddy 内だけなので通さない。
+  readonly retention: {
+    readonly ready: () => Promise<void>;
+    readonly gate: () => StartupGateDecision;
+    // 掃除が動いている・待っている・ゲートが閉じているときは null。返された関数を呼ぶまで新しい掃除は本体に入らない。
+    readonly lease: () => (() => void) | null;
+  };
   // 自動承認した操作の実行を始める（OperationRunner.afterApproval）。
   readonly afterApproval: (operationId: string) => void;
 }
@@ -230,14 +250,13 @@ export async function runCandidateAutoExecution(
       completeness: input.completeness,
       received_at_local: input.received_at_local,
       // カレンダーが無いのに選択済みとはしない（重複キーはカレンダーを必須にする）。
-      context:
-        operation === 'create_event'
-          ? {
-              ...input.context,
-              ownCalendarSelected:
-                input.context.ownCalendarSelected && input.calendar_id !== null,
-            }
-          : input.context,
+      // 付けるラベルの ID が無いのに割り当て済みとはしない（何を付けるか決まらない）。
+      context: {
+        ...input.context,
+        ownCalendarSelected:
+          input.context.ownCalendarSelected && input.calendar_id !== null,
+        labelAssigned: input.context.labelAssigned && input.label_id !== null,
+      },
       label_provider: input.label_provider,
       analysis: input.analysis,
       current_published_generation: input.current_published_generation,
@@ -257,45 +276,44 @@ export async function runCandidateAutoExecution(
       results.push({ ...base, outcome: { kind: 'not_eligible' } });
       continue;
     }
-    if (operation !== 'create_task') {
-      results.push({ ...base, outcome: { kind: 'not_wired' } });
-      continue;
-    }
-    results.push({
-      ...base,
-      outcome: await createTask(ports, input, state),
-    });
+    if (operation === 'create_task')
+      results.push({
+        ...base,
+        outcome: await createTask(ports, input, state),
+      });
+    else if (operation === 'label_mail')
+      results.push({
+        ...base,
+        outcome: await createLabel(ports, input, state),
+      });
+    else results.push({ ...base, outcome: { kind: 'not_wired' } });
   }
   return { kind: 'judged', results };
 }
 
-async function createTask(
+interface AutoCreate {
+  readonly operation: 'create_task' | 'label_mail';
+  readonly operation_id: string;
+  readonly operation_kind: 'task.create' | 'mail.labels.change';
+  readonly effect_route: 'local_command' | 'remote_mutation';
+  readonly permission_revision: string;
+  readonly content: Record<string, unknown>;
+}
+
+// 確定 intent を契約で確かめて暗号化し、方針による自動承認と候補の起点を付けて作る。保存できたら実行を始める。
+async function submitAuto(
   ports: CandidateAutoExecutionPorts,
   input: CandidateAutoExecutionInput,
   state: AutoExecutionStateRecord,
+  create: AutoCreate,
 ): Promise<CandidateOperationOutcome> {
-  const title = candidateTaskTitle(input.summary);
-  const due = candidateTaskDue(input.request.deadline, input.zone);
-  const reasons: string[] = [];
-  if (title === null) reasons.push('title_invalid');
-  if (!due.ok) reasons.push(due.reason);
-  if (title === null || !due.ok) return { kind: 'not_created', reasons };
-  const operationId = ports.newId();
-  const content = {
-    schema: 'buddy.operation.v1',
-    operation_id: operationId,
-    content_version: '1',
-    permission_revision: ports.task.permission_revision,
-    target: { list_id: ports.task.list_id },
-    action: { kind: 'task.create', title, due: due.due, body: null },
-    effects: { external_recipients: [], reconcile_scope: 'local_transaction' },
-  };
-  if (!ports.contract.valid('OperationIntent', content))
+  const operationId = create.operation_id;
+  if (!ports.contract.valid('OperationIntent', create.content))
     return { kind: 'not_created', reasons: ['intent_invalid'] };
   const sealed = sealOperationIntent(
     ports.dataKey,
     { operationId, contentVersion: 1 },
-    content,
+    create.content,
     ports.newId(),
   );
   if (!sealed.ok) return { kind: 'not_created', reasons: ['seal_failed'] };
@@ -305,13 +323,13 @@ async function createTask(
     operation_id: operationId,
     expected_state_revision: '0',
     request_revision: null,
-    permission_revision: ports.task.permission_revision,
+    permission_revision: create.permission_revision,
     forgetting_generation: state.forgetting_generation,
     connection_id: null,
     request: null,
     workflow_id: null,
-    operation_kind: 'task.create',
-    effect_route: 'local_command',
+    operation_kind: create.operation_kind,
+    effect_route: create.effect_route,
     content_hash: sealed.content_hash,
     intent: sealed.intent,
     auto_approval: {
@@ -319,7 +337,7 @@ async function createTask(
       policy_version: ports.policy.policy_version,
       current_policy_version: ports.current_policy_version,
       safety_target_key: candidateSafetyTargetKey(
-        'create_task',
+        create.operation,
         input.account_id,
         input.source_id,
         ports.sha256Hex,
@@ -347,4 +365,173 @@ async function createTask(
     operation_id: operationId,
     reasons: outcome.outcome === 'rejected' ? outcome.reasons : ['accepted'],
   };
+}
+
+async function createTask(
+  ports: CandidateAutoExecutionPorts,
+  input: CandidateAutoExecutionInput,
+  state: AutoExecutionStateRecord,
+): Promise<CandidateOperationOutcome> {
+  const title = candidateTaskTitle(input.summary);
+  const due = candidateTaskDue(input.request.deadline, input.zone);
+  const reasons: string[] = [];
+  if (title === null) reasons.push('title_invalid');
+  if (!due.ok) reasons.push(due.reason);
+  if (title === null || !due.ok) return { kind: 'not_created', reasons };
+  const operationId = ports.newId();
+  return submitAuto(ports, input, state, {
+    operation: 'create_task',
+    operation_id: operationId,
+    operation_kind: 'task.create',
+    effect_route: 'local_command',
+    permission_revision: ports.task.permission_revision,
+    content: {
+      schema: 'buddy.operation.v1',
+      operation_id: operationId,
+      content_version: '1',
+      permission_revision: ports.task.permission_revision,
+      target: { list_id: ports.task.list_id },
+      action: { kind: 'task.create', title, due: due.due, body: null },
+      effects: {
+        external_recipients: [],
+        reconcile_scope: 'local_transaction',
+      },
+    },
+  });
+}
+
+// 掃除の貸し出しを取り直す回数（発言の入口と同じ）。
+const LEASE_ATTEMPTS = 3;
+
+// 連携の provider の名前と、判定表のラベルの元サービスの対応。
+const LABEL_PROVIDER_OF: Readonly<
+  Record<ProviderConnection['provider'], LabelProvider>
+> = {
+  gmail: 'google',
+  microsoft_graph: 'microsoft',
+  mock: 'mock',
+};
+
+// 既存のラベルを元のメールに 1 つ足す（Gmail のラベル追加は加算の操作。11 §5A）。外すラベルは作らない。
+// 接続・許可の版・対象のメールを今読み直し、接続のアカウントと元サービスが判定に使った値と同じときだけ作る。
+// 送出の直前には実行器が対象の版と許可の版をもう一度確かめる（D1、ADR 0030）。
+async function createLabel(
+  ports: CandidateAutoExecutionPorts,
+  input: CandidateAutoExecutionInput,
+  state: AutoExecutionStateRecord,
+): Promise<CandidateOperationOutcome> {
+  const provider = ports.provider;
+  const labelId = input.label_id;
+  if (labelId === null)
+    return { kind: 'not_created', reasons: ['label_not_assigned'] };
+  // Outlook のカテゴリは判定で承認待ちになる。ここへ来るのは Gmail と模擬だけ（念のため確かめる）。
+  if (input.label_provider !== 'google' && input.label_provider !== 'mock')
+    return { kind: 'not_created', reasons: ['label_provider_unsupported'] };
+  if (provider === null)
+    return { kind: 'not_created', reasons: ['connection_unavailable'] };
+  // 掃除が済むまで provider を読まない（ADR 0053）。ゲートの確認と貸し出しの取得は同じ同期の区間で行い、
+  // 読み直しが終わるまで貸し出しを持つ。保存（Buddy 内）と実行の開始の前に返す（送出は実行担当が別に通す）。
+  let release: (() => void) | null = null;
+  for (
+    let attempt = 0;
+    release === null && attempt < LEASE_ATTEMPTS;
+    attempt += 1
+  ) {
+    await ports.retention.ready();
+    const gate = ports.retention.gate();
+    if (!gate.search || !gate.cloud_send || !gate.auto_use)
+      return { kind: 'not_created', reasons: ['retention_blocked'] };
+    // 取れないのは、ready の後に別の掃除が始まったとき。その掃除が済むのを待って確かめ直す。
+    release = ports.retention.lease();
+  }
+  if (release === null)
+    return { kind: 'not_created', reasons: ['retention_blocked'] };
+  let read: LabelRead;
+  try {
+    read = await readLabelTarget(provider, input, labelId);
+  } finally {
+    release();
+  }
+  if (!read.ok) return { kind: 'not_created', reasons: [read.reason] };
+  const { connection, permission, target } = read;
+  const operationId = ports.newId();
+  return submitAuto(ports, input, state, {
+    operation: 'label_mail',
+    operation_id: operationId,
+    operation_kind: 'mail.labels.change',
+    effect_route: 'remote_mutation',
+    permission_revision: permission,
+    content: {
+      schema: 'buddy.operation.v1',
+      operation_id: operationId,
+      content_version: '1',
+      permission_revision: permission,
+      provider: connection.provider,
+      account_id: connection.account_id,
+      target: {
+        remote_id: target.remote_id,
+        source_revision: target.source_revision,
+      },
+      action: {
+        kind: 'mail.labels.change',
+        add: [labelId],
+        remove: [],
+      },
+      effects: { external_recipients: [], reconcile_scope: 'exact_target' },
+    },
+  });
+}
+
+type LabelRead =
+  | {
+      readonly ok: true;
+      readonly connection: ProviderConnection;
+      readonly permission: string;
+      readonly target: ProviderMailTarget;
+    }
+  | { readonly ok: false; readonly reason: string };
+
+// 接続・許可の版・対象のメールを今読み直す（掃除の貸し出しを持った区間で呼ぶ）。
+async function readLabelTarget(
+  provider: ProviderReader,
+  input: CandidateAutoExecutionInput,
+  labelId: string,
+): Promise<LabelRead> {
+  let connection: ProviderConnection | null;
+  try {
+    connection = await provider.connection();
+  } catch {
+    connection = null;
+  }
+  if (
+    connection === null ||
+    connection.status !== 'active' ||
+    connection.account_id !== input.account_id ||
+    !canWrite(connection, 'mail.labels.change') ||
+    !canRead(connection, 'mail.message')
+  )
+    return { ok: false, reason: 'connection_unavailable' };
+  if (LABEL_PROVIDER_OF[connection.provider] !== input.label_provider)
+    return { ok: false, reason: 'label_provider_changed' };
+  let permission: string | null = null;
+  try {
+    const read = await provider.readPermission(input.account_id);
+    if (read !== null && read.account_id === input.account_id)
+      permission = read.permission_revision;
+  } catch {
+    permission = null;
+  }
+  if (permission === null)
+    return { ok: false, reason: 'connection_unavailable' };
+  let target: ProviderMailTarget | null;
+  try {
+    target = await provider.readTarget(input.source_id);
+  } catch {
+    target = null;
+  }
+  if (target === null || target.remote_id !== input.source_id)
+    return { ok: false, reason: 'target_not_found' };
+  if (target.labels.includes(labelId))
+    return { ok: false, reason: 'no_change' };
+  return { ok: true, connection, permission, target };
 }

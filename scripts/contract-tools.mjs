@@ -1393,6 +1393,30 @@ export function semanticErrors(name, value) {
         break;
       }
   }
+  // 分類ごとの予算（ADR 0166）。分類は重ならず、分類の表示の順で、合計は予算の和。
+  if (name === 'HouseholdBudget') {
+    const categories = value.items.map((item) => item.category);
+    if (new Set(categories).size !== categories.length)
+      errors.push('budget_category_duplicate');
+    const order = Object.keys(HOUSEHOLD_CATEGORY_DIRECTIONS);
+    for (let index = 1; index < categories.length; index += 1)
+      if (
+        order.indexOf(categories[index - 1]) > order.indexOf(categories[index])
+      ) {
+        errors.push('budget_order');
+        break;
+      }
+    if (
+      value.items.reduce((sum, item) => sum + item.budget_yen, 0) !==
+      value.total_budget_yen
+    )
+      errors.push('budget_total_mismatch');
+  }
+  if (name === 'HouseholdBudgetChangeRequest') {
+    const categories = value.items.map((item) => item.category);
+    if (new Set(categories).size !== categories.length)
+      errors.push('budget_category_duplicate');
+  }
   if (name === 'HouseholdMonthTotals') {
     if (value.balance_yen !== value.income_yen - value.expense_yen)
       errors.push('balance_mismatch');

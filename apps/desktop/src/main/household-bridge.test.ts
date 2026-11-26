@@ -78,6 +78,11 @@ const overview = () => ({
     ],
     monthly_total_yen: 3000,
   },
+  budget: {
+    budget_revision: '1',
+    items: [{ category: 'food', budget_yen: 40000 }],
+    total_budget_yen: 40000,
+  },
 });
 
 const lunch = (fields: Record<string, unknown> = {}) => ({
@@ -264,6 +269,10 @@ test('the view carries refs and display values only, and reads the current month
     mail_intake: 'on',
     last_import: null,
     recurring: overview().recurring,
+    budget: {
+      items: [{ category: 'food', budget_yen: 40000 }],
+      total_budget_yen: 40000,
+    },
   });
   assert.deepEqual(
     contract.responseErrors({
@@ -743,4 +752,54 @@ test('a cancelled pick sends nothing, an unreadable file says so, and a failed b
   // 世代が進んだら結果も捨てる。
   r.bridge.reset();
   assert.equal(r.bridge.view().last_import, null);
+});
+
+test('a budget change sends the budget revision it read and re-reads', async () => {
+  const r = rig();
+  assert.deepEqual(await r.bridge.budget([]), {
+    ok: false,
+    reason: 'entry_not_found',
+  });
+  ok(await r.bridge.show(null));
+  r.post = () => ({
+    kind: 'response',
+    status: 200,
+    body: {
+      budget_revision: '2',
+      items: [{ category: 'food', budget_yen: 30000 }],
+      total_budget_yen: 30000,
+    },
+  });
+  ok(await r.bridge.budget([{ category: 'food', budget_yen: 30000 }]));
+  assert.deepEqual(r.posts(), [
+    {
+      method: 'POST',
+      path: '/v1/household/budget',
+      body: {
+        expected_budget_revision: '1',
+        items: [{ category: 'food', budget_yen: 30000 }],
+      },
+      scoped: true,
+      screenOperation: true,
+      expectedScopeId: SCOPE,
+    },
+  ]);
+  assert.equal(
+    JSON.stringify(r.bridge.view()).includes('budget_revision'),
+    false,
+  );
+  r.post = () => ({
+    kind: 'response',
+    status: 409,
+    body: { code: 'conflict' },
+  });
+  assert.deepEqual(await r.bridge.budget([]), {
+    ok: false,
+    reason: 'preview_stale',
+  });
+  r.post = () => ({ kind: 'unknown' });
+  assert.deepEqual(await r.bridge.budget([]), {
+    ok: false,
+    reason: 'outcome_unknown',
+  });
 });

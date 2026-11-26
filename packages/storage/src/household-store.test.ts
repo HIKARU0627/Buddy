@@ -10,7 +10,9 @@ import type { HouseholdEntryContent } from '@buddy/domain';
 import {
   DbWorkerClient,
   executeHouseholdOp,
+  openHouseholdBudget,
   openHouseholdContent,
+  sealHouseholdBudget,
   sealHouseholdContent,
 } from './index.js';
 import type {
@@ -22,6 +24,7 @@ import type {
   HouseholdOpResult,
   HouseholdRecordValue,
   HouseholdRevisionValue,
+  HouseholdBudgetValue,
   HouseholdSettingsValue,
   SealedBlobInput,
 } from './index.js';
@@ -622,6 +625,114 @@ test('household.settings: 行がなければ取り込みは入で版 0。止め�
           )
           .run(),
       /CHECK constraint failed/u,
+    );
+  });
+});
+
+function budgetBlob(
+  revision: number,
+  items: { category: string; budget_yen: number }[],
+): SealedBlobInput {
+  const result = sealHouseholdBudget(KEY, revision, items);
+  assert.equal(result.ok, true);
+  if (!result.ok) throw new Error('unreachable');
+  return result.content;
+}
+
+test('household.budget: 行がなければ版 0。版を照合して暗号文を差し替え、古い暗号文を消す（ADR 0166）', async () => {
+  await withDb((db) => {
+    const get = () =>
+      value<HouseholdBudgetValue>(run(db, { kind: 'household.budget_get' }));
+    assert.deepEqual(get(), { budget_revision: '0', content: null });
+    const first = value<HouseholdBudgetValue>(
+      run(db, {
+        kind: 'household.budget_set',
+        expected_revision: '0',
+        content: budgetBlob(1, [
+          { category: 'utilities', budget_yen: 12000 },
+          { category: 'food', budget_yen: 40000 },
+        ]),
+        now: T1,
+      }),
+    );
+    assert.equal(first.budget_revision, '1');
+    assert.ok(first.content);
+    const opened = openHouseholdBudget(KEY, 1, {
+      formatVersion: first.content.format_version,
+      keyId: first.content.key_id,
+      nonce: first.content.nonce,
+      ciphertext: first.content.ciphertext,
+      tag: first.content.tag,
+    });
+    // 分類の表示の順にそろえて保存する。
+    assert.deepEqual(opened, {
+      ok: true,
+      items: [
+        { category: 'food', budget_yen: 40000 },
+        { category: 'utilities', budget_yen: 12000 },
+      ],
+    });
+    // 古い版では拒否する。
+    assert.deepEqual(
+      reasons(
+        run(db, {
+          kind: 'household.budget_set',
+          expected_revision: '0',
+          content: budgetBlob(1, [{ category: 'food', budget_yen: 1 }]),
+          now: T2,
+        }),
+      ),
+      ['revision_mismatch'],
+    );
+    const second = value<HouseholdBudgetValue>(
+      run(db, {
+        kind: 'household.budget_set',
+        expected_revision: '1',
+        content: budgetBlob(2, []),
+        now: T2,
+      }),
+    );
+    assert.equal(second.budget_revision, '2');
+    assert.equal(
+      (
+        db
+          .prepare(
+            "SELECT count(*) AS n FROM sealed_blobs WHERE purpose = 'household_budget'",
+          )
+          .get() as { n: number }
+      ).n,
+      1,
+    );
+    // 版 1 の暗号文を版 2 として開くことはできない（持ち主の版が AAD に入る）。
+    assert.equal(
+      openHouseholdBudget(KEY, 1, {
+        formatVersion: second.content?.format_version ?? 1,
+        keyId: second.content?.key_id ?? '',
+        nonce: second.content?.nonce ?? new Uint8Array(),
+        ciphertext: second.content?.ciphertext ?? new Uint8Array(),
+        tag: second.content?.tag ?? new Uint8Array(),
+      }).ok,
+      false,
+    );
+    // 収入の分類・0 円・同じ分類が二つは暗号化しない。
+    for (const items of [
+      [{ category: 'income', budget_yen: 1000 }],
+      [{ category: 'food', budget_yen: 0 }],
+      [
+        { category: 'food', budget_yen: 1 },
+        { category: 'food', budget_yen: 2 },
+      ],
+    ])
+      assert.equal(sealHouseholdBudget(KEY, 3, items).ok, false);
+    // 版を飛ばす更新と、別の持ち主の暗号文を指す行は DB が拒否する。
+    assert.throws(
+      () =>
+        db
+          .prepare(
+            'UPDATE household_budgets SET budget_revision = 9 WHERE budget_id = 1',
+          )
+          .run(),
+      /household_budget/u,
     );
   });
 });

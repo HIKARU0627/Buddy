@@ -4,6 +4,8 @@
 // もう一度確かめてから送る）。最後に月ごとの合計（今月から 11 か月前まで）で、押すとその月の記録を出す。
 // 未取得・取得の失敗を「記録はありません」と言わない。理由のコード・API の名前・記録の ID は出さない。
 import { Button } from '@heroui/react';
+import { useState } from 'react';
+import { householdBudgetUse } from '@buddy/domain';
 import type {
   DesktopHouseholdEntry,
   HouseholdRecurringSummary,
@@ -17,10 +19,13 @@ import { StatusText } from '../../components/StatusText.js';
 import {
   DIRECTION_LABELS,
   FETCH_LABELS,
+  BUDGET_PLACE,
   HOUSEHOLD_LABELS,
   IMPORT_PLACE,
   INTAKE_PLACE,
   SOURCE_LABELS,
+  budgetItemsFromInput,
+  budgetUseText,
   canChange,
   categoryChoices,
   categoryLabel,
@@ -344,6 +349,164 @@ function IntakeBlock({
   );
 }
 
+// 予算の入力欄（ADR 0166）。支出の分類ごとに円で入れる。空は予算なし。
+function BudgetEditor({
+  state,
+  actions,
+}: {
+  readonly state: HouseholdViewState;
+  readonly actions: HouseholdActions;
+}) {
+  const current = new Map<string, string>(
+    (state.view?.budget?.items ?? []).map((item) => [
+      item.category,
+      String(item.budget_yen),
+    ]),
+  );
+  const [input, setInput] = useState<Record<string, string>>(() =>
+    Object.fromEntries(
+      categoryChoices('expense').map((choice) => [
+        choice.id,
+        current.get(choice.id) ?? '',
+      ]),
+    ),
+  );
+  const items = budgetItemsFromInput(input);
+  const mine = state.busy === BUDGET_PLACE;
+  return (
+    <div
+      role="group"
+      aria-label={HOUSEHOLD_LABELS.budgetEdit}
+      className="flex flex-col gap-2 rounded-md border border-separator p-3"
+    >
+      <p className="text-xs text-muted">{HOUSEHOLD_LABELS.budgetNote}</p>
+      <div className="grid grid-cols-1 gap-x-4 gap-y-1 sm:grid-cols-2">
+        {categoryChoices('expense').map((choice) => {
+          const id = `household-budget-${choice.id}`;
+          return (
+            <label
+              key={choice.id}
+              htmlFor={id}
+              className="flex items-center justify-between gap-2 text-sm"
+            >
+              {choice.label}
+              <input
+                id={id}
+                inputMode="numeric"
+                value={input[choice.id] ?? ''}
+                disabled={mine}
+                onChange={(event) => {
+                  const value = event.currentTarget.value;
+                  setInput((prev) => ({ ...prev, [choice.id]: value }));
+                }}
+                className="w-32 rounded-md border border-separator bg-transparent px-2 py-1 text-right text-sm tabular-nums text-foreground"
+              />
+            </label>
+          );
+        })}
+      </div>
+      {items === null ? (
+        <p className="text-xs text-danger">{HOUSEHOLD_LABELS.budgetInvalid}</p>
+      ) : null}
+      <div className="flex flex-wrap justify-end gap-2">
+        <Button
+          size="sm"
+          variant="secondary"
+          isDisabled={mine}
+          onPress={actions.cancelBudget}
+        >
+          {HOUSEHOLD_LABELS.cancel}
+        </Button>
+        <Button
+          size="sm"
+          variant="primary"
+          isDisabled={mine || items === null || state.busy !== null}
+          onPress={() => {
+            if (items !== null) actions.saveBudget(items);
+          }}
+        >
+          {mine ? HOUSEHOLD_LABELS.budgetSaving : HOUSEHOLD_LABELS.budgetSave}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// 予算（ADR 0166）。出している月の分類ごとの支出と予算を並べ、残り（超過）を出す。
+function BudgetBlock({
+  state,
+  actions,
+}: {
+  readonly state: HouseholdViewState;
+  readonly actions: HouseholdActions;
+}) {
+  const view = state.view;
+  const budget = view?.budget ?? null;
+  if (view === null || budget === null) return null;
+  const notice = noticeAt(state, BUDGET_PLACE);
+  const uses =
+    view.summary === null ? [] : householdBudgetUse(budget.items, view.summary);
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold">
+          {HOUSEHOLD_LABELS.budgetTitle}
+        </h3>
+        {state.editingBudget ? null : (
+          <Button
+            size="sm"
+            variant="ghost"
+            isDisabled={state.busy !== null}
+            onPress={actions.startBudget}
+          >
+            {HOUSEHOLD_LABELS.budgetEdit}
+          </Button>
+        )}
+      </div>
+      {state.editingBudget ? (
+        <BudgetEditor state={state} actions={actions} />
+      ) : budget.items.length === 0 ? (
+        <p className="text-sm text-muted">{HOUSEHOLD_LABELS.budgetEmpty}</p>
+      ) : (
+        <>
+          <p className="text-sm">
+            {`${HOUSEHOLD_LABELS.budgetTotal} `}
+            <span className="font-semibold tabular-nums">
+              {yenText(budget.total_budget_yen)}
+            </span>
+          </p>
+          <ul
+            aria-label={HOUSEHOLD_LABELS.budgetTitle}
+            className="flex flex-col gap-0.5 text-sm"
+          >
+            {uses.map((use) => (
+              <li
+                key={use.category}
+                data-over={use.remaining_yen < 0 ? 'true' : 'false'}
+                className="flex flex-wrap justify-between gap-2"
+              >
+                <span>{categoryLabel(use.category)}</span>
+                <span
+                  className={
+                    use.remaining_yen < 0
+                      ? 'tabular-nums text-danger'
+                      : 'tabular-nums'
+                  }
+                >
+                  {budgetUseText(use)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      {notice === null ? null : (
+        <InlineNotice tone={notice.tone} text={notice.text} />
+      )}
+    </div>
+  );
+}
+
 // 定期の支出と固定費の目安（ADR 0165）。中枢が 12 か月の記録から毎回計算した値を出す。
 function RecurringBlock({
   recurring,
@@ -508,6 +671,7 @@ export function HouseholdPanel({
           )}
         </>
       )}
+      {loaded ? <BudgetBlock state={state} actions={actions} /> : null}
       {!loaded || view.recurring === null ? null : (
         <RecurringBlock recurring={view.recurring} />
       )}

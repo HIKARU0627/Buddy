@@ -113,6 +113,8 @@ export const ROUTE_CHECKS: Readonly<Record<string, readonly CoreCheck[]>> = {
   changeHouseholdSettings: SCREEN,
   // 外部の家計簿サービスの書き出しの取り込み（ADR 0164）。本人が選んだファイルの行だけ。本人の画面操作だけ。
   importHouseholdRows: SCREEN,
+  // 分類ごとの予算の変更（ADR 0166）。本人の画面操作だけ。版の照合は経路の処理が行い、409 にする。
+  changeHouseholdBudget: SCREEN,
 };
 
 export interface RequestContext {

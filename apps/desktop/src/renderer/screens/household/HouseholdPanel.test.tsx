@@ -75,6 +75,7 @@ const view = (
   mail_intake: 'on',
   last_import: null,
   recurring: null,
+  budget: null,
   ...overrides,
 });
 
@@ -88,6 +89,9 @@ const ACTIONS: HouseholdActions = {
   confirmDelete: noop,
   setIntake: noop,
   importExport: noop,
+  startBudget: noop,
+  cancelBudget: noop,
+  saveBudget: noop,
 };
 
 const render = (node: ReactNode) =>
@@ -302,4 +306,51 @@ test('the recurring block lists fixed costs with the monthly estimate, and says 
     text(panel({ view: view([entry(0)]), seq: 2 })),
     /定期の支出/u,
   );
+});
+
+test('the budget block compares the month spending with the budget, and the editor lists the expense categories', () => {
+  const html = text(
+    panel({
+      view: view([entry(0)], {
+        budget: {
+          items: [
+            { category: 'food', budget_yen: 1000 },
+            { category: 'utilities', budget_yen: 12000 },
+          ],
+          total_budget_yen: 13000,
+        },
+      }),
+      seq: 2,
+    }),
+  );
+  assert.match(html, /予算の合計 +13,000\u00a0円/u);
+  assert.match(
+    html,
+    /食費 +1,280\u00a0円 \/ 1,000\u00a0円（280\u00a0円の超過）/u,
+  );
+  assert.match(
+    html,
+    /水道・光熱費 +0\u00a0円 \/ 12,000\u00a0円（残り 12,000\u00a0円）/u,
+  );
+  const empty = panel({
+    view: view([entry(0)], { budget: { items: [], total_budget_yen: 0 } }),
+    seq: 2,
+  });
+  assert.match(text(empty), /まだ予算を決めていません。/u);
+  assert(buttons(empty).includes('予算を決める'));
+  const editing = panel({
+    view: view([entry(0)], {
+      budget: {
+        items: [{ category: 'food', budget_yen: 1000 }],
+        total_budget_yen: 1000,
+      },
+    }),
+    seq: 2,
+    editingBudget: true,
+  });
+  assert.equal((editing.match(/<input /gu) ?? []).length, 18);
+  assert.match(editing, /id="household-budget-food"[^>]*value="1000"/u);
+  assert(buttons(editing).includes('予算を保存する'));
+  // 読めていなければ出さない。
+  assert.doesNotMatch(text(panel({ view: view([entry(0)]), seq: 2 })), /予算/u);
 });

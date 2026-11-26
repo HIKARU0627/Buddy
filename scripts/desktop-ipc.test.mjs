@@ -152,6 +152,9 @@ test('client quit, local IO stop and hub stop are separate; no token, device ID,
     // 設定の版（ADR 0163）。
     'settings_revision',
     'expected_settings_revision',
+    // 予算の版（ADR 0166）。
+    'budget_revision',
+    'expected_budget_revision',
   ]) {
     assert(!(field in defs.DesktopHouseholdEntry.properties), field);
     assert(!(field in defs.DesktopHouseholdView.properties), field);

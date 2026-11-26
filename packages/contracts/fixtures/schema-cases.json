@@ -3582,6 +3582,11 @@
       "recurring": {
         "items": [],
         "monthly_total_yen": 0
+      },
+      "budget": {
+        "budget_revision": "0",
+        "items": [],
+        "total_budget_yen": 0
       }
     }
   },
@@ -3702,6 +3707,11 @@
       "recurring": {
         "items": [],
         "monthly_total_yen": 0
+      },
+      "budget": {
+        "budget_revision": "0",
+        "items": [],
+        "total_budget_yen": 0
       }
     }
   },
@@ -3831,6 +3841,11 @@
       "recurring": {
         "items": [],
         "monthly_total_yen": 0
+      },
+      "budget": {
+        "budget_revision": "0",
+        "items": [],
+        "total_budget_yen": 0
       }
     },
     "semantic_errors": ["months_sequence"]
@@ -3961,6 +3976,11 @@
       "recurring": {
         "items": [],
         "monthly_total_yen": 0
+      },
+      "budget": {
+        "budget_revision": "0",
+        "items": [],
+        "total_budget_yen": 0
       }
     },
     "semantic_errors": ["months_sequence"]
@@ -4091,6 +4111,11 @@
       "recurring": {
         "items": [],
         "monthly_total_yen": 0
+      },
+      "budget": {
+        "budget_revision": "0",
+        "items": [],
+        "total_budget_yen": 0
       }
     },
     "semantic_errors": ["balance_mismatch"]
@@ -4503,6 +4528,151 @@
       "monthly_total_yen": 1
     },
     "semantic_errors": ["recurring_total_mismatch"]
+  },
+  {
+    "id": "household-budget",
+    "schema": "HouseholdBudget",
+    "valid": true,
+    "value": {
+      "budget_revision": "2",
+      "items": [
+        {
+          "category": "food",
+          "budget_yen": 40000
+        },
+        {
+          "category": "utilities",
+          "budget_yen": 12000
+        }
+      ],
+      "total_budget_yen": 52000
+    }
+  },
+  {
+    "id": "household-budget-empty",
+    "schema": "HouseholdBudget",
+    "valid": true,
+    "value": {
+      "budget_revision": "0",
+      "items": [],
+      "total_budget_yen": 0
+    }
+  },
+  {
+    "id": "household-budget-income",
+    "schema": "HouseholdBudget",
+    "valid": false,
+    "value": {
+      "budget_revision": "2",
+      "items": [
+        {
+          "category": "income",
+          "budget_yen": 1
+        }
+      ],
+      "total_budget_yen": 1
+    }
+  },
+  {
+    "id": "household-budget-total",
+    "schema": "HouseholdBudget",
+    "valid": true,
+    "value": {
+      "budget_revision": "2",
+      "items": [
+        {
+          "category": "food",
+          "budget_yen": 40000
+        },
+        {
+          "category": "utilities",
+          "budget_yen": 12000
+        }
+      ],
+      "total_budget_yen": 1
+    },
+    "semantic_errors": ["budget_total_mismatch"]
+  },
+  {
+    "id": "household-budget-order",
+    "schema": "HouseholdBudget",
+    "valid": true,
+    "value": {
+      "budget_revision": "2",
+      "items": [
+        {
+          "category": "utilities",
+          "budget_yen": 12000
+        },
+        {
+          "category": "food",
+          "budget_yen": 40000
+        }
+      ],
+      "total_budget_yen": 52000
+    },
+    "semantic_errors": ["budget_order"]
+  },
+  {
+    "id": "household-budget-duplicate",
+    "schema": "HouseholdBudget",
+    "valid": true,
+    "value": {
+      "budget_revision": "2",
+      "items": [
+        {
+          "category": "food",
+          "budget_yen": 40000
+        },
+        {
+          "category": "food",
+          "budget_yen": 40000
+        }
+      ],
+      "total_budget_yen": 80000
+    },
+    "semantic_errors": ["budget_category_duplicate"]
+  },
+  {
+    "id": "household-budget-change",
+    "schema": "HouseholdBudgetChangeRequest",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-0000000c0105",
+      "command_scope_id": "00000000-0000-4000-8000-000000009002",
+      "expected_budget_revision": "1",
+      "items": [
+        {
+          "category": "food",
+          "budget_yen": 40000
+        },
+        {
+          "category": "utilities",
+          "budget_yen": 12000
+        }
+      ]
+    }
+  },
+  {
+    "id": "household-budget-change-duplicate",
+    "schema": "HouseholdBudgetChangeRequest",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-0000000c0105",
+      "command_scope_id": "00000000-0000-4000-8000-000000009002",
+      "expected_budget_revision": "1",
+      "items": [
+        {
+          "category": "food",
+          "budget_yen": 40000
+        },
+        {
+          "category": "food",
+          "budget_yen": 40000
+        }
+      ]
+    },
+    "semantic_errors": ["budget_category_duplicate"]
   },
   {
     "id": "sync-batch",

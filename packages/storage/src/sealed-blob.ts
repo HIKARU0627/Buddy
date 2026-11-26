@@ -19,6 +19,7 @@ export const SEALED_BLOB_FORMAT_VERSION = 1;
  * sealed_blobs.purpose の値（最新のマイグレーションの CHECK と一致することを試験する）。
  * task_content は 0011 で足した（用事の題名・期限・本文。所有者は tasks。ADR 0051）。
  * household_entry は 0016 で足した（家計の記録の内容。所有者は household_entries、版は内容版。ADR 0158）。
+ * household_budget は 0019 で足した（分類ごとの予算。所有者は household_budgets の 1 行、版は予算の版。ADR 0166）。
  */
 export const SEALED_BLOB_PURPOSES = [
   'operation_intent',
@@ -35,6 +36,7 @@ export const SEALED_BLOB_PURPOSES = [
   'proposal',
   'task_content',
   'household_entry',
+  'household_budget',
 ] as const;
 
 export type SealedBlobPurpose = (typeof SEALED_BLOB_PURPOSES)[number];

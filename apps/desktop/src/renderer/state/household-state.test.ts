@@ -16,6 +16,8 @@ import {
   applyViewResponse,
   categoryChoices,
   categoryLabel,
+  budgetItemsFromInput,
+  budgetUseText,
   dayText,
   importResultText,
   monthText,
@@ -68,6 +70,7 @@ const view = (
   mail_intake: 'on',
   last_import: null,
   recurring: null,
+  budget: null,
   ...overrides,
 });
 
@@ -391,5 +394,87 @@ test('the import is one request with no file data from the screen, and its resul
   assert.match(
     importResultText({ ...result, outcome: 'unreadable' }),
     /^ファイルを読めませんでした。/u,
+  );
+});
+
+test('budget input accepts empty, full-width digits and commas, and refuses anything else', () => {
+  assert.deepEqual(
+    budgetItemsFromInput({
+      food: '４０，０００',
+      utilities: ' 12000 ',
+      hobby: '',
+    }),
+    [
+      { category: 'food', budget_yen: 40000 },
+      { category: 'utilities', budget_yen: 12000 },
+    ],
+  );
+  assert.deepEqual(budgetItemsFromInput({}), []);
+  for (const bad of ['0', '-1', '1.5', '１万', '10000000000'])
+    assert.equal(budgetItemsFromInput({ food: bad }), null, bad);
+  assert.equal(
+    budgetUseText({
+      budget_yen: 40000,
+      spent_yen: 12000,
+      remaining_yen: 28000,
+    }),
+    '12,000\u00a0円 / 40,000\u00a0円（残り 28,000\u00a0円）',
+  );
+  assert.equal(
+    budgetUseText({
+      budget_yen: 40000,
+      spent_yen: 42000,
+      remaining_yen: -2000,
+    }),
+    '42,000\u00a0円 / 40,000\u00a0円（2,000\u00a0円の超過）',
+  );
+});
+
+test('the budget editor opens only with a read budget, saves once and closes on success', async () => {
+  const fake = fakeApi();
+  const store = new HouseholdStore(fake.api);
+  store.actions.startBudget();
+  assert.equal(store.snapshot().editingBudget, false);
+  store.actions.refresh();
+  fake.answer((request) =>
+    okResponse(
+      request,
+      view([entry(0)], { budget: { items: [], total_budget_yen: 0 } }),
+    ),
+  );
+  await settle();
+  store.actions.startBudget();
+  assert.equal(store.snapshot().editingBudget, true);
+  store.actions.saveBudget([{ category: 'food', budget_yen: 40000 }]);
+  assert.equal(fake.sent.at(-1)?.channel, 'desktop.household_budget');
+  assert.deepEqual(fake.sent.at(-1)?.payload, {
+    items: [{ category: 'food', budget_yen: 40000 }],
+  });
+  store.actions.saveBudget([]);
+  assert.equal(fake.sent.length, 2);
+  fake.answer((request) =>
+    okResponse(
+      request,
+      view([entry(0)], {
+        budget: {
+          items: [{ category: 'food', budget_yen: 40000 }],
+          total_budget_yen: 40000,
+        },
+        list_seq: 3,
+      }),
+    ),
+  );
+  await settle();
+  assert.equal(store.snapshot().editingBudget, false);
+  assert.equal(store.snapshot().notice?.text, '予算を保存しました。');
+  // 拒否なら入力欄を残す。
+  store.actions.startBudget();
+  store.actions.saveBudget([]);
+  fake.answer((request) => rejected(request, 'preview_stale'));
+  await settle();
+  assert.equal(store.snapshot().editingBudget, true);
+  assert.match(
+    store.snapshot().notice?.text ?? '',
+    /予算はその後に変わっていました/u,
   );
 });

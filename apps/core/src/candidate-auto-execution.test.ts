@@ -179,6 +179,7 @@ function withHarness(
   run: (harness: Harness) => Promise<void>,
   provider: ProviderReader | null = null,
   retention: RetentionFake = { open: true, leases: 0, released: 0 },
+  composeReply: CandidateAutoExecutionPorts['composeReply'] = null,
 ): Promise<void> {
   const dir = mkdtempSync(join(tmpdir(), 'buddy-auto-'));
   const db = openWriteConnection(join(dir, 'buddy.sqlite'), {
@@ -236,6 +237,7 @@ function withHarness(
         };
       },
     },
+    composeReply,
   };
   return (async () => {
     try {
@@ -529,6 +531,7 @@ function fakeProvider(
   over: {
     connection?: ProviderConnection | null;
     target?: ProviderMailTarget | null;
+    findDrafts?: boolean;
   } = {},
 ): ProviderReader {
   const connection: ProviderConnection | null =
@@ -547,9 +550,11 @@ function fakeProvider(
           source_revision: 'rev-1',
           mailbox: 'INBOX',
           labels: ['INBOX'],
+          sender: 'sender@example.com',
+          subject: '書類の件',
         }
       : over.target;
-  return {
+  const reader: ProviderReader = {
     connection: async () => connection,
     readPermission: async (accountId) => ({
       account_id: accountId,
@@ -559,6 +564,9 @@ function fakeProvider(
     readTarget: async () => target,
     listEvents: async () => [],
   };
+  return over.findDrafts === false
+    ? reader
+    : { ...reader, findDrafts: async () => [] };
 }
 
 test('ラベルの付与が方針で有効なら、元のメールにラベルを 1 つ足す操作を方針による自動承認で作る', async () => {
@@ -790,6 +798,178 @@ test('掃除が済むまではラベルのために provider を読まず、作�
     counting,
     open,
   );
+});
+
+const POLICY_DRAFT_ON: AutoExecutionPolicy = {
+  policy_version: '3',
+  rules: {
+    'task.register': false,
+    'event.create_own': false,
+    'mail.apply_existing_label': false,
+    'mail.save_draft': true,
+  },
+};
+
+// 返信を求める依頼（確度は中、本人宛て、自動送信の差出人ではない）。
+function replyRequest(): CandidateRequest {
+  return { ...candidateRequest(), kind: 'reply_required' } as CandidateRequest;
+}
+
+test('返信の下書きの保存が方針で有効なら、宛先と件名を返信元から決め、本文を作る口の文で下書きの操作を作る', async () => {
+  const composed: unknown[] = [];
+  await withHarness(
+    POLICY_DRAFT_ON,
+    async ({ db, submitted, started, ports }) => {
+      const result = await runCandidateAutoExecution(
+        ports,
+        input({ request: replyRequest() }),
+      );
+      assert.deepEqual(summary(result)[3], [
+        'draft_reply',
+        'auto_eligible',
+        [],
+        'created',
+      ]);
+      assert.deepEqual(composed, [
+        {
+          account_id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+          source_id: 'msg-1',
+          summary: '書類の提出',
+        },
+      ]);
+      assert.equal(submitted.length, 1);
+      const command = submitted[0]!;
+      assert.equal(command.operation_kind, 'mail.draft.create');
+      assert.equal(command.effect_route, 'remote_mutation');
+      assert.equal(command.permission_revision, '7');
+      const opened = openOperationIntent(
+        KEY,
+        { operationId: command.operation_id, contentVersion: 1 },
+        {
+          formatVersion: command.intent.format_version,
+          keyId: command.intent.key_id,
+          nonce: command.intent.nonce,
+          ciphertext: command.intent.ciphertext,
+          tag: command.intent.tag,
+        },
+        command.content_hash,
+      );
+      assert.equal(opened.ok, true);
+      // 確定 intent: 宛先は差出人だけ、CC は空、件名は「Re: 」付き、本文は前後の空白を除いた文。
+      assert.deepEqual(JSON.parse(opened.ok ? opened.canonical : 'null'), {
+        account_id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+        action: {
+          body: '承知しました。\n確認して返信します。',
+          cc: [],
+          kind: 'mail.draft.create',
+          subject: 'Re: 書類の件',
+          to: ['sender@example.com'],
+        },
+        content_version: '1',
+        effects: {
+          external_recipients: [],
+          reconcile_scope: 'operation_marker',
+        },
+        operation_id: command.operation_id,
+        permission_revision: '7',
+        provider: 'mock',
+        schema: 'buddy.operation.v1',
+        target: { remote_id: 'msg-1', source_revision: 'rev-1' },
+      });
+      assert.deepEqual(started, [command.operation_id]);
+      assert.deepEqual(
+        db
+          .prepare(
+            'SELECT operation_kind FROM request_entity_operations WHERE operation_id = ?',
+          )
+          .get(command.operation_id),
+        { operation_kind: 'draft_reply' },
+      );
+    },
+    fakeProvider(),
+    undefined,
+    async (request) => {
+      composed.push(request);
+      return '  承知しました。\n確認して返信します。  ';
+    },
+  );
+});
+
+test('本文が作れない・目印で探せない・返信元が読めない・掃除が済んでいないときは下書きの操作を作らない', async () => {
+  const text = async () => '確認します。';
+  let calls = 0;
+  const counted = async () => {
+    calls += 1;
+    return '確認します。';
+  };
+  const cases: [
+    string,
+    ProviderReader | null,
+    CandidateAutoExecutionPorts['composeReply'],
+    boolean,
+    string,
+  ][] = [
+    ['no composer', fakeProvider(), null, true, 'composer_unavailable'],
+    ['empty body', fakeProvider(), async () => '   ', true, 'body_unavailable'],
+    ['null body', fakeProvider(), async () => null, true, 'body_unavailable'],
+    [
+      'composer throws',
+      fakeProvider(),
+      async () => {
+        throw new Error('timeout');
+      },
+      true,
+      'body_unavailable',
+    ],
+    [
+      'no marker search',
+      fakeProvider({ findDrafts: false }),
+      text,
+      true,
+      'draft_unreconcilable',
+    ],
+    ['no provider', null, text, true, 'connection_unavailable'],
+    [
+      'no sender',
+      fakeProvider({
+        target: {
+          remote_id: 'msg-1',
+          source_revision: 'rev-1',
+          mailbox: 'INBOX',
+          labels: [],
+          sender: null,
+          subject: '書類の件',
+        },
+      }),
+      text,
+      true,
+      'reply_fields_unreadable',
+    ],
+    ['sweep pending', fakeProvider(), counted, false, 'retention_blocked'],
+  ];
+  for (const [name, provider, compose, open, reason] of cases) {
+    await withHarness(
+      POLICY_DRAFT_ON,
+      async ({ db, started, ports }) => {
+        const result = await runCandidateAutoExecution(
+          ports,
+          input({ request: replyRequest() }),
+        );
+        assert.deepEqual(
+          judged(result)[3]!.outcome,
+          { kind: 'not_created', reasons: [reason] },
+          name,
+        );
+        assert.deepEqual(started, [], name);
+        assert.equal(count(db, 'SELECT count(*) AS n FROM operations'), 0);
+      },
+      provider,
+      { open, leases: 0, released: 0 },
+      compose,
+    );
+  }
+  // 掃除が済んでいなければ、本文を作る口も呼ばない（メールを読ませない）。
+  assert.equal(calls, 0);
 });
 
 test('付けるラベルの ID が無ければ、割り当て済みとはせず気づきだけにする', async () => {

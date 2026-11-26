@@ -105,6 +105,8 @@ export * from './web-research-limits.js';
 // 家計簿の記録の分類・内容・月の集計・出所の鍵・店名からの分類の規則（ADR 0158）。
 export * from './household.js';
 export * from './household-import.js';
+// 家計簿の記録の CSV への書き出し（ADR 0172）。
+export * from './household-export.js';
 export * from './household-recurring.js';
 export * from './household-budget.js';
 export * from './household-duplicates.js';

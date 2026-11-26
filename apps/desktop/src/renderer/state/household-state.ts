@@ -12,7 +12,11 @@ import type {
   DesktopIpcResponse,
   HouseholdCategoryId,
 } from '@buddy/contracts';
-import { HOUSEHOLD_CATEGORIES, householdDuplicateGroups } from '@buddy/domain';
+import {
+  HOUSEHOLD_CATEGORIES,
+  householdDuplicateGroups,
+  householdMonthShift,
+} from '@buddy/domain';
 import { request } from '../desktop-api.js';
 import { REJECT_MESSAGES } from '../labels.js';
 
@@ -62,6 +66,12 @@ export const HOUSEHOLD_LABELS = {
     'マネーフォワード ME のアプリで書き出した入出金履歴の CSV を取り込みます。取り込み済みの行と、利用通知で記録済みの利用は二重に記録しません。',
   importButton: 'ファイルを選んで取り込む',
   importing: '取り込んでいます…',
+  exportTitle: '記録の書き出し',
+  exportNote:
+    '家計簿の記録を CSV ファイルに書き出します。ファイルには金額・店名・メモがそのまま（暗号化せず）入ります。書くのは、選んだ場所だけです。書き出したファイルの保管は、ご自身で気をつけてください。',
+  exportRange: '書き出す期間',
+  exportButton: '保存先を選んで書き出す',
+  exporting: '書き出しています…',
   recurringTitle: '定期の支出（固定費の目安）',
   recurringNote:
     '毎月決まって払っている支出です。直近 12 か月の記録から、3 か月以上続き、今月か先月にもある店を数えています。',
@@ -268,6 +278,76 @@ export function importResultText(result: LastImport): string {
     : `取り込みました（${counts}）`;
 }
 
+// 書き出しの知らせを出す場所。
+export const EXPORT_PLACE = 'export';
+
+// 書き出す期間の選び方（今出している月だけ・今月までの 12 か月・36 か月・10 年）。
+export const EXPORT_RANGES = [
+  { id: 'shown', label: '今出している月だけ', months: 1 },
+  { id: 'year', label: '直近 12\u00a0か月', months: 12 },
+  { id: 'three_years', label: '直近 36\u00a0か月', months: 36 },
+  { id: 'ten_years', label: '直近 10\u00a0年（120\u00a0か月）', months: 120 },
+] as const;
+
+export type ExportRangeId = (typeof EXPORT_RANGES)[number]['id'];
+
+/**
+ * 選んだ期間の始めと終わりの月。今月（中枢が決めた月）までをさかのぼる。「今出している月だけ」は出している月。
+ * 2000 年より前になるときは 2000-01 から。決められなければ null。
+ */
+export function exportRangeOf(
+  id: ExportRangeId,
+  currentMonth: string | null,
+  shownMonth: string | null,
+): { readonly from: string; readonly to: string } | null {
+  const choice = EXPORT_RANGES.find((range) => range.id === id);
+  if (choice === undefined) return null;
+  if (choice.id === 'shown')
+    return shownMonth === null ? null : { from: shownMonth, to: shownMonth };
+  if (currentMonth === null) return null;
+  const from =
+    householdMonthShift(currentMonth, 1 - choice.months) ?? '2000-01';
+  return { from, to: currentMonth };
+}
+
+type LastExport = NonNullable<DesktopHouseholdView['last_export']>;
+
+// 書き出しの結果の文。
+export function exportResultText(result: LastExport): string {
+  const months = `${String(result.months)}\u00a0か月分`;
+  const entries = `${String(result.entries)}\u00a0件`;
+  switch (result.outcome) {
+    case 'saved':
+      return `書き出しました（${months}、記録\u00a0${entries}）。ファイルには金額・店名・メモがそのまま入っています。`;
+    case 'incomplete': {
+      const reasons: string[] = [];
+      if (result.truncated_months > 0)
+        reasons.push(
+          `件数が多くて一部しか読めなかった月が\u00a0${String(result.truncated_months)}\u00a0か月`,
+        );
+      if (result.unreadable > 0)
+        reasons.push(
+          `読めない記録が\u00a0${String(result.unreadable)}\u00a0件`,
+        );
+      const hint =
+        result.truncated_months > 0
+          ? '期間を狭めて、もう一度お試しください。'
+          : '読めない記録が残る間は書き出せません。';
+      return `${reasons.join('、')}あるため、欠けたファイルになるので書き出しませんでした。${hint}`;
+    }
+    case 'read_failed':
+      return '記録を読めなかったため、書き出しませんでした。接続を確かめて、もう一度お試しください。';
+    case 'write_failed':
+      return '選んだ場所に書けなかったため、書き出せませんでした（書きかけのファイルは消しました）。空き容量と保存先を確かめて、もう一度お試しください。';
+    case 'write_failed_unchanged':
+      return '選んだ場所を開けなかったため、書き出せませんでした（ファイルは作らず、元のファイルも変えていません）。保存先の権限と空き容量を確かめて、もう一度お試しください。';
+    case 'write_failed_left':
+      return '選んだ場所に書けなかったため、書き出せませんでした。書きかけのファイルが残っているか、選んだファイルの中身が不完全になっている可能性があります。保存先のファイルを確かめてください。';
+    case 'link_refused':
+      return '選んだ場所はシンボリックリンクなので、何も書きませんでした。リンクではない場所を選んで、もう一度お試しください。';
+  }
+}
+
 // 取り込みの入・切の知らせを出す場所（行の参照は main が作る UUID なので重ならない）。
 export const INTAKE_PLACE = 'intake';
 
@@ -405,6 +485,7 @@ type Kind =
   | 'delete'
   | 'intake'
   | 'import'
+  | 'export'
   | 'budget'
   | 'add'
   | 'edit';
@@ -595,6 +676,8 @@ export interface HouseholdActions {
   readonly setIntake: (mailIntake: 'on' | 'off') => void;
   // 書き出しを取り込む（ADR 0164）。ファイルは main が OS のファイル選択で本人に選ばせる。
   readonly importExport: () => void;
+  // 記録を月の範囲（from から to まで）で CSV に書き出す（ADR 0172）。保存先は main が OS の保存先の選択で本人に選ばせる。
+  readonly exportCsv: (from: string, to: string) => void;
   // 予算の入力欄を出す・しまう・保存する（ADR 0166）。
   readonly startBudget: () => void;
   readonly cancelBudget: () => void;
@@ -652,6 +735,7 @@ export class HouseholdStore {
       confirmDelete: () => this.#delete(),
       setIntake: (mailIntake) => this.#intake(mailIntake),
       importExport: () => this.#importExport(),
+      exportCsv: (from, to) => this.#exportCsv(from, to),
       startBudget: () => {
         if ((this.#state.view?.budget ?? null) === null) return;
         this.#set({ ...this.#state, editingBudget: true, notice: null });
@@ -887,6 +971,38 @@ export class HouseholdStore {
           : idle;
       },
       (state) => applyFailure(state, IMPORT_PLACE),
+    );
+  }
+
+  #exportCsv(from: string, to: string): void {
+    if (this.#state.busy !== null || this.#state.view === null) return;
+    this.#set({
+      ...this.#state,
+      busy: EXPORT_PLACE,
+      notice: null,
+      confirming: null,
+    });
+    void this.#send(
+      request('desktop.household_export', { from, to }),
+      (state, response) => {
+        const idle = {
+          ...state,
+          busy: state.busy === EXPORT_PLACE ? null : state.busy,
+        };
+        if (response.outcome === 'rejected')
+          return {
+            ...idle,
+            notice: {
+              tone: 'warning' as const,
+              text: householdFailureText('export', response.reason),
+              place: EXPORT_PLACE,
+            },
+          };
+        return 'household' in response
+          ? withView(idle, response.household)
+          : idle;
+      },
+      (state) => applyFailure(state, EXPORT_PLACE),
     );
   }
 

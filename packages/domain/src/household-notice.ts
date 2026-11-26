@@ -235,6 +235,8 @@ const AFTER_LABEL = /^(?:[\s】\]〕]*[:：=]\s*|[\s】\]〕]+|$)/u;
 interface FieldValue {
   readonly field: Field;
   readonly value: string;
+  // 支払いの金額の項目の種類（お支払い金額・お支払金額・支払金額は同じ、決済金額は別）。ほかの項目は空。
+  readonly paymentKind: string | null;
 }
 
 function fieldsOf(text: string): FieldValue[] {
@@ -261,7 +263,16 @@ function fieldsOf(text: string): FieldValue[] {
         continue;
       value = next;
     }
-    fields.push({ field: label[1], value });
+    fields.push({
+      field: label[1],
+      value,
+      paymentKind:
+        label[1] === 'payment_amount'
+          ? label[0].includes('決済')
+            ? 'settlement'
+            : 'payment'
+          : null,
+    });
   }
   return fields;
 }
@@ -305,10 +316,45 @@ export interface HouseholdNoticeDate {
 
 const pad = (value: number): string => String(value).padStart(2, '0');
 
+const DAY_MS = 86_400_000;
+// 年のない日付の年を決める範囲（受信日から見た日数）。受信日の 7 日先まで（タイムゾーンの違いで 1 日先になる場合の余裕）から、
+// 358 日前（約 1 年前）まで。範囲は 366 日分あるので、月日が実在する年なら受信日の前の年・同じ年・翌年のどれかが必ず入る。
+const YEARLESS_AHEAD_DAYS = 7;
+const YEARLESS_BEHIND_DAYS = 358;
+
+// 年のない月日の年を、受信日の前の年・同じ年・翌年の三つの候補から決める。範囲に入る候補が複数あるのは、ちょうど 7 日先と
+// 358 日前が同時に入る境目だけで、受信日に近い方（7 日先）を使う（近い方を選ぶので、境目の前後で年が揺れない）。その年に
+// 月日が実在しない（うるう年でない年の 2/29）候補は数えず、どれも範囲に入らなければ null（2/28 や 3/1 に丸めない）。
+function yearlessYear(
+  month: number,
+  day: number,
+  receivedOn: string,
+): number | null {
+  const receivedYear = Number(receivedOn.slice(0, 4));
+  const received = Date.UTC(
+    receivedYear,
+    Number(receivedOn.slice(5, 7)) - 1,
+    Number(receivedOn.slice(8, 10)),
+  );
+  let best: { readonly year: number; readonly distance: number } | null = null;
+  for (const year of [receivedYear - 1, receivedYear, receivedYear + 1]) {
+    if (!isHouseholdDate(`${String(year)}-${pad(month)}-${pad(day)}`)) continue;
+    const offset = Math.round(
+      (Date.UTC(year, month - 1, day) - received) / DAY_MS,
+    );
+    if (offset > YEARLESS_AHEAD_DAYS || offset < -YEARLESS_BEHIND_DAYS)
+      continue;
+    const distance = Math.abs(offset);
+    if (best === null || distance < best.distance) best = { year, distance };
+  }
+  return best === null ? null : best.year;
+}
+
 /**
- * 日付の値を YYYY-MM-DD と HH:MM にする。年がない書式（11/26）は受信日の年を使い、受信日の年の月日が受信日より
- * 7 日を超えて後なら前の年とする（年末年始の 12/31 の利用を 1/2 に受け取る場合）。7 日以内の先なら、タイムゾーンの違いで
- * 1 日先になっただけとして受信日の年のままにする（ADR 0170）。読めなければ null。
+ * 日付の値を YYYY-MM-DD と HH:MM にする。年がない書式（11/26）は、受信日の前の年・同じ年・翌年のうち、受信日から見て
+ * 7 日先まで（タイムゾーンの違いで 1 日先になっただけの日付を含む）から 358 日前までに入るものを年とする。年末年始の
+ * 12/31 の利用を 1/2 に受け取れば前の年、12/31 の受信に 01/01 の利用なら翌年になる。その年に月日がない（うるう年でない年の
+ * 2/29）ときや、どの年も範囲に入らないときは null（ADR 0170）。読めなければ null。
  */
 export function parseHouseholdNoticeDate(
   value: string,
@@ -331,15 +377,9 @@ export function parseHouseholdNoticeDate(
   } else if (short !== null && isHouseholdDate(receivedOn)) {
     month = Number(short[1]);
     day = Number(short[2]);
-    const receivedYear = Number(receivedOn.slice(0, 4));
-    const sameYear = Date.UTC(receivedYear, month - 1, day);
-    const received = Date.UTC(
-      receivedYear,
-      Number(receivedOn.slice(5, 7)) - 1,
-      Number(receivedOn.slice(8, 10)),
-    );
-    const later = sameYear - received > 7 * 86_400_000;
-    year = later ? receivedYear - 1 : receivedYear;
+    const decided = yearlessYear(month, day, receivedOn);
+    if (decided === null) return null;
+    year = decided;
     rest = text.slice(short[0].length);
   } else return null;
   const on = `${String(year)}-${pad(month)}-${pad(day)}`;
@@ -400,6 +440,25 @@ function merchantOf(value: string | undefined): string | null {
   return [...text].slice(0, MERCHANT_MAX).join('');
 }
 
+// 一つの利用の金額。利用の金額の項目があればそれ、なければ支払いの金額の項目（複数なら全部が読めて同じ額のときだけ）。
+function groupAmount(
+  usage: string | undefined,
+  payments: readonly { readonly value: string }[],
+): HouseholdNoticeAmount {
+  if (usage !== undefined) return parseHouseholdNoticeAmount(usage);
+  const parsed = payments.map((payment) =>
+    parseHouseholdNoticeAmount(payment.value),
+  );
+  const first = parsed[0];
+  if (first === undefined) return { ok: false, reason: 'amount_unreadable' };
+  const failed = parsed.find((amount) => !amount.ok);
+  if (failed !== undefined) return failed;
+  const same = parsed.every(
+    (amount) => amount.ok && first.ok && amount.yen === first.yen,
+  );
+  return same ? first : { ok: false, reason: 'amount_unreadable' };
+}
+
 /** 利用通知メールの件名と本文から、記録の内容を読み取る。 */
 export function readHouseholdNotice(
   input: HouseholdNoticeInput,
@@ -410,37 +469,48 @@ export function readHouseholdNotice(
   if (kind === 'provisional')
     return { outcome: 'ignored', reason: 'provisional' };
   // 利用の金額の項目（ご利用金額・利用金額）が一つでもあれば、支払いの金額の項目は読まない（同じ利用の二重の記録を避ける）。
-  // 利用の金額の項目がなければ、支払いの金額の項目を利用の金額として読む（ADR 0170）。
+  // 利用の金額の項目がなければ、支払いの金額の項目を利用の金額として読む。このとき、一つの利用の区切りに支払いの金額の
+  // 項目が種類の違うまま並んでも（お支払い金額と決済金額）一つの利用とし、金額が食い違えば読まない（ADR 0170）。
   const allFields = fieldsOf(input.text);
   const hasUsageAmount = allFields.some(({ field }) => field === 'amount');
-  const fields = allFields
-    .filter(({ field }) => !hasUsageAmount || field !== 'payment_amount')
-    .map(({ field, value }) => ({
-      field: field === 'payment_amount' ? ('amount' as const) : field,
-      value,
-    }));
-  // 項目を利用ごとにまとめる。同じ項目が二度目に出たら、次の利用が始まったとみなす。
-  const groups: Map<Field, string>[] = [];
-  let current = new Map<Field, string>();
-  for (const { field, value } of fields) {
-    if (current.has(field)) {
-      groups.push(current);
-      current = new Map();
-    }
-    current.set(field, value);
+  const fields = allFields.filter(
+    ({ field }) => !hasUsageAmount || field !== 'payment_amount',
+  );
+  // 項目を利用ごとにまとめる。同じ項目（支払いの金額は同じ種類の項目）が二度目に出たら、次の利用が始まったとみなす。
+  interface Group {
+    readonly values: Map<Field, string>;
+    readonly payments: { readonly kind: string; readonly value: string }[];
   }
-  if (current.size > 0) groups.push(current);
-  const usages = groups.filter((group) => group.has('amount'));
+  const groups: Group[] = [];
+  let current: Group = { values: new Map(), payments: [] };
+  for (const { field, value, paymentKind } of fields) {
+    const repeated =
+      field === 'payment_amount'
+        ? current.payments.some((payment) => payment.kind === paymentKind)
+        : current.values.has(field);
+    if (repeated) {
+      groups.push(current);
+      current = { values: new Map(), payments: [] };
+    }
+    if (field === 'payment_amount')
+      current.payments.push({ kind: paymentKind ?? '', value });
+    else current.values.set(field, value);
+  }
+  if (current.values.size > 0 || current.payments.length > 0)
+    groups.push(current);
+  const usages = groups.filter(
+    (group) => group.values.has('amount') || group.payments.length > 0,
+  );
   if (usages.length === 0) return { outcome: 'ignored', reason: 'no_usage' };
   const entries: { index: number; content: HouseholdEntryContent }[] = [];
   const skipped: HouseholdNoticeSkip[] = [];
   usages.slice(0, HOUSEHOLD_NOTICE_USAGE_MAX).forEach((group, index) => {
-    const amount = parseHouseholdNoticeAmount(group.get('amount') ?? '');
+    const amount = groupAmount(group.values.get('amount'), group.payments);
     if (!amount.ok) {
       skipped.push({ index, reason: amount.reason });
       return;
     }
-    const dateValue = group.get('date');
+    const dateValue = group.values.get('date');
     const date =
       dateValue === undefined
         ? null
@@ -452,7 +522,7 @@ export function readHouseholdNotice(
       occurred_on: occurredOn,
       occurred_time: date?.time ?? null,
       category: 'uncategorized',
-      merchant: merchantOf(group.get('merchant')),
+      merchant: merchantOf(group.values.get('merchant')),
       memo: null,
       payment: input.issuer.label,
     };

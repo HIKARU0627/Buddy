@@ -93,6 +93,7 @@ const AUTO_ACTIONS = [
   'desktop.household_budget',
   'desktop.household_add',
   'desktop.household_edit',
+  'desktop.household_export',
 ];
 const ALL_CHANNELS = [
   ...LEGACY_CHANNELS,

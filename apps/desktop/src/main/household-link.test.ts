@@ -242,5 +242,35 @@ test('admission: locked, unfocused, malformed and unknown refs send nothing to t
     entry,
   });
   assert.equal(reason(editUnknown), 'entry_not_found');
+  // CSV の書き出し（ADR 0172）: 前面でない・ロック中は拒否し、形の誤りと範囲の誤り（逆順・121 か月・2000 年より前・
+  // 2099 年より後）は中枢へ何も送らずに拒否する。保存先を選ぶ口がないとき（この組み立て）は、選ばずにやめたのと同じ。
+  const range = { from: '2030-01', to: '2030-12' };
+  const exportHidden = await r.ipc('desktop.household_export', range, {
+    sender: { trustedSender: true, windowFocused: false },
+  });
+  assert.equal(reason(exportHidden), 'screen_operation_required');
+  const exportLocked = await r.ipc('desktop.household_export', range, {
+    io: { ...UNLOCKED, lockState: 'locked' },
+  });
+  assert.equal(reason(exportLocked), 'device_locked');
+  for (const payload of [
+    null,
+    { from: '2030-01' },
+    { ...range, path: '/tmp/x.csv' },
+    { from: '2030-13', to: '2030-12' },
+    { from: '2030-1', to: '2030-12' },
+  ]) {
+    const malformed = await r.ipc('desktop.household_export', payload);
+    assert.equal(reason(malformed), 'invalid_request');
+  }
+  for (const wrong of [
+    { from: '2030-12', to: '2030-01' },
+    { from: '2020-01', to: '2030-01' },
+    { from: '1999-12', to: '2000-01' },
+    { from: '2099-12', to: '2100-01' },
+  ]) {
+    const outOfRange = await r.ipc('desktop.household_export', wrong);
+    assert.equal(reason(outOfRange), 'invalid_request');
+  }
   assert.deepEqual(householdRequests(r), []);
 });

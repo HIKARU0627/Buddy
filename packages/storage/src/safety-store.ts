@@ -309,9 +309,6 @@ export function resumeSafetyBreaker(
 
 // ---- 自動実行の一覧（GET /v1/auto-actions、ADR 0152） ------------------------------------------------------
 
-// 取り消しの経路（補償の操作を作る API）はまだない。できるまで一覧は取り消せるように見せない（ADR 0152）。
-export const UNDO_SUPPORTED = false;
-
 // 一覧に載せる件数の上限。新しい順に返す（U309）。
 export const AUTO_ACTION_LIST_LIMIT = 200;
 
@@ -347,51 +344,77 @@ interface AutoActionRow {
   readonly active_undo: 'in_progress' | 'undone' | 'unknown' | null;
 }
 
-// 安全停止の状態と自動実行の一覧を一つの読み取り transaction で読む。本文（確定 intent）は読まない。
-export function listAutoActions(
-  db: SqliteDatabase,
-  now: number,
-): AutoActionListRecord {
-  return readConsistently(db, () => {
-    const rows = db
-      .prepare(
-        `SELECT a.operation_id, a.action_kind, a.policy_version, a.completed_at, a.undo_deadline,
+const AUTO_ACTION_SELECT = `SELECT a.operation_id, a.action_kind, a.policy_version, a.completed_at, a.undo_deadline,
                 o.state_revision, v.content_version, v.content_hash,
                 (SELECT u.status FROM undo_records u
                    WHERE u.operation_id = a.operation_id AND u.status IN ('in_progress', 'undone', 'unknown')) AS active_undo
            FROM auto_actions a
            JOIN operations o ON o.operation_id = a.operation_id
            LEFT JOIN operation_versions v
-             ON v.operation_id = o.operation_id AND v.content_version = o.current_content_version
+             ON v.operation_id = o.operation_id AND v.content_version = o.current_content_version`;
+
+// 取り消しの経路（補償の操作を作る処理）がある種類だけを取り消せるように見せる。どの種類を取り消せるかは
+// Core が決める（提供元の読み書きの口があるか。ADR 0153）。渡されなければどれも取り消せない（ADR 0152）。
+function autoActionRecord(
+  row: AutoActionRow,
+  now: number,
+  undoableKinds: readonly string[],
+): AutoActionRecord {
+  return {
+    operation_id: row.operation_id,
+    action_kind: row.action_kind,
+    policy_version: String(row.policy_version),
+    state_revision: String(row.state_revision),
+    completed_at: iso(row.completed_at),
+    undo_state: autoActionUndoState({
+      now,
+      undo_deadline: row.undo_deadline,
+      active_undo: row.active_undo,
+      undo_supported: undoableKinds.includes(row.action_kind),
+    }),
+    undo_deadline: iso(row.undo_deadline),
+    undo_target:
+      row.content_version === null || row.content_hash === null
+        ? null
+        : {
+            content_version: String(row.content_version),
+            content_hash: row.content_hash,
+          },
+  };
+}
+
+// 安全停止の状態と自動実行の一覧を一つの読み取り transaction で読む。本文（確定 intent）は読まない。
+export function listAutoActions(
+  db: SqliteDatabase,
+  now: number,
+  undoableKinds: readonly string[] = [],
+): AutoActionListRecord {
+  return readConsistently(db, () => {
+    const rows = db
+      .prepare(
+        `${AUTO_ACTION_SELECT}
           ORDER BY a.completed_at DESC, a.operation_id
           LIMIT ?`,
       )
       .all(AUTO_ACTION_LIST_LIMIT) as AutoActionRow[];
     return {
       safety: readSafetyState(db),
-      items: rows.map((row): AutoActionRecord => ({
-        operation_id: row.operation_id,
-        action_kind: row.action_kind,
-        policy_version: String(row.policy_version),
-        state_revision: String(row.state_revision),
-        completed_at: iso(row.completed_at),
-        undo_state: autoActionUndoState({
-          now,
-          undo_deadline: row.undo_deadline,
-          active_undo: row.active_undo,
-          undo_supported: UNDO_SUPPORTED,
-        }),
-        undo_deadline: iso(row.undo_deadline),
-        undo_target:
-          row.content_version === null || row.content_hash === null
-            ? null
-            : {
-                content_version: String(row.content_version),
-                content_hash: row.content_hash,
-              },
-      })),
+      items: rows.map((row) => autoActionRecord(row, now, undoableKinds)),
     };
   });
+}
+
+// 自動実行を一つ読む（取り消しの経路の判定に使う。ADR 0153）。自動実行でなければ null。
+export function readAutoAction(
+  db: SqliteDatabase,
+  operationId: string,
+  now: number,
+  undoableKinds: readonly string[] = [],
+): AutoActionRecord | null {
+  const row = db
+    .prepare(`${AUTO_ACTION_SELECT} WHERE a.operation_id = ?`)
+    .get(operationId) as AutoActionRow | undefined;
+  return row === undefined ? null : autoActionRecord(row, now, undoableKinds);
 }
 
 // ---- worker の safety の通り道（ADR 0152） ----------------------------------------------------------------
@@ -399,8 +422,19 @@ export function listAutoActions(
 export type SafetyOp =
   // 安全停止の状態（解除の expected_revision の照合に使う）。
   | { readonly kind: 'safety.state' }
-  // 安全停止の状態と自動実行の一覧。now は取り消しの期限の判定に使う。
-  | { readonly kind: 'safety.auto_actions'; readonly now: number }
+  // 安全停止の状態と自動実行の一覧。now は取り消しの期限の判定に使う。undoable_kinds は取り消せる種類（ADR 0153）。
+  | {
+      readonly kind: 'safety.auto_actions';
+      readonly now: number;
+      readonly undoable_kinds?: readonly AutoActionKind[];
+    }
+  // 自動実行を一つ。自動実行でなければ値は null。
+  | {
+      readonly kind: 'safety.auto_action';
+      readonly operation_id: string;
+      readonly now: number;
+      readonly undoable_kinds?: readonly AutoActionKind[];
+    }
   // 停止の解除。成功すれば解除の後の状態を返す。
   | {
       readonly kind: 'safety.resume';
@@ -414,6 +448,7 @@ export type SafetyOpKind = SafetyOp['kind'];
 export interface SafetyOpValues {
   'safety.state': SafetyStateRecord;
   'safety.auto_actions': AutoActionListRecord;
+  'safety.auto_action': AutoActionRecord | null;
   'safety.resume': SafetyStateRecord;
 }
 
@@ -454,10 +489,30 @@ const rejected = (reasons: readonly string[]): SafetyOpResult => ({
 
 const DECIMAL = /^(0|[1-9][0-9]*)$/;
 
+const AUTO_ACTION_KINDS: readonly AutoActionKind[] = [
+  'create_task',
+  'label_mail',
+  'draft_reply',
+];
+
 function safetyOpShapeReasons(op: SafetyOp): readonly string[] {
   if (op.kind === 'safety.state') return [];
-  if (op.kind === 'safety.auto_actions')
-    return Number.isFinite(op.now) ? [] : ['now_invalid'];
+  if (op.kind === 'safety.auto_actions' || op.kind === 'safety.auto_action') {
+    const reasons: string[] = [];
+    if (!Number.isFinite(op.now)) reasons.push('now_invalid');
+    if (
+      op.undoable_kinds !== undefined &&
+      (!Array.isArray(op.undoable_kinds) ||
+        !op.undoable_kinds.every((kind) => AUTO_ACTION_KINDS.includes(kind)))
+    )
+      reasons.push('undoable_kinds_invalid');
+    if (
+      op.kind === 'safety.auto_action' &&
+      (typeof op.operation_id !== 'string' || op.operation_id === '')
+    )
+      reasons.push('operation_id_invalid');
+    return reasons;
+  }
   if (op.kind === 'safety.resume') {
     const reasons: string[] = [];
     if (typeof op.device_id !== 'string' || op.device_id === '')
@@ -492,7 +547,23 @@ export function executeSafetyOp(
     return { result: { ok: true, value: readSafetyState(db) }, halt: false };
   if (op.kind === 'safety.auto_actions')
     return {
-      result: { ok: true, value: listAutoActions(db, op.now) },
+      result: {
+        ok: true,
+        value: listAutoActions(db, op.now, op.undoable_kinds ?? []),
+      },
+      halt: false,
+    };
+  if (op.kind === 'safety.auto_action')
+    return {
+      result: {
+        ok: true,
+        value: readAutoAction(
+          db,
+          op.operation_id,
+          op.now,
+          op.undoable_kinds ?? [],
+        ),
+      },
       halt: false,
     };
   // 書込みを止めた worker は書かない（ADR 0018）。照会は続ける。

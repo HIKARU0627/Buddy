@@ -1,8 +1,8 @@
 // 自動実行の一覧と安全停止の解除の経路（B13-05、ADR 0152）の試験。
 // Core は同じプロセスの startCore（HTTPS は 127.0.0.1、鍵は模擬）。操作は合成の H01 で、実アカウント・実データは使わない。
 // 期待値は設計 03「取り消しと安全停止」（解除は登録済み・ロック解除済み端末の画面操作だけ、版の一致が条件）、
-// J12（取り消しは完了から 30 日）、ADR 0147 の時間窓（10 分・20 件）と ADR 0152（取り消しの経路ができるまで
-// unavailable）から手で書いた値。模擬の試験だけで、実機・実 API は未実施。
+// J12（取り消しは完了から 30 日）、ADR 0147 の時間窓（10 分・20 件）と ADR 0152・0153（提供元の読み書きの口が
+// なければ unavailable）から手で書いた値。取り消しの経路は api-auto-actions-undo.test.ts。模擬の試験だけで、実機・実 API は未実施。
 
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -135,7 +135,7 @@ test('both routes need a device token; the resume also needs home, an unlocked d
   assert.equal((after.json?.['safety'] as Json)['state'], 'stopped');
 });
 
-test('the list shows the safety state and the automatic actions without their content, and undo is not offered yet', async (t) => {
+test('the list shows the safety state and the automatic actions without their content, and undo is not offered without a provider', async (t) => {
   const h = await start(t);
   const empty = await list(h);
   assert.equal(empty.status, 200, empty.text);

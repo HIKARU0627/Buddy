@@ -229,7 +229,7 @@ const CONFLICT_REASONS = new Set([
   'workflow_not_found',
 ]);
 
-function durableReceiptResponse(
+export function durableReceiptResponse(
   requestId: string,
   receipt: {
     readonly command_id: string;

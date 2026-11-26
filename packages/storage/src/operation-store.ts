@@ -1004,6 +1004,13 @@ function dispatchGuardReasons(
 
 // --- 命令ごとの本体 ---
 
+function deviceActive(db: SqliteDatabase, deviceId: string): boolean {
+  const row = db
+    .prepare('SELECT revoked_at FROM devices WHERE device_id = ?')
+    .get(deviceId) as { revoked_at: number | null } | undefined;
+  return row !== undefined && row.revoked_at === null;
+}
+
 function createOperation(
   db: SqliteDatabase,
   context: StoreContext,
@@ -1054,8 +1061,12 @@ function createOperation(
     if (block === 'safety_stopped') throw new CommandRejection([block]);
     if (block !== null) return rejected(command, [block]);
   }
+  const undoApproval = command.undo_of?.screen_approval ?? null;
+  // 取り消しの押下は登録済みで失効していない端末からだけ（J12）。承認の行の端末の外部キーより先に理由を返す。
+  if (undoApproval !== null && !deviceActive(db, undoApproval.device_id))
+    throw new CommandRejection(['device_not_registered']);
   const state: OperationState =
-    auto === null ? 'awaiting_approval' : 'approved';
+    auto === null && undoApproval === null ? 'awaiting_approval' : 'approved';
   db.prepare(
     'INSERT INTO operations (operation_id, workflow_id, kind, effect_route, current_content_version, state, state_revision, created_at, completed_at) VALUES (?, ?, ?, ?, 1, ?, 1, ?, NULL)',
   ).run(
@@ -1103,6 +1114,18 @@ function createOperation(
       origin.account_id,
       origin.calendar_id ?? '',
       command.operation_id,
+    );
+  // 取り消しの押下を画面の承認として記録する（preview は一覧の行そのもの。preview_id に undo_id を使う。ADR 0153）。
+  if (undoApproval !== null && command.undo_of)
+    db.prepare(
+      "INSERT INTO approvals (approval_id, operation_id, content_version, content_hash, route, device_id, preview_id, policy_version, status, approved_at) VALUES (?, ?, 1, ?, 'screen', ?, ?, NULL, 'valid', ?)",
+    ).run(
+      undoApproval.approval_id,
+      command.operation_id,
+      command.content_hash,
+      undoApproval.device_id,
+      command.undo_of.undo_id,
+      context.now,
     );
   const undo = command.undo_of ?? null;
   if (undo !== null) {

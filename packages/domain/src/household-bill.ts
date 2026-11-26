@@ -127,9 +127,11 @@ export function householdSameBill(
 // 請求の金額・予定を知らせる件名（合成の例で決めた広めの書き方。U356）。NFKC にした後で比べる。
 const BILL_SUBJECT =
   /請求|お?支払い?(?:金額|額|予定|日)|引き?落(?:とし|し)?(?:金額|額|予定|日)|口座振替|利用代金|利用明細/u;
-// 請求のお知らせでない件名（宣伝・手続き・引き落としの失敗と督促・変更）。
+// 請求のお知らせでない件名（宣伝・手続き・引き落としの失敗と督促・変更・訂正・再送・取消・速報）。訂正・修正・お詫び・再送は
+// 訂正前と訂正後の両方の請求予定ができないように読まない（消す操作がない。U360）。速報は利用通知の速報（ADR 0159）に合わせて
+// 読まない。
 const BILL_EXCLUDED =
-  /キャンペーン|ポイント|プレゼント|当選|抽選|エントリー|特典|割引|キャッシュバック|おトク|お得|チャンス|本人確認|パスワード|ログイン|不正|登録|変更|停止|再発行|できません|できなかった|未入金|未払|残高不足|延滞|遅延|督促|再引|再振替|アンケート|メンテナンス/u;
+  /キャンペーン|ポイント|プレゼント|当選|抽選|エントリー|特典|割引|キャッシュバック|おトク|お得|チャンス|本人確認|パスワード|ログイン|不正|登録|変更|訂正|修正|お?詫び|再送|取消|取り消し|速報|停止|再発行|できません|できなかった|未入金|未払|残高不足|延滞|遅延|督促|再引|再振替|アンケート|メンテナンス/u;
 
 /** 件名が請求のお知らせか。利用通知の件名かどうかは呼び出し側が先に決め、利用通知なら請求として読まない。 */
 export function householdBillSubject(subject: string): boolean {
@@ -139,16 +141,17 @@ export function householdBillSubject(subject: string): boolean {
 
 // --- 本文 ---
 
-// 項目名（NFKC にした後、行頭の飾りを除いた行の頭）。前回の金額（前回お支払い金額など）は読まない。
+// 項目名（NFKC にした後、行頭の飾りを除いた行の頭。判定だけで、値には飾りを除いた行を使わない）。前回の金額（前回お支払い金額など）は読まない。
 const AMOUNT_LABEL =
   /^(?:今回|今月|当月|次回|合計)?の?(?:ご|お)?(?:利用代金請求|請求|支払い?|引き?落(?:とし|し)?|口座振替|振替)(?:予定)?金?額(?:合計)?/u;
 const DUE_LABEL =
   /^(?:今回|次回)?の?(?:ご|お)?(?:支払い?|引き?落(?:とし|し)?|口座振替|振替)(?:予定)?期?日/u;
 // 行頭の飾り（記号・括弧）。
 const DECORATION = /^[\s■□◆◇●○・*＊‐−–—>【[〔-]+/u;
-// 項目名の後: 括弧の補足（「(予定)」「(12月分)」など）を一つ許し、その後は区切りか行末。
+// 項目名の後: 括弧の補足（「(予定)」「(12月分)」など）を一つ許し、その後は区切りか行末。前回・前月・先月などの補足は今回の
+// 請求ではないので許さない（項目として読まない）。
 const AFTER_LABEL =
-  /^(?:\s*\([^()]*\))?(?:[\s】\]〕]*[:：=]\s*|[\s】\]〕]+|$)/u;
+  /^(?:\s*\((?![^()]*(?:前回|前月|先月|前々|昨月|前年))[^()]*\))?(?:[\s】\]〕]*[:：=]\s*|[\s】\]〕]+|$)/u;
 
 type BillField = 'amount' | 'due';
 
@@ -174,16 +177,18 @@ function billFields(
   const lines = text
     .normalize('NFKC')
     .split(/\r\n|\r|\n/u)
-    .map((line) => line.trim().replace(DECORATION, ''));
+    .map((line) => line.trim());
   const fields: { field: BillField; value: string }[] = [];
   for (let index = 0; index < lines.length; index += 1) {
-    const label = labelOf(lines[index] ?? '');
+    // 飾りを取るのは項目名の判定のときだけ。値には trim しただけの元の行を使う（次の行の「-1,000円」の印を落とさない）。
+    const label = labelOf((lines[index] ?? '').replace(DECORATION, ''));
     if (label === null) continue;
     let value = label.rest.replace(AFTER_LABEL, '').trim();
     if (value.length === 0) {
       // 値が次の行にある書式（項目名だけの行の次の行）。次の行も項目名なら値はない。
       const next = lines.slice(index + 1).find((candidate) => candidate !== '');
-      if (next === undefined || labelOf(next) !== null) continue;
+      if (next === undefined || labelOf(next.replace(DECORATION, '')) !== null)
+        continue;
       value = next;
     }
     fields.push({ field: label.field, value });

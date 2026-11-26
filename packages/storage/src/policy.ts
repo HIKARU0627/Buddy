@@ -348,10 +348,11 @@ export const TABLE_POLICIES: Readonly<Record<string, TablePolicy>> = {
     transaction: 'household',
   },
   // 0021（ADR 0176）。請求予定（会社・金額・引き落とし日は暗号文。平文は出所の種類と鍵・引き落とし日の月・作成時刻だけ）。
-  // 画面からの削除はまだなく、書いた行は変えずに残す（家計の記録と同じく、家計簿の正本の一部として持つ）。
+  // 家計の記録と同じく本人が消すまで残す分類。画面からの削除はまだなく、DB の trigger が削除を拒否する（消す操作を作る
+  // ときは trigger を外すマイグレーションが要る。ADR 0176・U360）。
   household_bills: {
     body: 'sealed_refs',
-    retention: 'permanent',
+    retention: 'until_user_deletes',
     transaction: 'household',
   },
 };

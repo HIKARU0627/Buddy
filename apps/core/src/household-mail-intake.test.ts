@@ -572,8 +572,22 @@ test('同じ請求を二度読んでも、別のメールで同じ請求が届�
     recorded: 0,
     bills: 0,
   });
+  // 金額の項目がない請求のお知らせと、本文を平文にできない請求のお知らせも、理由の名前だけを残す（金額・会社名・メールの ID は残さない）。
+  storeMail(
+    fixture,
+    message('m-noamount', {
+      subject: BILL_SUBJECT,
+      text: '今月のご請求金額が確定しました。会員サイトでご確認ください。',
+    }),
+    2004,
+  );
+  await run.run(target);
+  storeMail(fixture, message('m-notext', { subject: BILL_SUBJECT }), 2005);
+  await run.run(target);
   assert.deepEqual(logs, [
     '家計簿の請求のお知らせを請求予定にしませんでした（zero_amount）。',
+    '家計簿の請求のお知らせを請求予定にしませんでした（no_amount）。',
+    '家計簿の請求のお知らせを請求予定にしませんでした（body_unreadable）。',
   ]);
   assert.equal((await billsOf(fixture)).length, 2);
 });

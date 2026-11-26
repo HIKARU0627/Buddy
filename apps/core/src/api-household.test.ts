@@ -376,7 +376,7 @@ test('1 か月: 記録を新しい順に返し、出所の識別子を返さな�
   assert(!JSON.stringify(response.body).includes('acct-synthetic'));
 });
 
-test('1 か月: 請求予定は記録・集計と分けて返し、月の合計・予算・定期の支出には入れない（ADR 0176）', async (t) => {
+test('1 か月: 請求予定は記録・集計と分けて返し、支出の合計・分類ごとの支出・月ごとの合計・定期の支出には入れない（ADR 0176）', async (t) => {
   const { store, dataKey, ports } = withDb(t);
   const handlers = routes(store, dataKey);
   await record(ports, { amount_yen: 1280, occurred_on: '2030-11-01' });
@@ -437,15 +437,24 @@ test('1 か月: 請求予定は記録・集計と分けて返し、月の合計�
   const summary = response.body['summary'] as Json;
   assert.equal(summary['expense_yen'], 1280);
   assert.equal(summary['entry_count'], 1);
+  // 予算の比べ方に使う分類ごとの支出にも、請求予定（25800・4200・999 円）は入らない。
+  assert.deepEqual(summary['expense_by_category'], [
+    { category: 'uncategorized', total_yen: 1280, count: 1 },
+  ]);
   assert.equal(response.body['unreadable'], 0);
   assert(!JSON.stringify(response.body).includes('acct-synthetic'));
   const december = await call(handlers.getHouseholdMonth, { month: '2030-12' });
   assert.deepEqual((december.body['bills'] as Json)['items'], [
     { issuer: '合成のカード', amount_yen: 25800, due_on: '2030-12-10' },
   ]);
-  // 月ごとの合計・定期の支出・予算にも入らない。
+  // 月ごとの合計・定期の支出にも入らない（予算は設定だけで、請求予定の金額を足さない）。
   const overview = await call(handlers.listHouseholdMonths);
   assert.equal(overview.status, 200);
+  assert.deepEqual(overview.body['budget'], {
+    budget_revision: '0',
+    items: [],
+    total_budget_yen: 0,
+  });
   const months = overview.body['months'] as Json[];
   assert.deepEqual(
     months

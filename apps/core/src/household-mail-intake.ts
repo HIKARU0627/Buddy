@@ -388,10 +388,13 @@ export function createHouseholdMailIntake(
               `家計簿の請求予定を作れませんでした（${recorded.reasons.join(', ')}）。`,
             );
           }
-        } else if (bill?.outcome === 'skipped')
+        } else {
+          // 読まなかった理由の名前だけを残す（金額・会社名・メールの ID は出さない）。
+          const reason = bill === null ? 'body_unreadable' : bill.reason;
           log(
-            `家計簿の請求のお知らせを請求予定にしませんでした（${bill.reason}）。`,
+            `家計簿の請求のお知らせを請求予定にしませんでした（${reason}）。`,
           );
+        }
         if (!(await markChecked(remoteId)))
           return summary('stopped', 'check_failed', counts);
         continue;

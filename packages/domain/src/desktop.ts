@@ -58,6 +58,10 @@ export const DESKTOP_IPC_CHANNELS = [
   'desktop.connection_targets_update',
   // 連携の接続で選べる取得対象の読み取り（中枢が提供元から読む）。中枢の画面でだけ（ADR 0145）。
   'desktop.connection_targets_discover',
+  // B13-05: 自動実行の一覧（安全停止の状態を含む）・取り消し・安全停止の解除。従来の窓と状態の層から（ADR 0154）。
+  'desktop.auto_actions_list',
+  'desktop.auto_action_undo',
+  'desktop.safety_resume',
 ] as const;
 
 export type DesktopIpcChannel = (typeof DESKTOP_IPC_CHANNELS)[number];
@@ -123,6 +127,8 @@ export const DESKTOP_IPC_REJECT_REASONS = [
   'canvas_conflict',
   // 音声の会話を始められない（音声レンダラーが使えない・始めている途中・会話中・接続できない。B05-06、ADR 0050）。
   'voice_unavailable',
+  // 自動実行の取り消しで、対象がその後に変わっていたため中枢が自動では戻さなかった（B13-05、ADR 0153・0154）。
+  'undo_target_changed',
 ] as const;
 
 export type DesktopIpcRejectReason =
@@ -195,6 +201,10 @@ export const DESKTOP_PAIRING_SCREEN_CHANNELS: readonly DesktopIpcChannel[] = [
   // 選べる取得対象の読み取り（ADR 0145）も本人の画面操作。提供元への読み取りを伴うので、本人が前面で押したときだけ
   // 受け付ける（一覧のように後ろで読まない）。保存はせず外部へ送るものでもないので、入出力の停止中も受け付ける。
   'desktop.connection_targets_discover',
+  // 自動実行の取り消しと安全停止の解除も本人の画面操作（B13-05、ADR 0154。設計 03 取り消しと安全停止）。どちらも中枢へ
+  // 記録して中枢の検査（安全停止・版の照合）を通るので、この端末の入出力の停止中も受け付ける（停止の検査はしない）。
+  'desktop.auto_action_undo',
+  'desktop.safety_resume',
 ];
 
 // ロック解除済みのときだけ受け付ける一覧（内容なので、ロック中・不明は出さない。B03-06）。
@@ -210,6 +220,9 @@ export const DESKTOP_UNLOCKED_CHANNELS: readonly DesktopIpcChannel[] = [
   'desktop.candidates_list',
   // 連携の接続の一覧（B08-02 P3・B09-05、ADR 0142）。権限と取得対象は内容なので、ロック中・不明は出さない。前面は求めない。
   'desktop.connections_list',
+  // 自動実行の一覧と安全停止の状態（B13-05、ADR 0154）。何を自動で行ったかは内容なので、ロック中・不明は出さない。
+  // 前面は求めない。
+  'desktop.auto_actions_list',
 ];
 
 // 要求を受け付けてよいか。最初に満たさない検査の拒否を返す。
@@ -314,6 +327,11 @@ export const DESKTOP_ROLE_CHANNELS: Readonly<
     'desktop.connections_list',
     'desktop.connection_targets_update',
     'desktop.connection_targets_discover',
+    // 自動実行の一覧・取り消し・安全停止の解除（B13-05、ADR 0154）。画面は従来の窓に置く。キャンバスの部品が取り消しや
+    // 解除に見せかけられないよう、キャンバス・入力バーには渡さない。
+    'desktop.auto_actions_list',
+    'desktop.auto_action_undo',
+    'desktop.safety_resume',
   ],
   input: ['desktop.get_state', 'desktop.turn_submit', 'desktop.canvas_summon'],
 };

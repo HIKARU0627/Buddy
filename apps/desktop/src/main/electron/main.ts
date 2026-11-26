@@ -36,6 +36,7 @@ import { createDesktopContract, loadContractSchema } from '../contract.js';
 import type { DesktopCanvasDisplaySettings } from '@buddy/contracts';
 import {
   ADMIN_CHANNELS,
+  AUTO_ACTION_CHANNELS,
   CANDIDATE_CHANNELS,
   CANVAS_CHANNELS,
   CONNECTION_CHANNELS,
@@ -686,6 +687,11 @@ function registerIpc(): void {
       if (CANDIDATE_CHANNELS.includes(channel))
         return link
           .handleCandidateIpc(channel, raw, sender, controller.state)
+          .then((outcome) => outcome.response);
+      // 自動実行の一覧・取り消し・安全停止の解除（B13-05、ADR 0154）。操作 ID・版は main が持ち、画面は参照だけ。
+      if (AUTO_ACTION_CHANNELS.includes(channel))
+        return link
+          .handleAutoActionIpc(channel, raw, sender, controller.state)
           .then((outcome) => outcome.response);
       // 連携の接続の一覧と取得範囲の変更（B08-02 P3・B09-05、ADR 0142）。接続 ID・許可版は main が持ち、画面は参照だけ。
       // 中枢の画面の端末でだけ受け付ける（core-link が確かめる）。

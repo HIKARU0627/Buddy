@@ -74,6 +74,7 @@ import type {
 } from './hub-transport.js';
 import { BudgetBridge } from './budget-bridge.js';
 import type { BudgetConfirmRequest } from './budget-bridge.js';
+import { AutoActionBridge } from './auto-action-bridge.js';
 import { CandidateBridge } from './candidate-bridge.js';
 import { ConnectionsBridge } from './connections-bridge.js';
 import { CanvasBridge } from './canvas-bridge.js';
@@ -131,6 +132,14 @@ export const CANVAS_CHANNELS: readonly DesktopIpcChannel[] = [
 export const CANDIDATE_CHANNELS: readonly DesktopIpcChannel[] = [
   'desktop.candidates_list',
   'desktop.candidate_state',
+];
+
+// 自動実行の一覧・取り消し・安全停止の解除のチャネル（B13-05、ADR 0154）。登録済みでロック解除済みの端末なら、
+// 中枢の画面の端末でなくても使える（中枢が端末と画面の操作を確かめる）。
+export const AUTO_ACTION_CHANNELS: readonly DesktopIpcChannel[] = [
+  'desktop.auto_actions_list',
+  'desktop.auto_action_undo',
+  'desktop.safety_resume',
 ];
 
 // 連携の接続の一覧と取得範囲の変更のチャネル（B08-02 P3・B09-05、ADR 0142）。中枢の画面の端末でだけ使える
@@ -375,6 +384,8 @@ export class DesktopCoreLink {
   #budgetPoll: (() => void) | null = null;
   // 気づきの一覧と状態の変更（参照だけを画面へ渡す。B11-05、ADR 0132）。
   readonly #candidates: CandidateBridge;
+  // 自動実行の一覧・取り消し・安全停止の解除（参照だけを画面へ渡す。B13-05、ADR 0154）。
+  readonly #autoActions: AutoActionBridge;
   // 連携の接続の一覧と取得範囲の変更（参照だけを画面へ渡す。B08-02 P3・B09-05、ADR 0142）。
   readonly #connections: ConnectionsBridge;
 
@@ -410,6 +421,13 @@ export class DesktopCoreLink {
       log: (code) => this.#log(code),
     });
     this.#candidates = new CandidateBridge({
+      contract: options.contract,
+      connection: () => this.#connection,
+      newRef: () => options.clock.newRequestId(),
+      now: () => options.clock.now(),
+      log: (code) => this.#log(code),
+    });
+    this.#autoActions = new AutoActionBridge({
       contract: options.contract,
       connection: () => this.#connection,
       newRef: () => options.clock.newRequestId(),
@@ -1186,6 +1204,56 @@ export class DesktopCoreLink {
         raw.channel,
         result,
         (candidates) => ({ candidates }),
+      ),
+    );
+  }
+
+  // 自動実行の一覧・取り消し・安全停止の解除（B13-05、ADR 0154）。一覧はロック解除済み、取り消しと解除はロック解除済みの
+  // 画面操作（前面）。どちらも中枢へ記録して中枢の検査を通るので、この端末の入出力の停止中も受け付ける。ロック・切断を
+  // またいだ一覧は渡さない。
+  async handleAutoActionIpc(
+    ipcChannel: string,
+    raw: unknown,
+    sender: DesktopIpcSender,
+    ioState: DesktopIoState,
+  ): Promise<ConnectionIpcOutcome> {
+    const contract = this.#options.contract;
+    if (
+      !contract.isRequest(raw) ||
+      raw.channel !== ipcChannel ||
+      (raw.channel !== 'desktop.auto_actions_list' &&
+        raw.channel !== 'desktop.auto_action_undo' &&
+        raw.channel !== 'desktop.safety_resume')
+    )
+      return this.#reject(
+        echoRequestId(raw),
+        echoChannel(raw, ipcChannel),
+        'invalid_request',
+      );
+    const admission = admitDesktopRequest(raw.channel, null, ioState, sender);
+    if (!admission.ok)
+      return this.#reject(raw.request_id, raw.channel, admission.reason);
+    const connection = this.#connection;
+    if (
+      connection === null ||
+      this.#registration !== 'registered' ||
+      connection.state.phase !== 'live'
+    )
+      return this.#reject(raw.request_id, raw.channel, 'not_connected');
+    const generation = this.#viewGeneration;
+    const result =
+      raw.channel === 'desktop.auto_actions_list'
+        ? await this.#autoActions.list()
+        : raw.channel === 'desktop.auto_action_undo'
+          ? await this.#autoActions.undo(raw.payload.ref)
+          : await this.#autoActions.resume(raw.payload.ref);
+    return this.#withinGeneration(
+      generation,
+      this.#operationOutcome(
+        raw.request_id,
+        raw.channel,
+        result,
+        (auto_actions) => ({ auto_actions }),
       ),
     );
   }
@@ -2125,6 +2193,7 @@ export class DesktopCoreLink {
     this.#budget.reset();
     this.#cancelBudgetPoll();
     this.#candidates.reset();
+    this.#autoActions.reset();
     this.#connections.reset();
     this.#canvas.reset();
     this.#confirmAbort?.abort();

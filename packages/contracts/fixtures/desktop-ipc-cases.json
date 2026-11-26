@@ -827,6 +827,79 @@
         "expected_io_epoch": null,
         "sender": { "trustedSender": false },
         "expected": { "ok": false, "reason": "untrusted_sender" }
+      },
+      {
+        "id": "auto-actions-list-unlocked-unfocused",
+        "refs": ["ADR 0154", "B13-05"],
+        "channel": "desktop.auto_actions_list",
+        "expected_io_epoch": null,
+        "sender": { "windowFocused": false },
+        "expected": { "ok": true }
+      },
+      {
+        "id": "auto-actions-list-while-locked",
+        "channel": "desktop.auto_actions_list",
+        "expected_io_epoch": null,
+        "state": { "lockState": "locked" },
+        "expected": { "ok": false, "reason": "device_locked" }
+      },
+      {
+        "id": "auto-actions-list-while-lock-unknown",
+        "channel": "desktop.auto_actions_list",
+        "expected_io_epoch": null,
+        "state": { "lockState": "unknown" },
+        "expected": { "ok": false, "reason": "device_locked" }
+      },
+      {
+        "id": "auto-action-undo-from-hidden-window",
+        "refs": ["ADR 0154", "B13-05"],
+        "channel": "desktop.auto_action_undo",
+        "expected_io_epoch": null,
+        "sender": { "windowFocused": false },
+        "expected": { "ok": false, "reason": "screen_operation_required" }
+      },
+      {
+        "id": "auto-action-undo-while-locked",
+        "channel": "desktop.auto_action_undo",
+        "expected_io_epoch": null,
+        "state": { "lockState": "locked" },
+        "expected": { "ok": false, "reason": "device_locked" }
+      },
+      {
+        "id": "auto-action-undo-from-untrusted-sender",
+        "channel": "desktop.auto_action_undo",
+        "expected_io_epoch": null,
+        "sender": { "trustedSender": false },
+        "expected": { "ok": false, "reason": "untrusted_sender" }
+      },
+      {
+        "id": "auto-action-undo-by-screen-while-stopped",
+        "channel": "desktop.auto_action_undo",
+        "expected_io_epoch": null,
+        "state": { "stopScope": "local" },
+        "expected": { "ok": true }
+      },
+      {
+        "id": "safety-resume-from-hidden-window",
+        "refs": ["ADR 0154", "B13-05"],
+        "channel": "desktop.safety_resume",
+        "expected_io_epoch": null,
+        "sender": { "windowFocused": false },
+        "expected": { "ok": false, "reason": "screen_operation_required" }
+      },
+      {
+        "id": "safety-resume-while-lock-unknown",
+        "channel": "desktop.safety_resume",
+        "expected_io_epoch": null,
+        "state": { "lockState": "unknown" },
+        "expected": { "ok": false, "reason": "device_locked" }
+      },
+      {
+        "id": "safety-resume-by-screen-while-stopped",
+        "channel": "desktop.safety_resume",
+        "expected_io_epoch": null,
+        "state": { "stopScope": "local" },
+        "expected": { "ok": true }
       }
     ]
   },

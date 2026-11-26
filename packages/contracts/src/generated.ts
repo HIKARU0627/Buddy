@@ -1243,6 +1243,25 @@ export type DesktopIpcRequest =
       payload: {
         ref: Id;
       };
+    }
+  | {
+      channel: 'desktop.auto_actions_list';
+      request_id: Id;
+      payload: null;
+    }
+  | {
+      channel: 'desktop.auto_action_undo';
+      request_id: Id;
+      payload: {
+        ref: Id;
+      };
+    }
+  | {
+      channel: 'desktop.safety_resume';
+      request_id: Id;
+      payload: {
+        ref: Id;
+      };
     };
 export type DesktopHubHost = string;
 export type DesktopHubHost1 = string;
@@ -1417,6 +1436,15 @@ export type DesktopIpcResponse =
       connections: DesktopProviderConnectionsView;
     }
   | {
+      request_id: Id;
+      channel:
+        | 'desktop.auto_actions_list'
+        | 'desktop.auto_action_undo'
+        | 'desktop.safety_resume';
+      outcome: 'ok';
+      auto_actions: DesktopAutoActionView;
+    }
+  | {
       request_id: Id | null;
       channel: DesktopIpcChannel | null;
       outcome: 'rejected';
@@ -1445,7 +1473,8 @@ export type DesktopIpcResponse =
         | 'input_stopped'
         | 'content_unavailable'
         | 'canvas_conflict'
-        | 'voice_unavailable';
+        | 'voice_unavailable'
+        | 'undo_target_changed';
       /**
        * outcome_unknown のときだけ: 結果が分からなかった時点の一覧の通し番号（自宅の登録では自宅の要求の通し番号）。画面はこれより大きい番号の同じ種類の一覧・自宅の読み取りを受け取るまで、その行・登録を操作させない（ADR 0022・0026）。
        */
@@ -1655,7 +1684,7 @@ export type DesktopVoiceView =
       reply_mode: 'voice' | 'text';
     };
 /**
- * UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014・0025）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。中枢との接続・ペアリングは用途別のチャネルだけで、要求の宛先・本文を Renderer が決められない。音声レンダラーの IPC（B05）は別に定める。 発言・承認表示の準備・承認・取消・照合は用途別のチャネルで、操作は main が持つ参照（ref）で指す（B04-05、ADR 0031）。 キャンバスを前に出す（canvas_summon）は状態の層と入力バーからだけ使う（UI-02、ADR 0032）。状態の層のパネルを出す・しまう（status_panel）は状態の層からだけ使う（UI-04、ADR 0032）。キャンバスのユーザーの操作（canvas_user_op）はキャンバスの窓からだけ、キャンバスが前に出ている間だけ使う（UI-06、ADR 0032）。 予算の確認（超過枠の承認・見送り budget_overage_decide、M 超過の確認 budget_overrun_review、不明な費用の手での精算 budget_manual_settle）は状態の層からだけ使う。承認・確認・精算は main の OS の確認ダイアログを 1 回だけ挟み、画面が持つのは main が作る参照（ref）だけ（B07-05、ADR 0039）。 音声（B05-06、ADR 0050）: 音声の状態の取得（get_voice）・呼びかけなしで音声の会話を始める「続ける」（voice_continue）・外部への送信の同意の取り消し（voice_consent_revoke）は状態の層からだけ使う。外部への送信の同意は main の OS の確認ダイアログで 1 回だけ取り、画面は同意を作れない。音声レンダラーへの IPC は VoiceRendererRequest で、このチャネルとは別。 気づき（B11-05、ADR 0132）: 一覧の取得（candidates_list）と状態の変更（candidate_state。開く・今回は扱わない・再通知）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バーは使えない。候補は main が作る参照（ref）で指し、候補 ID・expected_state・接続範囲は main が持つ。 連携の接続（B08-02 P3・B09-05、ADR 0142）: 一覧の取得（connections_list）と取得範囲の変更（connection_targets_update）は中枢の画面（接続・端末）でだけ使い、キャンバス・入力バーは使えない。接続は main が作る参照（ref）で指し、接続 ID・permission_revision は main が持つ。画面が送れるのは今の保存値と、この世代で中枢から読んだ選べる対象（connection_targets_discover）のうちの選択と、期間・添付の範囲だけ（ADR 0145）。選べる対象の読み取りは提供元への読み取りを伴うので、中枢の画面のロック解除済みの画面操作だけ。
+ * UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014・0025）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。中枢との接続・ペアリングは用途別のチャネルだけで、要求の宛先・本文を Renderer が決められない。音声レンダラーの IPC（B05）は別に定める。 発言・承認表示の準備・承認・取消・照合は用途別のチャネルで、操作は main が持つ参照（ref）で指す（B04-05、ADR 0031）。 キャンバスを前に出す（canvas_summon）は状態の層と入力バーからだけ使う（UI-02、ADR 0032）。状態の層のパネルを出す・しまう（status_panel）は状態の層からだけ使う（UI-04、ADR 0032）。キャンバスのユーザーの操作（canvas_user_op）はキャンバスの窓からだけ、キャンバスが前に出ている間だけ使う（UI-06、ADR 0032）。 予算の確認（超過枠の承認・見送り budget_overage_decide、M 超過の確認 budget_overrun_review、不明な費用の手での精算 budget_manual_settle）は状態の層からだけ使う。承認・確認・精算は main の OS の確認ダイアログを 1 回だけ挟み、画面が持つのは main が作る参照（ref）だけ（B07-05、ADR 0039）。 音声（B05-06、ADR 0050）: 音声の状態の取得（get_voice）・呼びかけなしで音声の会話を始める「続ける」（voice_continue）・外部への送信の同意の取り消し（voice_consent_revoke）は状態の層からだけ使う。外部への送信の同意は main の OS の確認ダイアログで 1 回だけ取り、画面は同意を作れない。音声レンダラーへの IPC は VoiceRendererRequest で、このチャネルとは別。 気づき（B11-05、ADR 0132）: 一覧の取得（candidates_list）と状態の変更（candidate_state。開く・今回は扱わない・再通知）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バーは使えない。候補は main が作る参照（ref）で指し、候補 ID・expected_state・接続範囲は main が持つ。 連携の接続（B08-02 P3・B09-05、ADR 0142）: 一覧の取得（connections_list）と取得範囲の変更（connection_targets_update）は中枢の画面（接続・端末）でだけ使い、キャンバス・入力バーは使えない。接続は main が作る参照（ref）で指し、接続 ID・permission_revision は main が持つ。画面が送れるのは今の保存値と、この世代で中枢から読んだ選べる対象（connection_targets_discover）のうちの選択と、期間・添付の範囲だけ（ADR 0145）。選べる対象の読み取りは提供元への読み取りを伴うので、中枢の画面のロック解除済みの画面操作だけ。 自動実行（B13-05、ADR 0154）: 一覧と安全停止の状態の取得（auto_actions_list）・取り消し（auto_action_undo）・安全停止の解除（safety_resume）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バーは使えない。自動実行した操作と安全停止の状態は main が作る参照（ref）で指し、操作 ID・state_revision・safety_revision・接続範囲は main が持つ。
  */
 export type DesktopIpcChannel =
   | 'desktop.get_state'
@@ -1697,7 +1726,10 @@ export type DesktopIpcChannel =
   | 'desktop.candidate_state'
   | 'desktop.connections_list'
   | 'desktop.connection_targets_update'
-  | 'desktop.connection_targets_discover';
+  | 'desktop.connection_targets_discover'
+  | 'desktop.auto_actions_list'
+  | 'desktop.auto_action_undo'
+  | 'desktop.safety_resume';
 /**
  * main から UI レンダラーへの通知（設計 10 §1、07 §2、ADR 0014）。本文・端末 ID・認証情報を含めない。
  */
@@ -6377,6 +6409,79 @@ export interface DesktopConnectionDiscovery {
   calendars: ConnectionTargetOptionList;
   mail_containers: ConnectionTargetOptionList;
   categories: ConnectionCategoryList;
+}
+/**
+ * 自動実行の一覧と安全停止の状態の表示用の値（B13-05、ADR 0154。設計 03 取り消しと安全停止、J12）。
+ */
+export interface DesktopAutoActionView {
+  /**
+   * 取得の状態。loaded は直近の読み取りが成功、stale は直近の読み取りに失敗して前に読めた値を出している、unavailable はこの世代でまだ読めていない（「自動実行なし」と区別する）。
+   */
+  fetch: 'loaded' | 'stale' | 'unavailable';
+  /**
+   * 最後に一覧を読めた時刻（main の時計）。経過の表示の基準にも使う。読めていなければ null。
+   */
+  fetched_at: UtcTime | null;
+  /**
+   * 最後に読めた安全停止の状態。読めていなければ null（「動いている」と見せない）。
+   */
+  safety: DesktopSafetyView | null;
+  entries: DesktopAutoActionEntry[];
+  /**
+   * main が付ける一覧の通し番号。画面はこれより小さい番号の応答を反映しない（ADR 0026 と同じ）。
+   */
+  list_seq: number;
+}
+/**
+ * 安全停止の状態の表示用の値（B13-05、ADR 0154）。safety_revision と自動承認の件数は main の中にだけ持つ。
+ */
+export interface DesktopSafetyView {
+  /**
+   * B00初版のランダムUUID v4。認証情報ではない。
+   */
+  ref: string;
+  state: 'running' | 'stopped';
+  stop_reason:
+    | (
+        | 'rate_exceeded'
+        | 'same_target_repeated'
+        | 'compensation_failures'
+        | 'restored_from_backup'
+      )
+    | null;
+  stopped_at: UtcTime | null;
+}
+/**
+ * 自動実行した操作の 1 行の表示用の値（B13-05、ADR 0154）。操作 ID・state_revision・方針の版・取り消しの対象の内容版は main の中にだけ持ち、画面へ渡さない。本文は中枢も返さない。
+ */
+export interface DesktopAutoActionEntry {
+  /**
+   * B00初版のランダムUUID v4。認証情報ではない。
+   */
+  ref: string;
+  /**
+   * 中枢が並べた順（0 から）。
+   */
+  position: number;
+  kind:
+    | 'create_task'
+    | 'create_note'
+    | 'label_mail'
+    | 'draft_reply'
+    | 'create_event';
+  completed_at: UtcTime;
+  undo_state:
+    | 'available'
+    | 'target_changed'
+    | 'expired'
+    | 'in_progress'
+    | 'undone'
+    | 'unavailable';
+  undo_deadline: UtcTime;
+  /**
+   * この操作の取り消しの結果が分からない。次に一覧を読み直せるまで取り消させない（自動では送り直さない）。
+   */
+  delivery_unknown: boolean;
 }
 /**
  * 画面へ渡すキャンバスの今の記述（ADR 0032）。main が中枢から取り、形式（CanvasDocument）と意味（domain）の検査を通してから、参照を不透明な参照に置き換えて渡す。ロック・切断・世代の変化では渡した記述を捨てる（canvas を null にして通知する）。

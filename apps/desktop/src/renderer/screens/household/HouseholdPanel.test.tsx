@@ -74,6 +74,7 @@ const view = (
   list_seq: 2,
   mail_intake: 'on',
   last_import: null,
+  recurring: null,
   ...overrides,
 });
 
@@ -261,4 +262,44 @@ test('the import block offers to pick a file and shows the last result', () => {
   assert.match(done, /取り込みました（新しく記録\u00a03\u00a0件/u);
   // 読めていなければ取り込みの欄を出さない。
   assert.doesNotMatch(text(panel({})), /ファイルを選んで取り込む/u);
+});
+
+test('the recurring block lists fixed costs with the monthly estimate, and says when there are none', () => {
+  const html = text(
+    panel({
+      view: view([entry(0)], {
+        recurring: {
+          items: [
+            {
+              merchant: '合成モバイル',
+              category: 'communication',
+              typical_yen: 3000,
+              months_seen: 4,
+              last_on: '2030-11-03',
+            },
+          ],
+          monthly_total_yen: 3000,
+        },
+      }),
+      seq: 2,
+    }),
+  );
+  assert.match(html, /定期の支出（固定費の目安）/u);
+  assert.match(html, /月の固定費の目安 +3,000\u00a0円/u);
+  assert.match(html, /合成モバイル（通信費）/u);
+  assert.match(html, /12\u00a0か月中\u00a04\u00a0か月/u);
+  const none = text(
+    panel({
+      view: view([entry(0)], {
+        recurring: { items: [], monthly_total_yen: 0 },
+      }),
+      seq: 2,
+    }),
+  );
+  assert.match(none, /まだ定期の支出は見つかっていません。/u);
+  // 読めていなければ出さない。
+  assert.doesNotMatch(
+    text(panel({ view: view([entry(0)]), seq: 2 })),
+    /定期の支出/u,
+  );
 });

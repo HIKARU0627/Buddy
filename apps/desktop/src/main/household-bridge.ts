@@ -188,6 +188,7 @@ export class HouseholdBridge {
         (this.#month?.truncated ?? false),
       list_seq: this.#listSeq,
       mail_intake: this.#overview?.settings.mail_intake ?? null,
+      recurring: this.#overview?.recurring ?? null,
       last_import: this.#lastImport,
     };
   }

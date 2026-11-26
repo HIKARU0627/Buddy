@@ -67,6 +67,7 @@ const view = (
   list_seq: 2,
   mail_intake: 'on',
   last_import: null,
+  recurring: null,
   ...overrides,
 });
 

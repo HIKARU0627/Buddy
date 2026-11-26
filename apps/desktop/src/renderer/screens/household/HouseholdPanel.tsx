@@ -6,6 +6,7 @@
 import { Button } from '@heroui/react';
 import type {
   DesktopHouseholdEntry,
+  HouseholdRecurringSummary,
   HouseholdCategoryId,
   HouseholdMonthSummary,
   HouseholdMonthTotals,
@@ -27,6 +28,7 @@ import {
   elapsedText,
   importResultText,
   monthText,
+  monthsSeenText,
   yenText,
 } from '../../state/household-state.js';
 import type {
@@ -342,6 +344,52 @@ function IntakeBlock({
   );
 }
 
+// 定期の支出と固定費の目安（ADR 0165）。中枢が 12 か月の記録から毎回計算した値を出す。
+function RecurringBlock({
+  recurring,
+}: {
+  readonly recurring: HouseholdRecurringSummary;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <h3 className="text-sm font-semibold">
+        {HOUSEHOLD_LABELS.recurringTitle}
+      </h3>
+      <p className="text-xs text-muted">{HOUSEHOLD_LABELS.recurringNote}</p>
+      {recurring.items.length === 0 ? (
+        <p className="text-sm text-muted">{HOUSEHOLD_LABELS.recurringEmpty}</p>
+      ) : (
+        <>
+          <p className="text-sm">
+            {`${HOUSEHOLD_LABELS.recurringTotal} `}
+            <span className="font-semibold tabular-nums">
+              {yenText(recurring.monthly_total_yen)}
+            </span>
+          </p>
+          <ul
+            aria-label={HOUSEHOLD_LABELS.recurringTitle}
+            className="flex flex-col gap-0.5 text-sm"
+          >
+            {recurring.items.map((item) => (
+              <li
+                key={`${item.merchant}|${item.last_on}`}
+                className="flex flex-wrap justify-between gap-2"
+              >
+                <span className="min-w-0 break-words">
+                  {`${item.merchant}（${categoryLabel(item.category)}）`}
+                </span>
+                <span className="tabular-nums">
+                  {`${yenText(item.typical_yen)} ・ ${monthsSeenText(item.months_seen)}`}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </div>
+  );
+}
+
 // 書き出しの取り込み（ADR 0164）。ファイルは main が OS のファイル選択で本人に選ばせる。結果は最後の取り込みの件数。
 function ImportBlock({
   state,
@@ -459,6 +507,9 @@ export function HouseholdPanel({
             </ul>
           )}
         </>
+      )}
+      {!loaded || view.recurring === null ? null : (
+        <RecurringBlock recurring={view.recurring} />
       )}
       {loaded ? <ImportBlock state={state} actions={actions} /> : null}
       {!loaded || view.months.length === 0 ? null : (

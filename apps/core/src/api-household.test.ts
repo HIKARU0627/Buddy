@@ -234,6 +234,39 @@ test('月ごとの合計: 今月は本人のタイムゾーンで決め、今月
     ],
     truncated: false,
     settings: { mail_intake: 'on', settings_revision: '0' },
+    recurring: { items: [], monthly_total_yen: 0 },
+  });
+});
+
+test('月ごとの合計: 毎月決まって払っている支出を定期の支出として返し、固定費の目安を出す（ADR 0165）', async (t) => {
+  const { store, dataKey, ports } = withDb(t);
+  for (const day of ['2030-09-27', '2030-10-27', '2030-11-01'])
+    await record(ports, {
+      amount_yen: 3000,
+      occurred_on: day,
+      category: 'communication',
+      merchant: '合成モバイル',
+    });
+  // 2 か月だけの店は数えない。
+  for (const day of ['2030-10-02', '2030-11-02'])
+    await record(ports, {
+      amount_yen: 990,
+      occurred_on: day,
+      merchant: '合成動画',
+    });
+  const response = await call(routes(store, dataKey).listHouseholdMonths);
+  assert(contract.valid('HouseholdOverview', response.body));
+  assert.deepEqual(response.body['recurring'], {
+    items: [
+      {
+        merchant: '合成モバイル',
+        category: 'communication',
+        typical_yen: 3000,
+        months_seen: 3,
+        last_on: '2030-11-01',
+      },
+    ],
+    monthly_total_yen: 3000,
   });
 });
 

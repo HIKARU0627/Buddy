@@ -61,7 +61,17 @@ export const HOUSEHOLD_LABELS = {
     'マネーフォワード ME のアプリで書き出した入出金履歴の CSV を取り込みます。取り込み済みの行と、利用通知で記録済みの利用は二重に記録しません。',
   importButton: 'ファイルを選んで取り込む',
   importing: '取り込んでいます…',
+  recurringTitle: '定期の支出（固定費の目安）',
+  recurringNote:
+    '毎月決まって払っている支出です。直近 12 か月の記録から、3 か月以上続き、今月か先月にもある店を数えています。',
+  recurringEmpty: 'まだ定期の支出は見つかっていません。',
+  recurringTotal: '月の固定費の目安',
 } as const;
+
+// 「12 か月中 4 か月」（定期の支出が現れた月の数）。
+export function monthsSeenText(months: number): string {
+  return `12\u00a0か月中\u00a0${String(months)}\u00a0か月`;
+}
 
 // 取り込みの知らせを出す場所。
 export const IMPORT_PLACE = 'import';

@@ -3578,6 +3578,10 @@
       "settings": {
         "mail_intake": "on",
         "settings_revision": "0"
+      },
+      "recurring": {
+        "items": [],
+        "monthly_total_yen": 0
       }
     }
   },
@@ -3694,6 +3698,10 @@
       "settings": {
         "mail_intake": "on",
         "settings_revision": "0"
+      },
+      "recurring": {
+        "items": [],
+        "monthly_total_yen": 0
       }
     }
   },
@@ -3819,6 +3827,10 @@
       "settings": {
         "mail_intake": "on",
         "settings_revision": "0"
+      },
+      "recurring": {
+        "items": [],
+        "monthly_total_yen": 0
       }
     },
     "semantic_errors": ["months_sequence"]
@@ -3945,6 +3957,10 @@
       "settings": {
         "mail_intake": "on",
         "settings_revision": "0"
+      },
+      "recurring": {
+        "items": [],
+        "monthly_total_yen": 0
       }
     },
     "semantic_errors": ["months_sequence"]
@@ -4071,6 +4087,10 @@
       "settings": {
         "mail_intake": "on",
         "settings_revision": "0"
+      },
+      "recurring": {
+        "items": [],
+        "monthly_total_yen": 0
       }
     },
     "semantic_errors": ["balance_mismatch"]
@@ -4431,6 +4451,58 @@
       "rejected": 0,
       "rules_learned": 1
     }
+  },
+  {
+    "id": "household-recurring",
+    "schema": "HouseholdRecurringSummary",
+    "valid": true,
+    "value": {
+      "items": [
+        {
+          "merchant": "合成モバイル",
+          "category": "communication",
+          "typical_yen": 3000,
+          "months_seen": 4,
+          "last_on": "2030-11-03"
+        }
+      ],
+      "monthly_total_yen": 3000
+    }
+  },
+  {
+    "id": "household-recurring-two-months",
+    "schema": "HouseholdRecurringSummary",
+    "valid": false,
+    "value": {
+      "items": [
+        {
+          "merchant": "合成モバイル",
+          "category": "communication",
+          "typical_yen": 3000,
+          "months_seen": 2,
+          "last_on": "2030-11-03"
+        }
+      ],
+      "monthly_total_yen": 3000
+    }
+  },
+  {
+    "id": "household-recurring-total",
+    "schema": "HouseholdRecurringSummary",
+    "valid": true,
+    "value": {
+      "items": [
+        {
+          "merchant": "合成モバイル",
+          "category": "communication",
+          "typical_yen": 3000,
+          "months_seen": 4,
+          "last_on": "2030-11-03"
+        }
+      ],
+      "monthly_total_yen": 1
+    },
+    "semantic_errors": ["recurring_total_mismatch"]
   },
   {
     "id": "sync-batch",

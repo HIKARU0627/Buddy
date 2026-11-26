@@ -701,14 +701,6 @@ export type RequestEntityRevision = string;
  */
 export type HouseholdSettingsRevision = string;
 /**
- * 家計の記録の内容版（ADR 0003 の共通の 10 進の形。保存する値は 1 から始まり、分類を変えるたびに 1 進む。ADR 0158）。変更・削除の照合に使う。
- */
-export type HouseholdRevision = string;
-/**
- * 家計の記録の向き（ADR 0158）。振替（カードの引き落とし・口座間の移動）は支出・収入の合計に入れない（U321）。
- */
-export type HouseholdDirection = 'expense' | 'income' | 'transfer';
-/**
  * 家計簿の分類（ADR 0158、U319）。支出の 16 分類（一般的な家計簿の大項目）・その他・未分類は支出、income は収入、transfer は振替だけに使う。表示名は domain の HOUSEHOLD_CATEGORIES が持つ。
  */
 export type HouseholdCategoryId =
@@ -732,6 +724,14 @@ export type HouseholdCategoryId =
   | 'uncategorized'
   | 'income'
   | 'transfer';
+/**
+ * 家計の記録の内容版（ADR 0003 の共通の 10 進の形。保存する値は 1 から始まり、分類を変えるたびに 1 進む。ADR 0158）。変更・削除の照合に使う。
+ */
+export type HouseholdRevision = string;
+/**
+ * 家計の記録の向き（ADR 0158）。振替（カードの引き落とし・口座間の移動）は支出・収入の合計に入れない（U321）。
+ */
+export type HouseholdDirection = 'expense' | 'income' | 'transfer';
 /**
  * 検索語の機械検査が拒否した理由（B12-02、ADR 0127）。検査は下限で、氏名・予定の詳細などの私的情報を見分けられない。見分けられない分は、検索語の入力元を本人の質問に限る前提で守る。
  */
@@ -4391,6 +4391,7 @@ export interface HouseholdOverview {
    */
   truncated: boolean;
   settings: HouseholdSettings;
+  recurring: HouseholdRecurringSummary;
 }
 /**
  * 月ごとの合計（一覧用）。差額は収入 − 支出（意味検査）。
@@ -4413,6 +4414,35 @@ export interface HouseholdSettings {
    */
   mail_intake: 'on' | 'off';
   settings_revision: HouseholdSettingsRevision;
+}
+/**
+ * 定期の支出と固定費の目安（ADR 0165）。月ごとの合計と同じ 12 か月の記録から、中枢が毎回計算する（保存しない）。毎月決まって払っている支出（3 か月以上・最後が今月か先月・月 2 回以下・金額の幅が 2 倍以内）だけ。
+ */
+export interface HouseholdRecurringSummary {
+  /**
+   * 目安の大きい順。
+   */
+  items: HouseholdRecurringItem[];
+  /**
+   * 固定費の目安（目安の合計）。
+   */
+  monthly_total_yen: number;
+}
+/**
+ * 定期の支出 1 件（ADR 0165）。
+ */
+export interface HouseholdRecurringItem {
+  /**
+   * 最後に現れた記録の店名。
+   */
+  merchant: string;
+  category: HouseholdCategoryId;
+  /**
+   * 月の金額の目安（現れた月ごとの合計の中央値）。
+   */
+  typical_yen: number;
+  months_seen: number;
+  last_on: string;
 }
 /**
  * 家計簿の 1 か月（GET /v1/household/months/{month}、ADR 0161）。記録はすべてその月の日付で、集計は返した記録から作る（意味検査）。
@@ -7026,6 +7056,10 @@ export interface DesktopHouseholdView {
    * カードの利用通知メールの取り込みの入・切（ADR 0163）。読めていなければ null（入・切を推測で見せない）。設定の版は main の中にだけ持つ。
    */
   mail_intake: ('on' | 'off') | null;
+  /**
+   * 定期の支出と固定費の目安（ADR 0165）。読めていなければ null。
+   */
+  recurring: HouseholdRecurringSummary | null;
   /**
    * この世代で最後に行った書き出しの取り込みの結果（ADR 0164）。まだなければ null。
    */

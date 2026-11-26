@@ -39,7 +39,7 @@
 
 ## 作業中の PR
 
-- ブランチ `claude/zealous-hopper-v118hn`: 会話の一言からの収入の候補（ADR 0174、U352〜U354）。
+- ブランチ `claude/zealous-hopper-v118hn`: 会話の一言からの収入の候補（ADR 0174、U352〜U354）、店名の規則を支出の記録からだけ覚える修正（ADR 0175、U355）。
 
 CI が通ればマージしてよいと本人から許可を受けている。マージの状態は GitHub の PR の画面で確かめる。
 
@@ -76,7 +76,7 @@ CI が通ればマージしてよいと本人から許可を受けている。�
 
 ## 未決事項
 
-`docs/b00/contract-map.md` の U318〜U354 が家計簿の分。暫定の決定のうち、本人に確かめたいもの:
+`docs/b00/contract-map.md` の U318〜U355 が家計簿の分。暫定の決定のうち、本人に確かめたいもの:
 
 - U322: データ鍵を作り直すときの店名の規則（未決）。
 - U323: 速報と確定の二度の通知のうち確定だけを記録すること。
@@ -106,6 +106,7 @@ CI が通ればマージしてよいと本人から許可を受けている。�
 - U352: 一言から収入として読む言い方の一覧（入った・振り込まれた・もらった・売れた・稼いだ など）。品物の値段（「1000 円のお菓子をいただいた」）も収入の候補になる。
 - U353: 収入の出どころ（給料・フリマなど）を店名ではなくメモに入れること。店名に入れると、中枢が収入の記録から店名の規則を覚え、同じ店名の支出の規則を上書きするため（手で収入の店名を入れたときには今も起きる）。
 - U354: 支出と収入を取り違えるより取りこぼす側に倒したので、支出の一言の一部（収入の話や「戻った」が入る一言）も候補にならなくなったこと。
+- U355: 店名の規則を、支出の記録（支出の分類）からだけ覚えること。収入・振替の記録からは覚えない。分類の変更で支出を未分類へ直したときは、その店名の規則を未分類で上書きする。
 
 ## 試験の動かし方
 
@@ -114,5 +115,5 @@ CI が通ればマージしてよいと本人から許可を受けている。�
 - コミットの前に `pnpm run security:staged`、push の前に `pnpm run security:scan`。
 - 公開物の検査は、`example.com`・`example.org`・`example.net`・`example.invalid` 以外のメールアドレスの形を拒む。試験の送り主は合成の一覧を引数で渡している（`checkHouseholdNoticeSender` の第 2 引数、`createHouseholdMailIntake` の `issuers`）。検査を避ける書き方はしない。
 - マイグレーションを足すときは、`packages/storage/src/migrations.test.ts` の一覧・hash・表の数、`packages/domain/src/backup-plan.ts` の表の分類、`packages/storage/src/policy.ts`、`tests/fixtures/backup-restore-cases.json`、`packages/storage/migrations/README.md` をそろえ、試験の中の DB の版（`store-binding`・`db-worker`・`backup-ops`・`backup-store`・`operation-retention`・`voice-store`・`restore-aftermath-store`・`apps/core` の `backup`・`restore`・`forget-ledger` の試験、`tests/integration/b05-expectations.json`・`b07-expectations.json`）を上げる。除外する表なら `backup-store.test.ts` と `apps/core/src/backup.test.ts` の除外の一覧も直す。
-- 次の ADR の番号は 0175、次の未決事項の番号は U355。
+- 次の ADR の番号は 0176、次の未決事項の番号は U356。
 - この環境の既定の Node.js が 22 のときは、24 系を PATH の先頭に置いてから pnpm を使う（`pnpm install` が版の違いで止まる）。clone の履歴が浅いと push の前の検査（`pnpm run security:scan`）が止まるので、`git fetch --unshallow` で全履歴を取ってから検査する。

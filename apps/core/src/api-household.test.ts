@@ -572,6 +572,130 @@ test('設定: 取り込みを止める・再開する。版を照合し、古い
   assert.equal(lost.status, 503);
 });
 
+const importRow = (rowId: string, over: Record<string, unknown> = {}) => ({
+  row_id: rowId,
+  direction: 'expense',
+  amount_yen: 1280,
+  occurred_on: '2030-11-03',
+  category: 'food',
+  merchant: '合成の食堂',
+  memo: null,
+  payment: '合成のカード',
+  ...over,
+});
+
+const importBody = (rows: unknown[]): JsonObject =>
+  ({
+    request_id: '00000000-0000-4000-8000-0000000c0104',
+    command_scope_id: SCOPE,
+    origin: 'moneyforward',
+    rows,
+  }) as JsonObject;
+
+test('取り込み: 行を記録し、同じ行は二度記録せず、利用通知と同じ支出は一つの通知に一つだけ取り込まない（ADR 0164）', async (t) => {
+  const { store, dataKey, ports } = withDb(t);
+  const handlers = routes(store, dataKey);
+  // 利用通知で記録済みの 1,280 円（11 月 3 日）。
+  await record(ports, {
+    amount_yen: 1280,
+    occurred_on: '2030-11-03',
+    merchant: '合成の食堂',
+  });
+  const rows = [
+    // 同じ日・同じ金額の支出が二つ。利用通知は一つなので、一つだけ同じ利用として取り込まない。
+    importRow('mf-1'),
+    importRow('mf-2', { merchant: '合成の別の店', category: 'social' }),
+    importRow('mf-3', {
+      direction: 'income',
+      category: 'income',
+      amount_yen: 250000,
+      merchant: '合成の給与',
+      payment: '合成の銀行',
+    }),
+    importRow('mf-4', {
+      direction: 'transfer',
+      category: 'transfer',
+      amount_yen: 40000,
+      merchant: null,
+      occurred_on: '2030-10-27',
+    }),
+    // 中身の検査に合わない行（支出に収入の分類）は数えて飛ばす。
+    importRow('mf-5', { category: 'income', amount_yen: 10 }),
+  ];
+  const first = await call(handlers.importHouseholdRows, {}, importBody(rows));
+  assert.equal(first.status, 200);
+  assert(contract.valid('HouseholdImportResult', first.body));
+  assert.deepEqual(first.body, {
+    created: 3,
+    duplicate: 0,
+    matched: 1,
+    rejected: 1,
+    rules_learned: 1,
+  });
+  // 取り込み直しても増えない（同じ通知に当たる行はまた取り込まない）。
+  const again = await call(handlers.importHouseholdRows, {}, importBody(rows));
+  assert.deepEqual(again.body, {
+    created: 0,
+    duplicate: 3,
+    matched: 1,
+    rejected: 1,
+    rules_learned: 0,
+  });
+  const november = await call(handlers.getHouseholdMonth, {
+    month: '2030-11',
+  });
+  // 同じ日・同じ作成時刻の記録の並びは決まらないので、並びを問わずに比べる。
+  assert.deepEqual(
+    (november.body['entries'] as Json[])
+      .map((entry) =>
+        [entry['source_kind'], entry['amount_yen'], entry['category']].join(
+          ' ',
+        ),
+      )
+      .sort(),
+    [
+      'csv_import 1280 social',
+      'csv_import 250000 income',
+      'mail_notice 1280 uncategorized',
+    ],
+  );
+  // 取り込みで覚えた規則は、次の同じ店の未分類の利用に当たる。
+  const next = await recordHouseholdEntry(
+    ports,
+    {
+      kind: 'mail_notice',
+      provider: 'google',
+      account_id: 'acct-synthetic',
+      remote_id: 'm-rule',
+      index: 0,
+    },
+    content({ merchant: '合成の別の店', occurred_on: '2030-11-04' }),
+  );
+  assert.equal(next.outcome === 'created' && next.rule_applied, true);
+  // 書き出しの元が違う・データ鍵がない。
+  const other = await call(handlers.importHouseholdRows, {}, {
+    ...importBody(rows),
+    origin: 'zaim',
+  } as JsonObject);
+  assert.equal(other.status, 422);
+  const noKey = await call(
+    routes(store, null).importHouseholdRows,
+    {},
+    importBody(rows),
+  );
+  assert.equal(noKey.status, 503);
+  // 一度に 101 行は契約の形が拒否する。
+  assert.equal(
+    contract.valid(
+      'HouseholdImportRequest',
+      importBody(
+        Array.from({ length: 101 }, (_, i) => importRow(`mf-x-${String(i)}`)),
+      ),
+    ),
+    false,
+  );
+});
+
 test('成否不明・保存の失敗は 503 にし、成功にも競合にも見せない', async (t) => {
   const { store, dataKey, ports } = withDb(t);
   const entry = await record(ports, { merchant: '合成の売店' });

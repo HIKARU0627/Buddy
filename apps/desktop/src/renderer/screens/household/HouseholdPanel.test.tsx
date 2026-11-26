@@ -73,6 +73,7 @@ const view = (
   truncated: false,
   list_seq: 2,
   mail_intake: 'on',
+  last_import: null,
   ...overrides,
 });
 
@@ -85,6 +86,7 @@ const ACTIONS: HouseholdActions = {
   cancelDelete: noop,
   confirmDelete: noop,
   setIntake: noop,
+  importExport: noop,
 };
 
 const render = (node: ReactNode) =>
@@ -234,4 +236,29 @@ test('the intake line says whether card notices are read and offers to stop or r
     panel({ view: view([entry(0)], { mail_intake: null }), seq: 2 }),
   );
   assert.doesNotMatch(unknown, /取り込んでいます|止めています/u);
+});
+
+test('the import block offers to pick a file and shows the last result', () => {
+  const none = panel({ view: view([entry(0)]), seq: 2 });
+  assert(buttons(none).includes('ファイルを選んで取り込む'));
+  assert.match(text(none), /入出金履歴の CSV を取り込みます/u);
+  const done = text(
+    panel({
+      view: view([entry(0)], {
+        last_import: {
+          outcome: 'done',
+          created: 3,
+          duplicate: 0,
+          matched: 1,
+          rejected: 0,
+          skipped: 0,
+          rules_learned: 0,
+        },
+      }),
+      seq: 2,
+    }),
+  );
+  assert.match(done, /取り込みました（新しく記録\u00a03\u00a0件/u);
+  // 読めていなければ取り込みの欄を出さない。
+  assert.doesNotMatch(text(panel({})), /ファイルを選んで取り込む/u);
 });

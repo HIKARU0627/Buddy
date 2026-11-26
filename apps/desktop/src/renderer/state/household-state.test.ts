@@ -17,6 +17,7 @@ import {
   categoryChoices,
   categoryLabel,
   dayText,
+  importResultText,
   monthText,
   yenText,
 } from './household-state.js';
@@ -65,6 +66,7 @@ const view = (
   truncated: false,
   list_seq: 2,
   mail_intake: 'on',
+  last_import: null,
   ...overrides,
 });
 
@@ -348,4 +350,45 @@ test('the intake switch sends the other value once and re-reads on a stale answe
   await settle();
   assert.equal(store.snapshot().view?.mail_intake, 'off');
   assert.equal(store.snapshot().busy, null);
+});
+
+test('the import is one request with no file data from the screen, and its result is written in counts', async () => {
+  const fake = fakeApi();
+  const store = new HouseholdStore(fake.api);
+  // 読む前は取り込ませない。
+  store.actions.importExport();
+  assert.equal(fake.sent.length, 0);
+  store.actions.refresh();
+  fake.answer((request) => okResponse(request, view([entry(0)])));
+  await settle();
+  store.actions.importExport();
+  assert.deepEqual(fake.sent.at(-1)?.payload, null);
+  assert.equal(fake.sent.at(-1)?.channel, 'desktop.household_import');
+  assert.equal(store.snapshot().busy, 'import');
+  const result = {
+    outcome: 'done' as const,
+    created: 3,
+    duplicate: 1,
+    matched: 2,
+    rejected: 0,
+    skipped: 4,
+    rules_learned: 1,
+  };
+  fake.answer((request) =>
+    okResponse(request, view([entry(0)], { last_import: result, list_seq: 3 })),
+  );
+  await settle();
+  assert.equal(store.snapshot().busy, null);
+  assert.equal(
+    importResultText(result),
+    '取り込みました（新しく記録\u00a03\u00a0件、取り込み済み\u00a01\u00a0件、利用通知と同じ\u00a02\u00a0件、集計から外した行など\u00a04\u00a0件。）',
+  );
+  assert.match(
+    importResultText({ ...result, outcome: 'stopped', skipped: 0 }),
+    /^途中で中枢に送れなくなったため止めました（新しく記録\u00a03\u00a0件、取り込み済み\u00a01\u00a0件、利用通知と同じ\u00a02\u00a0件。）もう一度取り込むと/u,
+  );
+  assert.match(
+    importResultText({ ...result, outcome: 'unreadable' }),
+    /^ファイルを読めませんでした。/u,
+  );
 });

@@ -256,6 +256,11 @@ export const API_ROUTES: readonly ApiRoute[] = [
     body: 'HouseholdSettingsChangeRequest',
     ...SCREEN,
   }),
+  // 外部の家計簿サービスの書き出しの取り込み（ADR 0164）。
+  route('importHouseholdRows', 'POST', '/v1/household/imports', {
+    body: 'HouseholdImportRequest',
+    ...SCREEN,
+  }),
 ];
 
 export type RouteMatch =

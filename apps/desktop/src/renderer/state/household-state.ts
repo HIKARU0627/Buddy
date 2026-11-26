@@ -56,7 +56,36 @@ export const HOUSEHOLD_LABELS = {
   intakeResumeNote:
     '再開すると、止めていた間に届いた通知は読みません。その分は書き出したファイルの取り込みで補ってください。',
   intakeChanging: '切り替えています…',
+  importTitle: '書き出したファイルの取り込み',
+  importNote:
+    'マネーフォワード ME のアプリで書き出した入出金履歴の CSV を取り込みます。取り込み済みの行と、利用通知で記録済みの利用は二重に記録しません。',
+  importButton: 'ファイルを選んで取り込む',
+  importing: '取り込んでいます…',
 } as const;
+
+// 取り込みの知らせを出す場所。
+export const IMPORT_PLACE = 'import';
+
+type LastImport = NonNullable<DesktopHouseholdView['last_import']>;
+
+// 取り込みの結果の文。
+export function importResultText(result: LastImport): string {
+  if (result.outcome === 'unreadable')
+    return 'ファイルを読めませんでした。マネーフォワード ME のアプリで書き出した入出金履歴の CSV か、16\u00a0MB 以下かを確かめてください。';
+  const parts = [
+    `新しく記録\u00a0${String(result.created)}\u00a0件`,
+    `取り込み済み\u00a0${String(result.duplicate)}\u00a0件`,
+    `利用通知と同じ\u00a0${String(result.matched)}\u00a0件`,
+  ];
+  if (result.skipped > 0)
+    parts.push(`集計から外した行など\u00a0${String(result.skipped)}\u00a0件`);
+  if (result.rejected > 0)
+    parts.push(`記録できなかった行\u00a0${String(result.rejected)}\u00a0件`);
+  const counts = `${parts.join('、')}。`;
+  return result.outcome === 'stopped'
+    ? `途中で中枢に送れなくなったため止めました（${counts}）もう一度取り込むと、残りの行を記録します（記録済みの行は増えません）。`
+    : `取り込みました（${counts}）`;
+}
 
 // 取り込みの入・切の知らせを出す場所（行の参照は main が作る UUID なので重ならない）。
 export const INTAKE_PLACE = 'intake';
@@ -177,7 +206,7 @@ export const INITIAL_HOUSEHOLD_STATE: HouseholdViewState = {
   confirming: null,
 };
 
-type Kind = 'view' | 'category' | 'delete' | 'intake';
+type Kind = 'view' | 'category' | 'delete' | 'intake' | 'import';
 
 export function householdFailureText(kind: Kind, reason: RejectReason): string {
   switch (reason) {
@@ -324,6 +353,8 @@ export interface HouseholdActions {
   readonly confirmDelete: () => void;
   // 利用通知の取り込みを止める・再開する（ADR 0163）。
   readonly setIntake: (mailIntake: 'on' | 'off') => void;
+  // 書き出しを取り込む（ADR 0164）。ファイルは main が OS のファイル選択で本人に選ばせる。
+  readonly importExport: () => void;
 }
 
 export interface HouseholdApi {
@@ -359,6 +390,7 @@ export class HouseholdStore {
       cancelDelete: () => this.#set({ ...this.#state, confirming: null }),
       confirmDelete: () => this.#delete(),
       setIntake: (mailIntake) => this.#intake(mailIntake),
+      importExport: () => this.#importExport(),
     };
   }
 
@@ -438,6 +470,38 @@ export class HouseholdStore {
       'intake',
       INTAKE_PLACE,
       request('desktop.household_intake', { mail_intake: mailIntake }),
+    );
+  }
+
+  #importExport(): void {
+    if (this.#state.busy !== null || this.#state.view === null) return;
+    this.#set({
+      ...this.#state,
+      busy: IMPORT_PLACE,
+      notice: null,
+      confirming: null,
+    });
+    void this.#send(
+      request('desktop.household_import', null),
+      (state, response) => {
+        const idle = {
+          ...state,
+          busy: state.busy === IMPORT_PLACE ? null : state.busy,
+        };
+        if (response.outcome === 'rejected')
+          return {
+            ...idle,
+            notice: {
+              tone: 'warning' as const,
+              text: householdFailureText('import', response.reason),
+              place: IMPORT_PLACE,
+            },
+          };
+        return 'household' in response
+          ? withView(idle, response.household)
+          : idle;
+      },
+      (state) => applyFailure(state, IMPORT_PLACE),
     );
   }
 

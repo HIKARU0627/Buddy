@@ -4316,6 +4316,123 @@
     }
   },
   {
+    "id": "household-import-row",
+    "schema": "HouseholdImportRow",
+    "valid": true,
+    "value": {
+      "row_id": "mf-row-1",
+      "direction": "expense",
+      "amount_yen": 1280,
+      "occurred_on": "2030-10-05",
+      "category": "food",
+      "merchant": "合成の食堂",
+      "memo": null,
+      "payment": "合成のカード"
+    }
+  },
+  {
+    "id": "household-import-row-transfer",
+    "schema": "HouseholdImportRow",
+    "valid": true,
+    "value": {
+      "row_id": "mf-row-2",
+      "direction": "transfer",
+      "amount_yen": 40000,
+      "occurred_on": "2030-10-05",
+      "category": "transfer",
+      "merchant": null,
+      "memo": null,
+      "payment": "合成のカード"
+    }
+  },
+  {
+    "id": "household-import-row-id-space",
+    "schema": "HouseholdImportRow",
+    "valid": false,
+    "value": {
+      "row_id": "mf row",
+      "direction": "expense",
+      "amount_yen": 1280,
+      "occurred_on": "2030-10-05",
+      "category": "food",
+      "merchant": "合成の食堂",
+      "memo": null,
+      "payment": "合成のカード"
+    }
+  },
+  {
+    "id": "household-import-row-zero",
+    "schema": "HouseholdImportRow",
+    "valid": false,
+    "value": {
+      "row_id": "mf-row-1",
+      "direction": "expense",
+      "amount_yen": 0,
+      "occurred_on": "2030-10-05",
+      "category": "food",
+      "merchant": "合成の食堂",
+      "memo": null,
+      "payment": "合成のカード"
+    }
+  },
+  {
+    "id": "household-import-request",
+    "schema": "HouseholdImportRequest",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-0000000c0104",
+      "command_scope_id": "00000000-0000-4000-8000-000000009002",
+      "origin": "moneyforward",
+      "rows": [
+        {
+          "row_id": "mf-row-1",
+          "direction": "expense",
+          "amount_yen": 1280,
+          "occurred_on": "2030-10-05",
+          "category": "food",
+          "merchant": "合成の食堂",
+          "memo": null,
+          "payment": "合成のカード"
+        }
+      ]
+    }
+  },
+  {
+    "id": "household-import-request-empty",
+    "schema": "HouseholdImportRequest",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-0000000c0104",
+      "command_scope_id": "00000000-0000-4000-8000-000000009002",
+      "origin": "moneyforward",
+      "rows": []
+    }
+  },
+  {
+    "id": "household-import-result",
+    "schema": "HouseholdImportResult",
+    "valid": true,
+    "value": {
+      "created": 1,
+      "duplicate": 0,
+      "matched": 0,
+      "rejected": 0,
+      "rules_learned": 1
+    }
+  },
+  {
+    "id": "household-import-result-negative",
+    "schema": "HouseholdImportResult",
+    "valid": false,
+    "value": {
+      "created": -1,
+      "duplicate": 0,
+      "matched": 0,
+      "rejected": 0,
+      "rules_learned": 1
+    }
+  },
+  {
     "id": "sync-batch",
     "schema": "SyncBatch",
     "valid": true,

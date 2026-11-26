@@ -2086,6 +2086,49 @@ paths:
           $ref: '#/components/responses/RateLimited'
         '503':
           $ref: '#/components/responses/Unavailable'
+  /v1/household/imports:
+    post:
+      operationId: importHouseholdRows
+      summary: 外部の家計簿サービスの書き出しの取り込み
+      description: 本人がロック解除済みの画面で選んだ書き出し（端末の main が読んだ行）を家計の記録にする。一度に 100 行まで。中枢は家計の記録の検査をし直し、同じ行（書き出しの ID）は二度記録しない。同じ日・同じ金額の利用通知の記録がある支出の行は、同じ利用として取り込まない（U335。一つの利用通知に一つの行だけ）。支出の分類が決まっている行は、店名の分類の規則として覚える（本人の規則は上書きしない）。途中で成否が分からなくなったら 503 で、取り込み直せば記録済みの行は増えない（ADR 0164）。
+      x-buddy-core-checks:
+        - device_token
+        - home_network
+        - command_scope
+        - unlocked
+        - screen_operation
+      parameters:
+        - $ref: '#/components/parameters/InputOrigin'
+        - $ref: '#/components/parameters/LockState'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas/buddy.schema.json#/$defs/HouseholdImportRequest
+      responses:
+        '200':
+          description: 取り込みの結果。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/HouseholdImportResult
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/Gone'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
 components:
   securitySchemes:
     deviceToken:

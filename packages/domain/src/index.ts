@@ -104,5 +104,6 @@ export * from './web-research-status.js';
 export * from './web-research-limits.js';
 // 家計簿の記録の分類・内容・月の集計・出所の鍵・店名からの分類の規則（ADR 0158）。
 export * from './household.js';
+export * from './household-import.js';
 // カード会社の利用通知メールの送り主の確かめと本文の読み取り（ADR 0159）。
 export * from './household-notice.js';

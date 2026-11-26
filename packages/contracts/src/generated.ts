@@ -71,6 +71,8 @@ export type BuddyContract =
   | HouseholdEntryDeleteResult
   | HouseholdSettingsChangeRequest
   | HouseholdSettings
+  | HouseholdImportRequest
+  | HouseholdImportResult
   | CandidateEvidenceRequest
   | WebSearchRequest
   | WebSearchResponse
@@ -1344,6 +1346,11 @@ export type DesktopIpcRequest =
       payload: {
         mail_intake: 'on' | 'off';
       };
+    }
+  | {
+      channel: 'desktop.household_import';
+      request_id: Id;
+      payload: null;
     };
 export type DesktopHubHost = string;
 export type DesktopHubHost1 = string;
@@ -1532,7 +1539,8 @@ export type DesktopIpcResponse =
         | 'desktop.household_view'
         | 'desktop.household_category'
         | 'desktop.household_delete'
-        | 'desktop.household_intake';
+        | 'desktop.household_intake'
+        | 'desktop.household_import';
       outcome: 'ok';
       household: DesktopHouseholdView;
     }
@@ -1776,7 +1784,7 @@ export type DesktopVoiceView =
       reply_mode: 'voice' | 'text';
     };
 /**
- * UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014・0025）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。中枢との接続・ペアリングは用途別のチャネルだけで、要求の宛先・本文を Renderer が決められない。音声レンダラーの IPC（B05）は別に定める。 発言・承認表示の準備・承認・取消・照合は用途別のチャネルで、操作は main が持つ参照（ref）で指す（B04-05、ADR 0031）。 キャンバスを前に出す（canvas_summon）は状態の層と入力バーからだけ使う（UI-02、ADR 0032）。状態の層のパネルを出す・しまう（status_panel）は状態の層からだけ使う（UI-04、ADR 0032）。キャンバスのユーザーの操作（canvas_user_op）はキャンバスの窓からだけ、キャンバスが前に出ている間だけ使う（UI-06、ADR 0032）。 予算の確認（超過枠の承認・見送り budget_overage_decide、M 超過の確認 budget_overrun_review、不明な費用の手での精算 budget_manual_settle）は状態の層からだけ使う。承認・確認・精算は main の OS の確認ダイアログを 1 回だけ挟み、画面が持つのは main が作る参照（ref）だけ（B07-05、ADR 0039）。 音声（B05-06、ADR 0050）: 音声の状態の取得（get_voice）・呼びかけなしで音声の会話を始める「続ける」（voice_continue）・外部への送信の同意の取り消し（voice_consent_revoke）は状態の層からだけ使う。外部への送信の同意は main の OS の確認ダイアログで 1 回だけ取り、画面は同意を作れない。音声レンダラーへの IPC は VoiceRendererRequest で、このチャネルとは別。 気づき（B11-05、ADR 0132）: 一覧の取得（candidates_list）と状態の変更（candidate_state。開く・今回は扱わない・再通知）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バーは使えない。候補は main が作る参照（ref）で指し、候補 ID・expected_state・接続範囲は main が持つ。 連携の接続（B08-02 P3・B09-05、ADR 0142）: 一覧の取得（connections_list）と取得範囲の変更（connection_targets_update）は中枢の画面（接続・端末）でだけ使い、キャンバス・入力バーは使えない。接続は main が作る参照（ref）で指し、接続 ID・permission_revision は main が持つ。画面が送れるのは今の保存値と、この世代で中枢から読んだ選べる対象（connection_targets_discover）のうちの選択と、期間・添付の範囲だけ（ADR 0145）。選べる対象の読み取りは提供元への読み取りを伴うので、中枢の画面のロック解除済みの画面操作だけ。 自動実行（B13-05、ADR 0154）: 一覧と安全停止の状態の取得（auto_actions_list）・取り消し（auto_action_undo）・安全停止の解除（safety_resume）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バーは使えない。自動実行した操作と安全停止の状態は main が作る参照（ref）で指し、操作 ID・state_revision・safety_revision・接続範囲は main が持つ。 家計簿（ADR 0162）: 月ごとの合計と 1 か月の記録の取得（household_view）・分類の変更（household_category）・削除（household_delete）・利用通知の取り込みの入・切（household_intake、ADR 0163）は従来の窓（標準の端末画面）から使い、キャンバス・入力バーは使えない。記録は main が作る参照（ref）で指し、記録の ID・内容版・接続範囲は main が持つ。
+ * UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014・0025）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。中枢との接続・ペアリングは用途別のチャネルだけで、要求の宛先・本文を Renderer が決められない。音声レンダラーの IPC（B05）は別に定める。 発言・承認表示の準備・承認・取消・照合は用途別のチャネルで、操作は main が持つ参照（ref）で指す（B04-05、ADR 0031）。 キャンバスを前に出す（canvas_summon）は状態の層と入力バーからだけ使う（UI-02、ADR 0032）。状態の層のパネルを出す・しまう（status_panel）は状態の層からだけ使う（UI-04、ADR 0032）。キャンバスのユーザーの操作（canvas_user_op）はキャンバスの窓からだけ、キャンバスが前に出ている間だけ使う（UI-06、ADR 0032）。 予算の確認（超過枠の承認・見送り budget_overage_decide、M 超過の確認 budget_overrun_review、不明な費用の手での精算 budget_manual_settle）は状態の層からだけ使う。承認・確認・精算は main の OS の確認ダイアログを 1 回だけ挟み、画面が持つのは main が作る参照（ref）だけ（B07-05、ADR 0039）。 音声（B05-06、ADR 0050）: 音声の状態の取得（get_voice）・呼びかけなしで音声の会話を始める「続ける」（voice_continue）・外部への送信の同意の取り消し（voice_consent_revoke）は状態の層からだけ使う。外部への送信の同意は main の OS の確認ダイアログで 1 回だけ取り、画面は同意を作れない。音声レンダラーへの IPC は VoiceRendererRequest で、このチャネルとは別。 気づき（B11-05、ADR 0132）: 一覧の取得（candidates_list）と状態の変更（candidate_state。開く・今回は扱わない・再通知）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バーは使えない。候補は main が作る参照（ref）で指し、候補 ID・expected_state・接続範囲は main が持つ。 連携の接続（B08-02 P3・B09-05、ADR 0142）: 一覧の取得（connections_list）と取得範囲の変更（connection_targets_update）は中枢の画面（接続・端末）でだけ使い、キャンバス・入力バーは使えない。接続は main が作る参照（ref）で指し、接続 ID・permission_revision は main が持つ。画面が送れるのは今の保存値と、この世代で中枢から読んだ選べる対象（connection_targets_discover）のうちの選択と、期間・添付の範囲だけ（ADR 0145）。選べる対象の読み取りは提供元への読み取りを伴うので、中枢の画面のロック解除済みの画面操作だけ。 自動実行（B13-05、ADR 0154）: 一覧と安全停止の状態の取得（auto_actions_list）・取り消し（auto_action_undo）・安全停止の解除（safety_resume）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バーは使えない。自動実行した操作と安全停止の状態は main が作る参照（ref）で指し、操作 ID・state_revision・safety_revision・接続範囲は main が持つ。 家計簿（ADR 0162）: 月ごとの合計と 1 か月の記録の取得（household_view）・分類の変更（household_category）・削除（household_delete）・利用通知の取り込みの入・切（household_intake、ADR 0163）・書き出しの取り込み（household_import、ADR 0164。ファイルは main が OS のファイル選択で本人に選ばせ、画面はパスも中身も渡さない）は従来の窓（標準の端末画面）から使い、キャンバス・入力バーは使えない。記録は main が作る参照（ref）で指し、記録の ID・内容版・接続範囲は main が持つ。
  */
 export type DesktopIpcChannel =
   | 'desktop.get_state'
@@ -1825,7 +1833,8 @@ export type DesktopIpcChannel =
   | 'desktop.household_view'
   | 'desktop.household_category'
   | 'desktop.household_delete'
-  | 'desktop.household_intake';
+  | 'desktop.household_intake'
+  | 'desktop.household_import';
 /**
  * main から UI レンダラーへの通知（設計 10 §1、07 §2、ADR 0014）。本文・端末 ID・認証情報を含めない。
  */
@@ -4533,6 +4542,63 @@ export interface HouseholdSettingsChangeRequest {
   mail_intake: 'on' | 'off';
 }
 /**
+ * 外部の家計簿サービスの書き出しの取り込み（POST /v1/household/imports、ADR 0164）。本人の画面操作だけが送る。一度に 100 行まで。同じ行は二度記録しない（取り込み直しても増えない）。
+ */
+export interface HouseholdImportRequest {
+  request_id: Id;
+  command_scope_id: Id;
+  /**
+   * 書き出しの元（今はマネーフォワード ME だけ）。
+   */
+  origin: 'moneyforward';
+  /**
+   * @minItems 1
+   * @maxItems 100
+   */
+  rows: [HouseholdImportRow, ...HouseholdImportRow[]];
+}
+/**
+ * 書き出しから読んだ 1 行（ADR 0164）。端末の main が domain の規則で読んだ値で、中枢は家計の記録の検査をし直す。
+ */
+export interface HouseholdImportRow {
+  /**
+   * 書き出しの行の ID（同じ行を二度取り込まない鍵の材料。ADR 0158）。
+   */
+  row_id: string;
+  direction: HouseholdDirection;
+  amount_yen: number;
+  occurred_on: string;
+  category: HouseholdCategoryId;
+  merchant: string | null;
+  memo: string | null;
+  payment: string | null;
+}
+/**
+ * 取り込みの結果（ADR 0164）。
+ */
+export interface HouseholdImportResult {
+  /**
+   * 新しく記録した行の数。
+   */
+  created: number;
+  /**
+   * 取り込み済み（または消した）行の数。作り直さない。
+   */
+  duplicate: number;
+  /**
+   * 同じ日・同じ金額の利用通知の記録があったので取り込まなかった支出の行の数（U335）。
+   */
+  matched: number;
+  /**
+   * 家計の記録の検査に合わなかった行の数。
+   */
+  rejected: number;
+  /**
+   * 店名の分類の規則として覚えた数（本人の規則は上書きしない）。
+   */
+  rules_learned: number;
+}
+/**
  * 気づきの根拠の再取得の要求（設計 11 §4、ADR 0073・0130）。許可範囲から取り直すので接続範囲を本文で示す（postCanvasContent と同じ）。
  */
 export interface CandidateEvidenceRequest {
@@ -6960,6 +7026,24 @@ export interface DesktopHouseholdView {
    * カードの利用通知メールの取り込みの入・切（ADR 0163）。読めていなければ null（入・切を推測で見せない）。設定の版は main の中にだけ持つ。
    */
   mail_intake: ('on' | 'off') | null;
+  /**
+   * この世代で最後に行った書き出しの取り込みの結果（ADR 0164）。まだなければ null。
+   */
+  last_import: {
+    /**
+     * done は全部の行を送れた、stopped は途中で中枢に送れなくなった（取り込み直せば記録済みの行は増えない）、unreadable はファイルを読めなかった（形が違う・見出しが足りない・大きすぎる）。
+     */
+    outcome: 'done' | 'stopped' | 'unreadable';
+    created: number;
+    duplicate: number;
+    matched: number;
+    rejected: number;
+    /**
+     * ファイルの中で取り込まなかった行（集計から外した行・金額 0・読めない行）の数。
+     */
+    skipped: number;
+    rules_learned: number;
+  } | null;
 }
 /**
  * 家計の記録 1 行の表示用の値（ADR 0162）。記録の ID・内容版は main の中にだけ持ち、画面へ渡さない。

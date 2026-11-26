@@ -21,7 +21,7 @@ import {
   systemPreferences,
   type IpcMainInvokeEvent,
 } from 'electron';
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import { networkInterfaces } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -875,6 +875,7 @@ function createLink(
     onChange: pushConnection,
     log,
     confirmAdmin: confirmAdminWithDialog,
+    pickHouseholdExport: pickHouseholdExportWithDialog,
     // キャンバスのモード（開発用のフラグ）では、入力バーの発言を流れへ送り、キャンバスの記述をキャンバスの窓だけへ渡す
     // （役割の表 DESKTOP_ROLE_NOTIFICATIONS。状態の層・入力バーへは送らない）。
     canvasMode: uiMode === 'canvas',
@@ -885,6 +886,28 @@ function createLink(
     onCanvas: (notification) =>
       sendToRenderer(notification.channel, notification),
   });
+}
+
+// 家計簿の書き出しの取り込みで選ぶファイル（ADR 0164）。確認ダイアログと同じ窓を親にした OS のファイル選択で本人に
+// 選ばせ、CSV を 1 つだけ読む。大きすぎるファイル（16 MB 超）は読まずに空を返す（画面には読めなかったと出る）。
+// 親の窓がない・やめたときは null（何も取り込まない）。
+const HOUSEHOLD_EXPORT_MAX_BYTES = 16 * 1024 * 1024;
+
+async function pickHouseholdExportWithDialog(): Promise<Uint8Array | null> {
+  const parent = confirmDialogParent(uiMode, statusPanel.open);
+  const window = parent === null ? null : liveWindow(parent);
+  if (window === null) return null;
+  const picked = await dialog.showOpenDialog(window, {
+    title: '取り込む家計簿の書き出し（CSV）を選ぶ',
+    properties: ['openFile'],
+    filters: [{ name: 'CSV', extensions: ['csv'] }],
+  });
+  const path = picked.filePaths[0];
+  if (picked.canceled || path === undefined) return null;
+  const info = await stat(path);
+  if (!info.isFile() || info.size > HOUSEHOLD_EXPORT_MAX_BYTES)
+    return new Uint8Array();
+  return new Uint8Array(await readFile(path));
 }
 
 // 承認・拒否・失効の前の本人の確認（本人の判断 2026-10-22、ADR 0026）。親付きのモーダルな OS の確認ダイアログで、

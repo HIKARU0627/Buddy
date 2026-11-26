@@ -111,6 +111,8 @@ export const ROUTE_CHECKS: Readonly<Record<string, readonly CoreCheck[]>> = {
   deleteHouseholdEntry: SCREEN,
   // 利用通知の取り込みの入・切（ADR 0163）。本人の画面操作だけ。版の照合は経路の処理が行い、409 にする。
   changeHouseholdSettings: SCREEN,
+  // 外部の家計簿サービスの書き出しの取り込み（ADR 0164）。本人が選んだファイルの行だけ。本人の画面操作だけ。
+  importHouseholdRows: SCREEN,
 };
 
 export interface RequestContext {

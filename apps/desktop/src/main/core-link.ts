@@ -150,6 +150,7 @@ export const HOUSEHOLD_CHANNELS: readonly DesktopIpcChannel[] = [
   'desktop.household_category',
   'desktop.household_delete',
   'desktop.household_intake',
+  'desktop.household_import',
 ];
 
 // 連携の接続の一覧と取得範囲の変更のチャネル（B08-02 P3・B09-05、ADR 0142）。中枢の画面の端末でだけ使える
@@ -218,6 +219,9 @@ export interface DesktopCoreLinkOptions {
   readonly hubScreenProbeRetryMs?: number;
   // 承認・拒否・失効の前の本人の確認。省略すると確認できないので送らない。
   readonly confirmAdmin?: AdminConfirm;
+  // 家計簿の書き出しの取り込みで、本人に OS のファイル選択でファイルを選ばせて中身を返す（ADR 0164）。やめたら null。
+  // 省略するとファイルを選べないので、取り込みは何もしない。
+  readonly pickHouseholdExport?: () => Promise<Uint8Array | null>;
   // 発言の結果が会話の操作（照合表に当たった発言。session_control）のとき、その操作を音声の制御へ渡す（B05-05）。
   // 画面のボタンと同じ処理を通す。省略すると何もしない（音声を使わない組み立て）。
   readonly onSessionControl?: (action: SessionControlAction) => void;
@@ -1292,7 +1296,8 @@ export class DesktopCoreLink {
       (raw.channel !== 'desktop.household_view' &&
         raw.channel !== 'desktop.household_category' &&
         raw.channel !== 'desktop.household_delete' &&
-        raw.channel !== 'desktop.household_intake')
+        raw.channel !== 'desktop.household_intake' &&
+        raw.channel !== 'desktop.household_import')
     )
       return this.#reject(
         echoRequestId(raw),
@@ -1320,7 +1325,12 @@ export class DesktopCoreLink {
             )
           : raw.channel === 'desktop.household_delete'
             ? await this.#household.remove(raw.payload.ref)
-            : await this.#household.intake(raw.payload.mail_intake);
+            : raw.channel === 'desktop.household_intake'
+              ? await this.#household.intake(raw.payload.mail_intake)
+              : await this.#household.importExport(
+                  this.#options.pickHouseholdExport ??
+                    (() => Promise.resolve(null)),
+                );
     return this.#withinGeneration(
       generation,
       this.#operationOutcome(

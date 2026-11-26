@@ -17,6 +17,7 @@ import {
   DIRECTION_LABELS,
   FETCH_LABELS,
   HOUSEHOLD_LABELS,
+  IMPORT_PLACE,
   INTAKE_PLACE,
   SOURCE_LABELS,
   canChange,
@@ -24,6 +25,7 @@ import {
   categoryLabel,
   dayText,
   elapsedText,
+  importResultText,
   monthText,
   yenText,
 } from '../../state/household-state.js';
@@ -340,6 +342,44 @@ function IntakeBlock({
   );
 }
 
+// 書き出しの取り込み（ADR 0164）。ファイルは main が OS のファイル選択で本人に選ばせる。結果は最後の取り込みの件数。
+function ImportBlock({
+  state,
+  actions,
+}: {
+  readonly state: HouseholdViewState;
+  readonly actions: HouseholdActions;
+}) {
+  const notice = noticeAt(state, IMPORT_PLACE);
+  const mine = state.busy === IMPORT_PLACE;
+  const result = state.view?.last_import ?? null;
+  return (
+    <div className="flex flex-col gap-1.5">
+      <h3 className="text-sm font-semibold">{HOUSEHOLD_LABELS.importTitle}</h3>
+      <p className="text-xs text-muted">{HOUSEHOLD_LABELS.importNote}</p>
+      <div className="flex justify-end">
+        <Button
+          size="sm"
+          variant="secondary"
+          isDisabled={state.busy !== null}
+          onPress={actions.importExport}
+        >
+          {mine ? HOUSEHOLD_LABELS.importing : HOUSEHOLD_LABELS.importButton}
+        </Button>
+      </div>
+      {result === null ? null : (
+        <InlineNotice
+          tone={result.outcome === 'done' ? 'success' : 'warning'}
+          text={importResultText(result)}
+        />
+      )}
+      {notice === null ? null : (
+        <InlineNotice tone={notice.tone} text={notice.text} />
+      )}
+    </div>
+  );
+}
+
 export function HouseholdPanel({
   state,
   actions,
@@ -420,6 +460,7 @@ export function HouseholdPanel({
           )}
         </>
       )}
+      {loaded ? <ImportBlock state={state} actions={actions} /> : null}
       {!loaded || view.months.length === 0 ? null : (
         <MonthList
           months={view.months}

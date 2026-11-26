@@ -117,6 +117,26 @@ test('client quit, local IO stop and hub stop are separate; no token, device ID,
     assert(!(field in defs.DesktopCandidateEntry.properties), field);
     assert(!(field in defs.DesktopCandidateView.properties), field);
   }
+  // 自動実行（B13-05、ADR 0154）。操作 ID・版・方針の版・取り消しの対象の内容版は main の中にだけ持つ。
+  for (const name of [
+    'DesktopAutoActionView',
+    'DesktopAutoActionEntry',
+    'DesktopSafetyView',
+  ])
+    walk(defs[name], name);
+  for (const field of [
+    'operation_id',
+    'state_revision',
+    'safety_revision',
+    'expected_safety_revision',
+    'policy_version',
+    'undo_target',
+    'auto_approvals',
+  ]) {
+    assert(!(field in defs.DesktopAutoActionEntry.properties), field);
+    assert(!(field in defs.DesktopAutoActionView.properties), field);
+    assert(!(field in defs.DesktopSafetyView.properties), field);
+  }
   // 入出力停止は local だけで、範囲を指定できない。
   const stop = fixture('desktop-ipc-io-stop');
   for (const scope of ['local', 'guest', 'global'])

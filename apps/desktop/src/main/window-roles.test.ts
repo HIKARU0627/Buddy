@@ -78,6 +78,13 @@ const CONNECTIONS = [
   // 選べる取得対象の読み取り（ADR 0145）。
   'desktop.connection_targets_discover',
 ];
+// B13-05 で足した、自動実行の一覧・取り消し・安全停止の解除のチャネル（従来の窓と状態の層。キャンバス・入力バーは
+// 使わない。ADR 0154）。
+const AUTO_ACTIONS = [
+  'desktop.auto_actions_list',
+  'desktop.auto_action_undo',
+  'desktop.safety_resume',
+];
 const ALL_CHANNELS = [
   ...LEGACY_CHANNELS,
   SUMMON,
@@ -88,6 +95,7 @@ const ALL_CHANNELS = [
   ...VOICE,
   ...CANDIDATES,
   ...CONNECTIONS,
+  ...AUTO_ACTIONS,
 ];
 
 const UNLOCKED = {
@@ -209,7 +217,12 @@ test('the legacy window keeps every existing channel and the same sender decisio
   registry.register(7, 'legacy', { name: 'legacy' });
   // 気づきのチャネル（B11-05）は従来の窓（標準の端末画面）で使う。連携のチャネル（B08-02 P3・B09-05）も従来の窓の
   // 中枢の画面で使う。
-  for (const channel of [...LEGACY_CHANNELS, ...CANDIDATES, ...CONNECTIONS]) {
+  for (const channel of [
+    ...LEGACY_CHANNELS,
+    ...CANDIDATES,
+    ...CONNECTIONS,
+    ...AUTO_ACTIONS,
+  ]) {
     assert.equal(channelAllowedForWindow('legacy', channel), true, channel);
     // 窓の主フレームからの要求は、前面かどうかをそのまま渡して受け付ける（期待値は手で書いた値）。
     for (const focused of [true, false])

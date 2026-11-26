@@ -154,6 +154,10 @@ test('requests go only to the contract channels', async () => {
       'desktop.connection_targets_update',
       // 選べる取得対象の読み取り（ADR 0145）。
       'desktop.connection_targets_discover',
+      // B13-05: 自動実行の一覧・取り消し・安全停止の解除（従来の窓と状態の層。ADR 0154）。
+      'desktop.auto_actions_list',
+      'desktop.auto_action_undo',
+      'desktop.safety_resume',
     ],
   );
   // 気づきの一覧・状態の変更（B11-05）は従来の窓（標準の端末画面）でも使う。連携の一覧・取得範囲の変更
@@ -165,6 +169,10 @@ test('requests go only to the contract channels', async () => {
     'desktop.connections_list',
     'desktop.connection_targets_update',
     'desktop.connection_targets_discover',
+    // 自動実行の一覧・取り消し・安全停止の解除（B13-05）も従来の窓で使う。
+    'desktop.auto_actions_list',
+    'desktop.auto_action_undo',
+    'desktop.safety_resume',
   ];
   for (const channel of legacy) {
     const request = { channel, request_id: 'r', payload: null };
@@ -302,6 +310,10 @@ const EXPECTED_ROLE_CHANNELS: Readonly<Record<string, readonly string[]>> = {
     'desktop.connections_list',
     'desktop.connection_targets_update',
     'desktop.connection_targets_discover',
+    // 自動実行の一覧・取り消し・安全停止の解除（B13-05、ADR 0154）。
+    'desktop.auto_actions_list',
+    'desktop.auto_action_undo',
+    'desktop.safety_resume',
   ],
 };
 const EXPECTED_ROLE_NOTIFICATIONS: Readonly<Record<string, readonly string[]>> =

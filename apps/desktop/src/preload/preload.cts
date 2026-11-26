@@ -46,6 +46,9 @@ const REQUEST_CHANNELS: readonly string[] = [
   'desktop.connections_list',
   'desktop.connection_targets_update',
   'desktop.connection_targets_discover',
+  'desktop.auto_actions_list',
+  'desktop.auto_action_undo',
+  'desktop.safety_resume',
 ];
 const NOTIFICATION_CHANNELS: readonly string[] = [
   'desktop.state_changed',

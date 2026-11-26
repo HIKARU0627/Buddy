@@ -26209,5 +26209,294 @@
         "list_seq": 2
       }
     }
+  },
+  {
+    "id": "desktop-ipc-auto-actions-list",
+    "schema": "DesktopIpcRequest",
+    "valid": true,
+    "value": {
+      "channel": "desktop.auto_actions_list",
+      "request_id": "00000000-0000-4000-8000-000000000d80",
+      "payload": null
+    }
+  },
+  {
+    "id": "desktop-ipc-auto-actions-list-with-filter",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.auto_actions_list",
+      "request_id": "00000000-0000-4000-8000-000000000d80",
+      "payload": {
+        "kinds": ["label_mail"]
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-auto-action-undo",
+    "schema": "DesktopIpcRequest",
+    "valid": true,
+    "value": {
+      "channel": "desktop.auto_action_undo",
+      "request_id": "00000000-0000-4000-8000-000000000d80",
+      "payload": {
+        "ref": "00000000-0000-4000-8000-000000000d70"
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-auto-action-undo-with-operation-id",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.auto_action_undo",
+      "request_id": "00000000-0000-4000-8000-000000000d80",
+      "payload": {
+        "ref": "00000000-0000-4000-8000-000000000d70",
+        "operation_id": "00000000-0000-4000-8000-000000000601"
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-auto-action-undo-with-revision",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.auto_action_undo",
+      "request_id": "00000000-0000-4000-8000-000000000d80",
+      "payload": {
+        "ref": "00000000-0000-4000-8000-000000000d70",
+        "expected_state_revision": 3
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-safety-resume",
+    "schema": "DesktopIpcRequest",
+    "valid": true,
+    "value": {
+      "channel": "desktop.safety_resume",
+      "request_id": "00000000-0000-4000-8000-000000000d80",
+      "payload": {
+        "ref": "00000000-0000-4000-8000-000000000d72"
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-safety-resume-with-revision",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.safety_resume",
+      "request_id": "00000000-0000-4000-8000-000000000d80",
+      "payload": {
+        "ref": "00000000-0000-4000-8000-000000000d72",
+        "expected_safety_revision": "3"
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-safety-resume-without-ref",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.safety_resume",
+      "request_id": "00000000-0000-4000-8000-000000000d80",
+      "payload": null
+    }
+  },
+  {
+    "id": "desktop-ipc-auto-actions-view",
+    "schema": "DesktopIpcResponse",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000d80",
+      "channel": "desktop.auto_actions_list",
+      "outcome": "ok",
+      "auto_actions": {
+        "fetch": "loaded",
+        "fetched_at": "2030-10-06T03:00:00Z",
+        "safety": {
+          "ref": "00000000-0000-4000-8000-000000000d72",
+          "state": "stopped",
+          "stop_reason": "rate_exceeded",
+          "stopped_at": "2030-10-06T02:30:00Z"
+        },
+        "entries": [
+          {
+            "ref": "00000000-0000-4000-8000-000000000d70",
+            "position": 0,
+            "kind": "label_mail",
+            "completed_at": "2030-10-06T02:00:00Z",
+            "undo_state": "available",
+            "undo_deadline": "2030-11-05T02:00:00Z",
+            "delivery_unknown": false
+          },
+          {
+            "ref": "00000000-0000-4000-8000-000000000d71",
+            "position": 1,
+            "kind": "create_task",
+            "completed_at": "2030-10-05T09:00:00Z",
+            "undo_state": "unavailable",
+            "undo_deadline": "2030-11-04T09:00:00Z",
+            "delivery_unknown": false
+          }
+        ],
+        "list_seq": 3
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-auto-actions-view-unavailable",
+    "schema": "DesktopIpcResponse",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000d80",
+      "channel": "desktop.safety_resume",
+      "outcome": "ok",
+      "auto_actions": {
+        "fetch": "unavailable",
+        "fetched_at": null,
+        "safety": null,
+        "entries": [],
+        "list_seq": 1
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-auto-actions-view-with-operation-id",
+    "schema": "DesktopIpcResponse",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000d80",
+      "channel": "desktop.auto_actions_list",
+      "outcome": "ok",
+      "auto_actions": {
+        "fetch": "loaded",
+        "fetched_at": "2030-10-06T03:00:00Z",
+        "safety": {
+          "ref": "00000000-0000-4000-8000-000000000d72",
+          "state": "stopped",
+          "stop_reason": "rate_exceeded",
+          "stopped_at": "2030-10-06T02:30:00Z"
+        },
+        "entries": [
+          {
+            "ref": "00000000-0000-4000-8000-000000000d70",
+            "position": 0,
+            "kind": "label_mail",
+            "completed_at": "2030-10-06T02:00:00Z",
+            "undo_state": "available",
+            "undo_deadline": "2030-11-05T02:00:00Z",
+            "delivery_unknown": false,
+            "operation_id": "00000000-0000-4000-8000-000000000601"
+          },
+          {
+            "ref": "00000000-0000-4000-8000-000000000d71",
+            "position": 1,
+            "kind": "create_task",
+            "completed_at": "2030-10-05T09:00:00Z",
+            "undo_state": "unavailable",
+            "undo_deadline": "2030-11-04T09:00:00Z",
+            "delivery_unknown": false
+          }
+        ],
+        "list_seq": 3
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-auto-actions-view-with-safety-revision",
+    "schema": "DesktopIpcResponse",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000d80",
+      "channel": "desktop.auto_actions_list",
+      "outcome": "ok",
+      "auto_actions": {
+        "fetch": "loaded",
+        "fetched_at": "2030-10-06T03:00:00Z",
+        "safety": {
+          "ref": "00000000-0000-4000-8000-000000000d72",
+          "state": "stopped",
+          "stop_reason": "rate_exceeded",
+          "stopped_at": "2030-10-06T02:30:00Z",
+          "safety_revision": "3"
+        },
+        "entries": [
+          {
+            "ref": "00000000-0000-4000-8000-000000000d70",
+            "position": 0,
+            "kind": "label_mail",
+            "completed_at": "2030-10-06T02:00:00Z",
+            "undo_state": "available",
+            "undo_deadline": "2030-11-05T02:00:00Z",
+            "delivery_unknown": false
+          },
+          {
+            "ref": "00000000-0000-4000-8000-000000000d71",
+            "position": 1,
+            "kind": "create_task",
+            "completed_at": "2030-10-05T09:00:00Z",
+            "undo_state": "unavailable",
+            "undo_deadline": "2030-11-04T09:00:00Z",
+            "delivery_unknown": false
+          }
+        ],
+        "list_seq": 3
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-auto-actions-view-unknown-undo-state",
+    "schema": "DesktopIpcResponse",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000d80",
+      "channel": "desktop.auto_actions_list",
+      "outcome": "ok",
+      "auto_actions": {
+        "fetch": "loaded",
+        "fetched_at": "2030-10-06T03:00:00Z",
+        "safety": {
+          "ref": "00000000-0000-4000-8000-000000000d72",
+          "state": "stopped",
+          "stop_reason": "rate_exceeded",
+          "stopped_at": "2030-10-06T02:30:00Z"
+        },
+        "entries": [
+          {
+            "ref": "00000000-0000-4000-8000-000000000d70",
+            "position": 0,
+            "kind": "label_mail",
+            "completed_at": "2030-10-06T02:00:00Z",
+            "undo_state": "failed",
+            "undo_deadline": "2030-11-05T02:00:00Z",
+            "delivery_unknown": false
+          },
+          {
+            "ref": "00000000-0000-4000-8000-000000000d71",
+            "position": 1,
+            "kind": "create_task",
+            "completed_at": "2030-10-05T09:00:00Z",
+            "undo_state": "unavailable",
+            "undo_deadline": "2030-11-04T09:00:00Z",
+            "delivery_unknown": false
+          }
+        ],
+        "list_seq": 3
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-auto-action-undo-target-changed",
+    "schema": "DesktopIpcResponse",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000d80",
+      "channel": "desktop.auto_action_undo",
+      "outcome": "rejected",
+      "reason": "undo_target_changed"
+    }
   }
 ]

@@ -447,7 +447,7 @@ test('分類の変更: 内容版を照合して変え、店名の規則を覚え
   assert.equal(entry?.['content_revision'], '2');
 });
 
-test('削除: 内容版を照合して消し、月から外す。再送・古い版・削除済みは 409、ない記録は 422', async (t) => {
+test('削除: 内容版を照合して消し、月から外す。再送・古い版・削除済みは 409、ない記録・内容版 0 は 422', async (t) => {
   const { store, dataKey, ports } = withDb(t);
   const handlers = routes(store, dataKey);
   const kept = await record(ports, { amount_yen: 100 });
@@ -489,6 +489,19 @@ test('削除: 内容版を照合して消し、月から外す。再送・古い
     deleteBody('1'),
   );
   assert.equal(missing.status, 422);
+  // 内容版 0 は契約の形には合うが、保存する版（1 から）にはないので、変更も削除も 422。
+  const zeroDelete = await call(
+    handlers.deleteHouseholdEntry,
+    { entry_id: kept },
+    deleteBody('0'),
+  );
+  assert.equal(zeroDelete.status, 422);
+  const zeroChange = await call(
+    handlers.changeHouseholdCategory,
+    { entry_id: kept },
+    changeBody('0', 'food'),
+  );
+  assert.equal(zeroChange.status, 422);
   const read = await call(handlers.getHouseholdMonth, { month: '2030-11' });
   assert.deepEqual(
     (read.body['entries'] as Json[]).map((item) => item['entry_id']),

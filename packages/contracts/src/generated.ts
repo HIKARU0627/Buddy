@@ -693,7 +693,7 @@ export type Deadline =
  */
 export type RequestEntityRevision = string;
 /**
- * 家計の記録の内容版（1 から。分類を変えるたびに 1 進む。ADR 0158）。変更・削除の照合に使う。
+ * 家計の記録の内容版（ADR 0003 の共通の 10 進の形。保存する値は 1 から始まり、分類を変えるたびに 1 進む。ADR 0158）。変更・削除の照合に使う。
  */
 export type HouseholdRevision = string;
 /**

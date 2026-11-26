@@ -67,6 +67,9 @@ const INVALID_REASONS: ReadonlySet<string> = new Set([
   'expected_revision_invalid',
 ]);
 
+// 保存する内容版の形（1 から。保存層と同じ）。契約の形（0 を含む）より狭いので、0 などは経路の処理で 422 にする。
+const STORED_REVISION = /^[1-9][0-9]{0,15}$/u;
+
 const stringOf = (value: unknown): string =>
   typeof value === 'string' ? value : '';
 
@@ -215,6 +218,7 @@ export function createHouseholdRoutes(
     const entryId = request.params['entry_id'] ?? '';
     const expected = stringOf(body['expected_content_revision']);
     const category = stringOf(body['category']);
+    if (!STORED_REVISION.test(expected)) return fail(422, 'invalid_input');
     const dataKey = await loadKey();
     if (dataKey === null) return fail(503, 'dependency_unavailable');
     const changed = await changeHouseholdCategory(
@@ -248,6 +252,7 @@ export function createHouseholdRoutes(
     const fail = failWith(stringOf(body['request_id']));
     const entryId = request.params['entry_id'] ?? '';
     const expected = stringOf(body['expected_content_revision']);
+    if (!STORED_REVISION.test(expected)) return fail(422, 'invalid_input');
     const deleted = await deleteHouseholdEntry(
       {
         client: options.store,

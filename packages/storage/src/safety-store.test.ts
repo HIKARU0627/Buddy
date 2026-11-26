@@ -24,6 +24,7 @@ import {
   CONTENT_HASH,
   STORE_GENERATION,
   approveCommand,
+  cancelCommand,
   createCommand,
   databasePath,
   dispatchCommand,
@@ -489,6 +490,117 @@ test('three compensation failures in a row stop the breaker; a success in betwee
       undoRows(db).map((row) => (row as { status: string }).status),
       ['failed', 'undone', 'failed', 'unknown', 'failed'],
     );
+  });
+});
+
+// U313（ADR 0155）: 補償の操作が止まったときの取り消しの記録。
+function startAutoAndUndo(db: SqliteDatabase, n: number): void {
+  committed(exec(db, createCommand(`op-a${n}`, { auto: true }), T0 + n * 100));
+  finishAuto(db, `op-a${n}`, T0 + n * 100 + 1);
+  committed(
+    exec(
+      db,
+      createCommand(`op-c${n}`, {
+        undo_of: { undo_id: `u${n}`, operation_id: `op-a${n}` },
+      }),
+      T0 + n * 100 + 2,
+    ),
+  );
+}
+
+function statuses(db: SqliteDatabase): string[] {
+  return undoRows(db).map((row) => (row as { status: string }).status);
+}
+
+test('a compensation cancelled before dispatch frees the undo so the same action can be undone again', async () => {
+  await withStore((db) => {
+    startAutoAndUndo(db, 1);
+    assert.equal(
+      committed(exec(db, cancelCommand('op-c1', '1'), T0 + 110)),
+      '2',
+    );
+    assert.equal(operationState(db, 'op-c1')?.state, 'cancelled');
+    assert.deepEqual(statuses(db), ['failed']);
+    committed(
+      exec(
+        db,
+        createCommand('op-c1b', {
+          undo_of: { undo_id: 'u1b', operation_id: 'op-a1' },
+        }),
+        T0 + 120,
+      ),
+    );
+    assert.deepEqual(statuses(db), ['failed', 'in_progress']);
+    finishScreen(db, 'op-c1b', T0 + 130, 'succeeded');
+    assert.deepEqual(statuses(db), ['failed', 'undone']);
+  });
+});
+
+test('a cancelled compensation does not count toward three failures in a row', async () => {
+  await withStore((db) => {
+    startAutoAndUndo(db, 1);
+    finishScreen(db, 'op-c1', T0 + 103, 'not_executed');
+    startAutoAndUndo(db, 2);
+    committed(exec(db, cancelCommand('op-c2', '1'), T0 + 203));
+    startAutoAndUndo(db, 3);
+    finishScreen(db, 'op-c3', T0 + 303, 'not_executed');
+    assert.deepEqual(statuses(db), ['failed', 'failed', 'failed']);
+    assert.equal(readSafetyState(db).state, 'running');
+    startAutoAndUndo(db, 4);
+    finishScreen(db, 'op-c4', T0 + 403, 'not_executed');
+    assert.deepEqual(breaker(db), {
+      state: 'stopped',
+      safety_revision: 1,
+      stop_reason: 'compensation_failures',
+      stopped_at: T0 + 403,
+      resumed_by_device_id: null,
+    });
+  });
+});
+
+test('retrying a not-executed compensation puts the undo back in progress, unless another undo has started', async () => {
+  await withStore((db) => {
+    startAutoAndUndo(db, 1);
+    finishScreen(db, 'op-c1', T0 + 103, 'not_executed');
+    assert.deepEqual(statuses(db), ['failed']);
+    const retry = { ...prepareCommand('op-c1', '6'), retry: true };
+    assert.equal(committed(exec(db, retry, T0 + 110)), '7');
+    assert.deepEqual(statuses(db), ['in_progress']);
+    committed(
+      exec(db, dispatchCommand('op-c1', '7', retry.attempt_id), T0 + 111),
+    );
+    committed(
+      exec(
+        db,
+        resultCommand('op-c1', '8', retry.attempt_id, 'reconciling'),
+        T0 + 112,
+      ),
+    );
+    committed(
+      exec(
+        db,
+        resultCommand('op-c1', '9', retry.attempt_id, 'succeeded'),
+        T0 + 113,
+      ),
+    );
+    assert.deepEqual(statuses(db), ['undone']);
+  });
+  await withStore((db) => {
+    startAutoAndUndo(db, 1);
+    finishScreen(db, 'op-c1', T0 + 103, 'not_executed');
+    committed(
+      exec(
+        db,
+        createCommand('op-c1b', {
+          undo_of: { undo_id: 'u1b', operation_id: 'op-a1' },
+        }),
+        T0 + 120,
+      ),
+    );
+    const retry = { ...prepareCommand('op-c1', '6'), retry: true };
+    assert.deepEqual(reasons(exec(db, retry, T0 + 130)), ['retry_not_allowed']);
+    assert.equal(operationState(db, 'op-c1')?.state, 'not_executed');
+    assert.deepEqual(statuses(db), ['failed', 'in_progress']);
   });
 });
 

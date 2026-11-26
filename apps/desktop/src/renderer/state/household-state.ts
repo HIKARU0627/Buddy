@@ -11,7 +11,7 @@ import type {
   DesktopIpcResponse,
   HouseholdCategoryId,
 } from '@buddy/contracts';
-import { HOUSEHOLD_CATEGORIES } from '@buddy/domain';
+import { HOUSEHOLD_CATEGORIES, householdDuplicateGroups } from '@buddy/domain';
 import { request } from '../desktop-api.js';
 import { REJECT_MESSAGES } from '../labels.js';
 
@@ -88,9 +88,32 @@ export const HOUSEHOLD_LABELS = {
   addMerchant: '店名・相手',
   addMemo: 'メモ',
   addPayment: '支払い手段',
+  duplicateNote:
+    '同じ日・同じ金額の記録が別の出所からも入っています。同じ利用を二重に記録していないか確かめ、重なっていれば片方を削除してください。',
+  duplicateMark: '重なっているかもしれません',
   addInvalid:
     '金額（1\u00a0円以上の整数）と日付（2000〜2099\u00a0年）を入れてください。時刻は HH:MM です。',
 } as const;
+
+/**
+ * 出している月の記録のうち、重なっていそうな記録の参照（ADR 0168）。同じ日・同じ金額・同じ向きで出所の違う記録や、
+ * 手入力の二つを、本人が確かめられるように印を付ける（自動では消さない）。
+ */
+export function duplicateRefs(
+  entries: readonly DesktopHouseholdEntry[],
+): ReadonlySet<string> {
+  return new Set(
+    householdDuplicateGroups(
+      entries.map((entry) => ({
+        key: entry.ref,
+        source_kind: entry.source_kind,
+        direction: entry.direction,
+        occurred_on: entry.occurred_on,
+        amount_yen: entry.amount_yen,
+      })),
+    ).flat(),
+  );
+}
 
 // 手入力の知らせを出す場所。
 export const ADD_PLACE = 'add';

@@ -31,6 +31,7 @@ import {
   categoryChoices,
   categoryLabel,
   dayText,
+  duplicateRefs,
   elapsedText,
   importResultText,
   manualEntryFromInput,
@@ -115,10 +116,13 @@ function EntryRow({
   entry,
   state,
   actions,
+  duplicate,
 }: {
   readonly entry: DesktopHouseholdEntry;
   readonly state: HouseholdViewState;
   readonly actions: HouseholdActions;
+  // 重なっていそうな記録か（ADR 0168）。
+  readonly duplicate: boolean;
 }) {
   const notice = noticeAt(state, entry.ref);
   const mine = state.busy === entry.ref;
@@ -147,6 +151,16 @@ function EntryRow({
             : `${DIRECTION_LABELS[entry.direction]} ${yenText(entry.amount_yen)}`}
         </span>
       </div>
+      {duplicate ? (
+        <StatusText
+          className="text-xs"
+          line={{
+            tone: 'warning',
+            mark: 'warning',
+            text: HOUSEHOLD_LABELS.duplicateMark,
+          }}
+        />
+      ) : null}
       <p className="text-xs text-muted">
         {[
           entry.payment,
@@ -786,6 +800,7 @@ export function HouseholdPanel({
     view === null
       ? []
       : [...view.entries].sort((a, b) => a.position - b.position);
+  const duplicates = duplicateRefs(entries);
   return (
     <Section
       id="household-heading"
@@ -828,6 +843,12 @@ export function HouseholdPanel({
               text={`読めない記録が\u00a0${String(view.unreadable)}\u00a0件あります（合計には入れていません）。`}
             />
           ) : null}
+          {duplicates.size > 0 ? (
+            <InlineNotice
+              tone="warning"
+              text={HOUSEHOLD_LABELS.duplicateNote}
+            />
+          ) : null}
           {entries.length === 0 ? (
             <p className="text-sm text-muted">{HOUSEHOLD_LABELS.empty}</p>
           ) : (
@@ -841,6 +862,7 @@ export function HouseholdPanel({
                   entry={entry}
                   state={state}
                   actions={actions}
+                  duplicate={duplicates.has(entry.ref)}
                 />
               ))}
             </ul>

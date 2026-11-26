@@ -368,3 +368,22 @@ test('the add block offers to add a record and the form lists the fields', () =>
   assert(buttons(open).includes('足す'));
   assert.match(text(open), /カード番号・口座番号は入れないでください/u);
 });
+
+test('rows that look like the same purchase from two sources are marked, and the list says so', () => {
+  const html = text(
+    panel({
+      view: view([
+        entry(0),
+        entry(1, { source_kind: 'manual', merchant: '合成の食堂（手入力）' }),
+        entry(2, { amount_yen: 999 }),
+      ]),
+      seq: 2,
+    }),
+  );
+  assert.match(html, /同じ日・同じ金額の記録が別の出所からも入っています/u);
+  assert.equal((html.match(/重なっているかもしれません/gu) ?? []).length, 2);
+  const single = text(
+    panel({ view: view([entry(0), entry(2, { amount_yen: 999 })]), seq: 2 }),
+  );
+  assert.doesNotMatch(single, /重なっているかもしれません/u);
+});

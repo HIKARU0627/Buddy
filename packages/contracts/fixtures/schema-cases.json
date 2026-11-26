@@ -6429,6 +6429,155 @@
     "semantic_errors": ["created_by_self"]
   },
   {
+    "id": "intent-task-delete-as-operation",
+    "schema": "OperationIntent",
+    "valid": true,
+    "value": {
+      "schema": "buddy.operation.v1",
+      "operation_id": "00000000-0000-4000-8000-000000000301",
+      "content_version": "1",
+      "permission_revision": "1",
+      "target": {
+        "task_id": "00000000-0000-4000-8000-0000000002a1"
+      },
+      "action": {
+        "kind": "task.delete",
+        "created_by": {
+          "operation_id": "00000000-0000-4000-8000-000000000201",
+          "content_version": "1"
+        }
+      },
+      "effects": {
+        "external_recipients": [],
+        "reconcile_scope": "local_transaction"
+      }
+    }
+  },
+  {
+    "id": "intent-task-delete-with-provider",
+    "schema": "OperationIntent",
+    "valid": false,
+    "value": {
+      "schema": "buddy.operation.v1",
+      "operation_id": "00000000-0000-4000-8000-000000000301",
+      "content_version": "1",
+      "permission_revision": "1",
+      "target": {
+        "task_id": "00000000-0000-4000-8000-0000000002a1"
+      },
+      "action": {
+        "kind": "task.delete",
+        "created_by": {
+          "operation_id": "00000000-0000-4000-8000-000000000201",
+          "content_version": "1"
+        }
+      },
+      "effects": {
+        "external_recipients": [],
+        "reconcile_scope": "local_transaction"
+      },
+      "provider": "mock",
+      "account_id": "00000000-0000-4000-8000-000000000002"
+    }
+  },
+  {
+    "id": "intent-task-delete-remote-scope",
+    "schema": "OperationIntent",
+    "valid": false,
+    "value": {
+      "schema": "buddy.operation.v1",
+      "operation_id": "00000000-0000-4000-8000-000000000301",
+      "content_version": "1",
+      "permission_revision": "1",
+      "target": {
+        "task_id": "00000000-0000-4000-8000-0000000002a1"
+      },
+      "action": {
+        "kind": "task.delete",
+        "created_by": {
+          "operation_id": "00000000-0000-4000-8000-000000000201",
+          "content_version": "1"
+        }
+      },
+      "effects": {
+        "external_recipients": [],
+        "reconcile_scope": "exact_target"
+      }
+    }
+  },
+  {
+    "id": "intent-task-delete-without-created-by",
+    "schema": "OperationIntent",
+    "valid": false,
+    "value": {
+      "schema": "buddy.operation.v1",
+      "operation_id": "00000000-0000-4000-8000-000000000301",
+      "content_version": "1",
+      "permission_revision": "1",
+      "target": {
+        "task_id": "00000000-0000-4000-8000-0000000002a1"
+      },
+      "action": {
+        "kind": "task.delete"
+      },
+      "effects": {
+        "external_recipients": [],
+        "reconcile_scope": "local_transaction"
+      }
+    }
+  },
+  {
+    "id": "intent-task-delete-without-task-id",
+    "schema": "OperationIntent",
+    "valid": false,
+    "value": {
+      "schema": "buddy.operation.v1",
+      "operation_id": "00000000-0000-4000-8000-000000000301",
+      "content_version": "1",
+      "permission_revision": "1",
+      "target": {
+        "list_id": "inbox"
+      },
+      "action": {
+        "kind": "task.delete",
+        "created_by": {
+          "operation_id": "00000000-0000-4000-8000-000000000201",
+          "content_version": "1"
+        }
+      },
+      "effects": {
+        "external_recipients": [],
+        "reconcile_scope": "local_transaction"
+      }
+    }
+  },
+  {
+    "id": "intent-task-delete-of-itself",
+    "schema": "OperationIntent",
+    "valid": true,
+    "value": {
+      "schema": "buddy.operation.v1",
+      "operation_id": "00000000-0000-4000-8000-000000000301",
+      "content_version": "1",
+      "permission_revision": "1",
+      "target": {
+        "task_id": "00000000-0000-4000-8000-0000000002a1"
+      },
+      "action": {
+        "kind": "task.delete",
+        "created_by": {
+          "operation_id": "00000000-0000-4000-8000-000000000301",
+          "content_version": "1"
+        }
+      },
+      "effects": {
+        "external_recipients": [],
+        "reconcile_scope": "local_transaction"
+      }
+    },
+    "semantic_errors": ["created_by_self"]
+  },
+  {
     "id": "intent-task-create-missing-body",
     "schema": "OperationIntent",
     "valid": false,

@@ -25,6 +25,7 @@ import type {
   DataKeyMaterial,
   DbWorkerClient,
   SafetyStateRecord,
+  TaskStateRead,
 } from '@buddy/storage';
 import type { ApiContract } from './api-contract.js';
 import type { EnvironmentInput } from './api-environment.js';
@@ -93,11 +94,12 @@ export interface AutoActionRoutes {
   revisionMatches(input: EnvironmentInput): Promise<boolean>;
 }
 
-// 補償の操作を作れる種類（ADR 0153・0156）。下書きは Buddy が作ったままのものを削除で戻す。用事の補償は
-// 操作の種類が契約にまだない（U310）。下書きの削除は、提供元が下書きを id で読めるときだけ（undoableKindsOf）。
+// 補償の操作を作れる種類（ADR 0153・0156・0157）。下書きは Buddy が作ったままのものを削除で戻し、用事は登録した
+// ままの（開いている）ものを削除で戻す。下書きの削除は、提供元が下書きを id で読めるときだけ（undoableKindsOf）。
 export const UNDOABLE_KINDS: readonly AutoActionKind[] = [
   'label_mail',
   'draft_reply',
+  'create_task',
 ];
 
 // 渡された口で取り消せる種類。下書きは id で読み直せないと、作ったままかを確かめられない。
@@ -185,6 +187,31 @@ interface DraftCreation {
   readonly cc: readonly string[];
   readonly subject: string;
   readonly body: string;
+}
+
+// 自動で登録した用事の確定 intent から、取り消しの補償に要る値を取り出す（ADR 0157）。
+export interface TaskCreation {
+  readonly operation_id: string;
+  readonly content_version: string;
+  readonly permission_revision: string;
+}
+
+export function taskCreationOf(
+  intent: Record<string, unknown>,
+): TaskCreation | null {
+  const action = intent['action'] as Record<string, unknown> | undefined;
+  if (
+    action?.['kind'] !== 'task.create' ||
+    typeof intent['operation_id'] !== 'string' ||
+    typeof intent['content_version'] !== 'string' ||
+    typeof intent['permission_revision'] !== 'string'
+  )
+    return null;
+  return {
+    operation_id: intent['operation_id'],
+    content_version: intent['content_version'],
+    permission_revision: intent['permission_revision'],
+  };
 }
 
 export function draftCreationOf(
@@ -467,16 +494,63 @@ export function createAutoActionRoutes(
     }
   };
 
-  // 補償の内容。ラベルは逆向きの変更、下書きは削除。送出の直前には実行担当が対象と許可の版をもう一度確かめる
-  // （D1、ADR 0030・0156）。対象が変わっていれば target_changed、読めなければ unavailable。
+  // 補償の内容。ラベルは逆向きの変更、下書きと用事は削除。送出・適用の直前には実行担当（用事は DB worker）が
+  // 対象をもう一度確かめる（D1、ADR 0030・0156・0157）。対象が変わっていれば target_changed、読めなければ unavailable。
   type Compensation =
     | {
         readonly kind: 'ok';
-        readonly operation_kind: 'mail.labels.change' | 'mail.draft.delete';
+        readonly operation_kind:
+          'mail.labels.change' | 'mail.draft.delete' | 'task.delete';
+        readonly effect_route: 'remote_mutation' | 'local_command';
         readonly permission: string;
         readonly content: Record<string, unknown>;
       }
     | { readonly kind: 'unavailable' | 'target_changed' };
+
+  // 用事の補償（ADR 0157）。登録した用事の id は試行の結果（external_id）にある。元の操作が作った用事で、まだ
+  // 開いていれば消す。完了・削除済み・別の操作の用事なら target_changed。用事の内容は今は編集できない。
+  const taskCompensation = async (
+    creation: TaskCreation,
+    view: { readonly external_id: string | null },
+    base: Record<string, unknown>,
+  ): Promise<Compensation> => {
+    const taskId = view.external_id;
+    if (taskId === null) return { kind: 'target_changed' };
+    let task: TaskStateRead | null;
+    try {
+      task = await store.query({ kind: 'task_state', task_id: taskId });
+    } catch {
+      return { kind: 'unavailable' };
+    }
+    if (
+      task === null ||
+      task.operation_id !== creation.operation_id ||
+      task.status !== 'open'
+    )
+      return { kind: 'target_changed' };
+    return {
+      kind: 'ok',
+      operation_kind: 'task.delete',
+      effect_route: 'local_command',
+      permission: creation.permission_revision,
+      content: {
+        ...base,
+        permission_revision: creation.permission_revision,
+        target: { task_id: taskId },
+        action: {
+          kind: 'task.delete',
+          created_by: {
+            operation_id: creation.operation_id,
+            content_version: creation.content_version,
+          },
+        },
+        effects: {
+          external_recipients: [],
+          reconcile_scope: 'local_transaction',
+        },
+      },
+    };
+  };
 
   const compensationFor = async (
     ports: AutoActionUndoPorts,
@@ -493,6 +567,8 @@ export function createAutoActionRoutes(
       external_recipients: [],
       reconcile_scope: 'exact_target',
     };
+    const task = taskCreationOf(original);
+    if (task !== null) return taskCompensation(task, view, base);
     const change = labelChangeOf(original);
     if (change !== null) {
       // 対象のメールを今読み直す（掃除が済むまで読まない）。
@@ -507,6 +583,7 @@ export function createAutoActionRoutes(
       return {
         kind: 'ok',
         operation_kind: 'mail.labels.change',
+        effect_route: 'remote_mutation',
         permission: current.permission,
         content: {
           ...base,
@@ -541,6 +618,7 @@ export function createAutoActionRoutes(
     return {
       kind: 'ok',
       operation_kind: 'mail.draft.delete',
+      effect_route: 'remote_mutation',
       permission: current.permission,
       content: {
         ...base,
@@ -713,7 +791,7 @@ export function createAutoActionRoutes(
       },
       workflow_id: null,
       operation_kind: compensation.operation_kind,
-      effect_route: 'remote_mutation',
+      effect_route: compensation.effect_route,
       content_hash: sealed.content_hash,
       intent: sealed.intent,
       auto_approval: null,

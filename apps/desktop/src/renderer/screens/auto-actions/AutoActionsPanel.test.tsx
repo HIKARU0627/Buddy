@@ -144,8 +144,9 @@ test('rows show the kind, how long ago, the undo state, and the undo button only
   // 画面の文言に内部のコードは出さず、参照の値は属性にも出さない。
   assert.doesNotMatch(words, /target_changed|unavailable|label_mail/u);
   assert.doesNotMatch(html, new RegExp(SAFETY_REF, 'u'));
-  // 取り消せない下書きの行には、削除の説明を出さない。
+  // 取り消せない下書き・タスクの行には、削除の説明を出さない。
   assert.doesNotMatch(words, /下書きを削除します/u);
+  assert.doesNotMatch(words, /タスクを削除します/u);
 });
 
 test('a draft that can be undone says the undo deletes the draft Buddy made; a label row does not (ADR 0156)', () => {
@@ -161,6 +162,20 @@ test('a draft that can be undone says the undo deletes the draft Buddy made; a l
     buttons(
       panel({ view: view([entry(0, { kind: 'draft_reply' })]), seq: 2 }),
     ).includes('取り消す'),
+  );
+});
+
+test('a task that can be undone says the undo deletes the task Buddy registered (ADR 0157)', () => {
+  const html = panel({
+    view: view([entry(0, { kind: 'create_task' }), entry(1)]),
+    seq: 2,
+  });
+  const words = text(html);
+  const effect = '取り消すと、Buddy が登録したタスクを削除します。';
+  assert.equal(words.split(effect).length - 1, 1);
+  assert.deepEqual(
+    buttons(html).filter((label) => label === '取り消す'),
+    ['取り消す', '取り消す'],
   );
 });
 

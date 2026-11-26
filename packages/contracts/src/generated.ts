@@ -409,7 +409,8 @@ export type OperationIntent =
   | CalendarUpdateOperationIntent
   | CalendarCreateWithAttendeesOperationIntent
   | MailTrashOperationIntent
-  | DraftDeleteOperationIntent;
+  | DraftDeleteOperationIntent
+  | TaskDeleteOperationIntent;
 /**
  * 承認対象の内容版。宛先・本文・対象・影響・前提が変わったときだけ上がる（設計 07 §1、08 §1）。
  */
@@ -451,7 +452,7 @@ export type CommandReceipt =
       committed_state_revision: StateRevision;
     };
 /**
- * 操作の種類。確定 intent の action.kind と同じ値（ADR 0027・0075・0156）。経路（Read / LocalCommand / RemoteMutation）はコードの表が決める。
+ * 操作の種類。確定 intent の action.kind と同じ値（ADR 0027・0075・0156・0157）。経路（Read / LocalCommand / RemoteMutation）はコードの表が決める。
  */
 export type OperationKind =
   | 'mail.labels.change'
@@ -461,7 +462,8 @@ export type OperationKind =
   | 'calendar.event.update'
   | 'calendar.event.create_with_attendees'
   | 'mail.trash'
-  | 'mail.draft.delete';
+  | 'mail.draft.delete'
+  | 'task.delete';
 /**
  * DB の世代。通常の再起動では維持し、バックアップ復元・新規作成で新しい値にする。等値比較だけに使う（設計 07 §1・§4、ADR 0003）。
  */
@@ -795,7 +797,8 @@ export type OperationStepKind =
   | 'update_event'
   | 'create_event_with_attendees'
   | 'trash_mail'
-  | 'delete_draft';
+  | 'delete_draft'
+  | 'delete_task';
 /**
  * Outlook のアカウント種別（設計 04 接続・権限）。接続時に特定し、個人と職場・学校で使える範囲を分ける。
  */
@@ -2622,6 +2625,32 @@ export interface DraftDeleteOperationIntent {
      */
     external_recipients: [];
     reconcile_scope: 'exact_target';
+  };
+}
+/**
+ * Buddy が自動で登録した用事を、取り消しで削除する（task.delete、LocalCommand、ADR 0157）。自動実行の取り消しの補償の操作だけに使い、方針では承認しない。target.task_id は削除する用事、created_by はその用事を登録した操作と内容版。保存層は、用事がその操作で登録されたもので、開いたままのときだけ消す。外部 HTTP を使わず、外部の相手へも送らない。
+ */
+export interface TaskDeleteOperationIntent {
+  schema: 'buddy.operation.v1';
+  operation_id: Id;
+  content_version: ContentVersion;
+  permission_revision: PermissionRevision;
+  target: {
+    task_id: Id;
+  };
+  action: {
+    kind: 'task.delete';
+    created_by: {
+      operation_id: Id;
+      content_version: ContentVersion;
+    };
+  };
+  effects: {
+    /**
+     * @maxItems 0
+     */
+    external_recipients: [];
+    reconcile_scope: 'local_transaction';
   };
 }
 /**

@@ -52,7 +52,15 @@ export type EventQuery =
       readonly device_id: string;
       readonly core_instance_id: string;
       readonly now: number;
-    };
+    }
+  // 用事を作った操作と、開いているか（ADR 0157）。取り消しの補償を作る前の照合に使う。内容は返さない。
+  | { readonly kind: 'task_state'; readonly task_id: string };
+
+// 用事の状態（ADR 0157）。題名・期限・本文は返さない。
+export interface TaskStateRead {
+  readonly operation_id: string;
+  readonly status: 'open' | 'done';
+}
 
 export type EventQueryKind = EventQuery['kind'];
 
@@ -62,6 +70,7 @@ export interface EventQueryValues {
   readonly operation_view: OperationView | null;
   readonly receipt_exists: boolean;
   readonly current_scope: CommandScopeRecord | null;
+  readonly task_state: TaskStateRead | null;
 }
 
 export type EventQueryValue = EventQueryValues[EventQueryKind];
@@ -72,6 +81,7 @@ export const EVENT_QUERY_KINDS: ReadonlySet<string> = new Set<EventQueryKind>([
   'operation_view',
   'receipt_exists',
   'current_scope',
+  'task_state',
 ]);
 
 export function isEventQuery(query: {
@@ -154,7 +164,19 @@ export function eventQueryShapeReasons(query: EventQuery): string[] {
         isSequence(query.now)
         ? []
         : ['scope_query_invalid'];
+    case 'task_state':
+      return isText(query.task_id) ? [] : ['task_id_invalid'];
   }
+}
+
+function readTaskState(
+  db: SqliteDatabase,
+  taskId: string,
+): TaskStateRead | null {
+  const row = db
+    .prepare('SELECT operation_id, status FROM tasks WHERE task_id = ?')
+    .get(taskId) as TaskStateRead | undefined;
+  return row ?? null;
 }
 
 // DB worker の中で照会を一つ処理する。形が不正なら例外（worker は query_failed を返す）。
@@ -186,5 +208,7 @@ export function executeEventQuery(
         query.core_instance_id,
         query.now,
       );
+    case 'task_state':
+      return readTaskState(db, query.task_id);
   }
 }

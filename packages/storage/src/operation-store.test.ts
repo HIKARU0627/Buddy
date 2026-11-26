@@ -871,6 +871,7 @@ test('D5: apply_local writes the task, attempt, approval use, final state, event
     const local = {
       effect_route: 'local_command',
       connection_id: null,
+      operation_kind: 'task.create',
     } as const;
     committed(run(db, createCommand('op-l', local)));
     committed(run(db, approveCommand('op-l', '1', { connection_id: null })));

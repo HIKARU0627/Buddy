@@ -1902,7 +1902,7 @@ paths:
     get:
       operationId: listHouseholdMonths
       summary: 家計簿の月ごとの合計
-      description: 今月から 11 か月前までの 12 か月の、支出・収入・差額・振替の合計と件数を新しい月から返す（記録のない月も 0 で入れる）。今月は Core が本人のタイムゾーン（ADR 0131）で決め、決まっていなければ 503（端末の時計・UTC で代用しない）。合計は Core が記録を復号して計算し、復号できない記録は数だけ返す。一度に読む件数の上限で古い記録を切ったときは truncated。金額を含むのでロック解除を求める（ADR 0158・0161）。
+      description: 今月から 11 か月前までの 12 か月の、支出・収入・差額・振替の合計と件数を新しい月から返す（記録のない月も 0 で入れる）。今月は Core が本人のタイムゾーン（ADR 0131）で決め、決まっていなければ 503（端末の時計・UTC で代用しない）。合計は Core が記録を復号して計算し、復号できない記録は数だけ返す。一度に読む件数の上限で古い記録を切ったときは truncated。利用通知メールの取り込みの入・切（settings、ADR 0163）も返す。金額を含むのでロック解除を求める（ADR 0158・0161）。
       x-buddy-core-checks:
         - device_token
         - home_network
@@ -2027,6 +2027,49 @@ paths:
             application/json:
               schema:
                 $ref: ./schemas/buddy.schema.json#/$defs/HouseholdEntryDeleteResult
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/Gone'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /v1/household/settings:
+    post:
+      operationId: changeHouseholdSettings
+      summary: 家計簿の設定の変更
+      description: 本人がロック解除済みの画面で、カードの利用通知メールの取り込みを止める・再開する（U326）。版（expected_settings_revision）が今と違えば 409。止めている間は同期したメールを読まない。再開すると、止めていた間に届いたメールは読まずに、その時点から取り込み直す（U334。過去の分は書き出しの取り込みで補う）。成否が不明なときは 503。今の設定は月ごとの合計（listHouseholdMonths）が返す（ADR 0163）。
+      x-buddy-core-checks:
+        - device_token
+        - home_network
+        - command_scope
+        - unlocked
+        - screen_operation
+      parameters:
+        - $ref: '#/components/parameters/InputOrigin'
+        - $ref: '#/components/parameters/LockState'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas/buddy.schema.json#/$defs/HouseholdSettingsChangeRequest
+      responses:
+        '200':
+          description: 変更後の設定。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/HouseholdSettings
         '401':
           $ref: '#/components/responses/Unauthenticated'
         '403':

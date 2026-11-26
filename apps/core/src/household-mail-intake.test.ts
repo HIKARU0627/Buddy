@@ -238,6 +238,50 @@ test('初回は過去のメールを読まずに基準を作り、その後に�
   assert.equal(fixture.calls.length, 2);
 });
 
+test('本人が取り込みを止めている間はメールを読まず、再開すると止めていた間のメールを読まずに基準を作り直す（ADR 0163）', async (t) => {
+  const fixture = setup(t);
+  const run = intake(fixture);
+  assert.equal((await run.run(target)).baseline, true);
+  const off = await fixture.client.household({
+    kind: 'household.settings_set',
+    expected_revision: '0',
+    mail_intake: 'off',
+    now: NOW.toISOString(),
+  });
+  assert.equal(off.ok, true);
+  storeMail(fixture, message('m-while-off', { text: USAGE }), 2000);
+  assert.deepEqual(await run.run(target), {
+    outcome: 'skipped',
+    reason: 'intake_off',
+    baseline: false,
+    checked: 0,
+    recorded: 0,
+  });
+  assert.deepEqual(fixture.calls, []);
+  const on = await fixture.client.household({
+    kind: 'household.settings_set',
+    expected_revision: '1',
+    mail_intake: 'on',
+    now: NOW.toISOString(),
+  });
+  assert.equal(on.ok, true);
+  assert.deepEqual(await run.run(target), {
+    outcome: 'done',
+    reason: null,
+    baseline: true,
+    checked: 0,
+    recorded: 0,
+  });
+  storeMail(fixture, message('m-after', { text: USAGE }), 3000);
+  assert.equal((await run.run(target)).recorded, 1);
+  assert.deepEqual(
+    // 前の assert.deepEqual が型を空の配列に絞るので、要素の型を書き直す。
+    (fixture.calls as readonly { id: string }[]).map((call) => call.id),
+    ['m-after', 'm-after'],
+  );
+  assert.deepEqual(await amounts(fixture), [1280]);
+});
+
 test('知らない送り主・認証の不合格・利用の通知でない件名は、本文を読まずに確かめ済みにする', async (t) => {
   const fixture = setup(t);
   const run = intake(fixture);

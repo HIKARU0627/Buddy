@@ -66,6 +66,9 @@ const VERSION_FIELDS = {
   // 家計の記録の内容版（ADR 0158・0161）。
   content_revision: 'HouseholdRevision',
   expected_content_revision: 'HouseholdRevision',
+  // 本人の家計簿の設定の版（ADR 0163）。
+  settings_revision: 'HouseholdSettingsRevision',
+  expected_settings_revision: 'HouseholdSettingsRevision',
   sequence: 'Sequence',
   first_frame_seq: 'Sequence',
   last_frame_seq: 'Sequence',
@@ -121,6 +124,7 @@ const DECIMAL_KINDS = [
   'RouteRevision',
   'SafetyRevision',
   'HouseholdRevision',
+  'HouseholdSettingsRevision',
   'Sequence',
 ];
 

@@ -335,6 +335,12 @@ export const TABLE_POLICIES: Readonly<Record<string, TablePolicy>> = {
     retention: 'until_replaced',
     transaction: 'household',
   },
+  // 0018（ADR 0163）。本人の家計簿の設定（1 行だけ）。
+  household_settings: {
+    body: 'none',
+    retention: 'until_replaced',
+    transaction: 'household',
+  },
 };
 
 // 本文・宛先・要約を平文で持ってはいけない列名。暗号文は *_blob_id で sealed_blobs を参照する。

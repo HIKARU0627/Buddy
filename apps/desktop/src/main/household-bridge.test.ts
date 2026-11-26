@@ -61,6 +61,7 @@ const overview = () => ({
       : totals(month),
   ),
   truncated: false,
+  settings: { mail_intake: 'on', settings_revision: '2' },
 });
 
 const lunch = (fields: Record<string, unknown> = {}) => ({
@@ -244,6 +245,7 @@ test('the view carries refs and display values only, and reads the current month
     unreadable: 0,
     truncated: false,
     list_seq: 2,
+    mail_intake: 'on',
   });
   assert.deepEqual(
     contract.responseErrors({
@@ -486,4 +488,57 @@ test('a read overtaken by a later read is not applied, and a reset drops everyth
     ok: false,
     reason: 'not_connected',
   });
+});
+
+test('the intake switch sends the settings revision it read and re-reads; the same value is not sent', async () => {
+  const r = rig();
+  // まだ読んでいなければ送らない。
+  assert.deepEqual(await r.bridge.intake('off'), {
+    ok: false,
+    reason: 'entry_not_found',
+  });
+  ok(await r.bridge.show(null));
+  ok(await r.bridge.intake('on'));
+  assert.equal(r.posts().length, 0);
+  r.post = () => ({
+    kind: 'response',
+    status: 200,
+    body: { mail_intake: 'off', settings_revision: '3' },
+  });
+  r.overview = () => ({
+    kind: 'response',
+    status: 200,
+    body: {
+      ...overview(),
+      settings: { mail_intake: 'off', settings_revision: '3' },
+    },
+  });
+  const after = ok(await r.bridge.intake('off'));
+  assert.equal(after.mail_intake, 'off');
+  assert.deepEqual(r.posts(), [
+    {
+      method: 'POST',
+      path: '/v1/household/settings',
+      body: { expected_settings_revision: '2', mail_intake: 'off' },
+      scoped: true,
+      screenOperation: true,
+      expectedScopeId: SCOPE,
+    },
+  ]);
+  assert.equal(JSON.stringify(after).includes('settings_revision'), false);
+  r.post = () => ({
+    kind: 'response',
+    status: 409,
+    body: { code: 'conflict' },
+  });
+  assert.deepEqual(await r.bridge.intake('on'), {
+    ok: false,
+    reason: 'preview_stale',
+  });
+  r.post = () => ({ kind: 'unknown' });
+  assert.deepEqual(await r.bridge.intake('on'), {
+    ok: false,
+    reason: 'outcome_unknown',
+  });
+  assert.equal(r.posts().length, 3);
 });

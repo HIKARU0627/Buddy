@@ -233,6 +233,7 @@ test('月ごとの合計: 今月は本人のタイムゾーンで決め、今月
       },
     ],
     truncated: false,
+    settings: { mail_intake: 'on', settings_revision: '0' },
   });
 });
 
@@ -508,6 +509,67 @@ test('削除: 内容版を照合して消し、月から外す。再送・古い
     [kept],
   );
   assert.equal((read.body['summary'] as Json)['expense_yen'], 100);
+});
+
+test('設定: 取り込みを止める・再開する。版を照合し、古い版・同じ要求の再送は 409（ADR 0163）', async (t) => {
+  const { store, dataKey } = withDb(t);
+  const handlers = routes(store, dataKey);
+  const body = (expected: string, mailIntake: string): JsonObject => ({
+    request_id: '00000000-0000-4000-8000-0000000c0103',
+    command_scope_id: SCOPE,
+    expected_settings_revision: expected,
+    mail_intake: mailIntake,
+  });
+  const off = await call(
+    handlers.changeHouseholdSettings,
+    {},
+    body('0', 'off'),
+  );
+  assert.equal(off.status, 200);
+  assert(contract.valid('HouseholdSettings', off.body));
+  assert.deepEqual(off.body, { mail_intake: 'off', settings_revision: '1' });
+  const resent = await call(
+    handlers.changeHouseholdSettings,
+    {},
+    body('0', 'off'),
+  );
+  assert.equal(resent.status, 409);
+  assert.equal(
+    resent.body['request_id'],
+    '00000000-0000-4000-8000-0000000c0103',
+  );
+  const overview = await call(handlers.listHouseholdMonths);
+  assert.deepEqual(overview.body['settings'], {
+    mail_intake: 'off',
+    settings_revision: '1',
+  });
+  assert(contract.valid('HouseholdOverview', overview.body));
+  const on = await call(handlers.changeHouseholdSettings, {}, body('1', 'on'));
+  assert.deepEqual(on.body, { mail_intake: 'on', settings_revision: '2' });
+  const bad = await call(
+    handlers.changeHouseholdSettings,
+    {},
+    body('2', 'paused'),
+  );
+  assert.equal(bad.status, 422);
+  // 書込みの成否不明は 503。
+  const real = store.household as (op: HouseholdOp) => Promise<unknown>;
+  const unknown: Store = {
+    household: ((op: HouseholdOp) =>
+      op.kind === 'household.settings_set'
+        ? Promise.resolve({
+            ok: false,
+            outcome: 'unknown',
+            reasons: ['commit_failed'],
+          })
+        : real(op)) as Store['household'],
+  };
+  const lost = await call(
+    routes(unknown, dataKey).changeHouseholdSettings,
+    {},
+    body('2', 'off'),
+  );
+  assert.equal(lost.status, 503);
 });
 
 test('成否不明・保存の失敗は 503 にし、成功にも競合にも見せない', async (t) => {

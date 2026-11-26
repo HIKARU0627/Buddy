@@ -10,6 +10,7 @@
 // - 分類の変更・削除は、読んだ内容版を expected_content_revision にして送る。受け付けられたら読み直す。表示が古かった
 //   （409）は preview_stale、中枢が受け付けなかった（422 など）は core_rejected にして読み直す。結果が分からない
 //   （届いたか分からない・5xx・形の違う 2xx）は自動では送り直さず、その記録を次の読み取りまで操作させない。
+// - 利用通知の取り込みの入・切（ADR 0163）は、月ごとの合計で読んだ設定の版で照合して送る。
 // - 世代（ロック・切断）: reset で記録・参照・保留を捨て、非同期の処理は await の後に世代を照合する（またいだ読み取りは
 //   反映しない。またいだ変更は結果不明として返す）。
 // - 読み取りが重なったときは、後から始めた読み取りだけを反映する（古い月の応答で新しい月の表示を戻さない）。
@@ -127,6 +128,7 @@ export class HouseholdBridge {
         (this.#overview?.truncated ?? false) ||
         (this.#month?.truncated ?? false),
       list_seq: this.#listSeq,
+      mail_intake: this.#overview?.settings.mail_intake ?? null,
     };
   }
 
@@ -243,6 +245,53 @@ export class HouseholdBridge {
       result: 'HouseholdCategoryChangeResult',
       same: entry.category === category,
     }));
+  }
+
+  // 利用通知の取り込みを止める・再開する（ADR 0163）。読んだ設定の版で照合して送る。今と同じなら送らない。
+  async intake(
+    mailIntake: 'on' | 'off',
+  ): Promise<HouseholdOutcome<DesktopHouseholdView>> {
+    const gen = this.#gen;
+    const connection = this.#host.connection();
+    const scope = connection?.state.commandScopeId ?? null;
+    if (connection === null || scope === null) return fail('not_connected');
+    const settings = this.#overview?.settings ?? null;
+    if (settings === null) return fail('entry_not_found');
+    if (settings.mail_intake === mailIntake)
+      return { ok: true, value: this.view() };
+    const outcome = await connection.request({
+      method: 'POST',
+      path: '/v1/household/settings',
+      body: {
+        expected_settings_revision: settings.settings_revision,
+        mail_intake: mailIntake,
+      },
+      scoped: true,
+      screenOperation: true,
+      expectedScopeId: scope,
+    });
+    if (outcome.kind === 'not_sent') return fail('not_connected');
+    if (gen !== this.#gen) return fail('outcome_unknown');
+    if (
+      outcome.kind === 'response' &&
+      outcome.status === 200 &&
+      this.#host.contract.valid('HouseholdSettings', outcome.body)
+    ) {
+      await this.#reread();
+      if (gen !== this.#gen) return fail('not_connected');
+      return { ok: true, value: this.view() };
+    }
+    // 結果が分からない・表示が古い・受け付けなかった: 送り直さず、読み直して今の設定を見せる。
+    void this.#reread();
+    if (
+      outcome.kind === 'unknown' ||
+      outcome.status >= 500 ||
+      (outcome.status >= 200 && outcome.status < 300)
+    ) {
+      this.#host.log('household_settings_outcome_unknown');
+      return fail('outcome_unknown');
+    }
+    return fail(outcome.status === 409 ? 'preview_stale' : 'core_rejected');
   }
 
   remove(ref: string): Promise<HouseholdOutcome<DesktopHouseholdView>> {

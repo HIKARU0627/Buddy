@@ -17,6 +17,7 @@ import {
   DIRECTION_LABELS,
   FETCH_LABELS,
   HOUSEHOLD_LABELS,
+  INTAKE_PLACE,
   SOURCE_LABELS,
   canChange,
   categoryChoices,
@@ -283,6 +284,62 @@ function MonthList({
   );
 }
 
+// 利用通知の取り込みの入・切（ADR 0163）。読めていなければ出さない（入・切を推測で見せない）。
+function IntakeBlock({
+  state,
+  actions,
+}: {
+  readonly state: HouseholdViewState;
+  readonly actions: HouseholdActions;
+}) {
+  const intake = state.view?.mail_intake ?? null;
+  if (intake === null) return null;
+  const notice = noticeAt(state, INTAKE_PLACE);
+  const mine = state.busy === INTAKE_PLACE;
+  return (
+    <div className="flex flex-col gap-1.5" data-intake={intake}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <StatusText
+          className="text-sm"
+          line={
+            intake === 'on'
+              ? {
+                  tone: 'success',
+                  mark: 'dot',
+                  text: HOUSEHOLD_LABELS.intakeOn,
+                }
+              : {
+                  tone: 'neutral',
+                  mark: 'circle',
+                  text: HOUSEHOLD_LABELS.intakeOff,
+                }
+          }
+        />
+        <Button
+          size="sm"
+          variant="secondary"
+          isDisabled={state.busy !== null}
+          onPress={() => actions.setIntake(intake === 'on' ? 'off' : 'on')}
+        >
+          {mine
+            ? HOUSEHOLD_LABELS.intakeChanging
+            : intake === 'on'
+              ? HOUSEHOLD_LABELS.intakeStop
+              : HOUSEHOLD_LABELS.intakeResume}
+        </Button>
+      </div>
+      {intake === 'off' ? (
+        <p className="text-xs text-muted">
+          {HOUSEHOLD_LABELS.intakeResumeNote}
+        </p>
+      ) : null}
+      {notice === null ? null : (
+        <InlineNotice tone={notice.tone} text={notice.text} />
+      )}
+    </div>
+  );
+}
+
 export function HouseholdPanel({
   state,
   actions,
@@ -326,6 +383,7 @@ export function HouseholdPanel({
       {headNotice === null ? null : (
         <InlineNotice tone={headNotice.tone} text={headNotice.text} />
       )}
+      {loaded ? <IntakeBlock state={state} actions={actions} /> : null}
       {!loaded || view.month === null || view.summary === null ? null : (
         <>
           <h3 className="text-sm font-semibold">

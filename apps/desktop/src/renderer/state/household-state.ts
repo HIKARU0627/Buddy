@@ -49,7 +49,17 @@ export const HOUSEHOLD_LABELS = {
   thisMonth: '今月',
   truncated:
     '記録が多いため、一部の記録を読み込めていません。合計は読み込めた記録だけのものです。',
+  intakeOn: 'カードの利用通知メールを取り込んでいます。',
+  intakeOff: 'カードの利用通知メールの取り込みを止めています。',
+  intakeStop: '取り込みを止める',
+  intakeResume: '取り込みを再開する',
+  intakeResumeNote:
+    '再開すると、止めていた間に届いた通知は読みません。その分は書き出したファイルの取り込みで補ってください。',
+  intakeChanging: '切り替えています…',
 } as const;
+
+// 取り込みの入・切の知らせを出す場所（行の参照は main が作る UUID なので重ならない）。
+export const INTAKE_PLACE = 'intake';
 
 export const FETCH_LABELS: Readonly<
   Record<DesktopHouseholdView['fetch'], string>
@@ -167,12 +177,14 @@ export const INITIAL_HOUSEHOLD_STATE: HouseholdViewState = {
   confirming: null,
 };
 
-type Kind = 'view' | 'category' | 'delete';
+type Kind = 'view' | 'category' | 'delete' | 'intake';
 
 export function householdFailureText(kind: Kind, reason: RejectReason): string {
   switch (reason) {
     case 'preview_stale':
-      return 'この記録はその後に変わっていました。読み直したので、今の内容を確かめてから、もう一度操作してください。';
+      return kind === 'intake'
+        ? '取り込みの設定はその後に変わっていました。読み直したので、今の設定を確かめてください。'
+        : 'この記録はその後に変わっていました。読み直したので、今の内容を確かめてから、もう一度操作してください。';
     case 'outcome_unknown':
       return '結果を確かめられませんでした。自動では送り直しません。「読み直す」で今の内容を確かめてください。';
     case 'core_rejected':
@@ -238,15 +250,17 @@ export function applyViewResponse(
   return withView(reading, response.household);
 }
 
-const SUCCESS_TEXT: Readonly<Record<'category' | 'delete', string>> = {
-  category:
-    '分類を変えました。店名のある記録は、同じ店の次の未分類の利用にもこの分類を使います。',
-  delete: '記録を削除しました。',
-};
+const SUCCESS_TEXT: Readonly<Record<'category' | 'delete' | 'intake', string>> =
+  {
+    intake: '取り込みの設定を変えました。',
+    category:
+      '分類を変えました。店名のある記録は、同じ店の次の未分類の利用にもこの分類を使います。',
+    delete: '記録を削除しました。',
+  };
 
 export function applyChangeResponse(
   state: HouseholdViewState,
-  kind: 'category' | 'delete',
+  kind: 'category' | 'delete' | 'intake',
   place: string,
   response: DesktopIpcResponse,
 ): HouseholdViewState {
@@ -308,6 +322,8 @@ export interface HouseholdActions {
   readonly startDelete: (ref: string) => void;
   readonly cancelDelete: () => void;
   readonly confirmDelete: () => void;
+  // 利用通知の取り込みを止める・再開する（ADR 0163）。
+  readonly setIntake: (mailIntake: 'on' | 'off') => void;
 }
 
 export interface HouseholdApi {
@@ -342,6 +358,7 @@ export class HouseholdStore {
       },
       cancelDelete: () => this.#set({ ...this.#state, confirming: null }),
       confirmDelete: () => this.#delete(),
+      setIntake: (mailIntake) => this.#intake(mailIntake),
     };
   }
 
@@ -407,8 +424,29 @@ export class HouseholdStore {
     );
   }
 
+  #intake(mailIntake: 'on' | 'off'): void {
+    const current = this.#state.view?.mail_intake ?? null;
+    if (this.#state.busy !== null || current === null || current === mailIntake)
+      return;
+    this.#set({
+      ...this.#state,
+      busy: INTAKE_PLACE,
+      notice: null,
+      confirming: null,
+    });
+    this.#change(
+      'intake',
+      INTAKE_PLACE,
+      request('desktop.household_intake', { mail_intake: mailIntake }),
+    );
+  }
+
   // 送った変更・削除の結果を反映し、拒否なら（main が読み直した）値を受け取る。
-  #change(kind: 'category' | 'delete', ref: string, built: DesktopIpcRequest) {
+  #change(
+    kind: 'category' | 'delete' | 'intake',
+    ref: string,
+    built: DesktopIpcRequest,
+  ) {
     const epoch = this.#epoch;
     let reread = false;
     void this.#send(

@@ -172,7 +172,8 @@ export interface HouseholdMailIntakeTarget {
 export interface HouseholdMailIntakeSummary {
   readonly outcome: 'done' | 'skipped' | 'stopped';
   // skipped・stopped の理由（provider_unsupported・reader_unavailable・key_unavailable・pending_failed・
-  // read_failed・record_failed・check_failed・already_running・retention_closed）。
+  // read_failed・record_failed・check_failed・already_running・retention_closed・intake_off）。
+  // intake_off は本人が家計簿の画面で取り込みを止めている（ADR 0163）。
   readonly reason: string | null;
   // 初回で、いまあるメールを確かめ済みにしたか。
   readonly baseline: boolean;
@@ -256,6 +257,8 @@ export function createHouseholdMailIntake(
       now: now().toISOString(),
     });
     if (!listed.ok) return summary('stopped', 'pending_failed', counts);
+    // 本人が止めている（同じ transaction で設定を読んだ結果。基準も作っていない）。
+    if (listed.value.paused) return summary('skipped', 'intake_off', counts);
     counts.baseline = listed.value.baseline;
     const markChecked = async (remoteId: string): Promise<boolean> => {
       const marked = await options.store.household({

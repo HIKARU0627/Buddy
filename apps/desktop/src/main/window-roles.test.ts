@@ -88,6 +88,7 @@ const AUTO_ACTIONS = [
   'desktop.household_view',
   'desktop.household_category',
   'desktop.household_delete',
+  'desktop.household_intake',
 ];
 const ALL_CHANNELS = [
   ...LEGACY_CHANNELS,

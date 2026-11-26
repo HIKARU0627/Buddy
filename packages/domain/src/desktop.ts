@@ -66,6 +66,8 @@ export const DESKTOP_IPC_CHANNELS = [
   'desktop.household_view',
   'desktop.household_category',
   'desktop.household_delete',
+  // 利用通知の取り込みの入・切（ADR 0163）。
+  'desktop.household_intake',
 ] as const;
 
 export type DesktopIpcChannel = (typeof DESKTOP_IPC_CHANNELS)[number];
@@ -213,6 +215,8 @@ export const DESKTOP_PAIRING_SCREEN_CHANNELS: readonly DesktopIpcChannel[] = [
   // 入出力の停止中も受け付ける（停止の検査はしない）。
   'desktop.household_category',
   'desktop.household_delete',
+  // 利用通知の取り込みの入・切（ADR 0163）も本人の画面操作。止める側も再開する側も中枢の設定を変えるだけ。
+  'desktop.household_intake',
 ];
 
 // ロック解除済みのときだけ受け付ける一覧（内容なので、ロック中・不明は出さない。B03-06）。
@@ -347,6 +351,7 @@ export const DESKTOP_ROLE_CHANNELS: Readonly<
     'desktop.household_view',
     'desktop.household_category',
     'desktop.household_delete',
+    'desktop.household_intake',
   ],
   input: ['desktop.get_state', 'desktop.turn_submit', 'desktop.canvas_summon'],
 };

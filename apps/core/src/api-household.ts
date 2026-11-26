@@ -7,6 +7,7 @@
 // - 1 か月（GET /v1/household/months/{month}）は記録と集計。出所の識別子（メールの ID など）は返さない。
 // - 分類の変更・削除は内容版で照合する。内容版の違い・削除済みは 409（画面は読み直す）、向きの違う分類・ない記録は 422。
 //   同じ request_id の再送は、成功済みなら内容版が進んでいる・削除済みなので 409 になり、二重に効かない。
+// - 設定の変更（POST /v1/household/settings）は利用通知の取り込みの入・切（ADR 0163）。版の違いは 409。
 // - データ鍵が読めない・保存の失敗・成否不明は 503 dependency_unavailable にし、成功にも競合にも見せない。
 // 承認・実行経路・effect_kind は関わらない（家計の記録は Buddy 自身の記録で、外部を変えない。ADR 0158）。
 
@@ -50,6 +51,7 @@ export interface HouseholdRoutes {
     readonly getHouseholdMonth: ApiRouteHandler;
     readonly changeHouseholdCategory: ApiRouteHandler;
     readonly deleteHouseholdEntry: ApiRouteHandler;
+    readonly changeHouseholdSettings: ApiRouteHandler;
   };
 }
 
@@ -172,6 +174,11 @@ export function createHouseholdRoutes(
     const months = read.months.map(monthTotals);
     if (months.length !== HOUSEHOLD_OVERVIEW_MONTHS)
       return fail(503, 'dependency_unavailable');
+    // 利用通知の取り込みの入・切（ADR 0163）。読めなければ合計も返さない（入・切を推測で見せない）。
+    const settings = await options.store.household({
+      kind: 'household.settings_get',
+    });
+    if (!settings.ok) return fail(503, 'dependency_unavailable');
     return {
       status: 200,
       body: {
@@ -180,6 +187,7 @@ export function createHouseholdRoutes(
         generated_at: new Date(at).toISOString(),
         months,
         truncated: read.truncated,
+        settings: settings.value,
       },
     };
   };
@@ -271,12 +279,34 @@ export function createHouseholdRoutes(
     };
   };
 
+  // 利用通知の取り込みを止める・再開する（ADR 0163）。版は保存層が同じ transaction で照合する。
+  const changeSettings: ApiRouteHandler = async (request) => {
+    const body = request.body ?? {};
+    const fail = failWith(stringOf(body['request_id']));
+    const expected = stringOf(body['expected_settings_revision']);
+    const mailIntake = stringOf(body['mail_intake']);
+    if (mailIntake !== 'on' && mailIntake !== 'off')
+      return fail(422, 'invalid_input');
+    const changed = await options.store.household({
+      kind: 'household.settings_set',
+      expected_revision: expected,
+      mail_intake: mailIntake,
+      now: new Date(options.now()).toISOString(),
+    });
+    if (!changed.ok) {
+      const failure = failureStatus(changed.outcome, changed.reasons);
+      return fail(failure.status, failure.code);
+    }
+    return { status: 200, body: changed.value };
+  };
+
   return {
     handlers: {
       listHouseholdMonths,
       getHouseholdMonth,
       changeHouseholdCategory: changeCategory,
       deleteHouseholdEntry: deleteEntry,
+      changeHouseholdSettings: changeSettings,
     },
   };
 }

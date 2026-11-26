@@ -22,6 +22,7 @@ import type {
   HouseholdOpResult,
   HouseholdRecordValue,
   HouseholdRevisionValue,
+  HouseholdSettingsValue,
   SealedBlobInput,
 } from './index.js';
 import type { SqliteDatabase } from './connection.js';
@@ -458,13 +459,22 @@ test('household.mail_pending: 初回はいまあるメールを確かめ済み�
   await withDb((db) => {
     seedMail(db, 'm-old-1', 1000);
     seedMail(db, 'm-old-2', 2000);
-    assert.deepEqual(pending(db), { baseline: true, remote_ids: [] });
-    assert.deepEqual(pending(db), { baseline: false, remote_ids: [] });
+    assert.deepEqual(pending(db), {
+      paused: false,
+      baseline: true,
+      remote_ids: [],
+    });
+    assert.deepEqual(pending(db), {
+      paused: false,
+      baseline: false,
+      remote_ids: [],
+    });
     seedMail(db, 'm-new-1', 3000);
     seedMail(db, 'm-new-2', 4000);
     // 別の取得集合のメールは返さない。
     seedMail(db, 'm-other-scope', 5000, 'sc-2');
     assert.deepEqual(pending(db), {
+      paused: false,
       baseline: false,
       remote_ids: ['m-new-2', 'm-new-1'],
     });
@@ -490,6 +500,7 @@ test('household.mail_pending: 初回はいまあるメールを確かめ済み�
     );
     // 別の口座は、その口座の初回として基準を作る。
     assert.deepEqual(pending(db, { account_id: 'acct-b' }), {
+      paused: false,
       baseline: true,
       remote_ids: [],
     });
@@ -505,6 +516,112 @@ test('household.mail_pending: 初回はいまあるメールを確かめ済み�
         }),
       ),
       ['provider_invalid', 'limit_invalid', 'now_invalid'],
+    );
+  });
+});
+
+const settings = (db: SqliteDatabase): HouseholdSettingsValue =>
+  value<HouseholdSettingsValue>(run(db, { kind: 'household.settings_get' }));
+
+const setIntake = (
+  db: SqliteDatabase,
+  expected: string,
+  mailIntake: 'on' | 'off',
+): HouseholdOpResult =>
+  run(db, {
+    kind: 'household.settings_set',
+    expected_revision: expected,
+    mail_intake: mailIntake,
+    now: T2,
+  });
+
+test('household.settings: 行がなければ取り込みは入で版 0。止めている間は確かめるメールを返さず、再開すると止めていた間のメールを読まない', async () => {
+  await withDb((db) => {
+    assert.deepEqual(settings(db), {
+      mail_intake: 'on',
+      settings_revision: '0',
+    });
+    seedMail(db, 'm-before', 1000);
+    assert.equal(pending(db).baseline, true);
+    seedMail(db, 'm-new', 2000);
+    assert.deepEqual(pending(db).remote_ids, ['m-new']);
+    // 止める。古い版では拒否する。
+    assert.deepEqual(value(setIntake(db, '0', 'off')), {
+      mail_intake: 'off',
+      settings_revision: '1',
+    });
+    assert.deepEqual(reasons(setIntake(db, '0', 'on')), ['revision_mismatch']);
+    assert.deepEqual(settings(db), {
+      mail_intake: 'off',
+      settings_revision: '1',
+    });
+    // 止めている間は何も返さず、基準も作らない（別の口座でも）。
+    seedMail(db, 'm-while-off', 3000);
+    assert.deepEqual(pending(db), {
+      paused: true,
+      baseline: false,
+      remote_ids: [],
+    });
+    assert.deepEqual(pending(db, { account_id: 'acct-b' }), {
+      paused: true,
+      baseline: false,
+      remote_ids: [],
+    });
+    assert.equal(
+      (
+        db
+          .prepare('SELECT count(*) AS n FROM household_mail_baselines')
+          .get() as { n: number }
+      ).n,
+      1,
+    );
+    // 再開すると基準を作り直し、止めていた間のメール（と確かめていなかったメール）を読まない。
+    assert.deepEqual(value(setIntake(db, '1', 'on')), {
+      mail_intake: 'on',
+      settings_revision: '2',
+    });
+    assert.deepEqual(pending(db), {
+      paused: false,
+      baseline: true,
+      remote_ids: [],
+    });
+    seedMail(db, 'm-after', 4000);
+    assert.deepEqual(pending(db).remote_ids, ['m-after']);
+    // 入のまま入にしても版は進む（基準は消さない）。
+    assert.deepEqual(value(setIntake(db, '2', 'on')), {
+      mail_intake: 'on',
+      settings_revision: '3',
+    });
+    assert.deepEqual(pending(db).remote_ids, ['m-after']);
+    // 形の誤り。版を飛ばす更新は trigger が拒否する。
+    assert.deepEqual(
+      reasons(
+        run(db, {
+          kind: 'household.settings_set',
+          expected_revision: '-1',
+          mail_intake: 'paused' as 'on',
+          now: 'later',
+        }),
+      ),
+      ['expected_revision_invalid', 'mail_intake_invalid', 'now_invalid'],
+    );
+    assert.throws(
+      () =>
+        db
+          .prepare(
+            'UPDATE household_settings SET settings_revision = 9 WHERE setting_id = 1',
+          )
+          .run(),
+      /household_settings_revision_step/u,
+    );
+    assert.throws(
+      () =>
+        db
+          .prepare(
+            "INSERT INTO household_settings (setting_id, mail_intake, settings_revision, updated_at) VALUES (2, 'on', 1, 0)",
+          )
+          .run(),
+      /CHECK constraint failed/u,
     );
   });
 });

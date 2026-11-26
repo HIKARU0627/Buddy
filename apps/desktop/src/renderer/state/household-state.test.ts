@@ -64,6 +64,7 @@ const view = (
   unreadable: 0,
   truncated: false,
   list_seq: 2,
+  mail_intake: 'on',
   ...overrides,
 });
 
@@ -316,4 +317,35 @@ test('responses that cross a hide are dropped', async () => {
   await settle();
   assert.match(failing.snapshot().notice?.text ?? '', /通信できませんでした/u);
   assert.equal(failing.snapshot().reading, false);
+});
+
+test('the intake switch sends the other value once and re-reads on a stale answer', async () => {
+  const fake = fakeApi();
+  const store = new HouseholdStore(fake.api);
+  store.actions.refresh();
+  fake.answer((request) => okResponse(request, view([entry(0)])));
+  await settle();
+  // 今と同じ値は送らない。
+  store.actions.setIntake('on');
+  assert.equal(fake.sent.length, 1);
+  store.actions.setIntake('off');
+  assert.equal(fake.sent.at(-1)?.channel, 'desktop.household_intake');
+  assert.deepEqual(fake.sent.at(-1)?.payload, { mail_intake: 'off' });
+  assert.equal(store.snapshot().busy, 'intake');
+  store.actions.setIntake('off');
+  assert.equal(fake.sent.length, 2);
+  fake.answer((request) => rejected(request, 'preview_stale'));
+  await settle();
+  assert.match(
+    store.snapshot().notice?.text ?? '',
+    /取り込みの設定はその後に変わっていました/u,
+  );
+  assert.equal(store.snapshot().notice?.place, 'intake');
+  assert.equal(fake.sent.at(-1)?.channel, 'desktop.household_view');
+  fake.answer((request) =>
+    okResponse(request, view([entry(0)], { mail_intake: 'off', list_seq: 3 })),
+  );
+  await settle();
+  assert.equal(store.snapshot().view?.mail_intake, 'off');
+  assert.equal(store.snapshot().busy, null);
 });

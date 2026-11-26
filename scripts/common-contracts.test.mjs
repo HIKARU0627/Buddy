@@ -63,6 +63,9 @@ const VERSION_FIELDS = {
   expected_safety_revision: 'SafetyRevision',
   expected_io_epoch: 'IoEpoch',
   expected_permission_revision: 'PermissionRevision',
+  // 家計の記録の内容版（ADR 0158・0161）。
+  content_revision: 'HouseholdRevision',
+  expected_content_revision: 'HouseholdRevision',
   sequence: 'Sequence',
   first_frame_seq: 'Sequence',
   last_frame_seq: 'Sequence',
@@ -117,6 +120,7 @@ const DECIMAL_KINDS = [
   'ExecutorGeneration',
   'RouteRevision',
   'SafetyRevision',
+  'HouseholdRevision',
   'Sequence',
 ];
 

@@ -478,6 +478,40 @@ function isPrivateWebTarget(value) {
   return ipv4Private(host.split('.').map((part) => Number(part)));
 }
 
+// 家計簿の分類と向き（表示の順。domain の HOUSEHOLD_CATEGORIES と同じであることを scripts/household.test.mjs が確かめる）。
+export const HOUSEHOLD_CATEGORY_DIRECTIONS = Object.freeze({
+  food: 'expense',
+  cash_card: 'expense',
+  transport: 'expense',
+  hobby: 'expense',
+  daily_goods: 'expense',
+  clothing_beauty: 'expense',
+  special: 'expense',
+  social: 'expense',
+  housing: 'expense',
+  utilities: 'expense',
+  car: 'expense',
+  insurance: 'expense',
+  tax_social: 'expense',
+  education: 'expense',
+  communication: 'expense',
+  health_medical: 'expense',
+  other: 'expense',
+  uncategorized: 'expense',
+  income: 'income',
+  transfer: 'transfer',
+});
+
+// 暦に実在する YYYY-MM-DD か（家計の記録の日付。形は Schema が 2000〜2099 年に絞っている）。
+function isHouseholdDate(value) {
+  const match = /^([0-9]{4})-([0-9]{2})-([0-9]{2})$/u.exec(value);
+  if (match === null) return false;
+  const date = new Date(
+    Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])),
+  );
+  return date.toISOString().slice(0, 10) === value;
+}
+
 export function semanticErrors(name, value) {
   const errors = [];
   if (name === 'CreditObservation') {
@@ -1276,6 +1310,95 @@ export function semanticErrors(name, value) {
   // 気づきの根拠は SourceRef の意味検査（引用の範囲）をそのまま使う（B11-01、ADR 0073）。
   if (name === 'CandidateEvidence')
     errors.push(...semanticErrors('SourceRef', value.source));
+  // 家計簿（ADR 0158・0161）。分類の向きは domain の HOUSEHOLD_CATEGORIES と同じ（scripts/household.test.mjs が照合）。
+  if (name === 'HouseholdEntry') {
+    if (!isHouseholdDate(value.occurred_on)) errors.push('occurred_on_invalid');
+    if (HOUSEHOLD_CATEGORY_DIRECTIONS[value.category] !== value.direction)
+      errors.push('category_direction_mismatch');
+    if (Date.parse(value.updated_at) < Date.parse(value.created_at))
+      errors.push('updated_before_created');
+  }
+  if (name === 'HouseholdMonthSummary') {
+    if (value.balance_yen !== value.income_yen - value.expense_yen)
+      errors.push('balance_mismatch');
+    const totals = value.expense_by_category;
+    if (
+      totals.reduce((sum, item) => sum + item.total_yen, 0) !==
+      value.expense_yen
+    )
+      errors.push('category_total_mismatch');
+    if (totals.reduce((sum, item) => sum + item.count, 0) > value.entry_count)
+      errors.push('category_count_mismatch');
+    if (
+      totals.some(
+        (item) => HOUSEHOLD_CATEGORY_DIRECTIONS[item.category] !== 'expense',
+      )
+    )
+      errors.push('category_not_expense');
+    const categories = totals.map((item) => item.category);
+    if (new Set(categories).size !== categories.length)
+      errors.push('category_duplicate');
+    const order = Object.keys(HOUSEHOLD_CATEGORY_DIRECTIONS);
+    for (let index = 1; index < totals.length; index += 1) {
+      const before = totals[index - 1];
+      const after = totals[index];
+      if (
+        before.total_yen < after.total_yen ||
+        (before.total_yen === after.total_yen &&
+          order.indexOf(before.category) > order.indexOf(after.category))
+      ) {
+        errors.push('category_order');
+        break;
+      }
+    }
+  }
+  if (name === 'HouseholdMonth') {
+    const found = [];
+    for (const entry of value.entries) {
+      found.push(...semanticErrors('HouseholdEntry', entry));
+      if (entry.occurred_on.slice(0, 7) !== value.month)
+        found.push('entry_month_mismatch');
+    }
+    const keyOf = (entry) =>
+      `${entry.occurred_on}T${entry.occurred_time ?? '99:99'}|${entry.created_at}`;
+    for (let index = 1; index < value.entries.length; index += 1)
+      if (keyOf(value.entries[index - 1]) < keyOf(value.entries[index])) {
+        found.push('entry_order');
+        break;
+      }
+    found.push(...semanticErrors('HouseholdMonthSummary', value.summary));
+    const sumOf = (direction) =>
+      value.entries
+        .filter((entry) => entry.direction === direction)
+        .reduce((sum, entry) => sum + entry.amount_yen, 0);
+    if (
+      value.summary.entry_count !== value.entries.length ||
+      value.summary.expense_yen !== sumOf('expense') ||
+      value.summary.income_yen !== sumOf('income') ||
+      value.summary.transfer_yen !== sumOf('transfer')
+    )
+      found.push('summary_mismatch');
+    errors.push(...new Set(found));
+  }
+  if (name === 'HouseholdMonthTotals') {
+    if (value.balance_yen !== value.income_yen - value.expense_yen)
+      errors.push('balance_mismatch');
+  }
+  if (name === 'HouseholdOverview') {
+    const found = [];
+    let expected = value.current_month;
+    for (const month of value.months) {
+      found.push(...semanticErrors('HouseholdMonthTotals', month));
+      if (month.month !== expected) found.push('months_sequence');
+      const year = Number(expected.slice(0, 4));
+      const number = Number(expected.slice(5, 7));
+      expected =
+        number === 1
+          ? `${String(year - 1)}-12`
+          : `${String(year)}-${String(number - 1).padStart(2, '0')}`;
+    }
+    errors.push(...new Set(found));
+  }
   // 無音の延長の値は、その種類のイベントだけが持つ（B05-05、ADR 0052）。
   if (name === 'VoiceEvent') {
     if (

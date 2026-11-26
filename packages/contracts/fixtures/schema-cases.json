@@ -2359,6 +2359,1774 @@
     }
   },
   {
+    "id": "household-entry",
+    "schema": "HouseholdEntry",
+    "valid": true,
+    "value": {
+      "entry_id": "00000000-0000-4000-8000-0000000c0001",
+      "content_revision": "2",
+      "source_kind": "mail_notice",
+      "direction": "expense",
+      "amount_yen": 1280,
+      "occurred_on": "2030-11-03",
+      "occurred_time": "12:34",
+      "category": "food",
+      "merchant": "合成の食堂",
+      "memo": null,
+      "payment": "合成のカード",
+      "created_at": "2030-11-03T03:40:00Z",
+      "updated_at": "2030-11-04T00:00:00Z"
+    }
+  },
+  {
+    "id": "household-entry-income",
+    "schema": "HouseholdEntry",
+    "valid": true,
+    "value": {
+      "entry_id": "00000000-0000-4000-8000-0000000c0003",
+      "content_revision": "1",
+      "source_kind": "csv_import",
+      "direction": "income",
+      "amount_yen": 200000,
+      "occurred_on": "2030-11-01",
+      "occurred_time": null,
+      "category": "income",
+      "merchant": null,
+      "memo": "合成の給与",
+      "payment": null,
+      "created_at": "2030-11-05T00:00:00Z",
+      "updated_at": "2030-11-05T00:00:00Z"
+    }
+  },
+  {
+    "id": "household-entry-bad-category",
+    "schema": "HouseholdEntry",
+    "valid": false,
+    "value": {
+      "entry_id": "00000000-0000-4000-8000-0000000c0001",
+      "content_revision": "2",
+      "source_kind": "mail_notice",
+      "direction": "expense",
+      "amount_yen": 1280,
+      "occurred_on": "2030-11-03",
+      "occurred_time": "12:34",
+      "category": "groceries",
+      "merchant": "合成の食堂",
+      "memo": null,
+      "payment": "合成のカード",
+      "created_at": "2030-11-03T03:40:00Z",
+      "updated_at": "2030-11-04T00:00:00Z"
+    }
+  },
+  {
+    "id": "household-entry-zero-amount",
+    "schema": "HouseholdEntry",
+    "valid": false,
+    "value": {
+      "entry_id": "00000000-0000-4000-8000-0000000c0001",
+      "content_revision": "2",
+      "source_kind": "mail_notice",
+      "direction": "expense",
+      "amount_yen": 0,
+      "occurred_on": "2030-11-03",
+      "occurred_time": "12:34",
+      "category": "food",
+      "merchant": "合成の食堂",
+      "memo": null,
+      "payment": "合成のカード",
+      "created_at": "2030-11-03T03:40:00Z",
+      "updated_at": "2030-11-04T00:00:00Z"
+    }
+  },
+  {
+    "id": "household-entry-fraction-amount",
+    "schema": "HouseholdEntry",
+    "valid": false,
+    "value": {
+      "entry_id": "00000000-0000-4000-8000-0000000c0001",
+      "content_revision": "2",
+      "source_kind": "mail_notice",
+      "direction": "expense",
+      "amount_yen": 12.5,
+      "occurred_on": "2030-11-03",
+      "occurred_time": "12:34",
+      "category": "food",
+      "merchant": "合成の食堂",
+      "memo": null,
+      "payment": "合成のカード",
+      "created_at": "2030-11-03T03:40:00Z",
+      "updated_at": "2030-11-04T00:00:00Z"
+    }
+  },
+  {
+    "id": "household-entry-amount-too-large",
+    "schema": "HouseholdEntry",
+    "valid": false,
+    "value": {
+      "entry_id": "00000000-0000-4000-8000-0000000c0001",
+      "content_revision": "2",
+      "source_kind": "mail_notice",
+      "direction": "expense",
+      "amount_yen": 10000000000,
+      "occurred_on": "2030-11-03",
+      "occurred_time": "12:34",
+      "category": "food",
+      "merchant": "合成の食堂",
+      "memo": null,
+      "payment": "合成のカード",
+      "created_at": "2030-11-03T03:40:00Z",
+      "updated_at": "2030-11-04T00:00:00Z"
+    }
+  },
+  {
+    "id": "household-entry-year-1999",
+    "schema": "HouseholdEntry",
+    "valid": false,
+    "value": {
+      "entry_id": "00000000-0000-4000-8000-0000000c0001",
+      "content_revision": "2",
+      "source_kind": "mail_notice",
+      "direction": "expense",
+      "amount_yen": 1280,
+      "occurred_on": "1999-12-31",
+      "occurred_time": "12:34",
+      "category": "food",
+      "merchant": "合成の食堂",
+      "memo": null,
+      "payment": "合成のカード",
+      "created_at": "2030-11-03T03:40:00Z",
+      "updated_at": "2030-11-04T00:00:00Z"
+    }
+  },
+  {
+    "id": "household-entry-bad-time",
+    "schema": "HouseholdEntry",
+    "valid": false,
+    "value": {
+      "entry_id": "00000000-0000-4000-8000-0000000c0001",
+      "content_revision": "2",
+      "source_kind": "mail_notice",
+      "direction": "expense",
+      "amount_yen": 1280,
+      "occurred_on": "2030-11-03",
+      "occurred_time": "24:00",
+      "category": "food",
+      "merchant": "合成の食堂",
+      "memo": null,
+      "payment": "合成のカード",
+      "created_at": "2030-11-03T03:40:00Z",
+      "updated_at": "2030-11-04T00:00:00Z"
+    }
+  },
+  {
+    "id": "household-entry-merchant-empty",
+    "schema": "HouseholdEntry",
+    "valid": false,
+    "value": {
+      "entry_id": "00000000-0000-4000-8000-0000000c0001",
+      "content_revision": "2",
+      "source_kind": "mail_notice",
+      "direction": "expense",
+      "amount_yen": 1280,
+      "occurred_on": "2030-11-03",
+      "occurred_time": "12:34",
+      "category": "food",
+      "merchant": "",
+      "memo": null,
+      "payment": "合成のカード",
+      "created_at": "2030-11-03T03:40:00Z",
+      "updated_at": "2030-11-04T00:00:00Z"
+    }
+  },
+  {
+    "id": "household-entry-merchant-too-long",
+    "schema": "HouseholdEntry",
+    "valid": false,
+    "value": {
+      "entry_id": "00000000-0000-4000-8000-0000000c0001",
+      "content_revision": "2",
+      "source_kind": "mail_notice",
+      "direction": "expense",
+      "amount_yen": 1280,
+      "occurred_on": "2030-11-03",
+      "occurred_time": "12:34",
+      "category": "food",
+      "merchant": "店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店店",
+      "memo": null,
+      "payment": "合成のカード",
+      "created_at": "2030-11-03T03:40:00Z",
+      "updated_at": "2030-11-04T00:00:00Z"
+    }
+  },
+  {
+    "id": "household-entry-source-id",
+    "schema": "HouseholdEntry",
+    "valid": false,
+    "value": {
+      "entry_id": "00000000-0000-4000-8000-0000000c0001",
+      "content_revision": "2",
+      "source_kind": "mail_notice",
+      "direction": "expense",
+      "amount_yen": 1280,
+      "occurred_on": "2030-11-03",
+      "occurred_time": "12:34",
+      "category": "food",
+      "merchant": "合成の食堂",
+      "memo": null,
+      "payment": "合成のカード",
+      "created_at": "2030-11-03T03:40:00Z",
+      "updated_at": "2030-11-04T00:00:00Z",
+      "source_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  },
+  {
+    "id": "household-entry-revision-negative",
+    "schema": "HouseholdEntry",
+    "valid": false,
+    "value": {
+      "entry_id": "00000000-0000-4000-8000-0000000c0001",
+      "content_revision": "-1",
+      "source_kind": "mail_notice",
+      "direction": "expense",
+      "amount_yen": 1280,
+      "occurred_on": "2030-11-03",
+      "occurred_time": "12:34",
+      "category": "food",
+      "merchant": "合成の食堂",
+      "memo": null,
+      "payment": "合成のカード",
+      "created_at": "2030-11-03T03:40:00Z",
+      "updated_at": "2030-11-04T00:00:00Z"
+    }
+  },
+  {
+    "id": "household-entry-unknown-source",
+    "schema": "HouseholdEntry",
+    "valid": false,
+    "value": {
+      "entry_id": "00000000-0000-4000-8000-0000000c0001",
+      "content_revision": "2",
+      "source_kind": "bank_api",
+      "direction": "expense",
+      "amount_yen": 1280,
+      "occurred_on": "2030-11-03",
+      "occurred_time": "12:34",
+      "category": "food",
+      "merchant": "合成の食堂",
+      "memo": null,
+      "payment": "合成のカード",
+      "created_at": "2030-11-03T03:40:00Z",
+      "updated_at": "2030-11-04T00:00:00Z"
+    }
+  },
+  {
+    "id": "household-entry-not-a-date",
+    "schema": "HouseholdEntry",
+    "valid": true,
+    "value": {
+      "entry_id": "00000000-0000-4000-8000-0000000c0001",
+      "content_revision": "2",
+      "source_kind": "mail_notice",
+      "direction": "expense",
+      "amount_yen": 1280,
+      "occurred_on": "2030-02-30",
+      "occurred_time": "12:34",
+      "category": "food",
+      "merchant": "合成の食堂",
+      "memo": null,
+      "payment": "合成のカード",
+      "created_at": "2030-11-03T03:40:00Z",
+      "updated_at": "2030-11-04T00:00:00Z"
+    },
+    "semantic_errors": ["occurred_on_invalid"]
+  },
+  {
+    "id": "household-entry-direction-mismatch",
+    "schema": "HouseholdEntry",
+    "valid": true,
+    "value": {
+      "entry_id": "00000000-0000-4000-8000-0000000c0001",
+      "content_revision": "2",
+      "source_kind": "mail_notice",
+      "direction": "income",
+      "amount_yen": 1280,
+      "occurred_on": "2030-11-03",
+      "occurred_time": "12:34",
+      "category": "food",
+      "merchant": "合成の食堂",
+      "memo": null,
+      "payment": "合成のカード",
+      "created_at": "2030-11-03T03:40:00Z",
+      "updated_at": "2030-11-04T00:00:00Z"
+    },
+    "semantic_errors": ["category_direction_mismatch"]
+  },
+  {
+    "id": "household-entry-updated-before-created",
+    "schema": "HouseholdEntry",
+    "valid": true,
+    "value": {
+      "entry_id": "00000000-0000-4000-8000-0000000c0001",
+      "content_revision": "2",
+      "source_kind": "mail_notice",
+      "direction": "expense",
+      "amount_yen": 1280,
+      "occurred_on": "2030-11-03",
+      "occurred_time": "12:34",
+      "category": "food",
+      "merchant": "合成の食堂",
+      "memo": null,
+      "payment": "合成のカード",
+      "created_at": "2030-11-03T03:40:00Z",
+      "updated_at": "2030-11-03T03:39:59Z"
+    },
+    "semantic_errors": ["updated_before_created"]
+  },
+  {
+    "id": "household-month",
+    "schema": "HouseholdMonth",
+    "valid": true,
+    "value": {
+      "month": "2030-11",
+      "entries": [
+        {
+          "entry_id": "00000000-0000-4000-8000-0000000c0001",
+          "content_revision": "2",
+          "source_kind": "mail_notice",
+          "direction": "expense",
+          "amount_yen": 1280,
+          "occurred_on": "2030-11-03",
+          "occurred_time": "12:34",
+          "category": "food",
+          "merchant": "合成の食堂",
+          "memo": null,
+          "payment": "合成のカード",
+          "created_at": "2030-11-03T03:40:00Z",
+          "updated_at": "2030-11-04T00:00:00Z"
+        },
+        {
+          "entry_id": "00000000-0000-4000-8000-0000000c0002",
+          "content_revision": "1",
+          "source_kind": "mail_notice",
+          "direction": "expense",
+          "amount_yen": 540,
+          "occurred_on": "2030-11-02",
+          "occurred_time": null,
+          "category": "uncategorized",
+          "merchant": "合成の売店",
+          "memo": null,
+          "payment": "合成のカード",
+          "created_at": "2030-11-02T10:00:00Z",
+          "updated_at": "2030-11-02T10:00:00Z"
+        },
+        {
+          "entry_id": "00000000-0000-4000-8000-0000000c0003",
+          "content_revision": "1",
+          "source_kind": "csv_import",
+          "direction": "income",
+          "amount_yen": 200000,
+          "occurred_on": "2030-11-01",
+          "occurred_time": null,
+          "category": "income",
+          "merchant": null,
+          "memo": "合成の給与",
+          "payment": null,
+          "created_at": "2030-11-05T00:00:00Z",
+          "updated_at": "2030-11-05T00:00:00Z"
+        },
+        {
+          "entry_id": "00000000-0000-4000-8000-0000000c0004",
+          "content_revision": "1",
+          "source_kind": "manual",
+          "direction": "transfer",
+          "amount_yen": 30000,
+          "occurred_on": "2030-11-01",
+          "occurred_time": null,
+          "category": "transfer",
+          "merchant": null,
+          "memo": null,
+          "payment": null,
+          "created_at": "2030-11-01T00:00:00Z",
+          "updated_at": "2030-11-01T00:00:00Z"
+        }
+      ],
+      "summary": {
+        "expense_yen": 1820,
+        "income_yen": 200000,
+        "balance_yen": 198180,
+        "entry_count": 4,
+        "expense_by_category": [
+          {
+            "category": "food",
+            "total_yen": 1280,
+            "count": 1
+          },
+          {
+            "category": "uncategorized",
+            "total_yen": 540,
+            "count": 1
+          }
+        ],
+        "transfer_yen": 30000
+      },
+      "unreadable": 0,
+      "truncated": false
+    }
+  },
+  {
+    "id": "household-month-empty",
+    "schema": "HouseholdMonth",
+    "valid": true,
+    "value": {
+      "month": "2030-12",
+      "entries": [],
+      "summary": {
+        "expense_yen": 0,
+        "income_yen": 0,
+        "balance_yen": 0,
+        "entry_count": 0,
+        "expense_by_category": [],
+        "transfer_yen": 0
+      },
+      "unreadable": 2,
+      "truncated": false
+    }
+  },
+  {
+    "id": "household-month-negative-unreadable",
+    "schema": "HouseholdMonth",
+    "valid": false,
+    "value": {
+      "month": "2030-11",
+      "entries": [
+        {
+          "entry_id": "00000000-0000-4000-8000-0000000c0001",
+          "content_revision": "2",
+          "source_kind": "mail_notice",
+          "direction": "expense",
+          "amount_yen": 1280,
+          "occurred_on": "2030-11-03",
+          "occurred_time": "12:34",
+          "category": "food",
+          "merchant": "合成の食堂",
+          "memo": null,
+          "payment": "合成のカード",
+          "created_at": "2030-11-03T03:40:00Z",
+          "updated_at": "2030-11-04T00:00:00Z"
+        },
+        {
+          "entry_id": "00000000-0000-4000-8000-0000000c0002",
+          "content_revision": "1",
+          "source_kind": "mail_notice",
+          "direction": "expense",
+          "amount_yen": 540,
+          "occurred_on": "2030-11-02",
+          "occurred_time": null,
+          "category": "uncategorized",
+          "merchant": "合成の売店",
+          "memo": null,
+          "payment": "合成のカード",
+          "created_at": "2030-11-02T10:00:00Z",
+          "updated_at": "2030-11-02T10:00:00Z"
+        },
+        {
+          "entry_id": "00000000-0000-4000-8000-0000000c0003",
+          "content_revision": "1",
+          "source_kind": "csv_import",
+          "direction": "income",
+          "amount_yen": 200000,
+          "occurred_on": "2030-11-01",
+          "occurred_time": null,
+          "category": "income",
+          "merchant": null,
+          "memo": "合成の給与",
+          "payment": null,
+          "created_at": "2030-11-05T00:00:00Z",
+          "updated_at": "2030-11-05T00:00:00Z"
+        },
+        {
+          "entry_id": "00000000-0000-4000-8000-0000000c0004",
+          "content_revision": "1",
+          "source_kind": "manual",
+          "direction": "transfer",
+          "amount_yen": 30000,
+          "occurred_on": "2030-11-01",
+          "occurred_time": null,
+          "category": "transfer",
+          "merchant": null,
+          "memo": null,
+          "payment": null,
+          "created_at": "2030-11-01T00:00:00Z",
+          "updated_at": "2030-11-01T00:00:00Z"
+        }
+      ],
+      "summary": {
+        "expense_yen": 1820,
+        "income_yen": 200000,
+        "balance_yen": 198180,
+        "entry_count": 4,
+        "expense_by_category": [
+          {
+            "category": "food",
+            "total_yen": 1280,
+            "count": 1
+          },
+          {
+            "category": "uncategorized",
+            "total_yen": 540,
+            "count": 1
+          }
+        ],
+        "transfer_yen": 30000
+      },
+      "unreadable": -1,
+      "truncated": false
+    }
+  },
+  {
+    "id": "household-month-bad-month",
+    "schema": "HouseholdMonth",
+    "valid": false,
+    "value": {
+      "month": "2030-13",
+      "entries": [
+        {
+          "entry_id": "00000000-0000-4000-8000-0000000c0001",
+          "content_revision": "2",
+          "source_kind": "mail_notice",
+          "direction": "expense",
+          "amount_yen": 1280,
+          "occurred_on": "2030-11-03",
+          "occurred_time": "12:34",
+          "category": "food",
+          "merchant": "合成の食堂",
+          "memo": null,
+          "payment": "合成のカード",
+          "created_at": "2030-11-03T03:40:00Z",
+          "updated_at": "2030-11-04T00:00:00Z"
+        },
+        {
+          "entry_id": "00000000-0000-4000-8000-0000000c0002",
+          "content_revision": "1",
+          "source_kind": "mail_notice",
+          "direction": "expense",
+          "amount_yen": 540,
+          "occurred_on": "2030-11-02",
+          "occurred_time": null,
+          "category": "uncategorized",
+          "merchant": "合成の売店",
+          "memo": null,
+          "payment": "合成のカード",
+          "created_at": "2030-11-02T10:00:00Z",
+          "updated_at": "2030-11-02T10:00:00Z"
+        },
+        {
+          "entry_id": "00000000-0000-4000-8000-0000000c0003",
+          "content_revision": "1",
+          "source_kind": "csv_import",
+          "direction": "income",
+          "amount_yen": 200000,
+          "occurred_on": "2030-11-01",
+          "occurred_time": null,
+          "category": "income",
+          "merchant": null,
+          "memo": "合成の給与",
+          "payment": null,
+          "created_at": "2030-11-05T00:00:00Z",
+          "updated_at": "2030-11-05T00:00:00Z"
+        },
+        {
+          "entry_id": "00000000-0000-4000-8000-0000000c0004",
+          "content_revision": "1",
+          "source_kind": "manual",
+          "direction": "transfer",
+          "amount_yen": 30000,
+          "occurred_on": "2030-11-01",
+          "occurred_time": null,
+          "category": "transfer",
+          "merchant": null,
+          "memo": null,
+          "payment": null,
+          "created_at": "2030-11-01T00:00:00Z",
+          "updated_at": "2030-11-01T00:00:00Z"
+        }
+      ],
+      "summary": {
+        "expense_yen": 1820,
+        "income_yen": 200000,
+        "balance_yen": 198180,
+        "entry_count": 4,
+        "expense_by_category": [
+          {
+            "category": "food",
+            "total_yen": 1280,
+            "count": 1
+          },
+          {
+            "category": "uncategorized",
+            "total_yen": 540,
+            "count": 1
+          }
+        ],
+        "transfer_yen": 30000
+      },
+      "unreadable": 0,
+      "truncated": false
+    }
+  },
+  {
+    "id": "household-month-other-month",
+    "schema": "HouseholdMonth",
+    "valid": true,
+    "value": {
+      "month": "2030-10",
+      "entries": [
+        {
+          "entry_id": "00000000-0000-4000-8000-0000000c0001",
+          "content_revision": "2",
+          "source_kind": "mail_notice",
+          "direction": "expense",
+          "amount_yen": 1280,
+          "occurred_on": "2030-11-03",
+          "occurred_time": "12:34",
+          "category": "food",
+          "merchant": "合成の食堂",
+          "memo": null,
+          "payment": "合成のカード",
+          "created_at": "2030-11-03T03:40:00Z",
+          "updated_at": "2030-11-04T00:00:00Z"
+        }
+      ],
+      "summary": {
+        "expense_yen": 1280,
+        "income_yen": 0,
+        "balance_yen": -1280,
+        "entry_count": 1,
+        "expense_by_category": [
+          {
+            "category": "food",
+            "total_yen": 1280,
+            "count": 1
+          }
+        ],
+        "transfer_yen": 0
+      },
+      "unreadable": 0,
+      "truncated": false
+    },
+    "semantic_errors": ["entry_month_mismatch"]
+  },
+  {
+    "id": "household-month-order",
+    "schema": "HouseholdMonth",
+    "valid": true,
+    "value": {
+      "month": "2030-11",
+      "entries": [
+        {
+          "entry_id": "00000000-0000-4000-8000-0000000c0002",
+          "content_revision": "1",
+          "source_kind": "mail_notice",
+          "direction": "expense",
+          "amount_yen": 540,
+          "occurred_on": "2030-11-02",
+          "occurred_time": null,
+          "category": "uncategorized",
+          "merchant": "合成の売店",
+          "memo": null,
+          "payment": "合成のカード",
+          "created_at": "2030-11-02T10:00:00Z",
+          "updated_at": "2030-11-02T10:00:00Z"
+        },
+        {
+          "entry_id": "00000000-0000-4000-8000-0000000c0001",
+          "content_revision": "2",
+          "source_kind": "mail_notice",
+          "direction": "expense",
+          "amount_yen": 1280,
+          "occurred_on": "2030-11-03",
+          "occurred_time": "12:34",
+          "category": "food",
+          "merchant": "合成の食堂",
+          "memo": null,
+          "payment": "合成のカード",
+          "created_at": "2030-11-03T03:40:00Z",
+          "updated_at": "2030-11-04T00:00:00Z"
+        },
+        {
+          "entry_id": "00000000-0000-4000-8000-0000000c0003",
+          "content_revision": "1",
+          "source_kind": "csv_import",
+          "direction": "income",
+          "amount_yen": 200000,
+          "occurred_on": "2030-11-01",
+          "occurred_time": null,
+          "category": "income",
+          "merchant": null,
+          "memo": "合成の給与",
+          "payment": null,
+          "created_at": "2030-11-05T00:00:00Z",
+          "updated_at": "2030-11-05T00:00:00Z"
+        },
+        {
+          "entry_id": "00000000-0000-4000-8000-0000000c0004",
+          "content_revision": "1",
+          "source_kind": "manual",
+          "direction": "transfer",
+          "amount_yen": 30000,
+          "occurred_on": "2030-11-01",
+          "occurred_time": null,
+          "category": "transfer",
+          "merchant": null,
+          "memo": null,
+          "payment": null,
+          "created_at": "2030-11-01T00:00:00Z",
+          "updated_at": "2030-11-01T00:00:00Z"
+        }
+      ],
+      "summary": {
+        "expense_yen": 1820,
+        "income_yen": 200000,
+        "balance_yen": 198180,
+        "entry_count": 4,
+        "expense_by_category": [
+          {
+            "category": "food",
+            "total_yen": 1280,
+            "count": 1
+          },
+          {
+            "category": "uncategorized",
+            "total_yen": 540,
+            "count": 1
+          }
+        ],
+        "transfer_yen": 30000
+      },
+      "unreadable": 0,
+      "truncated": false
+    },
+    "semantic_errors": ["entry_order"]
+  },
+  {
+    "id": "household-month-summary-mismatch",
+    "schema": "HouseholdMonth",
+    "valid": true,
+    "value": {
+      "month": "2030-11",
+      "entries": [
+        {
+          "entry_id": "00000000-0000-4000-8000-0000000c0001",
+          "content_revision": "2",
+          "source_kind": "mail_notice",
+          "direction": "expense",
+          "amount_yen": 1280,
+          "occurred_on": "2030-11-03",
+          "occurred_time": "12:34",
+          "category": "food",
+          "merchant": "合成の食堂",
+          "memo": null,
+          "payment": "合成のカード",
+          "created_at": "2030-11-03T03:40:00Z",
+          "updated_at": "2030-11-04T00:00:00Z"
+        },
+        {
+          "entry_id": "00000000-0000-4000-8000-0000000c0002",
+          "content_revision": "1",
+          "source_kind": "mail_notice",
+          "direction": "expense",
+          "amount_yen": 540,
+          "occurred_on": "2030-11-02",
+          "occurred_time": null,
+          "category": "uncategorized",
+          "merchant": "合成の売店",
+          "memo": null,
+          "payment": "合成のカード",
+          "created_at": "2030-11-02T10:00:00Z",
+          "updated_at": "2030-11-02T10:00:00Z"
+        },
+        {
+          "entry_id": "00000000-0000-4000-8000-0000000c0003",
+          "content_revision": "1",
+          "source_kind": "csv_import",
+          "direction": "income",
+          "amount_yen": 200000,
+          "occurred_on": "2030-11-01",
+          "occurred_time": null,
+          "category": "income",
+          "merchant": null,
+          "memo": "合成の給与",
+          "payment": null,
+          "created_at": "2030-11-05T00:00:00Z",
+          "updated_at": "2030-11-05T00:00:00Z"
+        }
+      ],
+      "summary": {
+        "expense_yen": 1820,
+        "income_yen": 200000,
+        "balance_yen": 198180,
+        "entry_count": 4,
+        "expense_by_category": [
+          {
+            "category": "food",
+            "total_yen": 1280,
+            "count": 1
+          },
+          {
+            "category": "uncategorized",
+            "total_yen": 540,
+            "count": 1
+          }
+        ],
+        "transfer_yen": 30000
+      },
+      "unreadable": 0,
+      "truncated": false
+    },
+    "semantic_errors": ["summary_mismatch"]
+  },
+  {
+    "id": "household-month-transfer-counted",
+    "schema": "HouseholdMonth",
+    "valid": true,
+    "value": {
+      "month": "2030-11",
+      "entries": [
+        {
+          "entry_id": "00000000-0000-4000-8000-0000000c0001",
+          "content_revision": "2",
+          "source_kind": "mail_notice",
+          "direction": "expense",
+          "amount_yen": 1280,
+          "occurred_on": "2030-11-03",
+          "occurred_time": "12:34",
+          "category": "food",
+          "merchant": "合成の食堂",
+          "memo": null,
+          "payment": "合成のカード",
+          "created_at": "2030-11-03T03:40:00Z",
+          "updated_at": "2030-11-04T00:00:00Z"
+        },
+        {
+          "entry_id": "00000000-0000-4000-8000-0000000c0002",
+          "content_revision": "1",
+          "source_kind": "mail_notice",
+          "direction": "expense",
+          "amount_yen": 540,
+          "occurred_on": "2030-11-02",
+          "occurred_time": null,
+          "category": "uncategorized",
+          "merchant": "合成の売店",
+          "memo": null,
+          "payment": "合成のカード",
+          "created_at": "2030-11-02T10:00:00Z",
+          "updated_at": "2030-11-02T10:00:00Z"
+        },
+        {
+          "entry_id": "00000000-0000-4000-8000-0000000c0003",
+          "content_revision": "1",
+          "source_kind": "csv_import",
+          "direction": "income",
+          "amount_yen": 200000,
+          "occurred_on": "2030-11-01",
+          "occurred_time": null,
+          "category": "income",
+          "merchant": null,
+          "memo": "合成の給与",
+          "payment": null,
+          "created_at": "2030-11-05T00:00:00Z",
+          "updated_at": "2030-11-05T00:00:00Z"
+        },
+        {
+          "entry_id": "00000000-0000-4000-8000-0000000c0004",
+          "content_revision": "1",
+          "source_kind": "manual",
+          "direction": "transfer",
+          "amount_yen": 30000,
+          "occurred_on": "2030-11-01",
+          "occurred_time": null,
+          "category": "transfer",
+          "merchant": null,
+          "memo": null,
+          "payment": null,
+          "created_at": "2030-11-01T00:00:00Z",
+          "updated_at": "2030-11-01T00:00:00Z"
+        }
+      ],
+      "summary": {
+        "expense_yen": 31820,
+        "income_yen": 200000,
+        "balance_yen": 168180,
+        "entry_count": 4,
+        "expense_by_category": [
+          {
+            "category": "transfer",
+            "total_yen": 30000,
+            "count": 1
+          },
+          {
+            "category": "food",
+            "total_yen": 1280,
+            "count": 1
+          },
+          {
+            "category": "uncategorized",
+            "total_yen": 540,
+            "count": 1
+          }
+        ],
+        "transfer_yen": 30000
+      },
+      "unreadable": 0,
+      "truncated": false
+    },
+    "semantic_errors": ["category_not_expense", "summary_mismatch"]
+  },
+  {
+    "id": "household-summary-balance",
+    "schema": "HouseholdMonthSummary",
+    "valid": true,
+    "value": {
+      "expense_yen": 1820,
+      "income_yen": 200000,
+      "balance_yen": 0,
+      "entry_count": 4,
+      "expense_by_category": [
+        {
+          "category": "food",
+          "total_yen": 1280,
+          "count": 1
+        },
+        {
+          "category": "uncategorized",
+          "total_yen": 540,
+          "count": 1
+        }
+      ],
+      "transfer_yen": 30000
+    },
+    "semantic_errors": ["balance_mismatch"]
+  },
+  {
+    "id": "household-summary-category-total",
+    "schema": "HouseholdMonthSummary",
+    "valid": true,
+    "value": {
+      "expense_yen": 1820,
+      "income_yen": 200000,
+      "balance_yen": 198180,
+      "entry_count": 4,
+      "expense_by_category": [
+        {
+          "category": "food",
+          "total_yen": 1280,
+          "count": 1
+        }
+      ],
+      "transfer_yen": 30000
+    },
+    "semantic_errors": ["category_total_mismatch"]
+  },
+  {
+    "id": "household-summary-order",
+    "schema": "HouseholdMonthSummary",
+    "valid": true,
+    "value": {
+      "expense_yen": 1820,
+      "income_yen": 200000,
+      "balance_yen": 198180,
+      "entry_count": 4,
+      "expense_by_category": [
+        {
+          "category": "uncategorized",
+          "total_yen": 540,
+          "count": 1
+        },
+        {
+          "category": "food",
+          "total_yen": 1280,
+          "count": 1
+        }
+      ],
+      "transfer_yen": 30000
+    },
+    "semantic_errors": ["category_order"]
+  },
+  {
+    "id": "household-summary-tie-order",
+    "schema": "HouseholdMonthSummary",
+    "valid": true,
+    "value": {
+      "expense_yen": 1000,
+      "income_yen": 200000,
+      "balance_yen": 199000,
+      "entry_count": 4,
+      "expense_by_category": [
+        {
+          "category": "transport",
+          "total_yen": 500,
+          "count": 1
+        },
+        {
+          "category": "food",
+          "total_yen": 500,
+          "count": 1
+        }
+      ],
+      "transfer_yen": 30000
+    },
+    "semantic_errors": ["category_order"]
+  },
+  {
+    "id": "household-summary-duplicate",
+    "schema": "HouseholdMonthSummary",
+    "valid": true,
+    "value": {
+      "expense_yen": 1820,
+      "income_yen": 200000,
+      "balance_yen": 198180,
+      "entry_count": 4,
+      "expense_by_category": [
+        {
+          "category": "food",
+          "total_yen": 1280,
+          "count": 1
+        },
+        {
+          "category": "food",
+          "total_yen": 540,
+          "count": 1
+        }
+      ],
+      "transfer_yen": 30000
+    },
+    "semantic_errors": ["category_duplicate"]
+  },
+  {
+    "id": "household-summary-count",
+    "schema": "HouseholdMonthSummary",
+    "valid": true,
+    "value": {
+      "expense_yen": 1820,
+      "income_yen": 200000,
+      "balance_yen": 198180,
+      "entry_count": 1,
+      "expense_by_category": [
+        {
+          "category": "food",
+          "total_yen": 1280,
+          "count": 1
+        },
+        {
+          "category": "uncategorized",
+          "total_yen": 540,
+          "count": 1
+        }
+      ],
+      "transfer_yen": 30000
+    },
+    "semantic_errors": ["category_count_mismatch"]
+  },
+  {
+    "id": "household-summary-zero-category",
+    "schema": "HouseholdMonthSummary",
+    "valid": false,
+    "value": {
+      "expense_yen": 1820,
+      "income_yen": 200000,
+      "balance_yen": 198180,
+      "entry_count": 4,
+      "expense_by_category": [
+        {
+          "category": "food",
+          "total_yen": 1280,
+          "count": 1
+        },
+        {
+          "category": "uncategorized",
+          "total_yen": 540,
+          "count": 1
+        },
+        {
+          "category": "car",
+          "total_yen": 0,
+          "count": 0
+        }
+      ],
+      "transfer_yen": 30000
+    }
+  },
+  {
+    "id": "household-overview",
+    "schema": "HouseholdOverview",
+    "valid": true,
+    "value": {
+      "time_zone": "Pacific/Auckland",
+      "current_month": "2030-11",
+      "generated_at": "2030-11-05T00:00:00Z",
+      "months": [
+        {
+          "month": "2030-11",
+          "expense_yen": 1820,
+          "income_yen": 200000,
+          "balance_yen": 198180,
+          "transfer_yen": 30000,
+          "entry_count": 4,
+          "unreadable": 0
+        },
+        {
+          "month": "2030-10",
+          "expense_yen": 5000,
+          "income_yen": 0,
+          "balance_yen": -5000,
+          "transfer_yen": 0,
+          "entry_count": 2,
+          "unreadable": 1
+        },
+        {
+          "month": "2030-09",
+          "expense_yen": 0,
+          "income_yen": 0,
+          "balance_yen": 0,
+          "transfer_yen": 0,
+          "entry_count": 0,
+          "unreadable": 0
+        },
+        {
+          "month": "2030-08",
+          "expense_yen": 0,
+          "income_yen": 0,
+          "balance_yen": 0,
+          "transfer_yen": 0,
+          "entry_count": 0,
+          "unreadable": 0
+        },
+        {
+          "month": "2030-07",
+          "expense_yen": 0,
+          "income_yen": 0,
+          "balance_yen": 0,
+          "transfer_yen": 0,
+          "entry_count": 0,
+          "unreadable": 0
+        },
+        {
+          "month": "2030-06",
+          "expense_yen": 0,
+          "income_yen": 0,
+          "balance_yen": 0,
+          "transfer_yen": 0,
+          "entry_count": 0,
+          "unreadable": 0
+        },
+        {
+          "month": "2030-05",
+          "expense_yen": 0,
+          "income_yen": 0,
+          "balance_yen": 0,
+          "transfer_yen": 0,
+          "entry_count": 0,
+          "unreadable": 0
+        },
+        {
+          "month": "2030-04",
+          "expense_yen": 0,
+          "income_yen": 0,
+          "balance_yen": 0,
+          "transfer_yen": 0,
+          "entry_count": 0,
+          "unreadable": 0
+        },
+        {
+          "month": "2030-03",
+          "expense_yen": 0,
+          "income_yen": 0,
+          "balance_yen": 0,
+          "transfer_yen": 0,
+          "entry_count": 0,
+          "unreadable": 0
+        },
+        {
+          "month": "2030-02",
+          "expense_yen": 0,
+          "income_yen": 0,
+          "balance_yen": 0,
+          "transfer_yen": 0,
+          "entry_count": 0,
+          "unreadable": 0
+        },
+        {
+          "month": "2030-01",
+          "expense_yen": 0,
+          "income_yen": 0,
+          "balance_yen": 0,
+          "transfer_yen": 0,
+          "entry_count": 0,
+          "unreadable": 0
+        },
+        {
+          "month": "2029-12",
+          "expense_yen": 0,
+          "income_yen": 0,
+          "balance_yen": 0,
+          "transfer_yen": 0,
+          "entry_count": 0,
+          "unreadable": 0
+        }
+      ],
+      "truncated": false
+    }
+  },
+  {
+    "id": "household-overview-short",
+    "schema": "HouseholdOverview",
+    "valid": false,
+    "value": {
+      "time_zone": "Pacific/Auckland",
+      "current_month": "2030-11",
+      "generated_at": "2030-11-05T00:00:00Z",
+      "months": [
+        {
+          "month": "2030-11",
+          "expense_yen": 1820,
+          "income_yen": 200000,
+          "balance_yen": 198180,
+          "transfer_yen": 30000,
+          "entry_count": 4,
+          "unreadable": 0
+        },
+        {
+          "month": "2030-10",
+          "expense_yen": 5000,
+          "income_yen": 0,
+          "balance_yen": -5000,
+          "transfer_yen": 0,
+          "entry_count": 2,
+          "unreadable": 1
+        },
+        {
+          "month": "2030-09",
+          "expense_yen": 0,
+          "income_yen": 0,
+          "balance_yen": 0,
+          "transfer_yen": 0,
+          "entry_count": 0,
+          "unreadable": 0
+        },
+        {
+          "month": "2030-08",
+          "expense_yen": 0,
+          "income_yen": 0,
+          "balance_yen": 0,
+          "transfer_yen": 0,
+          "entry_count": 0,
+          "unreadable": 0
+        },
+        {
+          "month": "2030-07",
+          "expense_yen": 0,
+          "income_yen": 0,
+          "balance_yen": 0,
+          "transfer_yen": 0,
+          "entry_count": 0,
+          "unreadable": 0
+        },
+        {
+          "month": "2030-06",
+          "expense_yen": 0,
+          "income_yen": 0,
+          "balance_yen": 0,
+          "transfer_yen": 0,
+          "entry_count": 0,
+          "unreadable": 0
+        },
+        {
+          "month": "2030-05",
+          "expense_yen": 0,
+          "income_yen": 0,
+          "balance_yen": 0,
+          "transfer_yen": 0,
+          "entry_count": 0,
+          "unreadable": 0
+        },
+        {
+          "month": "2030-04",
+          "expense_yen": 0,
+          "income_yen": 0,
+          "balance_yen": 0,
+          "transfer_yen": 0,
+          "entry_count": 0,
+          "unreadable": 0
+        },
+        {
+          "month": "2030-03",
+          "expense_yen": 0,
+          "income_yen": 0,
+          "balance_yen": 0,
+          "transfer_yen": 0,
+          "entry_count": 0,
+          "unreadable": 0
+        },
+        {
+          "month": "2030-02",
+          "expense_yen": 0,
+          "income_yen": 0,
+          "balance_yen": 0,
+          "transfer_yen": 0,
+          "entry_count": 0,
+          "unreadable": 0
+        },
+        {
+          "month": "2030-01",
+          "expense_yen": 0,
+          "income_yen": 0,
+          "balance_yen": 0,
+          "transfer_yen": 0,
+          "entry_count": 0,
+          "unreadable": 0
+        }
+      ],
+      "truncated": false
+    }
+  },
+  {
+    "id": "household-overview-sequence",
+    "schema": "HouseholdOverview",
+    "valid": true,
+    "value": {
+      "time_zone": "Pacific/Auckland",
+      "current_month": "2030-12",
+      "generated_at": "2030-11-05T00:00:00Z",
+      "months": [
+        {
+          "month": "2030-11",
+          "expense_yen": 1820,
+          "income_yen": 200000,
+          "balance_yen": 198180,
+          "transfer_yen": 30000,
+          "entry_count": 4,
+          "unreadable": 0
+        },
+        {
+          "month": "2030-10",
+          "expense_yen": 5000,
+          "income_yen": 0,
+          "balance_yen": -5000,
+          "transfer_yen": 0,
+          "entry_count": 2,
+          "unreadable": 1
+        },
+        {
+          "month": "2030-09",
+          "expense_yen": 0,
+          "income_yen": 0,
+          "balance_yen": 0,
+          "transfer_yen": 0,
+          "entry_count": 0,
+          "unreadable": 0
+        },
+        {
+          "month": "2030-08",
+          "expense_yen": 0,
+          "income_yen": 0,
+          "balance_yen": 0,
+          "transfer_yen": 0,
+          "entry_count": 0,
+          "unreadable": 0
+        },
+        {
+          "month": "2030-07",
+          "expense_yen": 0,
+          "income_yen": 0,
+          "balance_yen": 0,
+          "transfer_yen": 0,
+          "entry_count": 0,
+          "unreadable": 0
+        },
+        {
+          "month": "2030-06",
+          "expense_yen": 0,
+          "income_yen": 0,
+          "balance_yen": 0,
+          "transfer_yen": 0,
+          "entry_count": 0,
+          "unreadable": 0
+        },
+        {
+          "month": "2030-05",
+          "expense_yen": 0,
+          "income_yen": 0,
+          "balance_yen": 0,
+          "transfer_yen": 0,
+          "entry_count": 0,
+          "unreadable": 0
+        },
+        {
+          "month": "2030-04",
+          "expense_yen": 0,
+          "income_yen": 0,
+          "balance_yen": 0,
+          "transfer_yen": 0,
+          "entry_count": 0,
+          "unreadable": 0
+        },
+        {
+          "month": "2030-03",
+          "expense_yen": 0,
+          "income_yen": 0,
+          "balance_yen": 0,
+          "transfer_yen": 0,
+          "entry_count": 0,
+          "unreadable": 0
+        },
+        {
+          "month": "2030-02",
+          "expense_yen": 0,
+          "income_yen": 0,
+          "balance_yen": 0,
+          "transfer_yen": 0,
+          "entry_count": 0,
+          "unreadable": 0
+        },
+        {
+          "month": "2030-01",
+          "expense_yen": 0,
+          "income_yen": 0,
+          "balance_yen": 0,
+          "transfer_yen": 0,
+          "entry_count": 0,
+          "unreadable": 0
+        },
+        {
+          "month": "2029-12",
+          "expense_yen": 0,
+          "income_yen": 0,
+          "balance_yen": 0,
+          "transfer_yen": 0,
+          "entry_count": 0,
+          "unreadable": 0
+        }
+      ],
+      "truncated": false
+    },
+    "semantic_errors": ["months_sequence"]
+  },
+  {
+    "id": "household-overview-gap",
+    "schema": "HouseholdOverview",
+    "valid": true,
+    "value": {
+      "time_zone": "Pacific/Auckland",
+      "current_month": "2030-11",
+      "generated_at": "2030-11-05T00:00:00Z",
+      "months": [
+        {
+          "month": "2030-11",
+          "expense_yen": 1820,
+          "income_yen": 200000,
+          "balance_yen": 198180,
+          "transfer_yen": 30000,
+          "entry_count": 4,
+          "unreadable": 0
+        },
+        {
+          "month": "2030-09",
+          "expense_yen": 0,
+          "income_yen": 0,
+          "balance_yen": 0,
+          "transfer_yen": 0,
+          "entry_count": 0,
+          "unreadable": 0
+        },
+        {
+          "month": "2030-09",
+          "expense_yen": 0,
+          "income_yen": 0,
+          "balance_yen": 0,
+          "transfer_yen": 0,
+          "entry_count": 0,
+          "unreadable": 0
+        },
+        {
+          "month": "2030-08",
+          "expense_yen": 0,
+          "income_yen": 0,
+          "balance_yen": 0,
+          "transfer_yen": 0,
+          "entry_count": 0,
+          "unreadable": 0
+        },
+        {
+          "month": "2030-07",
+          "expense_yen": 0,
+          "income_yen": 0,
+          "balance_yen": 0,
+          "transfer_yen": 0,
+          "entry_count": 0,
+          "unreadable": 0
+        },
+        {
+          "month": "2030-06",
+          "expense_yen": 0,
+          "income_yen": 0,
+          "balance_yen": 0,
+          "transfer_yen": 0,
+          "entry_count": 0,
+          "unreadable": 0
+        },
+        {
+          "month": "2030-05",
+          "expense_yen": 0,
+          "income_yen": 0,
+          "balance_yen": 0,
+          "transfer_yen": 0,
+          "entry_count": 0,
+          "unreadable": 0
+        },
+        {
+          "month": "2030-04",
+          "expense_yen": 0,
+          "income_yen": 0,
+          "balance_yen": 0,
+          "transfer_yen": 0,
+          "entry_count": 0,
+          "unreadable": 0
+        },
+        {
+          "month": "2030-03",
+          "expense_yen": 0,
+          "income_yen": 0,
+          "balance_yen": 0,
+          "transfer_yen": 0,
+          "entry_count": 0,
+          "unreadable": 0
+        },
+        {
+          "month": "2030-02",
+          "expense_yen": 0,
+          "income_yen": 0,
+          "balance_yen": 0,
+          "transfer_yen": 0,
+          "entry_count": 0,
+          "unreadable": 0
+        },
+        {
+          "month": "2030-01",
+          "expense_yen": 0,
+          "income_yen": 0,
+          "balance_yen": 0,
+          "transfer_yen": 0,
+          "entry_count": 0,
+          "unreadable": 0
+        },
+        {
+          "month": "2029-12",
+          "expense_yen": 0,
+          "income_yen": 0,
+          "balance_yen": 0,
+          "transfer_yen": 0,
+          "entry_count": 0,
+          "unreadable": 0
+        }
+      ],
+      "truncated": false
+    },
+    "semantic_errors": ["months_sequence"]
+  },
+  {
+    "id": "household-overview-balance",
+    "schema": "HouseholdOverview",
+    "valid": true,
+    "value": {
+      "time_zone": "Pacific/Auckland",
+      "current_month": "2030-11",
+      "generated_at": "2030-11-05T00:00:00Z",
+      "months": [
+        {
+          "month": "2030-11",
+          "expense_yen": 1820,
+          "income_yen": 200000,
+          "balance_yen": 1,
+          "transfer_yen": 30000,
+          "entry_count": 4,
+          "unreadable": 0
+        },
+        {
+          "month": "2030-10",
+          "expense_yen": 5000,
+          "income_yen": 0,
+          "balance_yen": -5000,
+          "transfer_yen": 0,
+          "entry_count": 2,
+          "unreadable": 1
+        },
+        {
+          "month": "2030-09",
+          "expense_yen": 0,
+          "income_yen": 0,
+          "balance_yen": 0,
+          "transfer_yen": 0,
+          "entry_count": 0,
+          "unreadable": 0
+        },
+        {
+          "month": "2030-08",
+          "expense_yen": 0,
+          "income_yen": 0,
+          "balance_yen": 0,
+          "transfer_yen": 0,
+          "entry_count": 0,
+          "unreadable": 0
+        },
+        {
+          "month": "2030-07",
+          "expense_yen": 0,
+          "income_yen": 0,
+          "balance_yen": 0,
+          "transfer_yen": 0,
+          "entry_count": 0,
+          "unreadable": 0
+        },
+        {
+          "month": "2030-06",
+          "expense_yen": 0,
+          "income_yen": 0,
+          "balance_yen": 0,
+          "transfer_yen": 0,
+          "entry_count": 0,
+          "unreadable": 0
+        },
+        {
+          "month": "2030-05",
+          "expense_yen": 0,
+          "income_yen": 0,
+          "balance_yen": 0,
+          "transfer_yen": 0,
+          "entry_count": 0,
+          "unreadable": 0
+        },
+        {
+          "month": "2030-04",
+          "expense_yen": 0,
+          "income_yen": 0,
+          "balance_yen": 0,
+          "transfer_yen": 0,
+          "entry_count": 0,
+          "unreadable": 0
+        },
+        {
+          "month": "2030-03",
+          "expense_yen": 0,
+          "income_yen": 0,
+          "balance_yen": 0,
+          "transfer_yen": 0,
+          "entry_count": 0,
+          "unreadable": 0
+        },
+        {
+          "month": "2030-02",
+          "expense_yen": 0,
+          "income_yen": 0,
+          "balance_yen": 0,
+          "transfer_yen": 0,
+          "entry_count": 0,
+          "unreadable": 0
+        },
+        {
+          "month": "2030-01",
+          "expense_yen": 0,
+          "income_yen": 0,
+          "balance_yen": 0,
+          "transfer_yen": 0,
+          "entry_count": 0,
+          "unreadable": 0
+        },
+        {
+          "month": "2029-12",
+          "expense_yen": 0,
+          "income_yen": 0,
+          "balance_yen": 0,
+          "transfer_yen": 0,
+          "entry_count": 0,
+          "unreadable": 0
+        }
+      ],
+      "truncated": false
+    },
+    "semantic_errors": ["balance_mismatch"]
+  },
+  {
+    "id": "household-category-change",
+    "schema": "HouseholdCategoryChangeRequest",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-0000000c0101",
+      "command_scope_id": "00000000-0000-4000-8000-000000009002",
+      "expected_content_revision": "1",
+      "category": "food"
+    }
+  },
+  {
+    "id": "household-category-change-unknown",
+    "schema": "HouseholdCategoryChangeRequest",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-0000000c0101",
+      "command_scope_id": "00000000-0000-4000-8000-000000009002",
+      "expected_content_revision": "1",
+      "category": "groceries"
+    }
+  },
+  {
+    "id": "household-category-change-result",
+    "schema": "HouseholdCategoryChangeResult",
+    "valid": true,
+    "value": {
+      "entry_id": "00000000-0000-4000-8000-0000000c0002",
+      "content_revision": "2",
+      "rule_learned": true
+    }
+  },
+  {
+    "id": "household-entry-delete",
+    "schema": "HouseholdEntryDeleteRequest",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-0000000c0102",
+      "command_scope_id": "00000000-0000-4000-8000-000000009002",
+      "expected_content_revision": "1"
+    }
+  },
+  {
+    "id": "household-entry-delete-extra",
+    "schema": "HouseholdEntryDeleteRequest",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-0000000c0102",
+      "command_scope_id": "00000000-0000-4000-8000-000000009002",
+      "expected_content_revision": "1",
+      "category": "food"
+    }
+  },
+  {
+    "id": "household-entry-delete-result",
+    "schema": "HouseholdEntryDeleteResult",
+    "valid": true,
+    "value": {
+      "entry_id": "00000000-0000-4000-8000-0000000c0002",
+      "state": "deleted"
+    }
+  },
+  {
+    "id": "household-entry-delete-result-active",
+    "schema": "HouseholdEntryDeleteResult",
+    "valid": false,
+    "value": {
+      "entry_id": "00000000-0000-4000-8000-0000000c0002",
+      "state": "active"
+    }
+  },
+  {
     "id": "sync-batch",
     "schema": "SyncBatch",
     "valid": true,

@@ -1898,6 +1898,151 @@ paths:
           $ref: '#/components/responses/RateLimited'
         '503':
           $ref: '#/components/responses/Unavailable'
+  /v1/household/months:
+    get:
+      operationId: listHouseholdMonths
+      summary: 家計簿の月ごとの合計
+      description: 今月から 11 か月前までの 12 か月の、支出・収入・差額・振替の合計と件数を新しい月から返す（記録のない月も 0 で入れる）。今月は Core が本人のタイムゾーン（ADR 0131）で決め、決まっていなければ 503（端末の時計・UTC で代用しない）。合計は Core が記録を復号して計算し、復号できない記録は数だけ返す。一度に読む件数の上限で古い記録を切ったときは truncated。金額を含むのでロック解除を求める（ADR 0158・0161）。
+      x-buddy-core-checks:
+        - device_token
+        - home_network
+        - unlocked
+      parameters:
+        - $ref: '#/components/parameters/LockState'
+      responses:
+        '200':
+          description: 月ごとの合計。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/HouseholdOverview
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /v1/household/months/{month}:
+    get:
+      operationId: getHouseholdMonth
+      summary: 家計簿の 1 か月
+      description: 指定した月の記録（金額・日付・時刻・分類・店名・メモ・支払い手段）と集計を返す。記録は利用した日・時刻の新しい順。出所の識別子（メールの ID・書き出しの行）は返さない。復号できない記録は数だけ返し、集計に入れない。データ鍵を読めないときは 503。年は 2000〜2099 年で、それ以外は 422（ADR 0158・0161）。
+      x-buddy-core-checks:
+        - device_token
+        - home_network
+        - unlocked
+      parameters:
+        - $ref: '#/components/parameters/HouseholdMonth'
+        - $ref: '#/components/parameters/LockState'
+      responses:
+        '200':
+          description: その月の記録と集計。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/HouseholdMonth
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /v1/household/entries/{entry_id}/category:
+    post:
+      operationId: changeHouseholdCategory
+      summary: 家計の記録の分類の変更
+      description: 本人がロック解除済みの画面で記録の分類を変える。内容版（expected_content_revision）が今と違う・削除済みは 409（画面は読み直す）。記録の向きと違う分類・存在しない記録は 422。店名があれば本人の規則として覚え、次から同じ店の未分類の利用に当てる。同じ request_id の再送は、成功済みなら内容版が進んでいるので 409 になり二重に効かない。成否が不明なときは 503 で、成功にも競合にも見せない（ADR 0158・0161）。
+      x-buddy-core-checks:
+        - device_token
+        - home_network
+        - command_scope
+        - unlocked
+        - screen_operation
+      parameters:
+        - $ref: '#/components/parameters/HouseholdEntryId'
+        - $ref: '#/components/parameters/InputOrigin'
+        - $ref: '#/components/parameters/LockState'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas/buddy.schema.json#/$defs/HouseholdCategoryChangeRequest
+      responses:
+        '200':
+          description: 変更後の内容版と、規則を覚えたか。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/HouseholdCategoryChangeResult
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/Gone'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /v1/household/entries/{entry_id}/delete:
+    post:
+      operationId: deleteHouseholdEntry
+      summary: 家計の記録の削除
+      description: 本人がロック解除済みの画面で記録を消す。行は残して中身と月を消し、同じ出所（同じメール・同じ書き出しの行）から作り直さない。内容版が今と違う・削除済みは 409、存在しない記録は 422。同じ request_id の再送は、成功済みなら削除済みなので 409。成否が不明なときは 503（ADR 0158・0161）。
+      x-buddy-core-checks:
+        - device_token
+        - home_network
+        - command_scope
+        - unlocked
+        - screen_operation
+      parameters:
+        - $ref: '#/components/parameters/HouseholdEntryId'
+        - $ref: '#/components/parameters/InputOrigin'
+        - $ref: '#/components/parameters/LockState'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas/buddy.schema.json#/$defs/HouseholdEntryDeleteRequest
+      responses:
+        '200':
+          description: 削除の結果。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/HouseholdEntryDeleteResult
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/Gone'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
 components:
   securitySchemes:
     deviceToken:
@@ -1968,6 +2113,20 @@ components:
       schema:
         $ref: ./schemas/buddy.schema.json#/$defs/Id
       description: 気づき（候補）の ID。
+    HouseholdMonth:
+      name: month
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/buddy.schema.json#/$defs/YearMonth
+      description: 家計簿の月（YYYY-MM）。
+    HouseholdEntryId:
+      name: entry_id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/buddy.schema.json#/$defs/Id
+      description: 家計の記録の ID。
     Cursor:
       name: cursor
       in: query

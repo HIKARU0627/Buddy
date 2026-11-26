@@ -30,11 +30,15 @@ const route = (
     readonly inputOrigin?: boolean;
     readonly query?: Readonly<Record<string, string>>;
     readonly websocket?: boolean;
+    // パスの値のうち Id でないもの（名前 → JSON Schema の定義名）。
+    readonly pathSchemas?: Readonly<Record<string, string>>;
   } = {},
 ): ApiRoute => {
   const pathParams: Record<string, string> = {};
-  for (const match of path.matchAll(/\{([a-z_]+)\}/gu))
-    pathParams[match[1] as string] = 'Id';
+  for (const match of path.matchAll(/\{([a-z_]+)\}/gu)) {
+    const name = match[1] as string;
+    pathParams[name] = options.pathSchemas?.[name] ?? 'Id';
+  }
   return {
     operationId,
     method,
@@ -230,6 +234,23 @@ export const API_ROUTES: readonly ApiRoute[] = [
     body: 'CandidateStateCommand',
     ...SCREEN,
   }),
+  // 家計簿の月ごとの合計・1 か月・分類の変更・削除（ADR 0161）。処理は api-household.ts。
+  route('listHouseholdMonths', 'GET', '/v1/household/months'),
+  route('getHouseholdMonth', 'GET', '/v1/household/months/{month}', {
+    pathSchemas: { month: 'YearMonth' },
+  }),
+  route(
+    'changeHouseholdCategory',
+    'POST',
+    '/v1/household/entries/{entry_id}/category',
+    { body: 'HouseholdCategoryChangeRequest', ...SCREEN },
+  ),
+  route(
+    'deleteHouseholdEntry',
+    'POST',
+    '/v1/household/entries/{entry_id}/delete',
+    { body: 'HouseholdEntryDeleteRequest', ...SCREEN },
+  ),
 ];
 
 export type RouteMatch =

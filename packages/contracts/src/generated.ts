@@ -63,6 +63,12 @@ export type BuddyContract =
   | CandidateListResponse
   | CandidateEvidence
   | CandidateStateCommand
+  | HouseholdOverview
+  | HouseholdMonth
+  | HouseholdCategoryChangeRequest
+  | HouseholdCategoryChangeResult
+  | HouseholdEntryDeleteRequest
+  | HouseholdEntryDeleteResult
   | CandidateEvidenceRequest
   | WebSearchRequest
   | WebSearchResponse
@@ -686,6 +692,38 @@ export type Deadline =
  * 抽出した依頼（request_entity）の版（設計 11 §5A）。本人の依頼の版 RequestRevision と同じ object に並べない。
  */
 export type RequestEntityRevision = string;
+/**
+ * 家計の記録の内容版（ADR 0003 の共通の 10 進の形。保存する値は 1 から始まり、分類を変えるたびに 1 進む。ADR 0158）。変更・削除の照合に使う。
+ */
+export type HouseholdRevision = string;
+/**
+ * 家計の記録の向き（ADR 0158）。振替（カードの引き落とし・口座間の移動）は支出・収入の合計に入れない（U321）。
+ */
+export type HouseholdDirection = 'expense' | 'income' | 'transfer';
+/**
+ * 家計簿の分類（ADR 0158、U319）。支出の 16 分類（一般的な家計簿の大項目）・その他・未分類は支出、income は収入、transfer は振替だけに使う。表示名は domain の HOUSEHOLD_CATEGORIES が持つ。
+ */
+export type HouseholdCategoryId =
+  | 'food'
+  | 'cash_card'
+  | 'transport'
+  | 'hobby'
+  | 'daily_goods'
+  | 'clothing_beauty'
+  | 'special'
+  | 'social'
+  | 'housing'
+  | 'utilities'
+  | 'car'
+  | 'insurance'
+  | 'tax_social'
+  | 'education'
+  | 'communication'
+  | 'health_medical'
+  | 'other'
+  | 'uncategorized'
+  | 'income'
+  | 'transfer';
 /**
  * 検索語の機械検査が拒否した理由（B12-02、ADR 0127）。検査は下限で、氏名・予定の詳細などの私的情報を見分けられない。見分けられない分は、検索語の入力元を本人の質問に限る前提で守る。
  */
@@ -4256,6 +4294,171 @@ export interface CandidateStateCommand {
    * snooze のときだけ再通知の時刻（いまより後の UTC）。ほかの操作では null。
    */
   snooze_until: UtcTime | null;
+}
+/**
+ * 家計簿の月ごとの合計（GET /v1/household/months、ADR 0161）。今月は Core が本人のタイムゾーンで決め、端末の時計で代用しない。月は今月から 1 か月ずつさかのぼる（意味検査）。
+ */
+export interface HouseholdOverview {
+  /**
+   * IANA タイムゾーン名。実在の確認は意味検査で行う（設計 07 §1）。
+   */
+  time_zone: string;
+  current_month: YearMonth;
+  generated_at: UtcTime;
+  /**
+   * 今月から 11 か月前までの 12 か月。新しい月から並べ、記録のない月も 0 で入れる。
+   *
+   * @minItems 12
+   * @maxItems 12
+   */
+  months: [
+    HouseholdMonthTotals,
+    HouseholdMonthTotals,
+    HouseholdMonthTotals,
+    HouseholdMonthTotals,
+    HouseholdMonthTotals,
+    HouseholdMonthTotals,
+    HouseholdMonthTotals,
+    HouseholdMonthTotals,
+    HouseholdMonthTotals,
+    HouseholdMonthTotals,
+    HouseholdMonthTotals,
+    HouseholdMonthTotals,
+  ];
+  /**
+   * 一度に読む件数の上限で古い記録を切ったか。切ったときは古い月の合計が一部だけ。
+   */
+  truncated: boolean;
+}
+/**
+ * 月ごとの合計（一覧用）。差額は収入 − 支出（意味検査）。
+ */
+export interface HouseholdMonthTotals {
+  month: YearMonth;
+  expense_yen: number;
+  income_yen: number;
+  balance_yen: number;
+  transfer_yen: number;
+  entry_count: number;
+  unreadable: number;
+}
+/**
+ * 家計簿の 1 か月（GET /v1/household/months/{month}、ADR 0161）。記録はすべてその月の日付で、集計は返した記録から作る（意味検査）。
+ */
+export interface HouseholdMonth {
+  month: YearMonth;
+  /**
+   * その月の記録。利用した日・時刻の新しい順（同じなら作った新しい順）。
+   */
+  entries: HouseholdEntry[];
+  summary: HouseholdMonthSummary;
+  /**
+   * 復号できなかった記録の数。集計に入れていない（0 円として扱わない）。
+   */
+  unreadable: number;
+  /**
+   * 一度に読む件数の上限で記録を切ったか。切ったときの集計はその月の一部だけ。
+   */
+  truncated: boolean;
+}
+/**
+ * 家計の記録 1 件（ADR 0158・0161）。Core が暗号文を開いて返す。分類の向きは記録の向きと同じ（意味検査）。
+ */
+export interface HouseholdEntry {
+  entry_id: Id;
+  content_revision: HouseholdRevision;
+  /**
+   * 出所の種類（利用通知メール・書き出しの取り込み・手入力）。出所の識別子（メールの ID など）は返さない。
+   */
+  source_kind: 'mail_notice' | 'csv_import' | 'manual';
+  direction: HouseholdDirection;
+  /**
+   * 円の正の整数。支出・収入は向きで分ける。
+   */
+  amount_yen: number;
+  /**
+   * 利用した日（本人の地域の日付）。暦に実在する日かは意味検査で確かめる。
+   */
+  occurred_on: string;
+  /**
+   * 利用した時刻（HH:MM）。わからなければ null。
+   */
+  occurred_time: string | null;
+  category: HouseholdCategoryId;
+  /**
+   * 店名・相手の名前。わからなければ null。
+   */
+  merchant: string | null;
+  memo: string | null;
+  /**
+   * 支払い手段の表示名。カード番号・口座番号は入らない（ADR 0158）。
+   */
+  payment: string | null;
+  created_at: UtcTime;
+  updated_at: UtcTime;
+}
+/**
+ * 1 か月の集計（domain の summarizeHouseholdMonth、ADR 0158）。差額は収入 − 支出、分類ごとの合計の和は支出の合計（意味検査）。
+ */
+export interface HouseholdMonthSummary {
+  expense_yen: number;
+  income_yen: number;
+  /**
+   * 収入 − 支出（負にもなる）。
+   */
+  balance_yen: number;
+  entry_count: number;
+  /**
+   * 支出の分類ごとの合計。多い順、同じなら分類の表示の順。0 円の分類は入れない。
+   */
+  expense_by_category: HouseholdCategoryTotal[];
+  /**
+   * 振替の合計（支出・収入には入れない。U321）。
+   */
+  transfer_yen: number;
+}
+/**
+ * 支出の分類ごとの合計。
+ */
+export interface HouseholdCategoryTotal {
+  category: HouseholdCategoryId;
+  total_yen: number;
+  count: number;
+}
+/**
+ * 家計の記録の分類の変更（POST /v1/household/entries/{entry_id}/category、ADR 0161）。本人の画面操作だけが送る。内容版が今と違えば 409。向きの違う分類は 422。店名があれば本人の規則として覚え、次から同じ店の未分類の利用に当てる（ADR 0158）。
+ */
+export interface HouseholdCategoryChangeRequest {
+  request_id: Id;
+  command_scope_id: Id;
+  expected_content_revision: HouseholdRevision;
+  category: HouseholdCategoryId;
+}
+/**
+ * 分類の変更の結果。画面は月を読み直して集計を出し直す。
+ */
+export interface HouseholdCategoryChangeResult {
+  entry_id: Id;
+  content_revision: HouseholdRevision;
+  /**
+   * 店名の規則として覚えたか（店名がない・取り込みの規則より本人の規則が先にあるなどで覚えないときは false）。
+   */
+  rule_learned: boolean;
+}
+/**
+ * 家計の記録の削除（POST /v1/household/entries/{entry_id}/delete、ADR 0161）。本人の画面操作だけが送る。内容版が今と違う・削除済みなら 409。削除した出所からは作り直さない（ADR 0158）。
+ */
+export interface HouseholdEntryDeleteRequest {
+  request_id: Id;
+  command_scope_id: Id;
+  expected_content_revision: HouseholdRevision;
+}
+/**
+ * 削除の結果。
+ */
+export interface HouseholdEntryDeleteResult {
+  entry_id: Id;
+  state: 'deleted';
 }
 /**
  * 気づきの根拠の再取得の要求（設計 11 §4、ADR 0073・0130）。許可範囲から取り直すので接続範囲を本文で示す（postCanvasContent と同じ）。

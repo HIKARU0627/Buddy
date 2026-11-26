@@ -84,6 +84,10 @@ const AUTO_ACTIONS = [
   'desktop.auto_actions_list',
   'desktop.auto_action_undo',
   'desktop.safety_resume',
+  // 家計簿の月ごとの合計と記録・分類の変更・削除（ADR 0162）。
+  'desktop.household_view',
+  'desktop.household_category',
+  'desktop.household_delete',
 ];
 const ALL_CHANNELS = [
   ...LEGACY_CHANNELS,

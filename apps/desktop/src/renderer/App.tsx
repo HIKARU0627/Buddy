@@ -30,9 +30,11 @@ import { useHubState } from './state/use-hub-state.js';
 import { useWorkState } from './state/use-work-state.js';
 import { useCandidateState } from './state/use-candidate-state.js';
 import { useAutoActionState } from './state/use-auto-action-state.js';
+import { useHouseholdState } from './state/use-household-state.js';
 import { useConnectionsState } from './state/use-connections-state.js';
 import { CandidatesPanel } from './screens/candidates/CandidatesPanel.js';
 import { AutoActionsPanel } from './screens/auto-actions/AutoActionsPanel.js';
+import { HouseholdPanel } from './screens/household/HouseholdPanel.js';
 import { WorkPanel } from './screens/work/WorkPanel.js';
 import { StopShortcutMark } from './components/StopShortcutMark.js';
 import {
@@ -95,6 +97,8 @@ function ConnectedApp({ api }: { readonly api: BuddyDesktopApi }) {
   // 自動実行の一覧・安全停止・取り消し（B13-05、ADR 0154）。気づきと同じく、ロック解除済みで中枢に接続している間だけ
   // 内容を持つ（切断・ロックで捨てる）。
   const autoActions = useAutoActionState(api, workLive);
+  // 家計簿（ADR 0162）。自動実行と同じく、ロック解除済みで中枢に接続している間だけ内容を持つ（切断・ロックで捨てる）。
+  const household = useHouseholdState(api, workLive);
   // 連携アカウント（B08-02 P3・B09-05、ADR 0142）。中枢の画面で中枢に接続している間だけ内容を持つ
   // （中枢の画面かどうかは main が確かめる。接続を待つ間は欄だけ出し、操作を止める）。
   const linked = useConnectionsState(api, mode === 'live');
@@ -147,6 +151,12 @@ function ConnectedApp({ api }: { readonly api: BuddyDesktopApi }) {
             <AutoActionsPanel
               state={autoActions.state}
               actions={autoActions.actions}
+              now={now}
+            />
+            {/* 切断中も欄を出し、取得できていないことを示す（「記録はありません」と言わない）。 */}
+            <HouseholdPanel
+              state={household.state}
+              actions={household.actions}
               now={now}
             />
           </>

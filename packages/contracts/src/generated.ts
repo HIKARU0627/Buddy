@@ -1306,6 +1306,31 @@ export type DesktopIpcRequest =
       payload: {
         ref: Id;
       };
+    }
+  | {
+      channel: 'desktop.household_view';
+      request_id: Id;
+      payload: {
+        /**
+         * 見る月。null は中枢が決めた今月。
+         */
+        month: YearMonth | null;
+      };
+    }
+  | {
+      channel: 'desktop.household_category';
+      request_id: Id;
+      payload: {
+        ref: Id;
+        category: HouseholdCategoryId;
+      };
+    }
+  | {
+      channel: 'desktop.household_delete';
+      request_id: Id;
+      payload: {
+        ref: Id;
+      };
     };
 export type DesktopHubHost = string;
 export type DesktopHubHost1 = string;
@@ -1487,6 +1512,15 @@ export type DesktopIpcResponse =
         | 'desktop.safety_resume';
       outcome: 'ok';
       auto_actions: DesktopAutoActionView;
+    }
+  | {
+      request_id: Id;
+      channel:
+        | 'desktop.household_view'
+        | 'desktop.household_category'
+        | 'desktop.household_delete';
+      outcome: 'ok';
+      household: DesktopHouseholdView;
     }
   | {
       request_id: Id | null;
@@ -1728,7 +1762,7 @@ export type DesktopVoiceView =
       reply_mode: 'voice' | 'text';
     };
 /**
- * UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014・0025）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。中枢との接続・ペアリングは用途別のチャネルだけで、要求の宛先・本文を Renderer が決められない。音声レンダラーの IPC（B05）は別に定める。 発言・承認表示の準備・承認・取消・照合は用途別のチャネルで、操作は main が持つ参照（ref）で指す（B04-05、ADR 0031）。 キャンバスを前に出す（canvas_summon）は状態の層と入力バーからだけ使う（UI-02、ADR 0032）。状態の層のパネルを出す・しまう（status_panel）は状態の層からだけ使う（UI-04、ADR 0032）。キャンバスのユーザーの操作（canvas_user_op）はキャンバスの窓からだけ、キャンバスが前に出ている間だけ使う（UI-06、ADR 0032）。 予算の確認（超過枠の承認・見送り budget_overage_decide、M 超過の確認 budget_overrun_review、不明な費用の手での精算 budget_manual_settle）は状態の層からだけ使う。承認・確認・精算は main の OS の確認ダイアログを 1 回だけ挟み、画面が持つのは main が作る参照（ref）だけ（B07-05、ADR 0039）。 音声（B05-06、ADR 0050）: 音声の状態の取得（get_voice）・呼びかけなしで音声の会話を始める「続ける」（voice_continue）・外部への送信の同意の取り消し（voice_consent_revoke）は状態の層からだけ使う。外部への送信の同意は main の OS の確認ダイアログで 1 回だけ取り、画面は同意を作れない。音声レンダラーへの IPC は VoiceRendererRequest で、このチャネルとは別。 気づき（B11-05、ADR 0132）: 一覧の取得（candidates_list）と状態の変更（candidate_state。開く・今回は扱わない・再通知）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バーは使えない。候補は main が作る参照（ref）で指し、候補 ID・expected_state・接続範囲は main が持つ。 連携の接続（B08-02 P3・B09-05、ADR 0142）: 一覧の取得（connections_list）と取得範囲の変更（connection_targets_update）は中枢の画面（接続・端末）でだけ使い、キャンバス・入力バーは使えない。接続は main が作る参照（ref）で指し、接続 ID・permission_revision は main が持つ。画面が送れるのは今の保存値と、この世代で中枢から読んだ選べる対象（connection_targets_discover）のうちの選択と、期間・添付の範囲だけ（ADR 0145）。選べる対象の読み取りは提供元への読み取りを伴うので、中枢の画面のロック解除済みの画面操作だけ。 自動実行（B13-05、ADR 0154）: 一覧と安全停止の状態の取得（auto_actions_list）・取り消し（auto_action_undo）・安全停止の解除（safety_resume）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バーは使えない。自動実行した操作と安全停止の状態は main が作る参照（ref）で指し、操作 ID・state_revision・safety_revision・接続範囲は main が持つ。
+ * UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014・0025）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。中枢との接続・ペアリングは用途別のチャネルだけで、要求の宛先・本文を Renderer が決められない。音声レンダラーの IPC（B05）は別に定める。 発言・承認表示の準備・承認・取消・照合は用途別のチャネルで、操作は main が持つ参照（ref）で指す（B04-05、ADR 0031）。 キャンバスを前に出す（canvas_summon）は状態の層と入力バーからだけ使う（UI-02、ADR 0032）。状態の層のパネルを出す・しまう（status_panel）は状態の層からだけ使う（UI-04、ADR 0032）。キャンバスのユーザーの操作（canvas_user_op）はキャンバスの窓からだけ、キャンバスが前に出ている間だけ使う（UI-06、ADR 0032）。 予算の確認（超過枠の承認・見送り budget_overage_decide、M 超過の確認 budget_overrun_review、不明な費用の手での精算 budget_manual_settle）は状態の層からだけ使う。承認・確認・精算は main の OS の確認ダイアログを 1 回だけ挟み、画面が持つのは main が作る参照（ref）だけ（B07-05、ADR 0039）。 音声（B05-06、ADR 0050）: 音声の状態の取得（get_voice）・呼びかけなしで音声の会話を始める「続ける」（voice_continue）・外部への送信の同意の取り消し（voice_consent_revoke）は状態の層からだけ使う。外部への送信の同意は main の OS の確認ダイアログで 1 回だけ取り、画面は同意を作れない。音声レンダラーへの IPC は VoiceRendererRequest で、このチャネルとは別。 気づき（B11-05、ADR 0132）: 一覧の取得（candidates_list）と状態の変更（candidate_state。開く・今回は扱わない・再通知）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バーは使えない。候補は main が作る参照（ref）で指し、候補 ID・expected_state・接続範囲は main が持つ。 連携の接続（B08-02 P3・B09-05、ADR 0142）: 一覧の取得（connections_list）と取得範囲の変更（connection_targets_update）は中枢の画面（接続・端末）でだけ使い、キャンバス・入力バーは使えない。接続は main が作る参照（ref）で指し、接続 ID・permission_revision は main が持つ。画面が送れるのは今の保存値と、この世代で中枢から読んだ選べる対象（connection_targets_discover）のうちの選択と、期間・添付の範囲だけ（ADR 0145）。選べる対象の読み取りは提供元への読み取りを伴うので、中枢の画面のロック解除済みの画面操作だけ。 自動実行（B13-05、ADR 0154）: 一覧と安全停止の状態の取得（auto_actions_list）・取り消し（auto_action_undo）・安全停止の解除（safety_resume）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バーは使えない。自動実行した操作と安全停止の状態は main が作る参照（ref）で指し、操作 ID・state_revision・safety_revision・接続範囲は main が持つ。 家計簿（ADR 0162）: 月ごとの合計と 1 か月の記録の取得（household_view）・分類の変更（household_category）・削除（household_delete）は従来の窓（標準の端末画面）から使い、キャンバス・入力バーは使えない。記録は main が作る参照（ref）で指し、記録の ID・内容版・接続範囲は main が持つ。
  */
 export type DesktopIpcChannel =
   | 'desktop.get_state'
@@ -1773,7 +1807,10 @@ export type DesktopIpcChannel =
   | 'desktop.connection_targets_discover'
   | 'desktop.auto_actions_list'
   | 'desktop.auto_action_undo'
-  | 'desktop.safety_resume';
+  | 'desktop.safety_resume'
+  | 'desktop.household_view'
+  | 'desktop.household_category'
+  | 'desktop.household_delete';
 /**
  * main から UI レンダラーへの通知（設計 10 §1、07 §2、ADR 0014）。本文・端末 ID・認証情報を含めない。
  */
@@ -6744,6 +6781,170 @@ export interface DesktopAutoActionEntry {
   undo_deadline: UtcTime;
   /**
    * この操作の取り消しの結果が分からない。次に一覧を読み直せるまで取り消させない（自動では送り直さない）。
+   */
+  delivery_unknown: boolean;
+}
+/**
+ * 家計簿の表示用の値（ADR 0162）。月ごとの合計と、1 か月の記録と集計。記録の ID・内容版・出所の識別子は含めない。
+ */
+export interface DesktopHouseholdView {
+  /**
+   * 取得の状態。loaded は直近の読み取りが成功、stale は直近の読み取りに失敗して前に読めた値を出している、unavailable はこの世代でまだ読めていない（「記録なし」と区別する）。
+   */
+  fetch: 'loaded' | 'stale' | 'unavailable';
+  /**
+   * 最後に読めた時刻（main の時計）。読めていなければ null。
+   */
+  fetched_at: UtcTime | null;
+  /**
+   * 中枢が本人のタイムゾーンで決めた今月。読めていなければ null。
+   */
+  current_month: YearMonth | null;
+  /**
+   * 今月から 11 か月前までの月ごとの合計（新しい月から）。読めていなければ空。
+   *
+   * @maxItems 12
+   */
+  months:
+    | []
+    | [HouseholdMonthTotals]
+    | [HouseholdMonthTotals, HouseholdMonthTotals]
+    | [HouseholdMonthTotals, HouseholdMonthTotals, HouseholdMonthTotals]
+    | [
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+      ]
+    | [
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+      ]
+    | [
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+      ]
+    | [
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+      ]
+    | [
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+      ]
+    | [
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+      ]
+    | [
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+      ]
+    | [
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+      ]
+    | [
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+        HouseholdMonthTotals,
+      ];
+  /**
+   * 記録を出している月。読めていなければ null。
+   */
+  month: YearMonth | null;
+  entries: DesktopHouseholdEntry[];
+  /**
+   * 記録を出している月の集計。読めていなければ null。
+   */
+  summary: HouseholdMonthSummary | null;
+  /**
+   * 記録を出している月の、復号できなかった記録の数（集計に入れていない）。
+   */
+  unreadable: number;
+  /**
+   * 一度に読む件数の上限で記録を切ったか（月ごとの合計か、出している月）。
+   */
+  truncated: boolean;
+  /**
+   * main が付ける通し番号。画面はこれより小さい番号の応答を反映しない（ADR 0026 と同じ）。
+   */
+  list_seq: number;
+}
+/**
+ * 家計の記録 1 行の表示用の値（ADR 0162）。記録の ID・内容版は main の中にだけ持ち、画面へ渡さない。
+ */
+export interface DesktopHouseholdEntry {
+  /**
+   * B00初版のランダムUUID v4。認証情報ではない。
+   */
+  ref: string;
+  /**
+   * 中枢が並べた順（0 から。利用した日・時刻の新しい順）。
+   */
+  position: number;
+  source_kind: 'mail_notice' | 'csv_import' | 'manual';
+  direction: HouseholdDirection;
+  amount_yen: number;
+  occurred_on: string;
+  occurred_time: string | null;
+  category: HouseholdCategoryId;
+  merchant: string | null;
+  memo: string | null;
+  payment: string | null;
+  /**
+   * この記録の変更・削除の結果が分からない。次に読み直せるまで操作させない（自動では送り直さない）。
    */
   delivery_unknown: boolean;
 }

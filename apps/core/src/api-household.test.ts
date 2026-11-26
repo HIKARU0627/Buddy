@@ -28,7 +28,10 @@ import { createApiContract } from './api-contract.js';
 import { createHouseholdRoutes } from './api-household.js';
 import type { HouseholdRoutesOptions } from './api-household.js';
 import type { ApiRouteHandler } from './api-server.js';
-import { recordHouseholdEntry } from './household-ledger.js';
+import {
+  HouseholdMerchantKey,
+  recordHouseholdEntry,
+} from './household-ledger.js';
 import type { HouseholdPorts } from './household-ledger.js';
 import type { JsonObject } from './strict-json.js';
 
@@ -1121,5 +1124,296 @@ test('中身の変更: データ鍵が読めない・成否不明・保存の失
       )
     ).status,
     503,
+  );
+});
+
+// 読み取りの結果を書き換える模擬の store（書込みと残りは本物の DB のまま）。
+const tampered = (
+  store: Store,
+  edit: (op: HouseholdOp, value: Json) => Json,
+): Store => {
+  const real = store.household as (op: HouseholdOp) => Promise<{
+    ok: boolean;
+    value?: Json | null;
+  }>;
+  return {
+    household: (async (op: HouseholdOp) => {
+      const result = await real(op);
+      if (!result.ok || result.value === null || result.value === undefined)
+        return result;
+      return { ...result, value: edit(op, result.value) };
+    }) as unknown as Store['household'],
+  };
+};
+
+test('取り込み: 月の記録が上限で切られているときは何も記録せず 503 にし、切られていなければ今までどおり記録する（ADR 0164）', async (t) => {
+  const { store, dataKey, ports } = withDb(t);
+  await record(ports, {
+    amount_yen: 1280,
+    occurred_on: '2030-11-03',
+    merchant: '合成の食堂',
+  });
+  const rows = [
+    importRow('mf-t1'),
+    importRow('mf-t2', { amount_yen: 300, occurred_on: '2030-10-02' }),
+  ];
+  const truncating = tampered(store, (op, value) =>
+    op.kind === 'household.list' ? { ...value, truncated: true } : value,
+  );
+  const blocked = await call(
+    routes(truncating, dataKey).importHouseholdRows,
+    {},
+    importBody(rows),
+  );
+  assert.equal(blocked.status, 503);
+  assert.equal(blocked.body['code'], 'dependency_unavailable');
+  // 何も記録していない（取り込みの記録も、覚えた規則もない）。
+  const handlers = routes(store, dataKey);
+  for (const month of ['2030-10', '2030-11']) {
+    const view = await call(handlers.getHouseholdMonth, { month });
+    assert.deepEqual(
+      (view.body['entries'] as Json[]).filter(
+        (entry) => entry['source_kind'] === 'csv_import',
+      ),
+      [],
+      month,
+    );
+  }
+  const rule = await store.household({
+    kind: 'household.rule_get',
+    merchant_key: HouseholdMerchantKey.fromDataKey(dataKey).merchant(
+      '合成の食堂',
+    ) as string,
+  });
+  assert.equal(rule.ok && rule.value, null);
+  // 切られていなければ記録する（同じ要求を本物の store へ）。
+  const accepted = await call(
+    handlers.importHouseholdRows,
+    {},
+    importBody(rows),
+  );
+  assert.equal(accepted.status, 200);
+  assert.deepEqual(accepted.body, {
+    created: 1,
+    duplicate: 0,
+    matched: 1,
+    rejected: 0,
+    rules_learned: 1,
+  });
+});
+
+test('手入力: 同じ request_id で中身が違う再送は 409、同じ中身は 200。規則で分類が当たった記録へ未分類のまま再送しても 200（ADR 0167）', async (t) => {
+  const { store, dataKey } = withDb(t);
+  const handlers = routes(store, dataKey);
+  const entryOf = (over: Record<string, unknown> = {}) => ({
+    direction: 'expense',
+    amount_yen: 680,
+    occurred_on: '2030-11-04',
+    occurred_time: null,
+    category: 'food',
+    merchant: '合成のパン屋',
+    memo: '現金',
+    payment: null,
+    ...over,
+  });
+  const send = (id: string, over: Record<string, unknown> = {}) =>
+    call(handlers.createHouseholdEntry, {}, {
+      request_id: id,
+      command_scope_id: SCOPE,
+      entry: entryOf(over),
+    } as JsonObject);
+  const first = '00000000-0000-4000-8000-0000000c0201';
+  const created = await send(first);
+  assert.equal(created.status, 200);
+  // 中身が違う再送は、どの項目の違いでも 409 で、保存済みの記録は変わらない。
+  for (const over of [
+    { amount_yen: 681 },
+    { occurred_on: '2030-11-05' },
+    { occurred_time: '08:15' },
+    { merchant: '合成の別のパン屋' },
+    { memo: null },
+    { payment: '合成のカード' },
+    { category: 'social' },
+    { direction: 'income', category: 'income' },
+  ]) {
+    const response = await send(first, over);
+    assert.equal(response.status, 409, JSON.stringify(over));
+    assert.equal(response.body['code'], 'conflict');
+  }
+  const same = await send(first);
+  assert.equal(same.status, 200);
+  assert.deepEqual(same.body, created.body);
+  // 同じ店の未分類の利用は、本人の規則で食費に分類されて記録される。
+  const second = '00000000-0000-4000-8000-0000000c0202';
+  const uncategorized = { category: 'uncategorized', amount_yen: 450 };
+  const ruled = await send(second, uncategorized);
+  assert.equal(ruled.status, 200);
+  assert.equal(ruled.body['category'], 'food');
+  // 未分類のまま同じ中身を再送しても 200（規則による分類の違いは違いに数えない）。
+  const resent = await send(second, uncategorized);
+  assert.equal(resent.status, 200);
+  assert.equal(resent.body['category'], 'food');
+  assert.equal(resent.body['entry_id'], ruled.body['entry_id']);
+  // 規則による分類の違いを許しても、ほかの項目の違い・明示した別の分類は 409。
+  for (const over of [
+    { category: 'uncategorized', amount_yen: 451 },
+    { category: 'social', amount_yen: 450 },
+  ]) {
+    assert.equal((await send(second, over)).status, 409, JSON.stringify(over));
+  }
+  // 店名がなければ規則は当たらないので、未分類で記録した記録へ分類を付けた再送は 409。
+  const third = '00000000-0000-4000-8000-0000000c0203';
+  const plain = await send(third, {
+    category: 'uncategorized',
+    merchant: null,
+  });
+  assert.equal(plain.body['category'], 'uncategorized');
+  assert.equal(
+    (await send(third, { category: 'food', merchant: null })).status,
+    409,
+  );
+  // 保存後に本人が中身を直した（内容版 2）なら、直す前の中身の再送は 409、直した後と同じ中身の再送は 200。
+  const fixed = entryOf({ amount_yen: 460, category: 'food' });
+  const edited = await call(
+    handlers.changeHouseholdEntry,
+    { entry_id: ruled.body['entry_id'] as string },
+    {
+      request_id: '00000000-0000-4000-8000-0000000c0204',
+      command_scope_id: SCOPE,
+      expected_content_revision: '1',
+      entry: fixed,
+    } as JsonObject,
+  );
+  assert.equal(edited.status, 200);
+  assert.equal(edited.body['content_revision'], '2');
+  assert.equal((await send(second, uncategorized)).status, 409);
+  assert.equal((await send(second, fixed)).status, 200);
+  // 内容版 2 では、未分類のまま送れば分類の違いも違いとして 409。
+  assert.equal(
+    (await send(second, { ...fixed, category: 'uncategorized' })).status,
+    409,
+  );
+});
+
+test('内容版の数: 次の版が安全な整数に収まらない expected は変更系で 422、境の 9007199254740990 は通る（内容版の照合は 409）', async (t) => {
+  const { store, dataKey, ports } = withDb(t);
+  const handlers = routes(store, dataKey);
+  const entry = await record(ports, { merchant: '合成の食堂' });
+  const safeEdge = '9007199254740990';
+  // 次の版 9007199254740991 は安全な整数。形の検査は通り、保存層の照合で内容版の違い（409）になる。
+  assert.equal(
+    (
+      await call(
+        handlers.changeHouseholdCategory,
+        { entry_id: entry },
+        changeBody(safeEdge, 'food'),
+      )
+    ).status,
+    409,
+  );
+  assert.equal(
+    (
+      await call(
+        handlers.changeHouseholdEntry,
+        { entry_id: entry },
+        contentBody(safeEdge),
+      )
+    ).status,
+    409,
+  );
+  // 次の版が 2^53 になる・2^53 を超える。精度が落ちる前に 422 にする。
+  for (const unsafe of [
+    '9007199254740991',
+    '9007199254740993',
+    '9999999999999999',
+  ]) {
+    for (const response of [
+      await call(
+        handlers.changeHouseholdCategory,
+        { entry_id: entry },
+        changeBody(unsafe, 'food'),
+      ),
+      await call(
+        handlers.changeHouseholdEntry,
+        { entry_id: entry },
+        contentBody(unsafe),
+      ),
+    ]) {
+      assert.equal(response.status, 422, unsafe);
+      assert.equal(response.body['code'], 'invalid_input');
+    }
+  }
+  // 予算の版も同じ。
+  const budget = (expected: string): JsonObject =>
+    ({
+      request_id: '00000000-0000-4000-8000-0000000c0205',
+      command_scope_id: SCOPE,
+      expected_budget_revision: expected,
+      items: [{ category: 'food', budget_yen: 1000 }],
+    }) as JsonObject;
+  assert.equal(
+    (await call(handlers.changeHouseholdBudget, {}, budget(safeEdge))).status,
+    409,
+  );
+  assert.equal(
+    (await call(handlers.changeHouseholdBudget, {}, budget('9007199254740991')))
+      .status,
+    422,
+  );
+  // 記録は変わっていない。
+  const month = await call(handlers.getHouseholdMonth, { month: '2030-11' });
+  assert.equal((month.body['entries'] as Json[])[0]?.['content_revision'], '1');
+});
+
+test('内容版の数: 保存済みの内容版が安全な整数に収まらない記録の読み取りは 503（誤った版で復号しない）', async (t) => {
+  const { store, dataKey, ports } = withDb(t);
+  await record(ports, { merchant: '合成の食堂' });
+  const unsafe = '9007199254740993';
+  const stale = tampered(store, (op, value) => {
+    if (op.kind === 'household.list')
+      return {
+        ...value,
+        entries: (value['entries'] as Json[]).map((item) => ({
+          ...item,
+          content_revision: unsafe,
+        })),
+      };
+    if (op.kind === 'household.get')
+      return { ...value, content_revision: unsafe };
+    return value;
+  });
+  const handlers = routes(stale, dataKey);
+  assert.equal((await call(handlers.listHouseholdMonths)).status, 503);
+  assert.equal(
+    (await call(handlers.getHouseholdMonth, { month: '2030-11' })).status,
+    503,
+  );
+  // 手入力の再送は保存済みの記録を読み直すので 503。
+  const request = {
+    request_id: '00000000-0000-4000-8000-0000000c0206',
+    command_scope_id: SCOPE,
+    entry: {
+      direction: 'expense',
+      amount_yen: 680,
+      occurred_on: '2030-11-04',
+      occurred_time: null,
+      category: 'food',
+      merchant: null,
+      memo: null,
+      payment: null,
+    },
+  } as JsonObject;
+  const real = routes(store, dataKey);
+  assert.equal(
+    (await call(real.createHouseholdEntry, {}, request)).status,
+    200,
+  );
+  const resent = await call(handlers.createHouseholdEntry, {}, request);
+  assert.equal(resent.status, 503);
+  assert.equal(resent.body['code'], 'dependency_unavailable');
+  // 本物の store では、同じ記録（内容版 1）が読める。
+  assert.equal(
+    (await call(real.getHouseholdMonth, { month: '2030-11' })).status,
+    200,
   );
 });

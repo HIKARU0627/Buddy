@@ -22,9 +22,17 @@ export const DB_COMMAND_KINDS = [
   'operation.revise_content',
   // LocalCommand の適用（D5、ADR 0030）。用事の行・試行・承認の使用・最終状態・イベント・受付を一つの transaction で書く。
   'operation.apply_local',
+  // LocalCommand の取り消し（ADR 0157）。自動で登録した用事を、変わっていなければ一つの transaction で消す。
+  'operation.delete_local',
 ] as const;
 
 export type DbCommandKind = (typeof DB_COMMAND_KINDS)[number];
+
+// 取り消しの補償としてだけ作れる操作の種類（ADR 0156・0157）。
+export const UNDO_ONLY_KINDS: readonly string[] = [
+  'mail.draft.delete',
+  'task.delete',
+];
 
 // 端末からの要求の受付（07 §3）。Core が接続範囲・request_id・要求の照合値を渡す。
 // null は Core 内部の命令で、command_receipts には内部の接続範囲と command_id で記録する。
@@ -188,9 +196,18 @@ export interface ApplyLocalCommand extends DbCommandBase<'operation.apply_local'
   readonly content: SealedBlobInput;
 }
 
+// LocalCommand の取り消し（ADR 0157）。外部 HTTP を使わない。承認済み（approved）の task.delete だけ。
+// 消す用事は、取り消しの記録（undo_records）が結ぶ元の操作が作った用事で、まだ開いているものに限る。
+export interface DeleteLocalCommand extends DbCommandBase<'operation.delete_local'> {
+  // 成功の試行（送出意図の時刻＝適用の時刻）と、消す用事の ID。
+  readonly attempt_id: string;
+  readonly task_id: string;
+}
+
 export type DbCommand =
   | CreateOperationCommand
   | ApplyLocalCommand
+  | DeleteLocalCommand
   | ReviseContentCommand
   | ApproveOperationCommand
   | PrepareOperationCommand
@@ -378,9 +395,9 @@ export function commandShapeReasons(command: DbCommand): string[] {
         // 取り消しは本人の画面操作が起点で、方針による自動承認では作らない（03 J12）。
         else if (auto !== null) reasons.push('undo_auto_approval');
       }
-      // 下書きの削除は、自動で作った下書きの取り消しの補償だけに使う（ADR 0156）。それ以外では作らない。
+      // 下書き・用事の削除は、自動で作ったものの取り消しの補償だけに使う（ADR 0156・0157）。それ以外では作らない。
       if (
-        command.operation_kind === 'mail.draft.delete' &&
+        UNDO_ONLY_KINDS.includes(command.operation_kind) &&
         (undo === undefined || undo === null)
       )
         reasons.push('undo_only_kind');
@@ -476,6 +493,7 @@ export function commandShapeReasons(command: DbCommand): string[] {
             'send',
             'create_task',
             'delete_draft',
+            'delete_task',
           ].includes(command.step.step_kind))
       )
         reasons.push('step_invalid');
@@ -490,6 +508,10 @@ export function commandShapeReasons(command: DbCommand): string[] {
       )
         reasons.push('list_id_invalid');
       if (!isSealedBlob(command.content)) reasons.push('content_invalid');
+      break;
+    case 'operation.delete_local':
+      if (!isId(command.attempt_id)) reasons.push('attempt_id_invalid');
+      if (!isId(command.task_id)) reasons.push('task_id_invalid');
       break;
     case 'operation.record_result':
       if (!isId(command.attempt_id)) reasons.push('attempt_id_invalid');

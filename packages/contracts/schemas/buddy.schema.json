@@ -6451,7 +6451,8 @@
         "update_event",
         "create_event_with_attendees",
         "trash_mail",
-        "delete_draft"
+        "delete_draft",
+        "delete_task"
       ],
       "description": "操作の工程（設計 08 §4、ADR 0027）。2 工程の操作はこの順にだけ進める。"
     },
@@ -7635,6 +7636,88 @@
       "additionalProperties": false,
       "description": "Buddy が自動で作った返信の下書きを、取り消しで削除する（mail.draft.delete、RemoteMutation、ADR 0156）。自動実行の取り消しの補償の操作だけに使い、方針では承認しない。target は削除する下書きと、取り消しを押したときに読んだその版。created_by は下書きを作った操作と内容版で、目印（buddy-op）が同じ下書きだけを消す。送信済み・本人が手を加えた下書きは消さない。外部の相手へは送らないので external_recipients は空。"
     },
+    "TaskDeleteOperationIntent": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "const": "buddy.operation.v1"
+        },
+        "operation_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "content_version": {
+          "$ref": "#/$defs/ContentVersion"
+        },
+        "permission_revision": {
+          "$ref": "#/$defs/PermissionRevision"
+        },
+        "target": {
+          "type": "object",
+          "properties": {
+            "task_id": {
+              "$ref": "#/$defs/Id"
+            }
+          },
+          "required": ["task_id"],
+          "additionalProperties": false
+        },
+        "action": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "task.delete"
+            },
+            "created_by": {
+              "type": "object",
+              "properties": {
+                "operation_id": {
+                  "$ref": "#/$defs/Id"
+                },
+                "content_version": {
+                  "$ref": "#/$defs/ContentVersion"
+                }
+              },
+              "required": ["operation_id", "content_version"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["kind", "created_by"],
+          "additionalProperties": false
+        },
+        "effects": {
+          "type": "object",
+          "properties": {
+            "external_recipients": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "maxItems": 0
+            },
+            "reconcile_scope": {
+              "type": "string",
+              "const": "local_transaction"
+            }
+          },
+          "required": ["external_recipients", "reconcile_scope"],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "schema",
+        "operation_id",
+        "content_version",
+        "permission_revision",
+        "target",
+        "action",
+        "effects"
+      ],
+      "additionalProperties": false,
+      "description": "Buddy が自動で登録した用事を、取り消しで削除する（task.delete、LocalCommand、ADR 0157）。自動実行の取り消しの補償の操作だけに使い、方針では承認しない。target.task_id は削除する用事、created_by はその用事を登録した操作と内容版。保存層は、用事がその操作で登録されたもので、開いたままのときだけ消す。外部 HTTP を使わず、外部の相手へも送らない。"
+    },
     "OperationKind": {
       "type": "string",
       "enum": [
@@ -7645,9 +7728,10 @@
         "calendar.event.update",
         "calendar.event.create_with_attendees",
         "mail.trash",
-        "mail.draft.delete"
+        "mail.draft.delete",
+        "task.delete"
       ],
-      "description": "操作の種類。確定 intent の action.kind と同じ値（ADR 0027・0075・0156）。経路（Read / LocalCommand / RemoteMutation）はコードの表が決める。"
+      "description": "操作の種類。確定 intent の action.kind と同じ値（ADR 0027・0075・0156・0157）。経路（Read / LocalCommand / RemoteMutation）はコードの表が決める。"
     },
     "ApprovalRequiredOperationKind": {
       "type": "string",
@@ -7839,6 +7923,9 @@
         },
         {
           "$ref": "#/$defs/DraftDeleteOperationIntent"
+        },
+        {
+          "$ref": "#/$defs/TaskDeleteOperationIntent"
         }
       ],
       "description": "承認対象として確定した変更内容。ラベル変更（H01）・返信の下書き・用事の登録（ADR 0027）と、送信・予定の変更・参加者のいる予定の作成・ごみ箱（ADR 0075）。content_hash はこの確定 intent 全体の JCS+SHA-256。依頼ID・表示端末・state_revisionを混ぜない。"

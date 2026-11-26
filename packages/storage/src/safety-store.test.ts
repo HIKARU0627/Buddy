@@ -4,6 +4,7 @@
 // 0001 の制約から手で書いた値。
 
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import test from 'node:test';
 import {
   DbWorkerClient,
@@ -32,6 +33,7 @@ import {
   operationState,
   prepareCommand,
   resultCommand,
+  sealedIntent,
   storeContext,
   withTempDir,
 } from './operation-test-support.js';
@@ -483,6 +485,175 @@ test('a draft deletion is made only as the compensation of an undo (ADR 0156)', 
       undoRows(db).map((row) => (row as { status: string }).status),
       ['in_progress'],
     );
+  });
+});
+
+// 用事の登録・取り消しの LocalCommand（ADR 0030・0157）。用事の正本の暗号文は合成の乱数で、ここでは復号しない。
+const localCommand = (
+  kind: 'operation.apply_local' | 'operation.delete_local',
+  operationId: string,
+  expected: string,
+  taskId: string,
+): DbCommand =>
+  ({
+    command_id: randomUUID(),
+    kind,
+    operation_id: operationId,
+    expected_state_revision: expected,
+    request_revision: null,
+    permission_revision: '0',
+    forgetting_generation: '0',
+    connection_id: null,
+    request: null,
+    attempt_id: randomUUID(),
+    task_id: taskId,
+    ...(kind === 'operation.apply_local'
+      ? { list_id: 'inbox', content: sealedIntent() }
+      : {}),
+  }) as DbCommand;
+
+const taskRows = (db: SqliteDatabase): unknown[] =>
+  db.prepare('SELECT task_id, status FROM tasks ORDER BY task_id').all();
+
+const taskBlobCount = (db: SqliteDatabase): number =>
+  db
+    .prepare(
+      "SELECT count(*) FROM sealed_blobs WHERE owner_table = 'tasks' AND purpose = 'task_content'",
+    )
+    .pluck()
+    .get() as number;
+
+test('a task deletion is made only as an undo and deletes only the open task its original registered (ADR 0157)', async () => {
+  await withStore((db) => {
+    assert.deepEqual(
+      reasons(
+        exec(
+          db,
+          createCommand('op-delete', {
+            operation_kind: 'task.delete',
+            effect_route: 'local_command',
+          }),
+          T0,
+        ),
+      ),
+      ['undo_only_kind'],
+    );
+    // 方針で自動承認した用事の登録と、もう一つ別の用事。
+    for (const id of ['op-task', 'op-other']) {
+      committed(
+        exec(
+          db,
+          createCommand(id, {
+            auto: true,
+            operation_kind: 'task.create',
+            effect_route: 'local_command',
+          }),
+          T0,
+        ),
+      );
+      committed(
+        exec(
+          db,
+          localCommand('operation.apply_local', id, '1', `task-${id}`),
+          T0 + 1,
+        ),
+      );
+    }
+    assert.equal(taskBlobCount(db), 2);
+    committed(
+      exec(
+        db,
+        createCommand('op-delete', {
+          operation_kind: 'task.delete',
+          effect_route: 'local_command',
+          undo_of: { undo_id: 'u-task', operation_id: 'op-task' },
+        }),
+        T0 + 10,
+      ),
+    );
+    committed(exec(db, approveCommand('op-delete', '1'), T0 + 11));
+    // 用事の登録の命令では、取り消しの操作を適用しない（逆も同じ）。
+    assert.deepEqual(
+      reasons(
+        exec(
+          db,
+          localCommand('operation.apply_local', 'op-delete', '2', 'task-x'),
+          T0 + 12,
+        ),
+      ),
+      ['operation_kind_mismatch'],
+    );
+    // 別の操作が作った用事・完了した用事・ない用事は消さず、操作は approved のまま残る。
+    assert.deepEqual(
+      reasons(
+        exec(
+          db,
+          localCommand(
+            'operation.delete_local',
+            'op-delete',
+            '2',
+            'task-op-other',
+          ),
+          T0 + 12,
+        ),
+      ),
+      ['target_changed'],
+    );
+    db.prepare("UPDATE tasks SET status = 'done' WHERE task_id = ?").run(
+      'task-op-task',
+    );
+    assert.deepEqual(
+      reasons(
+        exec(
+          db,
+          localCommand(
+            'operation.delete_local',
+            'op-delete',
+            '2',
+            'task-op-task',
+          ),
+          T0 + 12,
+        ),
+      ),
+      ['target_changed'],
+    );
+    assert.deepEqual(
+      reasons(
+        exec(
+          db,
+          localCommand('operation.delete_local', 'op-delete', '2', 'task-none'),
+          T0 + 12,
+        ),
+      ),
+      ['target_changed'],
+    );
+    assert.equal(operationState(db, 'op-delete')?.state, 'approved');
+    db.prepare("UPDATE tasks SET status = 'open' WHERE task_id = ?").run(
+      'task-op-task',
+    );
+    committed(
+      exec(
+        db,
+        localCommand(
+          'operation.delete_local',
+          'op-delete',
+          '2',
+          'task-op-task',
+        ),
+        T0 + 13,
+      ),
+    );
+    assert.equal(operationState(db, 'op-delete')?.state, 'succeeded');
+    assert.deepEqual(taskRows(db), [
+      { task_id: 'task-op-other', status: 'open' },
+    ]);
+    assert.equal(taskBlobCount(db), 1);
+    assert.deepEqual(
+      undoRows(db).map((row) => (row as { status: string }).status),
+      ['undone'],
+    );
+    // 取り消しの成功は自動実行の一覧に載せない。
+    assert.equal(autoActions(db).length, 2);
   });
 });
 

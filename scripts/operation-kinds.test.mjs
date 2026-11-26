@@ -45,6 +45,7 @@ test('operation kinds match the contract enum and the intent routes', () => {
       'calendar.event.create_with_attendees',
       'mail.trash',
       'mail.draft.delete',
+      'task.delete',
     ],
   );
   // 種類の経路は意図表の経路と一致する（label_mail・draft_reply は RemoteMutation、create_task は LocalCommand）。
@@ -73,6 +74,7 @@ test('operation kinds match the contract enum and the intent routes', () => {
     ],
     ['MailTrashOperationIntent', 'mail.trash'],
     ['DraftDeleteOperationIntent', 'mail.draft.delete'],
+    ['TaskDeleteOperationIntent', 'task.delete'],
   ])
     assert.equal(
       defs[name].properties.effects.properties.reconcile_scope.const,

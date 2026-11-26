@@ -7,6 +7,7 @@
 //     succeeded、できなければ unknown_held。結果不明の自動再送はしない。以後の照合は本人の操作（reconcile）だけ。
 //   - 送出境界を越えた後に取消を受け付けた操作（X05）は、結果が分かっても reconciling で止め、本人の照合に委ねる。
 // - LocalCommand（task.create）: 外部 HTTP を使わず、operation.apply_local の一つの transaction で適用する（D5）。
+//   取り消しの補償（task.delete）は operation.delete_local で同じように適用する（ADR 0157）。
 // - 起動時: approved・preparing から再開する（送出意図の前なので送っていないことが記録上確か）。dispatching は回復で
 //   unknown_held になっており、送らない（recovery.ts）。
 // - 経路と照合の方法はコードの表（OPERATION_KIND_RULES）が決める。表と経路が食い違う操作は実行しない。
@@ -904,12 +905,30 @@ export function createOperationRunner(
     else await recordObservation(operationId, attemptId, observation);
   };
 
+  // 自動で登録した用事の取り消し（ADR 0157）。消してよいか（元の操作が作った、開いている用事か）は、
+  // DB worker が同じ transaction の中で確かめる。合わなければ何も書かず、操作は approved のまま残る。
+  const runLocalDelete = async (current: OperationView): Promise<void> => {
+    const intent = await openIntent(current);
+    const target = intent?.['target'] as Record<string, unknown> | undefined;
+    const taskId = target?.['task_id'];
+    if (typeof taskId !== 'string') return;
+    const outcome = await submit({
+      ...base(current, String(intent?.['permission_revision'] ?? '0')),
+      kind: 'operation.delete_local',
+      attempt_id: randomUUID(),
+      task_id: taskId,
+    });
+    if (outcome.outcome !== 'durable')
+      log(`用事の削除を適用できませんでした（操作 ${current.operation_id}）。`);
+  };
+
   const runLocal = async (current: OperationView): Promise<void> => {
-    if (
-      current.state !== 'approved' ||
-      current.operation_kind !== 'task.create'
-    )
+    if (current.state !== 'approved') return;
+    if (current.operation_kind === 'task.delete') {
+      await runLocalDelete(current);
       return;
+    }
+    if (current.operation_kind !== 'task.create') return;
     const intent = await openIntent(current);
     const target = intent?.['target'] as Record<string, unknown> | undefined;
     const listId = target?.['list_id'];

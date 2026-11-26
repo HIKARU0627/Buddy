@@ -14,6 +14,8 @@ export const OPERATION_KINDS = [
   'mail.trash',
   // 自動で作った返信の下書きを取り消しで消す補償の操作だけに使う（ADR 0156）。
   'mail.draft.delete',
+  // 自動で登録した用事を取り消しで消す補償の操作だけに使う（ADR 0157）。
+  'task.delete',
 ] as const;
 
 export type OperationKind = (typeof OPERATION_KINDS)[number];
@@ -59,6 +61,7 @@ export const OPERATION_STEP_KINDS = [
   'create_event_with_attendees',
   'trash_mail',
   'delete_draft',
+  'delete_task',
 ] as const;
 export type OperationStepKind = (typeof OPERATION_STEP_KINDS)[number];
 
@@ -185,6 +188,16 @@ export const OPERATION_KIND_RULES: Readonly<
     precondition_target_read: 'mail.draft',
     preconditions: ['conditional_request', 'recheck_before_dispatch'],
     steps: ['delete_draft'],
+  },
+  // 取り消しの用事の削除（ADR 0157）。用事の登録と同じく、外部 HTTP を使わず一つの transaction で消す。
+  'task.delete': {
+    route: 'local_command',
+    reconcile_scope: 'local_transaction',
+    lookup: 'none',
+    lookup_read: null,
+    precondition_target_read: null,
+    preconditions: ['not_required'],
+    steps: ['delete_task'],
   },
 };
 

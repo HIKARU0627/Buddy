@@ -414,10 +414,10 @@ test('without reading drafts by id the list does not offer undo for drafts', asy
 
 test('the pure checks: which kinds can be undone, the unchanged draft and the delete reconciliation', () => {
   assert.deepEqual(undoableKindsOf(null), []);
-  assert.deepEqual(undoableKindsOf({}), ['label_mail']);
+  assert.deepEqual(undoableKindsOf({}), ['label_mail', 'create_task']);
   assert.deepEqual(
     undoableKindsOf({ readDraft: () => Promise.resolve(null) }),
-    ['label_mail', 'draft_reply'],
+    ['label_mail', 'draft_reply', 'create_task'],
   );
   const operationId = randomUUID();
   const creation = draftCreationOf({

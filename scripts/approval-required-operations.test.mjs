@@ -48,16 +48,17 @@ test('the four approval-required operations are separate and keep no permanent d
   );
   for (const kind of APPROVAL_REQUIRED_OPERATION_KINDS)
     assert(OPERATION_KINDS.includes(kind), kind);
-  // 完全削除・空にする操作は語彙にない。削除は、Buddy が自動で作った下書きを取り消しで消す
-  // mail.draft.delete だけ（ADR 0156）。
+  // 完全削除・空にする操作は語彙にない。削除は、Buddy が自動で作った下書き・用事を取り消しで消す
+  // mail.draft.delete・task.delete だけ（ADR 0156・0157）。
+  const UNDO_DELETES = ['mail.draft.delete', 'task.delete'];
   for (const kind of OPERATION_KINDS)
-    if (kind !== 'mail.draft.delete')
+    if (!UNDO_DELETES.includes(kind))
       assert(!/delete|purge|empty|permanent/iu.test(kind), kind);
   assert.deepEqual(
     OPERATION_KINDS.filter((kind) =>
       /delete|purge|empty|permanent/iu.test(kind),
     ),
-    ['mail.draft.delete'],
+    UNDO_DELETES,
   );
 });
 

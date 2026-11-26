@@ -55,6 +55,7 @@ import type {
   RecoverAfterRestartCommand,
   ReviseContentCommand,
   ApplyLocalCommand,
+  DeleteLocalCommand,
   SealedBlobInput,
   StoreOutcome,
 } from './operation-commands.js';
@@ -1580,13 +1581,13 @@ function reviseContent(
 // LocalCommand の適用（D5、ADR 0030）。外部 HTTP を使わず、承認済みの操作から用事の行・成功の試行・承認の使用・
 // 最終状態（approved → succeeded）・イベント・受付を一つの transaction で書く。同じ命令の再到着は command_receipts で
 // 保存済みの結果を返し（findReplay）、別の命令で二度目を適用しようとしても状態版・tasks の一意制約で拒否する。
-function applyLocal(
+// LocalCommand の適用と取り消しに共通する検査（D5、ADR 0030・0157）。承認済みで、承認が有効で内容の照合値が合い、
+// 停止・送出禁止・候補の版の照合に掛からないこと。
+function requireLocalApproval(
   db: SqliteDatabase,
-  context: StoreContext,
-  command: ApplyLocalCommand,
-): StoreOutcome {
-  const operation = requireOperation(db, command);
-  requireStateRevision(command, operation);
+  command: ApplyLocalCommand | DeleteLocalCommand,
+  operation: OperationRow,
+): { contentVersion: number; approval: ApprovalRow } {
   if (operation.effect_route !== 'local_command')
     throw new CommandRejection(['route_mismatch']);
   if (
@@ -1624,6 +1625,23 @@ function applyLocal(
   // 候補を起点にした自動承認は、適用の直前にも判定に使った版を照らす（ADR 0148）。
   const blocked = dispatchGuardReasons(db, operation, approval);
   if (blocked.length > 0) throw new CommandRejection(blocked);
+  return { contentVersion, approval };
+}
+
+function applyLocal(
+  db: SqliteDatabase,
+  context: StoreContext,
+  command: ApplyLocalCommand,
+): StoreOutcome {
+  const operation = requireOperation(db, command);
+  requireStateRevision(command, operation);
+  const { contentVersion, approval } = requireLocalApproval(
+    db,
+    command,
+    operation,
+  );
+  if (operation.kind !== 'task.create')
+    throw new CommandRejection(['operation_kind_mismatch']);
   db.prepare(
     "INSERT INTO operation_attempts (attempt_id, operation_id, content_version, approval_id, status, dispatch_intent_at, external_id, result_status, created_at) VALUES (?, ?, ?, ?, 'succeeded', ?, ?, 'confirmed_success', ?)",
   ).run(
@@ -1647,6 +1665,74 @@ function applyLocal(
     context.now,
     command.content.blob_id,
   );
+  db.prepare(
+    "UPDATE approvals SET status = 'consumed' WHERE approval_id = ? AND status = 'valid'",
+  ).run(approval.approval_id);
+  afterResult(db, context, operation, approval.approval_id, 'succeeded');
+  return durable(
+    command,
+    advance(db, context, command, operation, 'succeeded'),
+  );
+}
+
+// LocalCommand の取り消し（ADR 0157）。自動で登録した用事を、取り消しの補償（task.delete）として消す。
+// 消せるのは、取り消しの記録が結ぶ元の操作が作った用事で、まだ開いているもの（完了・削除済みなら target_changed）。
+// 用事の内容は今は編集できない（tasks_content_fixed）ので、開いていれば登録した時のままである。
+// 拒否した時は何も書かず、操作は approved のまま残る（ADR 0156 と同じ。U317 の決め方 (a)）。
+function deleteLocal(
+  db: SqliteDatabase,
+  context: StoreContext,
+  command: DeleteLocalCommand,
+): StoreOutcome {
+  const operation = requireOperation(db, command);
+  requireStateRevision(command, operation);
+  const { contentVersion, approval } = requireLocalApproval(
+    db,
+    command,
+    operation,
+  );
+  if (operation.kind !== 'task.delete')
+    throw new CommandRejection(['operation_kind_mismatch']);
+  const undo = db
+    .prepare(
+      'SELECT operation_id FROM undo_records WHERE compensation_operation_id = ?',
+    )
+    .get(operation.operation_id) as { operation_id: string } | undefined;
+  if (undo === undefined) throw new CommandRejection(['undo_only_kind']);
+  const task = db
+    .prepare(
+      'SELECT operation_id, status, content_blob_id FROM tasks WHERE task_id = ?',
+    )
+    .get(command.task_id) as
+    | {
+        operation_id: string;
+        status: string;
+        content_blob_id: string | null;
+      }
+    | undefined;
+  if (
+    task === undefined ||
+    task.operation_id !== undo.operation_id ||
+    task.status !== 'open'
+  )
+    throw new CommandRejection(['target_changed']);
+  db.prepare(
+    "INSERT INTO operation_attempts (attempt_id, operation_id, content_version, approval_id, status, dispatch_intent_at, external_id, result_status, created_at) VALUES (?, ?, ?, ?, 'succeeded', ?, ?, 'confirmed_success', ?)",
+  ).run(
+    command.attempt_id,
+    operation.operation_id,
+    contentVersion,
+    approval.approval_id,
+    context.now,
+    command.task_id,
+    context.now,
+  );
+  // 用事の行と、その用事だけが持つ暗号文を同じ transaction で消す（03 の until_owner_deletes）。
+  db.prepare('DELETE FROM tasks WHERE task_id = ?').run(command.task_id);
+  if (task.content_blob_id !== null)
+    db.prepare(
+      "DELETE FROM sealed_blobs WHERE blob_id = ? AND owner_table = 'tasks' AND owner_id = ? AND purpose = 'task_content'",
+    ).run(task.content_blob_id, command.task_id);
   db.prepare(
     "UPDATE approvals SET status = 'consumed' WHERE approval_id = ? AND status = 'valid'",
   ).run(approval.approval_id);
@@ -1681,6 +1767,8 @@ function applyCommand(
       return recoverAfterRestart(db, context, command);
     case 'operation.apply_local':
       return applyLocal(db, context, command);
+    case 'operation.delete_local':
+      return deleteLocal(db, context, command);
   }
 }
 

@@ -126,7 +126,11 @@ function succeedRemote(db: SqliteDatabase, id: string): DbCommand {
 
 // 用事の登録（LocalCommand）を成功まで進め、用事の ID を返す。
 function applyTask(db: SqliteDatabase, id: string): string {
-  const local = { effect_route: 'local_command', connection_id: null } as const;
+  const local = {
+    effect_route: 'local_command',
+    connection_id: null,
+    operation_kind: 'task.create',
+  } as const;
   ok(db, createCommand(id, local));
   ok(db, approveCommand(id, '1', { connection_id: null }));
   const taskId = randomUUID();

@@ -435,6 +435,7 @@ export async function changeHouseholdCategory(
 // 本人が記録の中身（金額・日付・時刻・店名・メモ・支払い手段・分類）を直す（ADR 0169）。今の中身を開いて向きが同じことを
 // 確かめ、新しい内容版で暗号化して差し替える。向きは変えられない（向きが違えば 422 にする。向きを変えたいときは削除して
 // 足し直す）。支出の記録で店名があり分類が未分類でなければ、本人の規則として覚える（分類の変更と同じ。収入・振替は覚えない。ADR 0175）。
+// 支出を未分類以外から未分類へ直し、店名が直す前と同じときは、その店名の規則を未分類で上書きする（ADR 0175 追補）。
 export async function changeHouseholdContent(
   ports: HouseholdPorts,
   entryId: string,
@@ -475,14 +476,23 @@ export async function changeHouseholdContent(
     return { outcome: updated.outcome, reasons: updated.reasons };
   // 覚えられなくても中身の変更は済んでいる。
   let learned = false;
-  if (
-    next.merchant !== null &&
-    householdRuleLearnable(next.direction, next.category)
-  ) {
-    const merchantKey = HouseholdMerchantKey.fromDataKey(
-      ports.dataKey,
-    ).merchant(next.merchant);
-    if (merchantKey !== null) {
+  if (next.merchant !== null) {
+    const merchantKeys = HouseholdMerchantKey.fromDataKey(ports.dataKey);
+    const merchantKey = merchantKeys.merchant(next.merchant);
+    // 支出を未分類へ直したときは、直す前の店名と同じ店名の規則だけを未分類で上書きする（ADR 0175 追補）。
+    // もともと未分類の記録の直しや、店名を変えた直しは、本人が「この店は自動で分類しない」と言った操作とは言えないので書かない。
+    const resetToUncategorized =
+      next.direction === 'expense' &&
+      next.category === 'uncategorized' &&
+      current.content.category !== 'uncategorized' &&
+      current.content.merchant !== null &&
+      merchantKey !== null &&
+      merchantKeys.merchant(current.content.merchant) === merchantKey;
+    if (
+      merchantKey !== null &&
+      (householdRuleLearnable(next.direction, next.category) ||
+        resetToUncategorized)
+    ) {
       const rule = await ports.client.household({
         kind: 'household.rule_set',
         merchant_key: merchantKey,

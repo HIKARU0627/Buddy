@@ -1148,6 +1148,49 @@ test('中身の変更: 金額・日付・店名・分類・メモを直し、月
   );
 });
 
+test('中身の変更: 支出を未分類へ直すと、直す前と同じ店名の規則が未分類になり、次の同じ店の利用に分類が当たらない（ADR 0175 追補）', async (t) => {
+  const { store, dataKey, ports } = withDb(t);
+  const handlers = routes(store, dataKey);
+  const entry = await record(ports, { merchant: '合成の八百屋' });
+  const learned = await call(
+    handlers.changeHouseholdEntry,
+    { entry_id: entry },
+    contentBody('1', { merchant: '合成の八百屋', category: 'food' }),
+  );
+  assert.equal(learned.status, 200);
+  // 規則を覚えたので、次の同じ店の利用には当たる。
+  const matched = await recordHouseholdEntry(
+    ports,
+    mail(),
+    content({ merchant: '合成の八百屋' }),
+  );
+  assert.equal(matched.outcome === 'created' && matched.rule_applied, true);
+  const reset = await call(
+    handlers.changeHouseholdEntry,
+    { entry_id: entry },
+    {
+      ...contentBody('2', {
+        merchant: '合成の八百屋',
+        category: 'uncategorized',
+      }),
+      request_id: '00000000-0000-4000-8000-0000000c0111',
+    },
+  );
+  assert.equal(reset.status, 200);
+  const next = await recordHouseholdEntry(
+    ports,
+    mail(),
+    content({ merchant: '合成の八百屋' }),
+  );
+  assert.equal(next.outcome, 'created');
+  const nextId = next.outcome === 'created' ? next.entry_id : '';
+  const november = await call(handlers.getHouseholdMonth, { month: '2030-11' });
+  const row = (november.body['entries'] as Json[]).find(
+    (item) => item['entry_id'] === nextId,
+  );
+  assert.equal(row?.['category'], 'uncategorized');
+});
+
 test('中身の変更: 内容版の違い・削除済みは 409、向きの違い・検査に合わない中身・ない記録は 422（ADR 0169）', async (t) => {
   const { store, dataKey, ports } = withDb(t);
   const handlers = routes(store, dataKey);

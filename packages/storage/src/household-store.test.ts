@@ -17,6 +17,7 @@ import type {
   DataKeyMaterial,
   HouseholdEntryRecord,
   HouseholdListValue,
+  HouseholdMailPendingValue,
   HouseholdOp,
   HouseholdOpResult,
   HouseholdRecordValue,
@@ -410,6 +411,100 @@ test('household.rule_set: 取込みの規則は本人の規則を上書きしな
         }),
       ),
       ['category_invalid'],
+    );
+  });
+});
+
+function seedMail(
+  db: SqliteDatabase,
+  remoteId: string,
+  fetchedAt: number,
+  scopeId = 'sc-1',
+): void {
+  db.prepare(
+    "INSERT OR IGNORE INTO sync_scopes (scope_id, connection_id, scope_revision, active_generation, executor_generation) VALUES (?, 'c-1', 0, 0, 0)",
+  ).run(scopeId);
+  db.prepare(
+    "INSERT INTO source_items (provider, account_id, remote_id, source_revision, scope_id, published_generation, fetched_at, body_blob_id) VALUES ('google', 'acct-a', ?, 'rev-1', ?, 0, ?, NULL)",
+  ).run(remoteId, scopeId, fetchedAt);
+}
+
+const pending = (
+  db: SqliteDatabase,
+  over: Partial<Extract<HouseholdOp, { kind: 'household.mail_pending' }>> = {},
+): HouseholdMailPendingValue =>
+  value<HouseholdMailPendingValue>(
+    run(db, {
+      kind: 'household.mail_pending',
+      provider: 'google',
+      account_id: 'acct-a',
+      scope_id: 'sc-1',
+      limit: 50,
+      now: T1,
+      ...over,
+    }),
+  );
+
+const checked = (db: SqliteDatabase, remoteId: string): HouseholdOpResult =>
+  run(db, {
+    kind: 'household.mail_checked',
+    provider: 'google',
+    account_id: 'acct-a',
+    remote_id: remoteId,
+    now: T2,
+  });
+
+test('household.mail_pending: 初回はいまあるメールを確かめ済みにして空を返し、その後は新しいメールだけを新しい順に返す', async () => {
+  await withDb((db) => {
+    seedMail(db, 'm-old-1', 1000);
+    seedMail(db, 'm-old-2', 2000);
+    assert.deepEqual(pending(db), { baseline: true, remote_ids: [] });
+    assert.deepEqual(pending(db), { baseline: false, remote_ids: [] });
+    seedMail(db, 'm-new-1', 3000);
+    seedMail(db, 'm-new-2', 4000);
+    // 別の取得集合のメールは返さない。
+    seedMail(db, 'm-other-scope', 5000, 'sc-2');
+    assert.deepEqual(pending(db), {
+      baseline: false,
+      remote_ids: ['m-new-2', 'm-new-1'],
+    });
+    assert.deepEqual(pending(db, { limit: 1 }).remote_ids, ['m-new-2']);
+    assert.deepEqual(value(checked(db, 'm-new-2')), { written: true });
+    assert.deepEqual(value(checked(db, 'm-new-2')), { written: false });
+    assert.deepEqual(pending(db).remote_ids, ['m-new-1']);
+    // 同期で消えたメールは確かめ済みにしない。
+    assert.deepEqual(value(checked(db, 'm-missing')), { written: false });
+    // 同期のメールの行が消えると、確かめ済みの行も一緒に消える。
+    db.prepare(
+      "DELETE FROM source_items WHERE provider = 'google' AND account_id = 'acct-a' AND remote_id = 'm-new-2'",
+    ).run();
+    assert.equal(
+      (
+        db
+          .prepare(
+            "SELECT count(*) AS n FROM household_mail_checks WHERE remote_id = 'm-new-2'",
+          )
+          .get() as { n: number }
+      ).n,
+      0,
+    );
+    // 別の口座は、その口座の初回として基準を作る。
+    assert.deepEqual(pending(db, { account_id: 'acct-b' }), {
+      baseline: true,
+      remote_ids: [],
+    });
+    assert.deepEqual(
+      reasons(
+        run(db, {
+          kind: 'household.mail_pending',
+          provider: 'yahoo' as 'google',
+          account_id: 'acct-a',
+          scope_id: 'sc-1',
+          limit: 0,
+          now: 'later',
+        }),
+      ),
+      ['provider_invalid', 'limit_invalid', 'now_invalid'],
     );
   });
 });

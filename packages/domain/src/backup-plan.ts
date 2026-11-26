@@ -68,6 +68,10 @@ export const BACKUP_EXCLUDED_TABLES: Readonly<
   pairing_claims: 'pairing_short_lived',
   async_context_guards: 'in_flight_guard',
   home_network_reports: 'device_report',
+  // 0017（ADR 0160）: 利用通知メールの確かめ済みの記録は、同期のメールの行（source_items）に従う。復元の後は全体を
+  // 走査し直すので、取り込みの開始も作り直す（復元の前のメールを一度に取りに行かない）。
+  household_mail_checks: 'source_cache',
+  household_mail_baselines: 'source_cache',
 };
 
 // 含める表（マイグレーション 0001〜0010 の表から、上の除外を引いたもの）。ここにも除外にもない表は未知で、

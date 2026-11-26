@@ -323,6 +323,18 @@ export const TABLE_POLICIES: Readonly<Record<string, TablePolicy>> = {
     retention: 'until_replaced',
     transaction: 'household',
   },
+  // 0017（ADR 0160）。利用通知メールの確かめ済みの記録。同期のメールの行が消えれば一緒に消える。
+  household_mail_checks: {
+    body: 'none',
+    retention: 'source_body',
+    transaction: 'household',
+  },
+  // 口座ごとの取り込みの開始の時刻。
+  household_mail_baselines: {
+    body: 'none',
+    retention: 'until_replaced',
+    transaction: 'household',
+  },
 };
 
 // 本文・宛先・要約を平文で持ってはいけない列名。暗号文は *_blob_id で sealed_blobs を参照する。

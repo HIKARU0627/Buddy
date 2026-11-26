@@ -8,6 +8,9 @@
 // - household.list / household.get: 読み取り。暗号文は封筒のまま返す（復号は Core）。
 // - household.rule_get / household.rule_set: 店名（HMAC）→ 分類の規則。本人の規則は取込みで上書きしない
 //   （domain の householdRuleWritable。DB の trigger も最後に拒否する）。
+// - household.mail_pending / household.mail_checked: 利用通知メールの取り込みで、同期で保存したメールのうちまだ確かめて
+//   いないものを返す・確かめ済みにする（ADR 0160、マイグレーション 0017）。確かめ済みの行は同期のメールの行に結び付け、
+//   メールの行が消えれば一緒に消える。
 // 時刻は呼び出し側の値を信じる（DB は時計を持たない）。結果には ID・件数・状態だけを入れ、SQL・パスを入れない。
 
 import {
@@ -128,7 +131,37 @@ export type HouseholdOp =
       readonly category: string;
       readonly origin: HouseholdRuleOrigin;
       readonly now: string;
+    }
+  // 利用通知メールの取り込み（ADR 0160）。同期で保存したメールのうち、まだ確かめていないものを返す。
+  // その口座で初めて呼ぶと、いまある全部を確かめ済みにして空を返す（過去のメールを一度に取りに行かない）。
+  | {
+      readonly kind: 'household.mail_pending';
+      readonly provider: HouseholdMailProvider;
+      readonly account_id: string;
+      readonly scope_id: string;
+      readonly limit: number;
+      readonly now: string;
+    }
+  // メール 1 通を確かめ済みにする（通知でなかった・記録した・記録しない通知だった、のどれでも）。
+  | {
+      readonly kind: 'household.mail_checked';
+      readonly provider: HouseholdMailProvider;
+      readonly account_id: string;
+      readonly remote_id: string;
+      readonly now: string;
     };
+
+export type HouseholdMailProvider = 'google' | 'microsoft';
+
+export interface HouseholdMailPendingValue {
+  // この呼び出しで基準を作った（いまある全部を確かめ済みにした）か。
+  readonly baseline: boolean;
+  // 新しく保存した順。
+  readonly remote_ids: readonly string[];
+}
+
+// 一度に返す確かめていないメールの上限。
+export const HOUSEHOLD_MAIL_PENDING_LIMIT = 200;
 
 export type HouseholdOpKind = HouseholdOp['kind'];
 
@@ -138,6 +171,8 @@ export const HOUSEHOLD_WRITE_OPS: ReadonlySet<HouseholdOpKind> = new Set([
   'household.update',
   'household.delete',
   'household.rule_set',
+  'household.mail_pending',
+  'household.mail_checked',
 ]);
 
 export type HouseholdOpValue =
@@ -146,6 +181,7 @@ export type HouseholdOpValue =
   | HouseholdListValue
   | HouseholdEntryRecord
   | HouseholdRuleValue
+  | HouseholdMailPendingValue
   | { readonly written: boolean }
   | null;
 
@@ -170,6 +206,8 @@ const OP_KINDS: ReadonlySet<string> = new Set<HouseholdOpKind>([
   'household.get',
   'household.rule_get',
   'household.rule_set',
+  'household.mail_pending',
+  'household.mail_checked',
 ]);
 
 class HouseholdRejection extends Error {
@@ -189,6 +227,11 @@ const isTime = (value: unknown): value is string =>
   Number.isFinite(Date.parse(value));
 const isRevision = (value: unknown): value is string =>
   typeof value === 'string' && REVISION.test(value);
+// 提供元の識別子（口座・メール・取得集合）。表示できる ASCII の 1〜512 文字。
+const REMOTE_TEXT = /^[\x21-\x7e]{1,512}$/u;
+const isRemoteText = (value: unknown): value is string =>
+  typeof value === 'string' && REMOTE_TEXT.test(value);
+const MAIL_PROVIDERS: ReadonlySet<string> = new Set(['google', 'microsoft']);
 
 /** 命令の形の検査。理由が空なら形は正しい。 */
 export function householdOpShapeReasons(op: HouseholdOp): string[] {
@@ -252,6 +295,24 @@ export function householdOpShapeReasons(op: HouseholdOp): string[] {
       );
       needs(CATEGORY_IDS.has(op.category), 'category_invalid');
       needs(RULE_ORIGINS.has(op.origin), 'origin_invalid');
+      needs(isTime(op.now), 'now_invalid');
+      break;
+    case 'household.mail_pending':
+      needs(MAIL_PROVIDERS.has(op.provider), 'provider_invalid');
+      needs(isRemoteText(op.account_id), 'account_id_invalid');
+      needs(isRemoteText(op.scope_id), 'scope_id_invalid');
+      needs(
+        Number.isSafeInteger(op.limit) &&
+          op.limit >= 1 &&
+          op.limit <= HOUSEHOLD_MAIL_PENDING_LIMIT,
+        'limit_invalid',
+      );
+      needs(isTime(op.now), 'now_invalid');
+      break;
+    case 'household.mail_checked':
+      needs(MAIL_PROVIDERS.has(op.provider), 'provider_invalid');
+      needs(isRemoteText(op.account_id), 'account_id_invalid');
+      needs(isRemoteText(op.remote_id), 'remote_id_invalid');
       needs(isTime(op.now), 'now_invalid');
       break;
   }
@@ -481,6 +542,63 @@ function listEntries(
   };
 }
 
+// 確かめていないメール。初回（基準がない口座）は、いまある全部を確かめ済みにして基準を作る。
+function mailPending(
+  db: SqliteDatabase,
+  op: Extract<HouseholdOp, { kind: 'household.mail_pending' }>,
+): HouseholdMailPendingValue {
+  const now = Date.parse(op.now);
+  const baseline = db
+    .prepare(
+      'SELECT 1 FROM household_mail_baselines WHERE provider = ? AND account_id = ?',
+    )
+    .get(op.provider, op.account_id);
+  if (baseline === undefined) {
+    db.prepare(
+      'INSERT INTO household_mail_baselines (provider, account_id, established_at) VALUES (?, ?, ?)',
+    ).run(op.provider, op.account_id, now);
+    db.prepare(
+      `INSERT OR IGNORE INTO household_mail_checks (provider, account_id, remote_id, checked_at)
+       SELECT provider, account_id, remote_id, ? FROM source_items
+       WHERE provider = ? AND account_id = ?`,
+    ).run(now, op.provider, op.account_id);
+    return { baseline: true, remote_ids: [] };
+  }
+  const rows = db
+    .prepare(
+      `SELECT s.remote_id AS remote_id FROM source_items s
+       WHERE s.provider = ? AND s.account_id = ? AND s.scope_id = ?
+         AND NOT EXISTS (
+           SELECT 1 FROM household_mail_checks c
+           WHERE c.provider = s.provider AND c.account_id = s.account_id AND c.remote_id = s.remote_id)
+       ORDER BY s.fetched_at DESC, s.remote_id
+       LIMIT ?`,
+    )
+    .all(op.provider, op.account_id, op.scope_id, op.limit) as {
+    remote_id: string;
+  }[];
+  return { baseline: false, remote_ids: rows.map((row) => row.remote_id) };
+}
+
+function mailChecked(
+  db: SqliteDatabase,
+  op: Extract<HouseholdOp, { kind: 'household.mail_checked' }>,
+): { readonly written: boolean } {
+  const exists = db
+    .prepare(
+      'SELECT 1 FROM source_items WHERE provider = ? AND account_id = ? AND remote_id = ?',
+    )
+    .get(op.provider, op.account_id, op.remote_id);
+  // 同期で消えたメールは確かめ済みにしない（行が残らないように）。
+  if (exists === undefined) return { written: false };
+  const result = db
+    .prepare(
+      'INSERT OR IGNORE INTO household_mail_checks (provider, account_id, remote_id, checked_at) VALUES (?, ?, ?, ?)',
+    )
+    .run(op.provider, op.account_id, op.remote_id, Date.parse(op.now));
+  return { written: result.changes === 1 };
+}
+
 function sqliteCode(error: unknown): string | null {
   return (error as { code?: string } | null)?.code ?? null;
 }
@@ -538,6 +656,10 @@ export function executeHouseholdOp(
           return applyDelete(db, op);
         case 'household.rule_set':
           return applyRuleSet(db, op);
+        case 'household.mail_pending':
+          return mailPending(db, op);
+        case 'household.mail_checked':
+          return mailChecked(db, op);
         default:
           throw new HouseholdRejection(['kind_invalid']);
       }

@@ -48,6 +48,12 @@ export interface SyncSchedulerOptions {
   // 接続ごとの指数バックオフの上限（設計 11 §1 の 15 分）。初項はポーリングの間隔、倍率は 2。
   readonly backoffMaxMs?: number;
   readonly log?: (message: string) => void;
+  // 走査を公開した後の知らせ（家計簿の利用通知の取り込み、ADR 0160）。待たずに呼び、例外は記録して捨てる
+  // （同期の周期を止めない）。
+  readonly onPublished?: (
+    connection: ConnectionRecord,
+    target: SyncSchedulerTarget,
+  ) => void | Promise<void>;
 }
 
 export interface SyncScheduler {
@@ -168,8 +174,17 @@ export function createSyncScheduler(
         resource: target.resource,
         kind: decideKind(target.resource, snapshot.scope, startup),
       });
-      if (outcome.status === 'published') published = true;
-      else if (outcome.status === 'failed' && failedReason === null)
+      if (outcome.status === 'published') {
+        published = true;
+        if (options.onPublished !== undefined) {
+          const notify = options.onPublished;
+          void Promise.resolve()
+            .then(() => notify(connection, target))
+            .catch(() => {
+              log('走査の公開の後の処理に失敗しました。');
+            });
+        }
+      } else if (outcome.status === 'failed' && failedReason === null)
         failedReason = outcome.reason;
     }
     if (failedReason !== null) {

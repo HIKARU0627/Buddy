@@ -457,3 +457,18 @@ export function householdRuleApplies(
 ): boolean {
   return householdCategory(category)?.direction === direction;
 }
+
+/**
+ * 本人の記録から店名の規則として覚えてよいか（ADR 0175）。支出の記録で、分類が未分類でないときだけ。
+ * 収入・振替の分類は向きごとに一つだけで、店名と結ぶと同じ店名の支出の規則を上書きして消すため、覚えない。
+ */
+export function householdRuleLearnable(
+  direction: HouseholdDirection,
+  category: string,
+): boolean {
+  return (
+    direction === 'expense' &&
+    category !== 'uncategorized' &&
+    householdCategory(category)?.direction === 'expense'
+  );
+}

@@ -877,6 +877,127 @@ test('手入力: 記録を足して返し、同じ要求の再送は二つ目を
   );
 });
 
+// 店名に覚えた分類（なければ null）。保存層へ直接聞く。
+async function ruleOf(
+  store: Store,
+  dataKey: DataKeyMaterial,
+  merchant: string,
+): Promise<string | null> {
+  const key = HouseholdMerchantKey.fromDataKey(dataKey).merchant(merchant);
+  assert.notEqual(key, null);
+  const got = await store.household({
+    kind: 'household.rule_get',
+    merchant_key: key as string,
+  });
+  assert.equal(got.ok, true);
+  if (!got.ok) throw new Error('unreachable');
+  return got.value === null ? null : got.value.category;
+}
+
+test('手入力: 収入・振替の記録の店名は、同じ店名の支出の規則を上書きせず、収入・振替の規則も作らない。支出は覚える（ADR 0175）', async (t) => {
+  const { store, dataKey } = withDb(t);
+  const handlers = routes(store, dataKey);
+  const body = (id: string, entry: Record<string, unknown>): JsonObject =>
+    ({
+      request_id: id,
+      command_scope_id: SCOPE,
+      entry: {
+        amount_yen: 3000,
+        occurred_on: '2030-11-04',
+        occurred_time: null,
+        memo: null,
+        payment: null,
+        ...entry,
+      },
+    }) as JsonObject;
+  const expense = await call(
+    handlers.createHouseholdEntry,
+    {},
+    body('00000000-0000-4000-8000-0000000c0201', {
+      direction: 'expense',
+      category: 'daily_goods',
+      merchant: '合成フリマ',
+    }),
+  );
+  assert.equal(expense.status, 200);
+  assert.equal(await ruleOf(store, dataKey, '合成フリマ'), 'daily_goods');
+  const income = await call(
+    handlers.createHouseholdEntry,
+    {},
+    body('00000000-0000-4000-8000-0000000c0202', {
+      direction: 'income',
+      category: 'income',
+      merchant: '合成フリマ',
+    }),
+  );
+  assert.equal(income.status, 200);
+  assert.equal(income.body['category'], 'income');
+  const transfer = await call(
+    handlers.createHouseholdEntry,
+    {},
+    body('00000000-0000-4000-8000-0000000c0203', {
+      direction: 'transfer',
+      category: 'transfer',
+      merchant: '合成フリマ',
+    }),
+  );
+  assert.equal(transfer.status, 200);
+  assert.equal(await ruleOf(store, dataKey, '合成フリマ'), 'daily_goods');
+  // 収入・振替だけの店名には規則を作らない。
+  for (const [id, direction, category] of [
+    ['00000000-0000-4000-8000-0000000c0204', 'income', 'income'],
+    ['00000000-0000-4000-8000-0000000c0205', 'transfer', 'transfer'],
+  ] as const) {
+    const created = await call(
+      handlers.createHouseholdEntry,
+      {},
+      body(id, { direction, category, merchant: '合成の勤め先' }),
+    );
+    assert.equal(created.status, 200);
+    assert.equal(await ruleOf(store, dataKey, '合成の勤め先'), null);
+  }
+});
+
+test('中身の変更・分類の変更: 収入・振替の記録の店名は、支出の規則を上書きしない（ADR 0175）', async (t) => {
+  const { store, dataKey, ports } = withDb(t);
+  const handlers = routes(store, dataKey);
+  const expense = await record(ports, { merchant: '合成フリマ' });
+  const learned = await call(
+    handlers.changeHouseholdCategory,
+    { entry_id: expense },
+    changeBody('1', 'daily_goods'),
+  );
+  assert.equal(learned.status, 200);
+  assert.equal(await ruleOf(store, dataKey, '合成フリマ'), 'daily_goods');
+  for (const [direction, category] of [
+    ['income', 'income'],
+    ['transfer', 'transfer'],
+  ] as const) {
+    const id = await record(ports, {
+      direction,
+      category,
+      merchant: '合成フリマ',
+    });
+    // 中身の変更（向きと分類は同じまま、金額を直す）。
+    const edited = await call(
+      handlers.changeHouseholdEntry,
+      { entry_id: id },
+      contentBody('1', { direction, category, merchant: '合成フリマ' }),
+    );
+    assert.equal(edited.status, 200, direction);
+    assert.equal(await ruleOf(store, dataKey, '合成フリマ'), 'daily_goods');
+    // 分類の変更（同じ向きの分類へ。覚えたかは応答にも出る）。
+    const changed = await call(
+      handlers.changeHouseholdCategory,
+      { entry_id: id },
+      { ...changeBody('2', category), request_id: randomUUID() },
+    );
+    assert.equal(changed.status, 200, direction);
+    assert.equal(changed.body['rule_learned'], false, direction);
+    assert.equal(await ruleOf(store, dataKey, '合成フリマ'), 'daily_goods');
+  }
+});
+
 test('成否不明・保存の失敗は 503 にし、成功にも競合にも見せない', async (t) => {
   const { store, dataKey, ports } = withDb(t);
   const entry = await record(ports, { merchant: '合成の売店' });

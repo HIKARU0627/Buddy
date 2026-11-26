@@ -21,6 +21,7 @@ import {
   householdMonthOf,
   householdMonthShift,
   householdNoticeMatchKey,
+  householdRuleLearnable,
   isHouseholdMonth,
 } from '@buddy/domain';
 import type { HouseholdBudgetItem, HouseholdEntryContent } from '@buddy/domain';
@@ -399,8 +400,8 @@ export function createHouseholdRoutes(
     return { status: 200, body: changed.value };
   };
 
-  // 家計の記録の手入力（ADR 0167）。出所の鍵は request_id から作るので、同じ要求の再送は二つ目を作らない。店名があり
-  // 分類が未分類でなければ、本人の規則として覚える（分類の変更と同じ。ADR 0158）。
+  // 家計の記録の手入力（ADR 0167）。出所の鍵は request_id から作るので、同じ要求の再送は二つ目を作らない。支出の記録で店名があり
+  // 分類が未分類でなければ、本人の規則として覚える（分類の変更と同じ。収入・振替は覚えない。ADR 0158・0175）。
   const createEntry: ApiRouteHandler = async (request) => {
     const body = request.body ?? {};
     const requestId = stringOf(body['request_id']);
@@ -443,7 +444,7 @@ export function createHouseholdRoutes(
     if (
       recorded.outcome === 'created' &&
       entry.merchant !== null &&
-      entry.category !== 'uncategorized'
+      householdRuleLearnable(entry.direction, entry.category)
     ) {
       const merchant = HouseholdMerchantKey.fromDataKey(dataKey).merchant(
         entry.merchant,

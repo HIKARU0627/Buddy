@@ -401,6 +401,28 @@ test('規則の向き: 支出の記録の中身の変更は、今までどおり
   assert.equal(await ruleOf(ports, '合成の薬局'), null);
 });
 
+test('規則の向き: 支出の記録の分類を未分類へ直すと、その店名の規則を未分類で上書きし、次の利用に分類を当てない（ADR 0158・0175）', async (t) => {
+  const { ports } = withDb(t);
+  const entry = expense({
+    merchant: '合成の雑貨店',
+    category: 'uncategorized',
+  });
+  const id = await created(ports, mail('goods-1'), entry);
+  const learned = await changeHouseholdCategory(ports, id, '1', 'daily_goods');
+  assert.equal(learned.outcome === 'changed' && learned.rule_learned, true);
+  assert.equal(await ruleOf(ports, '合成の雑貨店'), 'daily_goods');
+  // 本人が未分類へ戻すと、覚えた分類を未分類で上書きする（次から自動では分類しない）。
+  const reset = await changeHouseholdCategory(ports, id, '2', 'uncategorized');
+  assert.equal(reset.outcome === 'changed' && reset.rule_learned, true);
+  assert.equal(await ruleOf(ports, '合成の雑貨店'), 'uncategorized');
+  const nextId = await created(ports, mail('goods-2'), entry);
+  const view = await month(ports, '2030-10');
+  assert.equal(
+    view.entries.find((row) => row.entry_id === nextId)?.content.category,
+    'uncategorized',
+  );
+});
+
 test('削除: 記録は集計から消え、同じ出所からは作り直さない。消した記録は変えられない', async (t) => {
   const { ports } = withDb(t);
   const id = await created(ports, mail('a'), expense({ category: 'food' }));

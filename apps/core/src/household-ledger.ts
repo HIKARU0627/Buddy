@@ -402,11 +402,13 @@ export async function changeHouseholdCategory(
   if (!updated.ok)
     return { outcome: updated.outcome, reasons: updated.reasons };
   // 支出の記録に店名があれば本人の規則として覚える（次から同じ店の利用に当てる。収入・振替は覚えない。ADR 0175）。
+  // 支出を未分類へ直したときも書く（覚えた分類を未分類で上書きし、次から自動では分類しない。ADR 0158 からの動き）。
   // 覚えられなくても分類の変更は済んでいる。
   let learned = false;
   if (
     content.merchant !== null &&
-    householdRuleLearnable(content.direction, category)
+    (householdRuleLearnable(content.direction, category) ||
+      (content.direction === 'expense' && category === 'uncategorized'))
   ) {
     const merchantKey = HouseholdMerchantKey.fromDataKey(
       ports.dataKey,

@@ -31,6 +31,8 @@ import { useWorkState } from './state/use-work-state.js';
 import { useCandidateState } from './state/use-candidate-state.js';
 import { useAutoActionState } from './state/use-auto-action-state.js';
 import { useHouseholdState } from './state/use-household-state.js';
+import { canStartAddFrom } from './state/household-state.js';
+import { inputFromCandidate } from './state/household-candidate.js';
 import { useConnectionsState } from './state/use-connections-state.js';
 import { CandidatesPanel } from './screens/candidates/CandidatesPanel.js';
 import { AutoActionsPanel } from './screens/auto-actions/AutoActionsPanel.js';
@@ -140,6 +142,15 @@ function ConnectedApp({ api }: { readonly api: BuddyDesktopApi }) {
               operations={connection.operations}
               link={connection.link === 'connected' ? 'connected' : 'other'}
               stopped={stopped}
+              // 会話の一言からの家計の記録の候補を、家計簿の欄の手入力の欄に入れて開く（ADR 0171）。開けたら候補をしまう
+              // （同じ候補から二度開かない）。記録は本人が欄で「足す」を押したときだけ作る。
+              household={{
+                canOpen: canStartAddFrom(household.state),
+                open: (draft) => {
+                  if (household.actions.startAddFrom(inputFromCandidate(draft)))
+                    work.actions.dismissHouseholdCandidate();
+                },
+              }}
             />
             {/* 切断中も欄を出し、取得できていないことを示す（「気づきはありません」と言わない。設計 01）。 */}
             <CandidatesPanel

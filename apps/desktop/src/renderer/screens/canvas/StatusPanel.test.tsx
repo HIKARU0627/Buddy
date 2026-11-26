@@ -103,6 +103,7 @@ const actions: WorkActions = {
   reconcile: noop,
   retry: noop,
   check: noop,
+  dismissHouseholdCandidate: noop,
 };
 
 const render = (node: ReactNode) =>

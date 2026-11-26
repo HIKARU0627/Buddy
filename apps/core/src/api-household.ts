@@ -37,6 +37,8 @@ import {
   changeHouseholdCategory,
   changeHouseholdContent,
   deleteHouseholdEntry,
+  householdRevisionNumber,
+  nextHouseholdRevision,
   readHouseholdMonths,
   recordHouseholdEntry,
 } from './household-ledger.js';
@@ -91,6 +93,10 @@ const INVALID_REASONS: ReadonlySet<string> = new Set([
 
 // 保存する内容版の形（1 から。保存層と同じ）。契約の形（0 を含む）より狭いので、0 などは経路の処理で 422 にする。
 const STORED_REVISION = /^[1-9][0-9]{0,15}$/u;
+
+// 変更系の expected の版。形が合い、次の版も安全な整数に収まるときだけ通す（精度が落ちた版で暗号化しない）。
+const isChangeableRevision = (revision: string): boolean =>
+  STORED_REVISION.test(revision) && nextHouseholdRevision(revision) !== null;
 
 const stringOf = (value: unknown): string =>
   typeof value === 'string' ? value : '';
@@ -170,6 +176,29 @@ function budgetBody(
   };
 }
 
+// 手入力の再送の中身が、保存済みの中身と同じか。保存したときに本人の規則で分類が当たることがあるので、内容版が 1
+// （保存後に直されていない）で、送られた分類が未分類・店名ありのときは、分類の違いを違いに数えない。
+function sameResentContent(
+  sent: HouseholdEntryContent,
+  stored: HouseholdEntryContent,
+  untouchedSinceRecorded: boolean,
+): boolean {
+  const ruleMayHaveCategorized =
+    untouchedSinceRecorded &&
+    sent.category === 'uncategorized' &&
+    sent.merchant !== null;
+  return (
+    sent.direction === stored.direction &&
+    sent.amount_yen === stored.amount_yen &&
+    sent.occurred_on === stored.occurred_on &&
+    sent.occurred_time === stored.occurred_time &&
+    sent.merchant === stored.merchant &&
+    sent.memo === stored.memo &&
+    sent.payment === stored.payment &&
+    (ruleMayHaveCategorized || sent.category === stored.category)
+  );
+}
+
 export function createHouseholdRoutes(
   options: HouseholdRoutesOptions,
 ): HouseholdRoutes {
@@ -196,7 +225,9 @@ export function createHouseholdRoutes(
     const { budget_revision: revision, content } = got.value;
     if (content === null)
       return revision === '0' ? { revision, items: [] } : null;
-    const opened = openHouseholdBudget(dataKey, Number(revision), {
+    const budgetRevision = householdRevisionNumber(revision);
+    if (budgetRevision === null) return null;
+    const opened = openHouseholdBudget(dataKey, budgetRevision, {
       formatVersion: content.format_version,
       keyId: content.key_id,
       nonce: content.nonce,
@@ -294,7 +325,7 @@ export function createHouseholdRoutes(
     const entryId = request.params['entry_id'] ?? '';
     const expected = stringOf(body['expected_content_revision']);
     const category = stringOf(body['category']);
-    if (!STORED_REVISION.test(expected)) return fail(422, 'invalid_input');
+    if (!isChangeableRevision(expected)) return fail(422, 'invalid_input');
     const dataKey = await loadKey();
     if (dataKey === null) return fail(503, 'dependency_unavailable');
     const changed = await changeHouseholdCategory(
@@ -437,10 +468,12 @@ export function createHouseholdRoutes(
       return fail(409, 'conflict');
     const record = got.value;
     const envelope = record.content as NonNullable<typeof record.content>;
+    const storedRevision = householdRevisionNumber(record.content_revision);
+    if (storedRevision === null) return fail(503, 'dependency_unavailable');
     const opened = openHouseholdContent(
       dataKey,
       record.entry_id,
-      Number(record.content_revision),
+      storedRevision,
       {
         formatVersion: envelope.format_version,
         keyId: envelope.key_id,
@@ -450,6 +483,12 @@ export function createHouseholdRoutes(
       },
     );
     if (!opened.ok) return fail(503, 'dependency_unavailable');
+    // 同じ request_id の再送で中身が保存済みと違えば、別の要求を同じ記録にしないよう 409 にする。
+    if (
+      recorded.outcome === 'duplicate' &&
+      !sameResentContent(entry, opened.content, record.content_revision === '1')
+    )
+      return fail(409, 'conflict');
     return {
       status: 200,
       body: entryBody({
@@ -470,7 +509,7 @@ export function createHouseholdRoutes(
     const fail = failWith(stringOf(body['request_id']));
     const entryId = request.params['entry_id'] ?? '';
     const expected = stringOf(body['expected_content_revision']);
-    if (!STORED_REVISION.test(expected)) return fail(422, 'invalid_input');
+    if (!isChangeableRevision(expected)) return fail(422, 'invalid_input');
     const raw = (body['entry'] ?? {}) as Record<string, unknown>;
     const content = {
       direction: raw['direction'],
@@ -512,10 +551,12 @@ export function createHouseholdRoutes(
     const envelope = record.content;
     if (record.state !== 'active' || envelope === null)
       return fail(503, 'dependency_unavailable');
+    const storedRevision = householdRevisionNumber(record.content_revision);
+    if (storedRevision === null) return fail(503, 'dependency_unavailable');
     const opened = openHouseholdContent(
       dataKey,
       record.entry_id,
-      Number(record.content_revision),
+      storedRevision,
       {
         formatVersion: envelope.format_version,
         keyId: envelope.key_id,
@@ -553,13 +594,15 @@ export function createHouseholdRoutes(
     });
     if (householdBudgetErrors(items).length > 0)
       return fail(422, 'invalid_input');
-    if (!/^(0|[1-9][0-9]{0,15})$/u.test(expected))
-      return fail(422, 'invalid_input');
+    const nextBudgetRevision = /^(0|[1-9][0-9]{0,15})$/u.test(expected)
+      ? nextHouseholdRevision(expected)
+      : null;
+    if (nextBudgetRevision === null) return fail(422, 'invalid_input');
     const dataKey = await loadKey();
     if (dataKey === null) return fail(503, 'dependency_unavailable');
     const sealed = sealHouseholdBudget(
       dataKey,
-      Number(expected) + 1,
+      nextBudgetRevision,
       items,
       newId(),
     );
@@ -636,7 +679,9 @@ export function createHouseholdRoutes(
     for (const month of months) {
       if (month === '') continue;
       const read = await readHouseholdMonths(ports, month, month);
-      if (read.outcome !== 'ok') return fail(503, 'dependency_unavailable');
+      // 月の記録が上限で切られていると、読めなかった利用通知の記録と重なる行を二重に記録してしまう。何も記録せず止める。
+      if (read.outcome !== 'ok' || read.truncated)
+        return fail(503, 'dependency_unavailable');
       for (const entry of read.months[0]?.entries ?? []) {
         if (entry.source_kind !== 'mail_notice') continue;
         const key = householdNoticeMatchKey(entry.content);

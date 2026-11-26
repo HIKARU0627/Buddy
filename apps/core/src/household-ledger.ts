@@ -222,23 +222,34 @@ function monthsBetween(from: string, to: string): string[] {
   return months.reverse();
 }
 
+// 内容版（10 進の文字列、16 桁まで）を数にする。安全な整数に収まらなければ null（精度が落ちて誤った版で暗号化・復号しない）。
+export function householdRevisionNumber(revision: string): number | null {
+  const value = Number(revision);
+  return Number.isSafeInteger(value) ? value : null;
+}
+
+// 次の内容版。今の版も次の版も安全な整数に収まるときだけ返す。
+export function nextHouseholdRevision(revision: string): number | null {
+  const value = householdRevisionNumber(revision);
+  if (value === null) return null;
+  const next = value + 1;
+  return Number.isSafeInteger(next) ? next : null;
+}
+
 function openRecord(
   dataKey: DataKeyMaterial,
   record: HouseholdEntryRecord,
 ): HouseholdEntryContent | null {
   if (record.content === null) return null;
-  const opened = openHouseholdContent(
-    dataKey,
-    record.entry_id,
-    Number(record.content_revision),
-    {
-      formatVersion: record.content.format_version,
-      keyId: record.content.key_id,
-      nonce: record.content.nonce,
-      ciphertext: record.content.ciphertext,
-      tag: record.content.tag,
-    },
-  );
+  const revision = householdRevisionNumber(record.content_revision);
+  if (revision === null) return null;
+  const opened = openHouseholdContent(dataKey, record.entry_id, revision, {
+    formatVersion: record.content.format_version,
+    keyId: record.content.key_id,
+    nonce: record.content.nonce,
+    ciphertext: record.content.ciphertext,
+    tag: record.content.tag,
+  });
   if (!opened.ok) return null;
   // 月の列と中身の日付が食い違う記録は読めないものとして扱う（集計の月をずらさない）。
   if (householdMonthOf(opened.content.occurred_on) !== record.month)
@@ -271,6 +282,15 @@ export async function readHouseholdMonths(
       { entries: [], unreadable: 0 },
     ]),
   );
+  // 保存済みの内容版が安全な整数に収まらない記録があれば、誤った版で復号しないよう読み取り全体を失敗にする。
+  if (
+    listed.value.entries.some(
+      (record) =>
+        record.content !== null &&
+        householdRevisionNumber(record.content_revision) === null,
+    )
+  )
+    return { outcome: 'rejected', reasons: ['content_revision_unsafe'] };
   for (const record of listed.value.entries) {
     const bucket =
       record.month === null ? undefined : byMonth.get(record.month);
@@ -349,12 +369,14 @@ export async function changeHouseholdCategory(
   const target = householdCategory(category);
   if (target === null)
     return { outcome: 'rejected', reasons: ['category_invalid'] };
+  const next = nextHouseholdRevision(expectedRevision);
+  if (next === null)
+    return { outcome: 'rejected', reasons: ['expected_revision_invalid'] };
   const current = await readActive(ports, entryId, expectedRevision);
   if (!current.ok)
     return { outcome: current.outcome, reasons: current.reasons };
   if (target.direction !== current.content.direction)
     return { outcome: 'rejected', reasons: ['category_direction_mismatch'] };
-  const next = Number(expectedRevision) + 1;
   const content = { ...current.content, category };
   const sealed = sealHouseholdContent(
     ports.dataKey,
@@ -414,6 +436,9 @@ export async function changeHouseholdContent(
 ): Promise<HouseholdChange> {
   const errors = householdContentErrors(next);
   if (errors.length > 0) return { outcome: 'rejected', reasons: errors };
+  const nextRevision = nextHouseholdRevision(expectedRevision);
+  if (nextRevision === null)
+    return { outcome: 'rejected', reasons: ['expected_revision_invalid'] };
   const current = await readActive(ports, entryId, expectedRevision);
   if (!current.ok)
     return { outcome: current.outcome, reasons: current.reasons };
@@ -425,7 +450,7 @@ export async function changeHouseholdContent(
   const sealed = sealHouseholdContent(
     ports.dataKey,
     entryId,
-    Number(expectedRevision) + 1,
+    nextRevision,
     next,
     ports.newId(),
   );

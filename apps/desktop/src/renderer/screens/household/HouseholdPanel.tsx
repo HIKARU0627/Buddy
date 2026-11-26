@@ -4,7 +4,7 @@
 // もう一度確かめてから送る）。最後に月ごとの合計（今月から 11 か月前まで）で、押すとその月の記録を出す。
 // 未取得・取得の失敗を「記録はありません」と言わない。理由のコード・API の名前・記録の ID は出さない。
 import { Button } from '@heroui/react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { householdBudgetUse } from '@buddy/domain';
 import type {
   DesktopHouseholdEntry,
@@ -558,7 +558,8 @@ function EntryForm({
   );
 }
 
-// 手入力の欄（ADR 0167）。
+// 手入力の欄（ADR 0167）。会話の一言からの候補（ADR 0171）で開いたときは、その値を入れ、金額の欄へフォーカスを移す
+// （会話の欄から離れた家計簿の欄を見えるところへ出す）。
 function AddEntryForm({
   state,
   actions,
@@ -566,20 +567,35 @@ function AddEntryForm({
   readonly state: HouseholdViewState;
   readonly actions: HouseholdActions;
 }) {
+  const box = useRef<HTMLDivElement>(null);
+  const prefilled = state.addPrefill !== null;
+  useEffect(() => {
+    if (!prefilled) return;
+    const amount = box.current?.querySelector<HTMLInputElement>(
+      '#household-add-amount',
+    );
+    amount?.focus();
+  }, [prefilled]);
   return (
-    <EntryForm
-      idPrefix="household-add"
-      title={HOUSEHOLD_LABELS.addTitle}
-      note={HOUSEHOLD_LABELS.addNote}
-      initial={EMPTY_INPUT}
-      lockDirection={false}
-      mine={state.busy === ADD_PLACE}
-      busy={state.busy !== null}
-      submitLabel={HOUSEHOLD_LABELS.addSubmit}
-      submittingLabel={HOUSEHOLD_LABELS.adding}
-      onCancel={actions.cancelAdd}
-      onSubmit={actions.addEntry}
-    />
+    <div ref={box}>
+      <EntryForm
+        idPrefix="household-add"
+        title={HOUSEHOLD_LABELS.addTitle}
+        note={
+          prefilled
+            ? HOUSEHOLD_LABELS.addFromConversationNote
+            : HOUSEHOLD_LABELS.addNote
+        }
+        initial={state.addPrefill ?? EMPTY_INPUT}
+        lockDirection={false}
+        mine={state.busy === ADD_PLACE}
+        busy={state.busy !== null}
+        submitLabel={HOUSEHOLD_LABELS.addSubmit}
+        submittingLabel={HOUSEHOLD_LABELS.adding}
+        onCancel={actions.cancelAdd}
+        onSubmit={actions.addEntry}
+      />
+    </div>
   );
 }
 

@@ -29,6 +29,8 @@ import {
   HouseholdMerchantKey,
   changeHouseholdCategory,
   deleteHouseholdEntry,
+  householdRevisionNumber,
+  nextHouseholdRevision,
   readHouseholdMonths,
   recordHouseholdEntry,
 } from './household-ledger.js';
@@ -339,5 +341,25 @@ test('店名の鍵: データ鍵ごとに違う値になり、文字列にして
     () =>
       HouseholdMerchantKey.fromDataKey({ keyId: 'k', key: Buffer.alloc(16) }),
     /household_data_key_invalid/u,
+  );
+});
+
+test('内容版の数: 今の版も次の版も安全な整数のときだけ数にし、変更は精度が落ちる版を拒否する', async (t) => {
+  const { ports } = withDb(t);
+  assert.equal(householdRevisionNumber('1'), 1);
+  assert.equal(householdRevisionNumber('9007199254740991'), 9007199254740991);
+  assert.equal(householdRevisionNumber('9007199254740993'), null);
+  assert.equal(nextHouseholdRevision('9007199254740990'), 9007199254740991);
+  assert.equal(nextHouseholdRevision('9007199254740991'), null);
+  assert.equal(nextHouseholdRevision('9999999999999999'), null);
+  const id = await created(ports, mail('a'), expense());
+  assert.deepEqual(
+    await changeHouseholdCategory(ports, id, '9007199254740991', 'food'),
+    { outcome: 'rejected', reasons: ['expected_revision_invalid'] },
+  );
+  // 境の版は検査を通り、保存済みの版との照合で拒否される。
+  assert.deepEqual(
+    await changeHouseholdCategory(ports, id, '9007199254740990', 'food'),
+    { outcome: 'rejected', reasons: ['revision_mismatch'] },
   );
 });

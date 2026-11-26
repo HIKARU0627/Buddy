@@ -108,5 +108,7 @@ export * from './household-import.js';
 export * from './household-recurring.js';
 export * from './household-budget.js';
 export * from './household-duplicates.js';
+// 会話の一言からの家計の記録の候補（ADR 0171）。
+export * from './household-utterance.js';
 // カード会社の利用通知メールの送り主の確かめと本文の読み取り（ADR 0159）。
 export * from './household-notice.js';

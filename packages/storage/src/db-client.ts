@@ -103,6 +103,8 @@ import type {
   HouseholdMailPendingValue,
   HouseholdSettingsValue,
   HouseholdBudgetValue,
+  HouseholdBillRecordValue,
+  HouseholdBillListValue,
   HouseholdRuleValue,
 } from './household-store.js';
 import type {
@@ -1194,6 +1196,12 @@ export class DbWorkerClient {
       { kind: 'household.budget_get' | 'household.budget_set' }
     >,
   ): Promise<HouseholdOpOutcome<HouseholdBudgetValue>>;
+  household(
+    op: Extract<HouseholdOp, { kind: 'household.bill_record' }>,
+  ): Promise<HouseholdOpOutcome<HouseholdBillRecordValue>>;
+  household(
+    op: Extract<HouseholdOp, { kind: 'household.bill_list' }>,
+  ): Promise<HouseholdOpOutcome<HouseholdBillListValue>>;
   household(op: HouseholdOp): Promise<HouseholdOpResult> {
     return new Promise<HouseholdOpResult>((resolve) => {
       if (this.#state !== 'running') {

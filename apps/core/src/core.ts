@@ -1067,9 +1067,13 @@ export async function startCore(
                   account_id: target.account_id,
                   scope_id: target.scope_id,
                 });
-                if (result.recorded > 0 || result.outcome === 'stopped')
+                if (
+                  result.recorded > 0 ||
+                  result.bills > 0 ||
+                  result.outcome === 'stopped'
+                )
                   log(
-                    `家計簿の利用通知を取り込みました（記録 ${String(result.recorded)} 件・確かめたメール ${String(result.checked)} 通${result.reason === null ? '' : `・${result.reason}`}）。`,
+                    `家計簿の利用通知を取り込みました（記録 ${String(result.recorded)} 件・請求予定 ${String(result.bills)} 件・確かめたメール ${String(result.checked)} 通${result.reason === null ? '' : `・${result.reason}`}）。`,
                   );
               },
             }),

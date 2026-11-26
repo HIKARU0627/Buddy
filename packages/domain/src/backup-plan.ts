@@ -138,6 +138,8 @@ export const BACKUP_INCLUDED_TABLES: readonly string[] = [
   'household_settings',
   // 0019（ADR 0166）: 分類ごとの予算。本人の決定なので含める（金額は暗号文）。
   'household_budgets',
+  // 0021（ADR 0176）: 請求予定。家計簿の一部なので含める（会社・金額・引き落とし日は暗号文）。
+  'household_bills',
 ];
 
 const has = (record: object, key: string): boolean =>

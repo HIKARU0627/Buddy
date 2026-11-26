@@ -1378,6 +1378,39 @@ export function semanticErrors(name, value) {
       value.summary.transfer_yen !== sumOf('transfer')
     )
       found.push('summary_mismatch');
+    // 請求予定（ADR 0176）は記録と別で、集計に入れない。引き落とし日がその月のものだけ。
+    found.push(...semanticErrors('HouseholdMonthBills', value.bills));
+    if (
+      value.bills.items.some((bill) => bill.due_on.slice(0, 7) !== value.month)
+    )
+      found.push('bill_month_mismatch');
+    errors.push(...new Set(found));
+  }
+  // 1 か月の請求予定（ADR 0176）。引き落とし日は暦に実在し、引き落とし日・会社の表示名・金額の順に並び、合計は金額の和。
+  if (name === 'HouseholdMonthBills') {
+    const found = [];
+    for (const bill of value.items)
+      if (!isHouseholdDate(bill.due_on)) found.push('due_on_invalid');
+    const compare = (a, b) =>
+      a.due_on < b.due_on
+        ? -1
+        : a.due_on > b.due_on
+          ? 1
+          : a.issuer < b.issuer
+            ? -1
+            : a.issuer > b.issuer
+              ? 1
+              : a.amount_yen - b.amount_yen;
+    for (let index = 1; index < value.items.length; index += 1)
+      if (compare(value.items[index - 1], value.items[index]) > 0) {
+        found.push('bill_order');
+        break;
+      }
+    if (
+      value.items.reduce((sum, bill) => sum + bill.amount_yen, 0) !==
+      value.total_yen
+    )
+      found.push('bill_total_mismatch');
     errors.push(...new Set(found));
   }
   // 定期の支出（ADR 0165）。固定費の目安は目安の合計、並びは目安の大きい順。

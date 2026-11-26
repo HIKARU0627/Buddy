@@ -4,7 +4,8 @@
 //   集計）だけ。記録の ID・内容版は main の中に持ち、画面へも IPC へもログへも出さない（画面から送られた ref を main が
 //   解決する。解決できなければ entry_not_found）。接続範囲は接続が本文に付ける。
 // - 読み取りは中枢の GET /v1/household/months（月ごとの合計と今月）と GET /v1/household/months/{month}（1 か月の記録）。
-//   月を指定しなければ中枢が決めた今月を読む（端末の時計で今月を決めない。U331）。読めなかったとき（接続の失敗・503・
+//   月を指定しなければ中枢が決めた今月を読む（端末の時計で今月を決めない。U331）。1 か月の読み取りの請求予定（ADR 0176）は
+//   そのまま画面へ渡す（会社・金額・引き落とし日だけで、ID は中枢も返さない）。読めなかったとき（接続の失敗・503・
 //   形の違う応答）は前の値のまま、取得の状態を stale（読めたことがなければ unavailable）にする。読めなかったことを
 //   「記録なし」にしない。
 // - 分類の変更・削除は、読んだ内容版を expected_content_revision にして送る。受け付けられたら読み直す。表示が古かった
@@ -233,6 +234,10 @@ export class HouseholdBridge {
       list_seq: this.#listSeq,
       mail_intake: this.#overview?.settings.mail_intake ?? null,
       recurring: this.#overview?.recurring ?? null,
+      bills:
+        this.#month === null
+          ? null
+          : { ...this.#month.bills, items: [...this.#month.bills.items] },
       budget:
         this.#overview === null
           ? null

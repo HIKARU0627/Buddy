@@ -28,6 +28,7 @@ import type {
   HouseholdOp,
   SqliteDatabase,
 } from '@buddy/storage';
+import { readHouseholdBills } from './household-bills.js';
 import { readHouseholdMonths } from './household-ledger.js';
 import {
   createHouseholdMailIntake,
@@ -221,6 +222,7 @@ test('初回は過去のメールを読まずに基準を作り、その後に�
     baseline: true,
     checked: 0,
     recorded: 0,
+    bills: 0,
   });
   assert.deepEqual(fixture.calls, []);
   storeMail(fixture, message('m-new', { text: USAGE }), 2000);
@@ -230,6 +232,7 @@ test('初回は過去のメールを読まずに基準を作り、その後に�
     baseline: false,
     checked: 1,
     recorded: 1,
+    bills: 0,
   });
   assert.deepEqual(fixture.calls, [
     { id: 'm-new', format: 'metadata' },
@@ -252,6 +255,7 @@ test('本人のタイムゾーンを読めない回は UTC で代用せず、読
     baseline: false,
     checked: 0,
     recorded: 0,
+    bills: 0,
   });
   assert.deepEqual(fixture.calls, []);
   assert.equal(
@@ -285,6 +289,7 @@ test('本人が取り込みを止めている間はメールを読まず、再�
     baseline: false,
     checked: 0,
     recorded: 0,
+    bills: 0,
   });
   assert.deepEqual(fixture.calls, []);
   const on = await fixture.client.household({
@@ -300,6 +305,7 @@ test('本人が取り込みを止めている間はメールを読まず、再�
     baseline: true,
     checked: 0,
     recorded: 0,
+    bills: 0,
   });
   storeMail(fixture, message('m-after', { text: USAGE }), 3000);
   assert.equal((await run.run(target)).recorded, 1);
@@ -339,9 +345,10 @@ test('知らない送り主・認証の不合格・利用の通知でない件�
     }),
     2002,
   );
+  // 請求のお知らせの件名は請求予定として本文を読む（ADR 0176）ので、ここでは利用通知でも請求でもない件名で確かめる。
   storeMail(
     fixture,
-    message('m-bill', { subject: 'ご請求金額確定のお知らせ', text: USAGE }),
+    message('m-point', { subject: 'ポイント付与のお知らせ', text: USAGE }),
     2003,
   );
   storeMail(
@@ -358,6 +365,7 @@ test('知らない送り主・認証の不合格・利用の通知でない件�
     baseline: false,
     checked: 5,
     recorded: 0,
+    bills: 0,
   });
   assert.ok(fixture.calls.every((call) => call.format === 'metadata'));
   assert.deepEqual(await amounts(fixture), []);
@@ -384,8 +392,238 @@ test('HTML だけの通知も読み、一通の複数の利用を別々に記録
     baseline: false,
     checked: 1,
     recorded: 0,
+    bills: 0,
   });
   assert.deepEqual(await amounts(fixture), [500, 2420]);
+});
+
+// --- 請求のお知らせ（ADR 0176） ---
+
+const BILL_SUBJECT = 'ご請求金額確定のお知らせ';
+const BILL_TEXT = 'ご請求金額：12,345円\nお支払日：11月10日';
+
+async function billsOf(
+  fixture: Fixture,
+  month = '2030-11',
+): Promise<{ issuer: string; amount_yen: number; due_on: string }[]> {
+  const read = await readHouseholdBills(
+    { client: fixture.client, dataKey: fixture.dataKey },
+    month,
+  );
+  assert.equal(read.outcome, 'ok');
+  if (read.outcome !== 'ok') throw new Error('unreachable');
+  return [...read.bills.items];
+}
+
+test('請求のお知らせは、家計の記録に入れず請求予定として記録する（利用通知と同じ送り主の確かめ）', async (t) => {
+  const fixture = setup(t);
+  const run = intake(fixture);
+  await run.run(target);
+  storeMail(
+    fixture,
+    message('m-bill', { subject: BILL_SUBJECT, text: BILL_TEXT }),
+    2000,
+  );
+  storeMail(fixture, message('m-usage', { text: USAGE }), 2001);
+  assert.deepEqual(await run.run(target), {
+    outcome: 'done',
+    reason: null,
+    baseline: false,
+    checked: 2,
+    recorded: 1,
+    bills: 1,
+  });
+  // 受信日 2030-10-05 の「11月10日」は 2030-11-10。請求の金額は家計の記録（10 月・11 月）に入らない。
+  assert.deepEqual(await billsOf(fixture), [
+    { issuer: '合成カード', amount_yen: 12345, due_on: '2030-11-10' },
+  ]);
+  assert.deepEqual(await amounts(fixture), [1280]);
+  const november = await readHouseholdMonths(
+    { client: fixture.client, dataKey: fixture.dataKey },
+    '2030-11',
+    '2030-11',
+  );
+  assert.equal(november.outcome, 'ok');
+  if (november.outcome !== 'ok') throw new Error('unreachable');
+  assert.deepEqual(november.months[0]?.entries, []);
+  assert.deepEqual(fixture.calls, [
+    { id: 'm-usage', format: 'metadata' },
+    { id: 'm-usage', format: 'full' },
+    { id: 'm-bill', format: 'metadata' },
+    { id: 'm-bill', format: 'full' },
+  ]);
+});
+
+test('送り主の確かめに落ちる請求・件名だけ似た宣伝のメールは、本文を読まずに確かめ済みにする', async (t) => {
+  const fixture = setup(t);
+  const run = intake(fixture);
+  await run.run(target);
+  storeMail(
+    fixture,
+    message('m-spoof', {
+      from: '合成カード <info@example.com>',
+      subject: BILL_SUBJECT,
+      text: BILL_TEXT,
+    }),
+    2000,
+  );
+  storeMail(
+    fixture,
+    message('m-fail', {
+      auth: [
+        'mx.google.com; dkim=fail header.d=example.invalid; dmarc=fail header.from=example.invalid',
+      ],
+      subject: BILL_SUBJECT,
+      text: BILL_TEXT,
+    }),
+    2001,
+  );
+  storeMail(
+    fixture,
+    message('m-campaign', {
+      subject: '【キャンペーン】ご請求額から500円割引のチャンス',
+      text: BILL_TEXT,
+    }),
+    2002,
+  );
+  assert.deepEqual(await run.run(target), {
+    outcome: 'done',
+    reason: null,
+    baseline: false,
+    checked: 3,
+    recorded: 0,
+    bills: 0,
+  });
+  assert.ok(fixture.calls.every((call) => call.format === 'metadata'));
+  assert.deepEqual(await billsOf(fixture), []);
+});
+
+test('同じ請求を二度読んでも、別のメールで同じ請求が届いても、請求予定は一つ。金額の違う請求は別に作る', async (t) => {
+  const fixture = setup(t);
+  const logs: string[] = [];
+  const gmail = {
+    getMessage: ({ id }: { id: string }) =>
+      Promise.resolve(fixture.messages.get(id) as GoogleGmailMessage),
+  } as unknown as GoogleGmailReader;
+  const run = createHouseholdMailIntake({
+    store: fixture.client,
+    gmailFor: () => gmail,
+    dataKey: () => Promise.resolve(fixture.dataKey),
+    timeZone: () => 'Asia/Tokyo',
+    now: () => NOW,
+    issuers: ISSUERS,
+    log: (line) => logs.push(line),
+  });
+  await run.run(target);
+  storeMail(
+    fixture,
+    message('m-bill', { subject: BILL_SUBJECT, text: BILL_TEXT }),
+    2000,
+  );
+  assert.equal((await run.run(target)).bills, 1);
+  // 確かめ済みの行が消えて同じメールを読み直しても、二つ目を作らない。
+  fixture.db.prepare('DELETE FROM household_mail_checks').run();
+  assert.deepEqual(await run.run(target), {
+    outcome: 'done',
+    reason: null,
+    baseline: false,
+    checked: 1,
+    recorded: 0,
+    bills: 0,
+  });
+  // 引き落とし前のお知らせなど、別のメールで同じ請求（同じ会社・日・金額）が届いても作らない。
+  storeMail(
+    fixture,
+    message('m-reminder', {
+      subject: 'お引き落とし金額のご案内',
+      text: 'お引き落とし金額 ¥12,345\nお引き落とし日 2030/11/10',
+    }),
+    2001,
+  );
+  assert.equal((await run.run(target)).bills, 0);
+  // 金額の違う請求は別の請求予定として作る（どちらが正しいかは決めない。U358）。
+  storeMail(
+    fixture,
+    message('m-other', {
+      subject: BILL_SUBJECT,
+      text: 'ご請求金額：2,000円\nお支払日：11月10日',
+    }),
+    2002,
+  );
+  assert.equal((await run.run(target)).bills, 1);
+  assert.deepEqual(await billsOf(fixture), [
+    { issuer: '合成カード', amount_yen: 2000, due_on: '2030-11-10' },
+    { issuer: '合成カード', amount_yen: 12345, due_on: '2030-11-10' },
+  ]);
+  // 0 円の請求は作らず、理由の名前だけを残す（金額は残さない）。
+  storeMail(
+    fixture,
+    message('m-zero', {
+      subject: BILL_SUBJECT,
+      text: 'ご請求金額：0円\nお支払日：11月27日',
+    }),
+    2003,
+  );
+  assert.deepEqual(await run.run(target), {
+    outcome: 'done',
+    reason: null,
+    baseline: false,
+    checked: 1,
+    recorded: 0,
+    bills: 0,
+  });
+  // 金額の項目がない請求のお知らせと、本文を平文にできない請求のお知らせも、理由の名前だけを残す（金額・会社名・メールの ID は残さない）。
+  storeMail(
+    fixture,
+    message('m-noamount', {
+      subject: BILL_SUBJECT,
+      text: '今月のご請求金額が確定しました。会員サイトでご確認ください。',
+    }),
+    2004,
+  );
+  await run.run(target);
+  storeMail(fixture, message('m-notext', { subject: BILL_SUBJECT }), 2005);
+  await run.run(target);
+  assert.deepEqual(logs, [
+    '家計簿の請求のお知らせを請求予定にしませんでした（zero_amount）。',
+    '家計簿の請求のお知らせを請求予定にしませんでした（no_amount）。',
+    '家計簿の請求のお知らせを請求予定にしませんでした（body_unreadable）。',
+  ]);
+  assert.equal((await billsOf(fixture)).length, 2);
+});
+
+test('請求のお知らせも、取り込みを止めている間と、初回の基準より前のメールは読まない', async (t) => {
+  const fixture = setup(t);
+  // 基準より前に同期済みの請求のお知らせ。
+  storeMail(
+    fixture,
+    message('m-before', { subject: BILL_SUBJECT, text: BILL_TEXT }),
+    1000,
+  );
+  const run = intake(fixture);
+  assert.deepEqual(await run.run(target), {
+    outcome: 'done',
+    reason: null,
+    baseline: true,
+    checked: 0,
+    recorded: 0,
+    bills: 0,
+  });
+  const off = await fixture.client.household({
+    kind: 'household.settings_set',
+    expected_revision: '0',
+    mail_intake: 'off',
+    now: NOW.toISOString(),
+  });
+  assert.equal(off.ok, true);
+  storeMail(
+    fixture,
+    message('m-while-off', { subject: BILL_SUBJECT, text: BILL_TEXT }),
+    2000,
+  );
+  assert.equal((await run.run(target)).reason, 'intake_off');
+  assert.deepEqual(fixture.calls, []);
+  assert.deepEqual(await billsOf(fixture), []);
 });
 
 test('メールの読み取りに失敗したら止め、そのメールは確かめ済みにせず次の公開の後にやり直す', async (t) => {
@@ -400,6 +638,7 @@ test('メールの読み取りに失敗したら止め、そのメールは確�
     baseline: false,
     checked: 0,
     recorded: 0,
+    bills: 0,
   });
   fixture.failOn = null;
   assert.equal((await run.run(target)).recorded, 1);

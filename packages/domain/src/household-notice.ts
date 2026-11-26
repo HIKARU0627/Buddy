@@ -317,10 +317,19 @@ export interface HouseholdNoticeDate {
 const pad = (value: number): string => String(value).padStart(2, '0');
 
 const DAY_MS = 86_400_000;
-// 年のない日付の年を決める範囲（受信日から見た日数）。受信日の 7 日先まで（タイムゾーンの違いで 1 日先になる場合の余裕）から、
-// 358 日前（約 1 年前）まで。範囲は 366 日分あるので、月日が実在する年なら受信日の前の年・同じ年・翌年のどれかが必ず入る。
-const YEARLESS_AHEAD_DAYS = 7;
-const YEARLESS_BEHIND_DAYS = 358;
+
+/** 年のない日付の年を決める範囲（受信日から見た日数）。ahead は受信日より後、behind は受信日より前の日数の上限（その日を含む）。 */
+export interface HouseholdYearlessWindow {
+  readonly ahead: number;
+  readonly behind: number;
+}
+
+// 利用の日付の範囲。受信日の 7 日先まで（タイムゾーンの違いで 1 日先になる場合の余裕）から、358 日前（約 1 年前）まで。
+// 範囲は 366 日分あるので、月日が実在する年なら受信日の前の年・同じ年・翌年のどれかが必ず入る。
+const USAGE_YEARLESS_WINDOW: HouseholdYearlessWindow = {
+  ahead: 7,
+  behind: 358,
+};
 
 // 年のない月日の年を、受信日の前の年・同じ年・翌年の三つの候補から決める。範囲に入る候補が複数あるのは、ちょうど 7 日先と
 // 358 日前が同時に入る境目だけで、受信日に近い方（7 日先）を使う（近い方を選ぶので、境目の前後で年が揺れない）。その年に
@@ -329,6 +338,7 @@ function yearlessYear(
   month: number,
   day: number,
   receivedOn: string,
+  range: HouseholdYearlessWindow,
 ): number | null {
   const receivedYear = Number(receivedOn.slice(0, 4));
   const received = Date.UTC(
@@ -342,8 +352,7 @@ function yearlessYear(
     const offset = Math.round(
       (Date.UTC(year, month - 1, day) - received) / DAY_MS,
     );
-    if (offset > YEARLESS_AHEAD_DAYS || offset < -YEARLESS_BEHIND_DAYS)
-      continue;
+    if (offset > range.ahead || offset < -range.behind) continue;
     const distance = Math.abs(offset);
     if (best === null || distance < best.distance) best = { year, distance };
   }
@@ -359,6 +368,19 @@ function yearlessYear(
 export function parseHouseholdNoticeDate(
   value: string,
   receivedOn: string,
+): HouseholdNoticeDate | null {
+  return parseHouseholdMailDate(value, receivedOn, USAGE_YEARLESS_WINDOW);
+}
+
+/**
+ * 日付の値を YYYY-MM-DD と HH:MM にする（parseHouseholdNoticeDate と同じ書き方を読む）。年がない書式は、受信日の前の年・
+ * 同じ年・翌年のうち引数 range の日数の範囲に入るものを年とし、複数入れば受信日に近い方、どれも入らなければ null。請求のお知らせの
+ * 引き落とし日（ADR 0176）は利用の日付と違う範囲で年を決めるので、範囲を引数で受ける。
+ */
+export function parseHouseholdMailDate(
+  value: string,
+  receivedOn: string,
+  range: HouseholdYearlessWindow,
 ): HouseholdNoticeDate | null {
   const text = value.normalize('NFKC').replace(/\s+/gu, ' ').trim();
   const full =
@@ -377,7 +399,7 @@ export function parseHouseholdNoticeDate(
   } else if (short !== null && isHouseholdDate(receivedOn)) {
     month = Number(short[1]);
     day = Number(short[2]);
-    const decided = yearlessYear(month, day, receivedOn);
+    const decided = yearlessYear(month, day, receivedOn, range);
     if (decided === null) return null;
     year = decided;
     rest = text.slice(short[0].length);

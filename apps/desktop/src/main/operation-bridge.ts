@@ -871,6 +871,9 @@ function contentOf(
         headline: display?.target?.subject ?? targetLabel(intent),
         detail: null,
       };
+    // 自動で作った返信の下書きの取り消し（ADR 0156）。画面の取り消しの押下で承認済みに作り、承認画面には出さない。
+    case 'mail.draft.delete':
+      return { headline: '自動で作った返信の下書きの削除', detail: null };
   }
 }
 
@@ -910,6 +913,7 @@ export function previewView(
     case 'calendar.event.update':
     case 'calendar.event.create_with_attendees':
     case 'mail.trash':
+    case 'mail.draft.delete':
       break;
   }
   const external = 'provider' in intent;

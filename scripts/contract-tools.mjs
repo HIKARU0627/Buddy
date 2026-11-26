@@ -1106,6 +1106,12 @@ export function semanticErrors(name, value) {
     value.action.cc.some((address) => value.action.to.includes(address))
   )
     errors.push('duplicate_recipient');
+  // 取り消しの下書きの削除は、自分自身ではなく、下書きを作った別の操作を指す（ADR 0156）。
+  if (
+    name === 'DraftDeleteOperationIntent' &&
+    value.action.created_by.operation_id === value.operation_id
+  )
+    errors.push('created_by_self');
   // 用事の期限が地域日時なら、実在の日時かを確かめる（日付だけの値は format: date が確かめる、ADR 0027）。
   if (
     name === 'TaskOperationIntent' &&
@@ -1154,6 +1160,7 @@ export function semanticErrors(name, value) {
       'calendar.event.create_with_attendees':
         'CalendarCreateWithAttendeesOperationIntent',
       'mail.trash': 'MailTrashOperationIntent',
+      'mail.draft.delete': 'DraftDeleteOperationIntent',
     };
     const kind = byKind[value.action.kind];
     if (kind) errors.push(...semanticErrors(kind, value));

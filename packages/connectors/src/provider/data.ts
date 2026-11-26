@@ -39,6 +39,8 @@ export interface MockDraft {
   subject: string;
   body: string;
   status: 'draft' | 'sent';
+  /** 下書きの版。作成で d1、本人の編集（試験の状況づくり）で進む。削除の前提に使う（ADR 0156）。 */
+  revision: string;
   /** 送信した回数。重複した送信要求も消さずに数える。 */
   send_count: number;
 }
@@ -75,7 +77,8 @@ export type AppliedChange =
       labels_after: string[];
     }
   | { kind: 'mail.draft.create'; draft_id: string }
-  | { kind: 'mail.draft.send'; draft_id: string };
+  | { kind: 'mail.draft.send'; draft_id: string }
+  | { kind: 'mail.draft.delete'; draft_id: string };
 
 export interface ProviderState {
   schema: 'buddy.mock-provider.v1';
@@ -94,6 +97,7 @@ export const WRITE_SCOPES = {
   labels: 'mail.labels.change',
   draftCreate: 'mail.drafts.create',
   draftSend: 'mail.drafts.send',
+  draftDelete: 'mail.drafts.delete',
 } as const;
 
 export function seedState(): ProviderState {
@@ -109,6 +113,7 @@ export function seedState(): ProviderState {
         WRITE_SCOPES.labels,
         WRITE_SCOPES.draftCreate,
         WRITE_SCOPES.draftSend,
+        WRITE_SCOPES.draftDelete,
       ],
     },
     mails: {

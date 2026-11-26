@@ -408,7 +408,8 @@ export type OperationIntent =
   | MailSendOperationIntent
   | CalendarUpdateOperationIntent
   | CalendarCreateWithAttendeesOperationIntent
-  | MailTrashOperationIntent;
+  | MailTrashOperationIntent
+  | DraftDeleteOperationIntent;
 /**
  * 承認対象の内容版。宛先・本文・対象・影響・前提が変わったときだけ上がる（設計 07 §1、08 §1）。
  */
@@ -450,7 +451,7 @@ export type CommandReceipt =
       committed_state_revision: StateRevision;
     };
 /**
- * 操作の種類。確定 intent の action.kind と同じ値（ADR 0027・0075）。経路（Read / LocalCommand / RemoteMutation）はコードの表が決める。
+ * 操作の種類。確定 intent の action.kind と同じ値（ADR 0027・0075・0156）。経路（Read / LocalCommand / RemoteMutation）はコードの表が決める。
  */
 export type OperationKind =
   | 'mail.labels.change'
@@ -459,7 +460,8 @@ export type OperationKind =
   | 'mail.send'
   | 'calendar.event.update'
   | 'calendar.event.create_with_attendees'
-  | 'mail.trash';
+  | 'mail.trash'
+  | 'mail.draft.delete';
 /**
  * DB の世代。通常の再起動では維持し、バックアップ復元・新規作成で新しい値にする。等値比較だけに使う（設計 07 §1・§4、ADR 0003）。
  */
@@ -792,7 +794,8 @@ export type OperationStepKind =
   | 'send_mail'
   | 'update_event'
   | 'create_event_with_attendees'
-  | 'trash_mail';
+  | 'trash_mail'
+  | 'delete_draft';
 /**
  * Outlook のアカウント種別（設計 04 接続・権限）。接続時に特定し、個人と職場・学校で使える範囲を分ける。
  */
@@ -2583,6 +2586,35 @@ export interface MailTrashOperationIntent {
   };
   action: {
     kind: 'mail.trash';
+  };
+  effects: {
+    /**
+     * @maxItems 0
+     */
+    external_recipients: [];
+    reconcile_scope: 'exact_target';
+  };
+}
+/**
+ * Buddy が自動で作った返信の下書きを、取り消しで削除する（mail.draft.delete、RemoteMutation、ADR 0156）。自動実行の取り消しの補償の操作だけに使い、方針では承認しない。target は削除する下書きと、取り消しを押したときに読んだその版。created_by は下書きを作った操作と内容版で、目印（buddy-op）が同じ下書きだけを消す。送信済み・本人が手を加えた下書きは消さない。外部の相手へは送らないので external_recipients は空。
+ */
+export interface DraftDeleteOperationIntent {
+  schema: 'buddy.operation.v1';
+  operation_id: Id;
+  content_version: ContentVersion;
+  permission_revision: PermissionRevision;
+  provider: 'mock' | 'gmail' | 'microsoft_graph';
+  account_id: Id;
+  target: {
+    remote_id: string;
+    source_revision: SourceRevision;
+  };
+  action: {
+    kind: 'mail.draft.delete';
+    created_by: {
+      operation_id: Id;
+      content_version: ContentVersion;
+    };
   };
   effects: {
     /**

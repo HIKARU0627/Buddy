@@ -444,6 +444,48 @@ test('undo is refused for an operation that is not an automatic action, after th
   });
 });
 
+test('a draft deletion is made only as the compensation of an undo (ADR 0156)', async () => {
+  await withStore((db) => {
+    // 取り消しでない下書きの削除は、画面の承認待ちでも方針の自動承認でも作らない。
+    assert.deepEqual(
+      reasons(
+        exec(
+          db,
+          createCommand('op-delete', { operation_kind: 'mail.draft.delete' }),
+          T0,
+        ),
+      ),
+      ['undo_only_kind'],
+    );
+    assert.equal(operationState(db, 'op-delete'), undefined);
+    committed(
+      exec(
+        db,
+        createCommand('op-draft', {
+          auto: true,
+          operation_kind: 'mail.draft.create',
+        }),
+        T0,
+      ),
+    );
+    finishAuto(db, 'op-draft', T0 + 5);
+    committed(
+      exec(
+        db,
+        createCommand('op-delete', {
+          operation_kind: 'mail.draft.delete',
+          undo_of: { undo_id: 'u-draft', operation_id: 'op-draft' },
+        }),
+        T0 + 10,
+      ),
+    );
+    assert.deepEqual(
+      undoRows(db).map((row) => (row as { status: string }).status),
+      ['in_progress'],
+    );
+  });
+});
+
 test('three compensation failures in a row stop the breaker; a success in between resets the run', async () => {
   const undoAndFail = (
     db: SqliteDatabase,

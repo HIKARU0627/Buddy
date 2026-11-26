@@ -12,6 +12,8 @@ export const OPERATION_KINDS = [
   'calendar.event.update',
   'calendar.event.create_with_attendees',
   'mail.trash',
+  // 自動で作った返信の下書きを取り消しで消す補償の操作だけに使う（ADR 0156）。
+  'mail.draft.delete',
 ] as const;
 
 export type OperationKind = (typeof OPERATION_KINDS)[number];
@@ -56,6 +58,7 @@ export const OPERATION_STEP_KINDS = [
   'update_event',
   'create_event_with_attendees',
   'trash_mail',
+  'delete_draft',
 ] as const;
 export type OperationStepKind = (typeof OPERATION_STEP_KINDS)[number];
 
@@ -171,6 +174,17 @@ export const OPERATION_KIND_RULES: Readonly<
     precondition_target_read: 'mail.message',
     preconditions: ['recheck_before_dispatch'],
     steps: ['trash_mail'],
+  },
+  // 取り消しの補償（ADR 0156）。対象は Buddy が作った下書きで、送出の直前に下書きを読み直し、版と目印を確かめる。
+  // 結果不明は下書きの ID で読み、無ければ削除済みとみなす。
+  'mail.draft.delete': {
+    route: 'remote_mutation',
+    reconcile_scope: 'exact_target',
+    lookup: 'by_remote_id',
+    lookup_read: 'mail.draft',
+    precondition_target_read: 'mail.draft',
+    preconditions: ['conditional_request', 'recheck_before_dispatch'],
+    steps: ['delete_draft'],
   },
 };
 

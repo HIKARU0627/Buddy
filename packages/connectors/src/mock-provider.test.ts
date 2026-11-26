@@ -57,6 +57,7 @@ test(
         'mail.labels.change',
         'mail.drafts.create',
         'mail.drafts.send',
+        'mail.drafts.delete',
       ],
     });
     assert.equal(await connector.readPermission('other-account'), null);
@@ -377,6 +378,7 @@ test(
         ['mail.labels.change', 'RemoteMutation', 0],
         ['mail.draft.create', 'RemoteMutation', 0],
         ['mail.draft.send', 'RemoteMutation', 0],
+        ['mail.draft.delete', 'RemoteMutation', 0],
       ],
     );
     assert.ok(
@@ -508,6 +510,7 @@ test(
       subject: 'Re: （合成）来週の打ち合わせの日程',
       body: '（合成）承知しました。',
       status: 'draft',
+      revision: 'd1',
       send_count: 0,
     });
     assert.deepEqual(await connector.findDraftsByMarker(MARKER), [
@@ -574,5 +577,95 @@ test(
       req.end();
     });
     assert.equal(listed, 400);
+  },
+);
+
+// ADR 0156: 下書きを ID で読み、版が同じで送信していない下書きだけを消す。期待値は手で書いた値。
+test(
+  '下書きを ID で読み、版が同じなら消せる。版が進んだ・送信済み・無い下書きは消さない',
+  OPTIONS,
+  async (t) => {
+    const provider = await startProvider(t, { now: () => CLOCK });
+    const connector = createMockMailConnector({ baseUrl: provider.url });
+    const created = await connector.createDraft(
+      { operation_id: DRAFT_OPERATION, attempt_id: 'attempt-1' },
+      {
+        to: ['synthetic-sender@example.com'],
+        cc: [],
+        subject: 'Re: （合成）来週の打ち合わせの日程',
+        body: '（合成）承知しました。',
+        in_reply_to: 'mail-001',
+        marker: MARKER,
+      },
+    );
+    assert.deepEqual(created, {
+      kind: 'applied',
+      status: 201,
+      value: { draft_id: 'draft-001' },
+    });
+    assert.deepEqual(await connector.readDraft('draft-001'), {
+      draft_id: 'draft-001',
+      revision: 'd1',
+      status: 'draft',
+      marker: MARKER,
+      in_reply_to: 'mail-001',
+      to: ['synthetic-sender@example.com'],
+      cc: [],
+      subject: 'Re: （合成）来週の打ち合わせの日程',
+      body: '（合成）承知しました。',
+    });
+    assert.equal(await connector.readDraft('draft-999'), null);
+    // 本人が編集すると版が進み、前の版での削除は 409。
+    provider.truth.editDraft('draft-001', { body: '（合成）本人が直した本文' });
+    assert.equal((await connector.readDraft('draft-001'))?.revision, 'd2');
+    const identity = { operation_id: 'op-undo', attempt_id: 'attempt-2' };
+    assert.deepEqual(
+      await connector.deleteDraft(identity, {
+        draft_id: 'draft-001',
+        source_revision: 'd1',
+      }),
+      { kind: 'rejected', status: 409, code: 'precondition_failed' },
+    );
+    assert.deepEqual(
+      await connector.deleteDraft(identity, {
+        draft_id: 'draft-999',
+        source_revision: 'd1',
+      }),
+      { kind: 'rejected', status: 404, code: 'not_found' },
+    );
+    assert.deepEqual(
+      await connector.deleteDraft(identity, {
+        draft_id: 'draft-001',
+        source_revision: 'd2',
+      }),
+      { kind: 'applied', status: 200, value: { draft_id: 'draft-001' } },
+    );
+    assert.equal(await connector.readDraft('draft-001'), null);
+    assert.deepEqual(
+      provider.truth.receipts().map((r) => [r.route, r.response_status]),
+      [
+        ['mail.draft.create', 201],
+        ['mail.draft.delete', 409],
+        ['mail.draft.delete', 404],
+        ['mail.draft.delete', 200],
+      ],
+    );
+    assert.equal(provider.truth.stateChangeCount(), 2);
+    // 送信済みの下書きは消さない。
+    await connector.createDraft(
+      { operation_id: 'op-2', attempt_id: 'attempt-3' },
+      { to: ['a@example.com'], subject: 's', body: 'b' },
+    );
+    await connector.sendDraft(
+      { operation_id: 'op-2', attempt_id: 'attempt-4' },
+      'draft-002',
+    );
+    assert.deepEqual(
+      await connector.deleteDraft(identity, {
+        draft_id: 'draft-002',
+        source_revision: 'd1',
+      }),
+      { kind: 'rejected', status: 409, code: 'precondition_failed' },
+    );
   },
 );

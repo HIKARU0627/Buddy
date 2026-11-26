@@ -72,6 +72,8 @@ export const DESKTOP_IPC_CHANNELS = [
   'desktop.household_import',
   // 分類ごとの予算の変更（ADR 0166）。
   'desktop.household_budget',
+  // 家計の記録の手入力（ADR 0167）。
+  'desktop.household_add',
 ] as const;
 
 export type DesktopIpcChannel = (typeof DESKTOP_IPC_CHANNELS)[number];
@@ -225,6 +227,8 @@ export const DESKTOP_PAIRING_SCREEN_CHANNELS: readonly DesktopIpcChannel[] = [
   'desktop.household_import',
   // 分類ごとの予算の変更（ADR 0166）も本人の画面操作。
   'desktop.household_budget',
+  // 家計の記録の手入力（ADR 0167）も本人の画面操作。
+  'desktop.household_add',
 ];
 
 // ロック解除済みのときだけ受け付ける一覧（内容なので、ロック中・不明は出さない。B03-06）。
@@ -362,6 +366,7 @@ export const DESKTOP_ROLE_CHANNELS: Readonly<
     'desktop.household_intake',
     'desktop.household_import',
     'desktop.household_budget',
+    'desktop.household_add',
   ],
   input: ['desktop.get_state', 'desktop.turn_submit', 'desktop.canvas_summon'],
 };

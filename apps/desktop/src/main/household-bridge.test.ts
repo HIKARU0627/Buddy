@@ -803,3 +803,58 @@ test('a budget change sends the budget revision it read and re-reads', async () 
     reason: 'outcome_unknown',
   });
 });
+
+test('a manual entry is sent as typed and the month of the entry is read', async () => {
+  const r = rig();
+  ok(await r.bridge.show(null));
+  const entry = {
+    direction: 'expense' as const,
+    amount_yen: 680,
+    occurred_on: '2030-10-04',
+    occurred_time: null,
+    category: 'food' as const,
+    merchant: '合成のパン屋',
+    memo: '現金',
+    payment: null,
+  };
+  r.post = () => ({
+    kind: 'response',
+    status: 200,
+    body: {
+      ...entry,
+      entry_id: uuid(0xc09),
+      content_revision: '1',
+      source_kind: 'manual',
+      created_at: '2030-11-05T00:00:00Z',
+      updated_at: '2030-11-05T00:00:00Z',
+    },
+  });
+  const view = ok(await r.bridge.add(entry));
+  assert.equal(view.month, '2030-10');
+  assert.deepEqual(r.posts(), [
+    {
+      method: 'POST',
+      path: '/v1/household/entries',
+      body: { entry },
+      scoped: true,
+      screenOperation: true,
+      expectedScopeId: SCOPE,
+    },
+  ]);
+  assert.equal(r.calls.at(-1)?.path, '/v1/household/months/2030-10');
+  r.post = () => ({
+    kind: 'response',
+    status: 422,
+    body: { code: 'invalid_input' },
+  });
+  assert.deepEqual(await r.bridge.add(entry), {
+    ok: false,
+    reason: 'core_rejected',
+  });
+  r.post = () => ({ kind: 'unknown' });
+  assert.deepEqual(await r.bridge.add(entry), {
+    ok: false,
+    reason: 'outcome_unknown',
+  });
+  assert.equal(r.posts().length, 3);
+});

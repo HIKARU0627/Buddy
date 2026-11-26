@@ -67,12 +67,12 @@ CI が通ればマージしてよいと本人から許可を受けている。�
 1. ADR 0166 の PR をマージする（まだなら）。
 2. 実在のデータでの確かめ（本人の環境で）: 実在の通知メールで項目名の一覧、楽天カードの送信元ドメイン（公式のページで確かめ直す）、外部の家計簿サービスの実在の書き出しで日付・金額の書き方と文字コード（U336）。Electron の画面の見た目と操作。
 3. 段階 2 の残り: 請求のメールを「請求予定」として支払い済みと分ける（実在の請求メールの形を確かめてから）。定期の支出と固定費の目安は ADR 0165、分類ごとの予算は ADR 0166（マイグレーション 0019。DB の版は 19、STRICT の表は 63）。
-4. 段階 3: メールの届かない支出の補い（レシートの写真、会話の一言、明細の CSV）と、突き合わせによる二重の登録の防止（U335 の見直しを含む）。手入力の記録もここで作る。
+4. 段階 3 の残り: レシートの写真・会話の一言からの補いと、突き合わせによる二重の登録の防止（U335・U339 の見直しを含む）。手入力の記録は ADR 0167。
 5. B13 の残り: 予定の取り消し（U310 は予定だけ暫定 b）、状態欄の安全停止の値（U315）、候補の取り込みの入口。
 
 ## 未決事項
 
-`docs/b00/contract-map.md` の U318〜U338 が家計簿の分。暫定の決定のうち、本人に確かめたいもの:
+`docs/b00/contract-map.md` の U318〜U339 が家計簿の分。暫定の決定のうち、本人に確かめたいもの:
 
 - U322: データ鍵を作り直すときの店名の規則（未決）。
 - U323: 速報と確定の二度の通知のうち確定だけを記録すること。
@@ -87,6 +87,7 @@ CI が通ればマージしてよいと本人から許可を受けている。�
 - U336: 書き出しの日付・金額の書き方と文字コード（実在の書き出しで確かめる）。
 - U337: 定期の支出とみなす条件（3 か月以上・最後が今月か先月・月 2 回以下・金額の幅が 2 倍以内）。
 - U338: 予算は支出の分類ごとの月の金額だけ（全体・収入の予算はなく、超えても知らせない）。
+- U339: 手入力の記録は利用通知・書き出しと突き合わせないこと。
 
 ## 試験の動かし方
 
@@ -95,5 +96,5 @@ CI が通ればマージしてよいと本人から許可を受けている。�
 - コミットの前に `pnpm run security:staged`、push の前に `pnpm run security:scan`。
 - 公開物の検査は、`example.com`・`example.org`・`example.net`・`example.invalid` 以外のメールアドレスの形を拒む。試験の送り主は合成の一覧を引数で渡している（`checkHouseholdNoticeSender` の第 2 引数、`createHouseholdMailIntake` の `issuers`）。検査を避ける書き方はしない。
 - マイグレーションを足すときは、`packages/storage/src/migrations.test.ts` の一覧・hash・表の数、`packages/domain/src/backup-plan.ts` の表の分類、`packages/storage/src/policy.ts`、`tests/fixtures/backup-restore-cases.json`、`packages/storage/migrations/README.md` をそろえ、試験の中の DB の版（`store-binding`・`db-worker`・`backup-ops`・`backup-store`・`operation-retention`・`voice-store`・`restore-aftermath-store`・`apps/core` の `backup`・`restore`・`forget-ledger` の試験、`tests/integration/b05-expectations.json`・`b07-expectations.json`）を上げる。除外する表なら `backup-store.test.ts` と `apps/core/src/backup.test.ts` の除外の一覧も直す。
-- 次の ADR の番号は 0167、次の未決事項の番号は U339。
+- 次の ADR の番号は 0168、次の未決事項の番号は U340。
 - この環境の既定の Node.js が 22 のときは、24 系を PATH の先頭に置いてから pnpm を使う（`pnpm install` が版の違いで止まる）。clone の履歴が浅いと push の前の検査（`pnpm run security:scan`）が止まるので、`git fetch --unshallow` で全履歴を取ってから検査する。

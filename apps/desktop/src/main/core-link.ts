@@ -152,6 +152,7 @@ export const HOUSEHOLD_CHANNELS: readonly DesktopIpcChannel[] = [
   'desktop.household_intake',
   'desktop.household_import',
   'desktop.household_budget',
+  'desktop.household_add',
 ];
 
 // 連携の接続の一覧と取得範囲の変更のチャネル（B08-02 P3・B09-05、ADR 0142）。中枢の画面の端末でだけ使える
@@ -1299,7 +1300,8 @@ export class DesktopCoreLink {
         raw.channel !== 'desktop.household_delete' &&
         raw.channel !== 'desktop.household_intake' &&
         raw.channel !== 'desktop.household_import' &&
-        raw.channel !== 'desktop.household_budget')
+        raw.channel !== 'desktop.household_budget' &&
+        raw.channel !== 'desktop.household_add')
     )
       return this.#reject(
         echoRequestId(raw),
@@ -1334,7 +1336,9 @@ export class DesktopCoreLink {
                     this.#options.pickHouseholdExport ??
                       (() => Promise.resolve(null)),
                   )
-                : await this.#household.budget(raw.payload.items);
+                : raw.channel === 'desktop.household_budget'
+                  ? await this.#household.budget(raw.payload.items)
+                  : await this.#household.add(raw.payload.entry);
     return this.#withinGeneration(
       generation,
       this.#operationOutcome(

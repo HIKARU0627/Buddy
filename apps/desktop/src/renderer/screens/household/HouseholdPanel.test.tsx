@@ -92,6 +92,9 @@ const ACTIONS: HouseholdActions = {
   startBudget: noop,
   cancelBudget: noop,
   saveBudget: noop,
+  startAdd: noop,
+  cancelAdd: noop,
+  addEntry: noop,
 };
 
 const render = (node: ReactNode) =>
@@ -353,4 +356,15 @@ test('the budget block compares the month spending with the budget, and the edit
   assert(buttons(editing).includes('予算を保存する'));
   // 読めていなければ出さない。
   assert.doesNotMatch(text(panel({ view: view([entry(0)]), seq: 2 })), /予算/u);
+});
+
+test('the add block offers to add a record and the form lists the fields', () => {
+  const closed = panel({ view: view([entry(0)]), seq: 2 });
+  assert(buttons(closed).includes('記録を手で足す'));
+  const open = panel({ view: view([entry(0)]), seq: 2, adding: true });
+  for (const id of ['amount', 'date', 'time', 'merchant', 'memo', 'payment'])
+    assert.match(open, new RegExp(`id="household-add-${id}"`, 'u'));
+  assert.match(open, /id="household-add-direction"/u);
+  assert(buttons(open).includes('足す'));
+  assert.match(text(open), /カード番号・口座番号は入れないでください/u);
 });

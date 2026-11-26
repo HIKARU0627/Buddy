@@ -165,6 +165,7 @@ test('requests go only to the contract channels', async () => {
       'desktop.household_intake',
       'desktop.household_import',
       'desktop.household_budget',
+      'desktop.household_add',
     ],
   );
   // 気づきの一覧・状態の変更（B11-05）は従来の窓（標準の端末画面）でも使う。連携の一覧・取得範囲の変更
@@ -187,6 +188,7 @@ test('requests go only to the contract channels', async () => {
     'desktop.household_intake',
     'desktop.household_import',
     'desktop.household_budget',
+    'desktop.household_add',
   ];
   for (const channel of legacy) {
     const request = { channel, request_id: 'r', payload: null };
@@ -335,6 +337,7 @@ const EXPECTED_ROLE_CHANNELS: Readonly<Record<string, readonly string[]>> = {
     'desktop.household_intake',
     'desktop.household_import',
     'desktop.household_budget',
+    'desktop.household_add',
   ],
 };
 const EXPECTED_ROLE_NOTIFICATIONS: Readonly<Record<string, readonly string[]>> =

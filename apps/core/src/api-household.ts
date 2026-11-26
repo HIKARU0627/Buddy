@@ -23,7 +23,11 @@ import {
   isHouseholdMonth,
 } from '@buddy/domain';
 import type { HouseholdBudgetItem, HouseholdEntryContent } from '@buddy/domain';
-import { openHouseholdBudget, sealHouseholdBudget } from '@buddy/storage';
+import {
+  openHouseholdBudget,
+  openHouseholdContent,
+  sealHouseholdBudget,
+} from '@buddy/storage';
 import type { DataKeyMaterial, DbWorkerClient } from '@buddy/storage';
 import { apiErrorResponse } from './api-server.js';
 import type { ApiRouteHandler } from './api-server.js';
@@ -63,6 +67,7 @@ export interface HouseholdRoutes {
     readonly changeHouseholdSettings: ApiRouteHandler;
     readonly importHouseholdRows: ApiRouteHandler;
     readonly changeHouseholdBudget: ApiRouteHandler;
+    readonly createHouseholdEntry: ApiRouteHandler;
   };
 }
 
@@ -359,6 +364,101 @@ export function createHouseholdRoutes(
     return { status: 200, body: changed.value };
   };
 
+  // 家計の記録の手入力（ADR 0167）。出所の鍵は request_id から作るので、同じ要求の再送は二つ目を作らない。店名があり
+  // 分類が未分類でなければ、本人の規則として覚える（分類の変更と同じ。ADR 0158）。
+  const createEntry: ApiRouteHandler = async (request) => {
+    const body = request.body ?? {};
+    const requestId = stringOf(body['request_id']);
+    const fail = failWith(requestId);
+    const raw = (body['entry'] ?? {}) as Record<string, unknown>;
+    const content = {
+      direction: raw['direction'],
+      amount_yen: raw['amount_yen'],
+      occurred_on: raw['occurred_on'],
+      occurred_time: raw['occurred_time'] ?? null,
+      category: raw['category'],
+      merchant: raw['merchant'] ?? null,
+      memo: raw['memo'] ?? null,
+      payment: raw['payment'] ?? null,
+    };
+    if (householdContentErrors(content).length > 0)
+      return fail(422, 'invalid_input');
+    const dataKey = await loadKey();
+    if (dataKey === null) return fail(503, 'dependency_unavailable');
+    const ports = {
+      client: options.store,
+      dataKey,
+      sha256Hex,
+      newId,
+      now: () => new Date(options.now()).toISOString(),
+    };
+    const entry = content as HouseholdEntryContent;
+    const recorded = await recordHouseholdEntry(
+      ports,
+      { kind: 'manual', entry_id: requestId },
+      entry,
+    );
+    if (recorded.outcome !== 'created' && recorded.outcome !== 'duplicate') {
+      const failure = failureStatus(recorded.outcome, recorded.reasons);
+      return fail(
+        failure.status === 409 ? 503 : failure.status,
+        failure.code === 'conflict' ? 'dependency_unavailable' : failure.code,
+      );
+    }
+    if (
+      recorded.outcome === 'created' &&
+      entry.merchant !== null &&
+      entry.category !== 'uncategorized'
+    ) {
+      const merchant = HouseholdMerchantKey.fromDataKey(dataKey).merchant(
+        entry.merchant,
+      );
+      if (merchant !== null)
+        await options.store.household({
+          kind: 'household.rule_set',
+          merchant_key: merchant,
+          category: entry.category,
+          origin: 'user',
+          now: ports.now(),
+        });
+    }
+    // 記録した（または記録済みの）記録を読み直して返す。消した記録の再送は 409（作り直さない）。
+    const got = await options.store.household({
+      kind: 'household.get',
+      entry_id: recorded.entry_id,
+    });
+    if (!got.ok || got.value === null)
+      return fail(503, 'dependency_unavailable');
+    if (got.value.state !== 'active' || got.value.content === null)
+      return fail(409, 'conflict');
+    const record = got.value;
+    const envelope = record.content as NonNullable<typeof record.content>;
+    const opened = openHouseholdContent(
+      dataKey,
+      record.entry_id,
+      Number(record.content_revision),
+      {
+        formatVersion: envelope.format_version,
+        keyId: envelope.key_id,
+        nonce: envelope.nonce,
+        ciphertext: envelope.ciphertext,
+        tag: envelope.tag,
+      },
+    );
+    if (!opened.ok) return fail(503, 'dependency_unavailable');
+    return {
+      status: 200,
+      body: entryBody({
+        entry_id: record.entry_id,
+        source_kind: record.source_kind,
+        content_revision: record.content_revision,
+        created_at: record.created_at,
+        updated_at: record.updated_at,
+        content: opened.content,
+      }),
+    };
+  };
+
   // 分類ごとの予算を丸ごと差し替える（ADR 0166）。版は保存層が同じ transaction で照合する。
   const changeBudget: ApiRouteHandler = async (request) => {
     const body = request.body ?? {};
@@ -524,6 +624,7 @@ export function createHouseholdRoutes(
       changeHouseholdSettings: changeSettings,
       importHouseholdRows: importRows,
       changeHouseholdBudget: changeBudget,
+      createHouseholdEntry: createEntry,
     },
   };
 }

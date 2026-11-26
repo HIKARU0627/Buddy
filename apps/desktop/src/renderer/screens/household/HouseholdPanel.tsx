@@ -19,6 +19,7 @@ import { StatusText } from '../../components/StatusText.js';
 import {
   DIRECTION_LABELS,
   FETCH_LABELS,
+  ADD_PLACE,
   BUDGET_PLACE,
   HOUSEHOLD_LABELS,
   IMPORT_PLACE,
@@ -32,6 +33,7 @@ import {
   dayText,
   elapsedText,
   importResultText,
+  manualEntryFromInput,
   monthText,
   monthsSeenText,
   yenText,
@@ -39,6 +41,7 @@ import {
 import type {
   HouseholdActions,
   HouseholdViewState,
+  ManualEntryInput,
 } from '../../state/household-state.js';
 import type { StatusLine } from '../../tones.js';
 
@@ -342,6 +345,179 @@ function IntakeBlock({
           {HOUSEHOLD_LABELS.intakeResumeNote}
         </p>
       ) : null}
+      {notice === null ? null : (
+        <InlineNotice tone={notice.tone} text={notice.text} />
+      )}
+    </div>
+  );
+}
+
+const FIELD_CLASS =
+  'rounded-md border border-separator bg-transparent px-2 py-1 text-sm text-foreground';
+
+// 手入力の欄（ADR 0167）。向き・金額・日付・時刻・分類・店名・メモ・支払い手段。
+function AddEntryForm({
+  state,
+  actions,
+}: {
+  readonly state: HouseholdViewState;
+  readonly actions: HouseholdActions;
+}) {
+  const [input, setInput] = useState<ManualEntryInput>({
+    direction: 'expense',
+    amount: '',
+    date: '',
+    time: '',
+    category: 'uncategorized',
+    merchant: '',
+    memo: '',
+    payment: '',
+  });
+  const entry = manualEntryFromInput(input);
+  const mine = state.busy === ADD_PLACE;
+  const set = (patch: Partial<ManualEntryInput>) =>
+    setInput((prev) => ({ ...prev, ...patch }));
+  const field = (
+    key: 'amount' | 'date' | 'time' | 'merchant' | 'memo' | 'payment',
+    label: string,
+    extra: { readonly inputMode?: 'numeric'; readonly type?: string } = {},
+  ) => {
+    const id = `household-add-${key}`;
+    return (
+      <label htmlFor={id} className="flex flex-col gap-0.5 text-xs text-muted">
+        {label}
+        <input
+          id={id}
+          value={input[key]}
+          disabled={mine}
+          {...(extra.inputMode === undefined
+            ? {}
+            : { inputMode: extra.inputMode })}
+          type={extra.type ?? 'text'}
+          onChange={(event) => set({ [key]: event.currentTarget.value })}
+          className={FIELD_CLASS}
+        />
+      </label>
+    );
+  };
+  return (
+    <div
+      role="group"
+      aria-label={HOUSEHOLD_LABELS.addTitle}
+      className="flex flex-col gap-2 rounded-md border border-separator p-3"
+    >
+      <p className="text-xs text-muted">{HOUSEHOLD_LABELS.addNote}</p>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <label
+          htmlFor="household-add-direction"
+          className="flex flex-col gap-0.5 text-xs text-muted"
+        >
+          {HOUSEHOLD_LABELS.addDirection}
+          <select
+            id="household-add-direction"
+            value={input.direction}
+            disabled={mine}
+            onChange={(event) => {
+              const direction = event.currentTarget
+                .value as ManualEntryInput['direction'];
+              set({
+                direction,
+                category: categoryChoices(direction)[0]
+                  ?.id as ManualEntryInput['category'],
+              });
+            }}
+            className={FIELD_CLASS}
+          >
+            {(['expense', 'income', 'transfer'] as const).map((direction) => (
+              <option key={direction} value={direction}>
+                {DIRECTION_LABELS[direction]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label
+          htmlFor="household-add-category"
+          className="flex flex-col gap-0.5 text-xs text-muted"
+        >
+          {HOUSEHOLD_LABELS.category}
+          <select
+            id="household-add-category"
+            value={input.category}
+            disabled={mine || categoryChoices(input.direction).length < 2}
+            onChange={(event) =>
+              set({
+                category: event.currentTarget
+                  .value as ManualEntryInput['category'],
+              })
+            }
+            className={FIELD_CLASS}
+          >
+            {categoryChoices(input.direction).map((choice) => (
+              <option key={choice.id} value={choice.id}>
+                {choice.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        {field('amount', HOUSEHOLD_LABELS.addAmount, { inputMode: 'numeric' })}
+        {field('date', HOUSEHOLD_LABELS.addDate, { type: 'date' })}
+        {field('time', HOUSEHOLD_LABELS.addTime)}
+        {field('merchant', HOUSEHOLD_LABELS.addMerchant)}
+        {field('payment', HOUSEHOLD_LABELS.addPayment)}
+        {field('memo', HOUSEHOLD_LABELS.addMemo)}
+      </div>
+      {entry === null &&
+      (input.amount !== '' || input.date !== '' || input.time !== '') ? (
+        <p className="text-xs text-danger">{HOUSEHOLD_LABELS.addInvalid}</p>
+      ) : null}
+      <div className="flex flex-wrap justify-end gap-2">
+        <Button
+          size="sm"
+          variant="secondary"
+          isDisabled={mine}
+          onPress={actions.cancelAdd}
+        >
+          {HOUSEHOLD_LABELS.cancel}
+        </Button>
+        <Button
+          size="sm"
+          variant="primary"
+          isDisabled={mine || entry === null || state.busy !== null}
+          onPress={() => {
+            if (entry !== null) actions.addEntry(entry);
+          }}
+        >
+          {mine ? HOUSEHOLD_LABELS.adding : HOUSEHOLD_LABELS.addSubmit}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function AddBlock({
+  state,
+  actions,
+}: {
+  readonly state: HouseholdViewState;
+  readonly actions: HouseholdActions;
+}) {
+  const notice = noticeAt(state, ADD_PLACE);
+  return (
+    <div className="flex flex-col gap-1.5">
+      {state.adding ? (
+        <AddEntryForm state={state} actions={actions} />
+      ) : (
+        <div className="flex justify-end">
+          <Button
+            size="sm"
+            variant="secondary"
+            isDisabled={state.busy !== null}
+            onPress={actions.startAdd}
+          >
+            {HOUSEHOLD_LABELS.addOpen}
+          </Button>
+        </div>
+      )}
       {notice === null ? null : (
         <InlineNotice tone={notice.tone} text={notice.text} />
       )}
@@ -671,6 +847,7 @@ export function HouseholdPanel({
           )}
         </>
       )}
+      {loaded ? <AddBlock state={state} actions={actions} /> : null}
       {loaded ? <BudgetBlock state={state} actions={actions} /> : null}
       {!loaded || view.recurring === null ? null : (
         <RecurringBlock recurring={view.recurring} />

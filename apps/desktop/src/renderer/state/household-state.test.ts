@@ -20,6 +20,7 @@ import {
   budgetUseText,
   dayText,
   importResultText,
+  manualEntryFromInput,
   monthText,
   yenText,
 } from './household-state.js';
@@ -476,5 +477,88 @@ test('the budget editor opens only with a read budget, saves once and closes on 
   assert.match(
     store.snapshot().notice?.text ?? '',
     /予算はその後に変わっていました/u,
+  );
+});
+
+test('a manual entry is built from the inputs and refused when the amount, date or time is malformed', () => {
+  const base = {
+    direction: 'expense' as const,
+    amount: '６８０',
+    date: '2030-11-04',
+    time: '08:15',
+    category: 'food' as const,
+    merchant: ' 合成のパン屋 ',
+    memo: '',
+    payment: '',
+  };
+  assert.deepEqual(manualEntryFromInput(base), {
+    direction: 'expense',
+    amount_yen: 680,
+    occurred_on: '2030-11-04',
+    occurred_time: '08:15',
+    category: 'food',
+    merchant: '合成のパン屋',
+    memo: null,
+    payment: null,
+  });
+  // 収入にしたら分類は収入にそろえる。
+  assert.equal(
+    manualEntryFromInput({ ...base, direction: 'income' })?.category,
+    'income',
+  );
+  for (const over of [
+    { amount: '0' },
+    { amount: '1.5' },
+    { date: '2030-02-30' },
+    { date: '1999-12-31' },
+    { date: '' },
+    { time: '8:15' },
+  ])
+    assert.equal(
+      manualEntryFromInput({ ...base, ...over }),
+      null,
+      JSON.stringify(over),
+    );
+});
+
+test('the add form opens only after a read, sends once and closes on success', async () => {
+  const fake = fakeApi();
+  const store = new HouseholdStore(fake.api);
+  store.actions.startAdd();
+  assert.equal(store.snapshot().adding, false);
+  store.actions.refresh();
+  fake.answer((request) => okResponse(request, view([entry(0)])));
+  await settle();
+  store.actions.startAdd();
+  assert.equal(store.snapshot().adding, true);
+  const manual = {
+    direction: 'expense' as const,
+    amount_yen: 680,
+    occurred_on: '2030-11-04',
+    occurred_time: null,
+    category: 'food' as const,
+    merchant: null,
+    memo: null,
+    payment: null,
+  };
+  store.actions.addEntry(manual);
+  store.actions.addEntry(manual);
+  assert.equal(fake.sent.length, 2);
+  assert.equal(fake.sent.at(-1)?.channel, 'desktop.household_add');
+  assert.deepEqual(fake.sent.at(-1)?.payload, { entry: manual });
+  fake.answer((request) =>
+    okResponse(request, view([entry(0), entry(1)], { list_seq: 3 })),
+  );
+  await settle();
+  assert.equal(store.snapshot().adding, false);
+  assert.equal(store.snapshot().notice?.text, '記録を足しました。');
+  store.actions.startAdd();
+  store.actions.addEntry(manual);
+  fake.answer((request) => rejected(request, 'core_rejected'));
+  await settle();
+  assert.equal(store.snapshot().adding, true);
+  assert.match(
+    store.snapshot().notice?.text ?? '',
+    /中身を受け付けませんでした/u,
   );
 });

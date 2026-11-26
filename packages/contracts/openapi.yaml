@@ -2172,6 +2172,49 @@ paths:
           $ref: '#/components/responses/RateLimited'
         '503':
           $ref: '#/components/responses/Unavailable'
+  /v1/household/entries:
+    post:
+      operationId: createHouseholdEntry
+      summary: 家計の記録の手入力
+      description: 本人がロック解除済みの画面で、メールにも書き出しにもない家計の記録（現金の支出など）を手で足す。中枢は家計の記録の検査をし直し、向きと違う分類・長い数字の並び（カード番号・口座番号）などは 422。出所の鍵は request_id から作るので、同じ要求の再送は二つ目を作らず、記録済みの記録を返す。店名があり分類が未分類でなければ、本人の規則として覚える。データ鍵が読めない・成否が不明なときは 503（ADR 0158・0167）。
+      x-buddy-core-checks:
+        - device_token
+        - home_network
+        - command_scope
+        - unlocked
+        - screen_operation
+      parameters:
+        - $ref: '#/components/parameters/InputOrigin'
+        - $ref: '#/components/parameters/LockState'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas/buddy.schema.json#/$defs/HouseholdEntryCreateRequest
+      responses:
+        '200':
+          description: 足した（または記録済みの）記録。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/HouseholdEntry
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/Gone'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
 components:
   securitySchemes:
     deviceToken:

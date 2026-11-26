@@ -266,6 +266,11 @@ export const API_ROUTES: readonly ApiRoute[] = [
     body: 'HouseholdBudgetChangeRequest',
     ...SCREEN,
   }),
+  // 家計の記録の手入力（ADR 0167）。
+  route('createHouseholdEntry', 'POST', '/v1/household/entries', {
+    body: 'HouseholdEntryCreateRequest',
+    ...SCREEN,
+  }),
 ];
 
 export type RouteMatch =

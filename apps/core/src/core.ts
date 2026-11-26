@@ -43,6 +43,7 @@ import type {
   TlsKeyStore,
 } from '@buddy/platform';
 import { createCandidateRoutes } from './api-candidates.js';
+import { createHouseholdRoutes } from './api-household.js';
 import { createCandidateListRefresh } from './candidate-list-refresh.js';
 import {
   CONNECTION_REVISION_CHECKED_ROUTES,
@@ -1630,6 +1631,17 @@ async function startHttps(
                 }),
           },
   });
+  // 家計簿の月ごとの合計・1 か月・分類の変更・削除（ADR 0161）。データ鍵は保持せず要求ごとに読む。今月は本人の
+  // タイムゾーン（気づきの一覧と同じ出所）で決め、決まっていなければ月ごとの合計を 503 で閉じる。
+  const householdRoutes = createHouseholdRoutes({
+    store,
+    dataKey: async () => {
+      const result = await keyStore.loadDataKey();
+      return result.ok ? result.dataKey : null;
+    },
+    zone: () => deviceTimeZone(),
+    now: () => now().getTime(),
+  });
   const candidateHandlers = {
     ...candidateRoutes.handlers,
     listCandidates: candidateRefresh.wrap(
@@ -1832,6 +1844,7 @@ async function startHttps(
     connectionRoutes.handlers,
     candidateHandlers,
     autoActionRoutes.handlers,
+    householdRoutes.handlers,
     voiceRoutes.handlers,
     ...(oauthService === undefined ? [] : [oauthService.handlers]),
   ].flatMap((handlers) => Object.keys(handlers));
@@ -1858,6 +1871,7 @@ async function startHttps(
         ...connectionRoutes.handlers,
         ...candidateHandlers,
         ...autoActionRoutes.handlers,
+        ...householdRoutes.handlers,
         ...voiceRoutes.handlers,
         ...(oauthService === undefined ? {} : oauthService.handlers),
       },

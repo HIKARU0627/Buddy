@@ -182,6 +182,24 @@
       "$ref": "#/$defs/CandidateStateCommand"
     },
     {
+      "$ref": "#/$defs/HouseholdOverview"
+    },
+    {
+      "$ref": "#/$defs/HouseholdMonth"
+    },
+    {
+      "$ref": "#/$defs/HouseholdCategoryChangeRequest"
+    },
+    {
+      "$ref": "#/$defs/HouseholdCategoryChangeResult"
+    },
+    {
+      "$ref": "#/$defs/HouseholdEntryDeleteRequest"
+    },
+    {
+      "$ref": "#/$defs/HouseholdEntryDeleteResult"
+    },
+    {
       "$ref": "#/$defs/CandidateEvidenceRequest"
     },
     {
@@ -6198,6 +6216,409 @@
       ],
       "additionalProperties": false,
       "description": "気づきの状態の変更（設計 11 §4、ADR 0073・0130）。本人の画面操作だけが送る。時計・根拠の観測による遷移（snooze_elapsed・deadline_passed・source_out_of_scope・overlap_resolved）は受け付けない。expected_state が今の状態と違えば 409。"
+    },
+    "HouseholdCategoryId": {
+      "type": "string",
+      "enum": [
+        "food",
+        "cash_card",
+        "transport",
+        "hobby",
+        "daily_goods",
+        "clothing_beauty",
+        "special",
+        "social",
+        "housing",
+        "utilities",
+        "car",
+        "insurance",
+        "tax_social",
+        "education",
+        "communication",
+        "health_medical",
+        "other",
+        "uncategorized",
+        "income",
+        "transfer"
+      ],
+      "description": "家計簿の分類（ADR 0158、U319）。支出の 16 分類（一般的な家計簿の大項目）・その他・未分類は支出、income は収入、transfer は振替だけに使う。表示名は domain の HOUSEHOLD_CATEGORIES が持つ。"
+    },
+    "HouseholdDirection": {
+      "type": "string",
+      "enum": ["expense", "income", "transfer"],
+      "description": "家計の記録の向き（ADR 0158）。振替（カードの引き落とし・口座間の移動）は支出・収入の合計に入れない（U321）。"
+    },
+    "HouseholdRevision": {
+      "type": "string",
+      "pattern": "^[1-9][0-9]{0,15}$",
+      "description": "家計の記録の内容版（1 から。分類を変えるたびに 1 進む。ADR 0158）。変更・削除の照合に使う。"
+    },
+    "HouseholdEntry": {
+      "type": "object",
+      "properties": {
+        "entry_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "content_revision": {
+          "$ref": "#/$defs/HouseholdRevision"
+        },
+        "source_kind": {
+          "type": "string",
+          "enum": ["mail_notice", "csv_import", "manual"],
+          "description": "出所の種類（利用通知メール・書き出しの取り込み・手入力）。出所の識別子（メールの ID など）は返さない。"
+        },
+        "direction": {
+          "$ref": "#/$defs/HouseholdDirection"
+        },
+        "amount_yen": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9999999999,
+          "description": "円の正の整数。支出・収入は向きで分ける。"
+        },
+        "occurred_on": {
+          "type": "string",
+          "pattern": "^20[0-9]{2}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$",
+          "description": "利用した日（本人の地域の日付）。暦に実在する日かは意味検査で確かめる。"
+        },
+        "occurred_time": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "利用した時刻（HH:MM）。わからなければ null。"
+        },
+        "category": {
+          "$ref": "#/$defs/HouseholdCategoryId"
+        },
+        "merchant": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "店名・相手の名前。わからなければ null。"
+        },
+        "memo": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "payment": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 40
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "支払い手段の表示名。カード番号・口座番号は入らない（ADR 0158）。"
+        },
+        "created_at": {
+          "$ref": "#/$defs/UtcTime"
+        },
+        "updated_at": {
+          "$ref": "#/$defs/UtcTime"
+        }
+      },
+      "required": [
+        "entry_id",
+        "content_revision",
+        "source_kind",
+        "direction",
+        "amount_yen",
+        "occurred_on",
+        "occurred_time",
+        "category",
+        "merchant",
+        "memo",
+        "payment",
+        "created_at",
+        "updated_at"
+      ],
+      "additionalProperties": false,
+      "description": "家計の記録 1 件（ADR 0158・0161）。Core が暗号文を開いて返す。分類の向きは記録の向きと同じ（意味検査）。"
+    },
+    "HouseholdCategoryTotal": {
+      "type": "object",
+      "properties": {
+        "category": {
+          "$ref": "#/$defs/HouseholdCategoryId"
+        },
+        "total_yen": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": ["category", "total_yen", "count"],
+      "additionalProperties": false,
+      "description": "支出の分類ごとの合計。"
+    },
+    "HouseholdMonthSummary": {
+      "type": "object",
+      "properties": {
+        "expense_yen": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "income_yen": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "balance_yen": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991,
+          "description": "収入 − 支出（負にもなる）。"
+        },
+        "entry_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "expense_by_category": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/HouseholdCategoryTotal"
+          },
+          "description": "支出の分類ごとの合計。多い順、同じなら分類の表示の順。0 円の分類は入れない。"
+        },
+        "transfer_yen": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991,
+          "description": "振替の合計（支出・収入には入れない。U321）。"
+        }
+      },
+      "required": [
+        "expense_yen",
+        "income_yen",
+        "balance_yen",
+        "entry_count",
+        "expense_by_category",
+        "transfer_yen"
+      ],
+      "additionalProperties": false,
+      "description": "1 か月の集計（domain の summarizeHouseholdMonth、ADR 0158）。差額は収入 − 支出、分類ごとの合計の和は支出の合計（意味検査）。"
+    },
+    "HouseholdMonth": {
+      "type": "object",
+      "properties": {
+        "month": {
+          "$ref": "#/$defs/YearMonth"
+        },
+        "entries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/HouseholdEntry"
+          },
+          "description": "その月の記録。利用した日・時刻の新しい順（同じなら作った新しい順）。"
+        },
+        "summary": {
+          "$ref": "#/$defs/HouseholdMonthSummary"
+        },
+        "unreadable": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "復号できなかった記録の数。集計に入れていない（0 円として扱わない）。"
+        },
+        "truncated": {
+          "type": "boolean",
+          "description": "一度に読む件数の上限で記録を切ったか。切ったときの集計はその月の一部だけ。"
+        }
+      },
+      "required": ["month", "entries", "summary", "unreadable", "truncated"],
+      "additionalProperties": false,
+      "description": "家計簿の 1 か月（GET /v1/household/months/{month}、ADR 0161）。記録はすべてその月の日付で、集計は返した記録から作る（意味検査）。"
+    },
+    "HouseholdMonthTotals": {
+      "type": "object",
+      "properties": {
+        "month": {
+          "$ref": "#/$defs/YearMonth"
+        },
+        "expense_yen": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "income_yen": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "balance_yen": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "transfer_yen": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "entry_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unreadable": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "month",
+        "expense_yen",
+        "income_yen",
+        "balance_yen",
+        "transfer_yen",
+        "entry_count",
+        "unreadable"
+      ],
+      "additionalProperties": false,
+      "description": "月ごとの合計（一覧用）。差額は収入 − 支出（意味検査）。"
+    },
+    "HouseholdOverview": {
+      "type": "object",
+      "properties": {
+        "time_zone": {
+          "$ref": "#/$defs/TimeZone",
+          "description": "今月を決めるのに使った本人のタイムゾーン（ADR 0131）。"
+        },
+        "current_month": {
+          "$ref": "#/$defs/YearMonth"
+        },
+        "generated_at": {
+          "$ref": "#/$defs/UtcTime"
+        },
+        "months": {
+          "type": "array",
+          "minItems": 12,
+          "maxItems": 12,
+          "items": {
+            "$ref": "#/$defs/HouseholdMonthTotals"
+          },
+          "description": "今月から 11 か月前までの 12 か月。新しい月から並べ、記録のない月も 0 で入れる。"
+        },
+        "truncated": {
+          "type": "boolean",
+          "description": "一度に読む件数の上限で古い記録を切ったか。切ったときは古い月の合計が一部だけ。"
+        }
+      },
+      "required": [
+        "time_zone",
+        "current_month",
+        "generated_at",
+        "months",
+        "truncated"
+      ],
+      "additionalProperties": false,
+      "description": "家計簿の月ごとの合計（GET /v1/household/months、ADR 0161）。今月は Core が本人のタイムゾーンで決め、端末の時計で代用しない。月は今月から 1 か月ずつさかのぼる（意味検査）。"
+    },
+    "HouseholdCategoryChangeRequest": {
+      "type": "object",
+      "properties": {
+        "request_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "command_scope_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "expected_content_revision": {
+          "$ref": "#/$defs/HouseholdRevision"
+        },
+        "category": {
+          "$ref": "#/$defs/HouseholdCategoryId"
+        }
+      },
+      "required": [
+        "request_id",
+        "command_scope_id",
+        "expected_content_revision",
+        "category"
+      ],
+      "additionalProperties": false,
+      "description": "家計の記録の分類の変更（POST /v1/household/entries/{entry_id}/category、ADR 0161）。本人の画面操作だけが送る。内容版が今と違えば 409。向きの違う分類は 422。店名があれば本人の規則として覚え、次から同じ店の未分類の利用に当てる（ADR 0158）。"
+    },
+    "HouseholdCategoryChangeResult": {
+      "type": "object",
+      "properties": {
+        "entry_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "content_revision": {
+          "$ref": "#/$defs/HouseholdRevision"
+        },
+        "rule_learned": {
+          "type": "boolean",
+          "description": "店名の規則として覚えたか（店名がない・取り込みの規則より本人の規則が先にあるなどで覚えないときは false）。"
+        }
+      },
+      "required": ["entry_id", "content_revision", "rule_learned"],
+      "additionalProperties": false,
+      "description": "分類の変更の結果。画面は月を読み直して集計を出し直す。"
+    },
+    "HouseholdEntryDeleteRequest": {
+      "type": "object",
+      "properties": {
+        "request_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "command_scope_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "expected_content_revision": {
+          "$ref": "#/$defs/HouseholdRevision"
+        }
+      },
+      "required": [
+        "request_id",
+        "command_scope_id",
+        "expected_content_revision"
+      ],
+      "additionalProperties": false,
+      "description": "家計の記録の削除（POST /v1/household/entries/{entry_id}/delete、ADR 0161）。本人の画面操作だけが送る。内容版が今と違う・削除済みなら 409。削除した出所からは作り直さない（ADR 0158）。"
+    },
+    "HouseholdEntryDeleteResult": {
+      "type": "object",
+      "properties": {
+        "entry_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "state": {
+          "type": "string",
+          "const": "deleted"
+        }
+      },
+      "required": ["entry_id", "state"],
+      "additionalProperties": false,
+      "description": "削除の結果。"
     },
     "SyncBatch": {
       "type": "object",

@@ -6,6 +6,7 @@ import {
   householdContentErrors,
   householdDefaultCategory,
   householdMonthOf,
+  householdMonthShift,
   householdMonthSpan,
   householdRuleApplies,
   householdRuleWritable,
@@ -14,6 +15,10 @@ import {
   normalizeHouseholdMerchant,
   summarizeHouseholdMonth,
 } from '../packages/domain/dist/index.js';
+import {
+  HOUSEHOLD_CATEGORY_DIRECTIONS,
+  loadContracts,
+} from './contract-tools.mjs';
 
 // 家計簿の段階 1: 分類・記録の内容・月の集計・出所の鍵・店名からの分類の規則（ADR 0158）。
 // 期待値はすべて手で書いた。店名・金額は合成。
@@ -246,4 +251,33 @@ test('店名の正規化と規則: 全角英数・大文字・空白をそろえ
   assert.equal(householdRuleApplies('expense', 'food'), true);
   assert.equal(householdRuleApplies('income', 'food'), false);
   assert.equal(householdRuleApplies('expense', 'unknown'), false);
+});
+
+test('月をずらす: 年をまたいでさかのぼり・進み、2000〜2099 年の外と形の誤りは null（ADR 0161）', () => {
+  assert.equal(householdMonthShift('2030-11', -11), '2029-12');
+  assert.equal(householdMonthShift('2030-01', -1), '2029-12');
+  assert.equal(householdMonthShift('2030-12', 1), '2031-01');
+  assert.equal(householdMonthShift('2030-11', 0), '2030-11');
+  assert.equal(householdMonthShift('2000-12', -11), '2000-01');
+  assert.equal(householdMonthShift('2000-11', -11), null);
+  assert.equal(householdMonthShift('2099-12', 1), null);
+  assert.equal(householdMonthShift('2030-13', -1), null);
+  assert.equal(householdMonthShift('2030-11', 0.5), null);
+});
+
+test('契約の分類の一覧と意味検査の向きの表は domain の分類と同じ（ADR 0161）', async () => {
+  const { schema } = await loadContracts();
+  assert.deepEqual(
+    schema.$defs.HouseholdCategoryId.enum,
+    HOUSEHOLD_CATEGORIES.map((category) => category.id),
+  );
+  assert.deepEqual(
+    Object.entries(HOUSEHOLD_CATEGORY_DIRECTIONS),
+    HOUSEHOLD_CATEGORIES.map((category) => [category.id, category.direction]),
+  );
+  assert.deepEqual(schema.$defs.HouseholdDirection.enum, [
+    'expense',
+    'income',
+    'transfer',
+  ]);
 });

@@ -103,6 +103,12 @@ export const ROUTE_CHECKS: Readonly<Record<string, readonly CoreCheck[]>> = {
   // 状態の変更（開いた・対応した・却下・スヌーズ・解決）は本人の操作だけ（画面操作か chat 起源。ADR 0143）。
   // 照合は expected_state で経路の処理が行う。
   changeCandidateState: USER_OPERATION,
+  // 家計簿（ADR 0158・0161）。金額・店名を含む読み取りなのでロック解除を求める。
+  listHouseholdMonths: [...READ, 'unlocked'],
+  getHouseholdMonth: [...READ, 'unlocked'],
+  // 分類の変更と削除は本人の画面操作だけ（チャット窓口からは受けない）。内容版の照合は経路の処理が行い、409 にする。
+  changeHouseholdCategory: SCREEN,
+  deleteHouseholdEntry: SCREEN,
 };
 
 export interface RequestContext {

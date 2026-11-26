@@ -2823,6 +2823,326 @@
         ["locked", 403, "device_locked"],
         ["lock_unknown", 403, "device_locked"]
       ]
+    },
+    "listHouseholdMonths": {
+      "response": {
+        "time_zone": "Pacific/Auckland",
+        "current_month": "2030-11",
+        "generated_at": "2030-11-05T00:00:00Z",
+        "months": [
+          {
+            "month": "2030-11",
+            "expense_yen": 1820,
+            "income_yen": 200000,
+            "balance_yen": 198180,
+            "transfer_yen": 30000,
+            "entry_count": 4,
+            "unreadable": 0
+          },
+          {
+            "month": "2030-10",
+            "expense_yen": 5000,
+            "income_yen": 0,
+            "balance_yen": -5000,
+            "transfer_yen": 0,
+            "entry_count": 2,
+            "unreadable": 1
+          },
+          {
+            "month": "2030-09",
+            "expense_yen": 0,
+            "income_yen": 0,
+            "balance_yen": 0,
+            "transfer_yen": 0,
+            "entry_count": 0,
+            "unreadable": 0
+          },
+          {
+            "month": "2030-08",
+            "expense_yen": 0,
+            "income_yen": 0,
+            "balance_yen": 0,
+            "transfer_yen": 0,
+            "entry_count": 0,
+            "unreadable": 0
+          },
+          {
+            "month": "2030-07",
+            "expense_yen": 0,
+            "income_yen": 0,
+            "balance_yen": 0,
+            "transfer_yen": 0,
+            "entry_count": 0,
+            "unreadable": 0
+          },
+          {
+            "month": "2030-06",
+            "expense_yen": 0,
+            "income_yen": 0,
+            "balance_yen": 0,
+            "transfer_yen": 0,
+            "entry_count": 0,
+            "unreadable": 0
+          },
+          {
+            "month": "2030-05",
+            "expense_yen": 0,
+            "income_yen": 0,
+            "balance_yen": 0,
+            "transfer_yen": 0,
+            "entry_count": 0,
+            "unreadable": 0
+          },
+          {
+            "month": "2030-04",
+            "expense_yen": 0,
+            "income_yen": 0,
+            "balance_yen": 0,
+            "transfer_yen": 0,
+            "entry_count": 0,
+            "unreadable": 0
+          },
+          {
+            "month": "2030-03",
+            "expense_yen": 0,
+            "income_yen": 0,
+            "balance_yen": 0,
+            "transfer_yen": 0,
+            "entry_count": 0,
+            "unreadable": 0
+          },
+          {
+            "month": "2030-02",
+            "expense_yen": 0,
+            "income_yen": 0,
+            "balance_yen": 0,
+            "transfer_yen": 0,
+            "entry_count": 0,
+            "unreadable": 0
+          },
+          {
+            "month": "2030-01",
+            "expense_yen": 0,
+            "income_yen": 0,
+            "balance_yen": 0,
+            "transfer_yen": 0,
+            "entry_count": 0,
+            "unreadable": 0
+          },
+          {
+            "month": "2029-12",
+            "expense_yen": 0,
+            "income_yen": 0,
+            "balance_yen": 0,
+            "transfer_yen": 0,
+            "entry_count": 0,
+            "unreadable": 0
+          }
+        ],
+        "truncated": false
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"],
+        ["locked", 403, "device_locked"],
+        ["lock_unknown", 403, "device_locked"]
+      ]
+    },
+    "getHouseholdMonth": {
+      "params": {
+        "month": "2030-11"
+      },
+      "response": {
+        "month": "2030-11",
+        "entries": [
+          {
+            "entry_id": "00000000-0000-4000-8000-0000000c0001",
+            "content_revision": "2",
+            "source_kind": "mail_notice",
+            "direction": "expense",
+            "amount_yen": 1280,
+            "occurred_on": "2030-11-03",
+            "occurred_time": "12:34",
+            "category": "food",
+            "merchant": "合成の食堂",
+            "memo": null,
+            "payment": "合成のカード",
+            "created_at": "2030-11-03T03:40:00Z",
+            "updated_at": "2030-11-04T00:00:00Z"
+          },
+          {
+            "entry_id": "00000000-0000-4000-8000-0000000c0002",
+            "content_revision": "1",
+            "source_kind": "mail_notice",
+            "direction": "expense",
+            "amount_yen": 540,
+            "occurred_on": "2030-11-02",
+            "occurred_time": null,
+            "category": "uncategorized",
+            "merchant": "合成の売店",
+            "memo": null,
+            "payment": "合成のカード",
+            "created_at": "2030-11-02T10:00:00Z",
+            "updated_at": "2030-11-02T10:00:00Z"
+          },
+          {
+            "entry_id": "00000000-0000-4000-8000-0000000c0003",
+            "content_revision": "1",
+            "source_kind": "csv_import",
+            "direction": "income",
+            "amount_yen": 200000,
+            "occurred_on": "2030-11-01",
+            "occurred_time": null,
+            "category": "income",
+            "merchant": null,
+            "memo": "合成の給与",
+            "payment": null,
+            "created_at": "2030-11-05T00:00:00Z",
+            "updated_at": "2030-11-05T00:00:00Z"
+          },
+          {
+            "entry_id": "00000000-0000-4000-8000-0000000c0004",
+            "content_revision": "1",
+            "source_kind": "manual",
+            "direction": "transfer",
+            "amount_yen": 30000,
+            "occurred_on": "2030-11-01",
+            "occurred_time": null,
+            "category": "transfer",
+            "merchant": null,
+            "memo": null,
+            "payment": null,
+            "created_at": "2030-11-01T00:00:00Z",
+            "updated_at": "2030-11-01T00:00:00Z"
+          }
+        ],
+        "summary": {
+          "expense_yen": 1820,
+          "income_yen": 200000,
+          "balance_yen": 198180,
+          "entry_count": 4,
+          "expense_by_category": [
+            {
+              "category": "food",
+              "total_yen": 1280,
+              "count": 1
+            },
+            {
+              "category": "uncategorized",
+              "total_yen": 540,
+              "count": 1
+            }
+          ],
+          "transfer_yen": 30000
+        },
+        "unreadable": 0,
+        "truncated": false
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"],
+        ["locked", 403, "device_locked"],
+        ["lock_unknown", 403, "device_locked"]
+      ]
+    },
+    "changeHouseholdCategory": {
+      "params": {
+        "entry_id": "00000000-0000-4000-8000-0000000c0002"
+      },
+      "request": {
+        "request_id": "00000000-0000-4000-8000-0000000c0101",
+        "command_scope_id": "00000000-0000-4000-8000-000000009002",
+        "expected_content_revision": "1",
+        "category": "food"
+      },
+      "response": {
+        "entry_id": "00000000-0000-4000-8000-0000000c0002",
+        "content_revision": "2",
+        "rule_learned": true
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"],
+        ["stale_scope", 410, "expired_scope"],
+        ["locked", 403, "device_locked"],
+        ["lock_unknown", 403, "device_locked"],
+        ["too_large", 413, "payload_too_large"],
+        ["voice_origin", 403, "screen_operation_required"],
+        ["chat_origin", 403, "screen_operation_required"],
+        ["system_origin", 403, "screen_operation_required"]
+      ],
+      "invalid_bodies": [
+        {
+          "request_id": "00000000-0000-4000-8000-0000000c0101",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "expected_content_revision": "1",
+          "category": "groceries"
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-0000000c0101",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "category": "food"
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-0000000c0101",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "expected_content_revision": "0",
+          "category": "food"
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-0000000c0101",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "expected_content_revision": "1",
+          "category": "food",
+          "merchant": "合成の売店"
+        }
+      ]
+    },
+    "deleteHouseholdEntry": {
+      "params": {
+        "entry_id": "00000000-0000-4000-8000-0000000c0002"
+      },
+      "request": {
+        "request_id": "00000000-0000-4000-8000-0000000c0102",
+        "command_scope_id": "00000000-0000-4000-8000-000000009002",
+        "expected_content_revision": "1"
+      },
+      "response": {
+        "entry_id": "00000000-0000-4000-8000-0000000c0002",
+        "state": "deleted"
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"],
+        ["stale_scope", 410, "expired_scope"],
+        ["locked", 403, "device_locked"],
+        ["lock_unknown", 403, "device_locked"],
+        ["too_large", 413, "payload_too_large"],
+        ["voice_origin", 403, "screen_operation_required"],
+        ["chat_origin", 403, "screen_operation_required"],
+        ["system_origin", 403, "screen_operation_required"]
+      ],
+      "invalid_bodies": [
+        {
+          "request_id": "00000000-0000-4000-8000-0000000c0102",
+          "expected_content_revision": "1"
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-0000000c0102",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "expected_content_revision": "01"
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-0000000c0102",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "expected_content_revision": "1",
+          "state": "deleted"
+        }
+      ]
     }
   }
 }

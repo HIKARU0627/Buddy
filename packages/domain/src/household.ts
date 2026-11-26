@@ -313,6 +313,22 @@ export function householdMonthSpan(from: string, to: string): number | null {
   return span >= 1 ? span : null;
 }
 
+/**
+ * month から delta か月ずらした月（負ならさかのぼる）。形の誤り・2000〜2099 年の外に出るときは null。
+ * 画面の「月ごとの合計」の範囲（今月から 11 か月前まで。ADR 0161）を決めるのに使う。
+ */
+export function householdMonthShift(
+  month: string,
+  delta: number,
+): string | null {
+  if (!isHouseholdMonth(month) || !Number.isSafeInteger(delta)) return null;
+  const index =
+    Number(month.slice(0, 4)) * 12 + Number(month.slice(5, 7)) - 1 + delta;
+  const year = Math.floor(index / 12);
+  const shifted = `${String(year)}-${String((index % 12) + 1).padStart(2, '0')}`;
+  return isHouseholdMonth(shifted) ? shifted : null;
+}
+
 // --- 出所 ---
 
 export type HouseholdSourceKind = 'mail_notice' | 'csv_import' | 'manual';

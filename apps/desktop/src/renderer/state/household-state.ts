@@ -66,7 +66,58 @@ export const HOUSEHOLD_LABELS = {
     '毎月決まって払っている支出です。直近 12 か月の記録から、3 か月以上続き、今月か先月にもある店を数えています。',
   recurringEmpty: 'まだ定期の支出は見つかっていません。',
   recurringTotal: '月の固定費の目安',
+  budgetTitle: '予算',
+  budgetEmpty: 'まだ予算を決めていません。',
+  budgetEdit: '予算を決める',
+  budgetSave: '予算を保存する',
+  budgetSaving: '保存しています…',
+  budgetNote:
+    '分類ごとの月の予算を円で入れてください。空のままの分類は予算なしにします。',
+  budgetTotal: '予算の合計',
+  budgetInvalid: '予算は 1 円以上の整数で入れてください。',
 } as const;
+
+type BudgetPayload = Extract<
+  DesktopIpcRequest,
+  { channel: 'desktop.household_budget' }
+>['payload'];
+
+// 予算の知らせを出す場所。
+export const BUDGET_PLACE = 'budget';
+
+// 予算に対する使い方の文。「12,000 円 / 40,000 円（残り 28,000 円）」「42,000 円 / 40,000 円（2,000 円の超過）」。
+export function budgetUseText(use: {
+  readonly budget_yen: number;
+  readonly spent_yen: number;
+  readonly remaining_yen: number;
+}): string {
+  const head = `${yenText(use.spent_yen)} / ${yenText(use.budget_yen)}`;
+  return use.remaining_yen >= 0
+    ? `${head}（残り ${yenText(use.remaining_yen)}）`
+    : `${head}（${yenText(-use.remaining_yen)}の超過）`;
+}
+
+/**
+ * 入力欄の文字（分類 → 入れた文字）から予算の一覧を作る。空は予算なし。全角数字とコンマを受ける。正の整数で
+ * なければ null（保存させない）。
+ */
+export function budgetItemsFromInput(
+  input: Readonly<Record<string, string>>,
+): { category: HouseholdCategoryId; budget_yen: number }[] | null {
+  const items: { category: HouseholdCategoryId; budget_yen: number }[] = [];
+  for (const choice of categoryChoices('expense')) {
+    const raw = (input[choice.id] ?? '')
+      .normalize('NFKC')
+      .replaceAll(',', '')
+      .trim();
+    if (raw === '') continue;
+    if (!/^[1-9][0-9]{0,9}$/u.test(raw)) return null;
+    const value = Number(raw);
+    if (value > 9_999_999_999) return null;
+    items.push({ category: choice.id, budget_yen: value });
+  }
+  return items;
+}
 
 // 「12 か月中 4 か月」（定期の支出が現れた月の数）。
 export function monthsSeenText(months: number): string {
@@ -205,6 +256,8 @@ export interface HouseholdViewState {
   readonly notice: HouseholdNotice | null;
   // 削除の確かめを出している行の参照。
   readonly confirming: string | null;
+  // 予算の入力欄を出しているか。
+  readonly editingBudget: boolean;
 }
 
 export const INITIAL_HOUSEHOLD_STATE: HouseholdViewState = {
@@ -214,16 +267,19 @@ export const INITIAL_HOUSEHOLD_STATE: HouseholdViewState = {
   busy: null,
   notice: null,
   confirming: null,
+  editingBudget: false,
 };
 
-type Kind = 'view' | 'category' | 'delete' | 'intake' | 'import';
+type Kind = 'view' | 'category' | 'delete' | 'intake' | 'import' | 'budget';
 
 export function householdFailureText(kind: Kind, reason: RejectReason): string {
   switch (reason) {
     case 'preview_stale':
       return kind === 'intake'
         ? '取り込みの設定はその後に変わっていました。読み直したので、今の設定を確かめてください。'
-        : 'この記録はその後に変わっていました。読み直したので、今の内容を確かめてから、もう一度操作してください。';
+        : kind === 'budget'
+          ? '予算はその後に変わっていました。読み直したので、今の予算を確かめてから、もう一度保存してください。'
+          : 'この記録はその後に変わっていました。読み直したので、今の内容を確かめてから、もう一度操作してください。';
     case 'outcome_unknown':
       return '結果を確かめられませんでした。自動では送り直しません。「読み直す」で今の内容を確かめてください。';
     case 'core_rejected':
@@ -289,17 +345,19 @@ export function applyViewResponse(
   return withView(reading, response.household);
 }
 
-const SUCCESS_TEXT: Readonly<Record<'category' | 'delete' | 'intake', string>> =
-  {
-    intake: '取り込みの設定を変えました。',
-    category:
-      '分類を変えました。店名のある記録は、同じ店の次の未分類の利用にもこの分類を使います。',
-    delete: '記録を削除しました。',
-  };
+const SUCCESS_TEXT: Readonly<
+  Record<'category' | 'delete' | 'intake' | 'budget', string>
+> = {
+  budget: '予算を保存しました。',
+  intake: '取り込みの設定を変えました。',
+  category:
+    '分類を変えました。店名のある記録は、同じ店の次の未分類の利用にもこの分類を使います。',
+  delete: '記録を削除しました。',
+};
 
 export function applyChangeResponse(
   state: HouseholdViewState,
-  kind: 'category' | 'delete' | 'intake',
+  kind: 'category' | 'delete' | 'intake' | 'budget',
   place: string,
   response: DesktopIpcResponse,
 ): HouseholdViewState {
@@ -365,6 +423,12 @@ export interface HouseholdActions {
   readonly setIntake: (mailIntake: 'on' | 'off') => void;
   // 書き出しを取り込む（ADR 0164）。ファイルは main が OS のファイル選択で本人に選ばせる。
   readonly importExport: () => void;
+  // 予算の入力欄を出す・しまう・保存する（ADR 0166）。
+  readonly startBudget: () => void;
+  readonly cancelBudget: () => void;
+  readonly saveBudget: (
+    items: readonly { category: HouseholdCategoryId; budget_yen: number }[],
+  ) => void;
 }
 
 export interface HouseholdApi {
@@ -401,6 +465,12 @@ export class HouseholdStore {
       confirmDelete: () => this.#delete(),
       setIntake: (mailIntake) => this.#intake(mailIntake),
       importExport: () => this.#importExport(),
+      startBudget: () => {
+        if ((this.#state.view?.budget ?? null) === null) return;
+        this.#set({ ...this.#state, editingBudget: true, notice: null });
+      },
+      cancelBudget: () => this.#set({ ...this.#state, editingBudget: false }),
+      saveBudget: (items) => this.#saveBudget(items),
     };
   }
 
@@ -483,6 +553,37 @@ export class HouseholdStore {
     );
   }
 
+  #saveBudget(
+    items: readonly { category: HouseholdCategoryId; budget_yen: number }[],
+  ): void {
+    if (this.#state.busy !== null || !this.#state.editingBudget) return;
+    this.#set({ ...this.#state, busy: BUDGET_PLACE, notice: null });
+    const epoch = this.#epoch;
+    let reread = false;
+    void this.#send(
+      request('desktop.household_budget', {
+        // 契約の上限（18 個）は生成型では組の型になるので、分類の数で守っている一覧をその型として渡す。
+        items: [...items] as BudgetPayload['items'],
+      }),
+      (state, response) => {
+        reread = response.outcome === 'rejected' && REREAD.has(response.reason);
+        const next = applyChangeResponse(
+          state,
+          'budget',
+          BUDGET_PLACE,
+          response,
+        );
+        // 保存できたら入力欄をしまう。拒否なら残して直させる。
+        return response.outcome === 'ok'
+          ? { ...next, editingBudget: false }
+          : next;
+      },
+      (state) => applyFailure(state, BUDGET_PLACE),
+    ).then(() => {
+      if (reread && epoch === this.#epoch) this.#reread();
+    });
+  }
+
   #importExport(): void {
     if (this.#state.busy !== null || this.#state.view === null) return;
     this.#set({
@@ -517,7 +618,7 @@ export class HouseholdStore {
 
   // 送った変更・削除の結果を反映し、拒否なら（main が読み直した）値を受け取る。
   #change(
-    kind: 'category' | 'delete' | 'intake',
+    kind: 'category' | 'delete' | 'intake' | 'budget',
     ref: string,
     built: DesktopIpcRequest,
   ) {

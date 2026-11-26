@@ -235,6 +235,7 @@ test('月ごとの合計: 今月は本人のタイムゾーンで決め、今月
     truncated: false,
     settings: { mail_intake: 'on', settings_revision: '0' },
     recurring: { items: [], monthly_total_yen: 0 },
+    budget: { budget_revision: '0', items: [], total_budget_yen: 0 },
   });
 });
 
@@ -726,6 +727,69 @@ test('取り込み: 行を記録し、同じ行は二度記録せず、利用通
       ),
     ),
     false,
+  );
+});
+
+test('予算: 分類ごとの予算を丸ごと差し替え、月ごとの合計で返す。古い版は 409、支出でない分類・同じ分類は 422（ADR 0166）', async (t) => {
+  const { store, dataKey } = withDb(t);
+  const handlers = routes(store, dataKey);
+  const body = (expected: string, items: unknown[]): JsonObject =>
+    ({
+      request_id: '00000000-0000-4000-8000-0000000c0105',
+      command_scope_id: SCOPE,
+      expected_budget_revision: expected,
+      items,
+    }) as JsonObject;
+  const set = await call(
+    handlers.changeHouseholdBudget,
+    {},
+    body('0', [
+      { category: 'utilities', budget_yen: 12000 },
+      { category: 'food', budget_yen: 40000 },
+    ]),
+  );
+  assert.equal(set.status, 200);
+  assert(contract.valid('HouseholdBudget', set.body));
+  assert.deepEqual(set.body, {
+    budget_revision: '1',
+    items: [
+      { category: 'food', budget_yen: 40000 },
+      { category: 'utilities', budget_yen: 12000 },
+    ],
+    total_budget_yen: 52000,
+  });
+  const overview = await call(handlers.listHouseholdMonths);
+  assert.deepEqual(overview.body['budget'], set.body);
+  const stale = await call(handlers.changeHouseholdBudget, {}, body('0', []));
+  assert.equal(stale.status, 409);
+  for (const items of [
+    [{ category: 'income', budget_yen: 1000 }],
+    [
+      { category: 'food', budget_yen: 1 },
+      { category: 'food', budget_yen: 2 },
+    ],
+  ]) {
+    const bad = await call(
+      handlers.changeHouseholdBudget,
+      {},
+      body('1', items),
+    );
+    assert.equal(bad.status, 422);
+  }
+  // 空にすれば予算なし。
+  const cleared = await call(handlers.changeHouseholdBudget, {}, body('1', []));
+  assert.deepEqual(cleared.body, {
+    budget_revision: '2',
+    items: [],
+    total_budget_yen: 0,
+  });
+  // 別のデータ鍵では予算を開けないので、月ごとの合計も返さない。
+  const otherKey = routes(store, { keyId: 'k-other', key: randomBytes(32) });
+  assert.equal((await call(otherKey.listHouseholdMonths)).status, 503);
+  assert.equal(
+    (await call(routes(store, null).changeHouseholdBudget, {}, body('2', [])))
+      .status,
+    503,
   );
 });
 

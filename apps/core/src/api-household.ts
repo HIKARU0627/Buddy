@@ -15,13 +15,15 @@ import { createHash, randomUUID } from 'node:crypto';
 import {
   candidateLocalClock,
   detectHouseholdRecurring,
+  householdBudgetErrors,
   householdContentErrors,
   householdMonthOf,
   householdMonthShift,
   householdNoticeMatchKey,
   isHouseholdMonth,
 } from '@buddy/domain';
-import type { HouseholdEntryContent } from '@buddy/domain';
+import type { HouseholdBudgetItem, HouseholdEntryContent } from '@buddy/domain';
+import { openHouseholdBudget, sealHouseholdBudget } from '@buddy/storage';
 import type { DataKeyMaterial, DbWorkerClient } from '@buddy/storage';
 import { apiErrorResponse } from './api-server.js';
 import type { ApiRouteHandler } from './api-server.js';
@@ -60,6 +62,7 @@ export interface HouseholdRoutes {
     readonly deleteHouseholdEntry: ApiRouteHandler;
     readonly changeHouseholdSettings: ApiRouteHandler;
     readonly importHouseholdRows: ApiRouteHandler;
+    readonly changeHouseholdBudget: ApiRouteHandler;
   };
 }
 
@@ -143,6 +146,21 @@ function monthTotals(view: HouseholdMonthView): object {
   };
 }
 
+// 契約の HouseholdBudget の形。分類の表示の順（保存層がそろえて保存する）。
+function budgetBody(
+  revision: string,
+  items: readonly HouseholdBudgetItem[],
+): object {
+  return {
+    budget_revision: revision,
+    items: items.map((item) => ({
+      category: item.category,
+      budget_yen: item.budget_yen,
+    })),
+    total_budget_yen: items.reduce((sum, item) => sum + item.budget_yen, 0),
+  };
+}
+
 export function createHouseholdRoutes(
   options: HouseholdRoutesOptions,
 ): HouseholdRoutes {
@@ -155,6 +173,28 @@ export function createHouseholdRoutes(
     } catch {
       return null;
     }
+  };
+
+  // 予算の版と中身。予算がまだなければ版 0・空。読めない・開けなければ null。
+  const readBudget = async (
+    dataKey: DataKeyMaterial,
+  ): Promise<{
+    readonly revision: string;
+    readonly items: readonly HouseholdBudgetItem[];
+  } | null> => {
+    const got = await options.store.household({ kind: 'household.budget_get' });
+    if (!got.ok) return null;
+    const { budget_revision: revision, content } = got.value;
+    if (content === null)
+      return revision === '0' ? { revision, items: [] } : null;
+    const opened = openHouseholdBudget(dataKey, Number(revision), {
+      formatVersion: content.format_version,
+      keyId: content.key_id,
+      nonce: content.nonce,
+      ciphertext: content.ciphertext,
+      tag: content.tag,
+    });
+    return opened.ok ? { revision, items: opened.items } : null;
   };
 
   const listHouseholdMonths: ApiRouteHandler = async () => {
@@ -187,6 +227,9 @@ export function createHouseholdRoutes(
       kind: 'household.settings_get',
     });
     if (!settings.ok) return fail(503, 'dependency_unavailable');
+    // 分類ごとの予算（ADR 0166）。読めない・開けなければ合計も返さない（予算を推測で見せない）。
+    const budget = await readBudget(dataKey);
+    if (budget === null) return fail(503, 'dependency_unavailable');
     return {
       status: 200,
       body: {
@@ -203,6 +246,7 @@ export function createHouseholdRoutes(
           ),
           current,
         ),
+        budget: budgetBody(budget.revision, budget.items),
       },
     };
   };
@@ -313,6 +357,47 @@ export function createHouseholdRoutes(
       return fail(failure.status, failure.code);
     }
     return { status: 200, body: changed.value };
+  };
+
+  // 分類ごとの予算を丸ごと差し替える（ADR 0166）。版は保存層が同じ transaction で照合する。
+  const changeBudget: ApiRouteHandler = async (request) => {
+    const body = request.body ?? {};
+    const fail = failWith(stringOf(body['request_id']));
+    const expected = stringOf(body['expected_budget_revision']);
+    const raw = Array.isArray(body['items']) ? body['items'] : [];
+    const items = raw.map((item) => {
+      const value = (item ?? {}) as Record<string, unknown>;
+      return {
+        category: value['category'] as string,
+        budget_yen: value['budget_yen'] as number,
+      };
+    });
+    if (householdBudgetErrors(items).length > 0)
+      return fail(422, 'invalid_input');
+    if (!/^(0|[1-9][0-9]{0,15})$/u.test(expected))
+      return fail(422, 'invalid_input');
+    const dataKey = await loadKey();
+    if (dataKey === null) return fail(503, 'dependency_unavailable');
+    const sealed = sealHouseholdBudget(
+      dataKey,
+      Number(expected) + 1,
+      items,
+      newId(),
+    );
+    if (!sealed.ok) return fail(422, 'invalid_input');
+    const changed = await options.store.household({
+      kind: 'household.budget_set',
+      expected_revision: expected,
+      content: sealed.content,
+      now: new Date(options.now()).toISOString(),
+    });
+    if (!changed.ok) {
+      const failure = failureStatus(changed.outcome, changed.reasons);
+      return fail(failure.status, failure.code);
+    }
+    const read = await readBudget(dataKey);
+    if (read === null) return fail(503, 'dependency_unavailable');
+    return { status: 200, body: budgetBody(read.revision, read.items) };
   };
 
   // 外部の家計簿サービスの書き出しの取り込み（ADR 0164）。行ごとに家計の記録の検査をし直し、出所（書き出しの行の ID）で
@@ -438,6 +523,7 @@ export function createHouseholdRoutes(
       deleteHouseholdEntry: deleteEntry,
       changeHouseholdSettings: changeSettings,
       importHouseholdRows: importRows,
+      changeHouseholdBudget: changeBudget,
     },
   };
 }

@@ -261,6 +261,11 @@ export const API_ROUTES: readonly ApiRoute[] = [
     body: 'HouseholdImportRequest',
     ...SCREEN,
   }),
+  // 分類ごとの予算（ADR 0166）。
+  route('changeHouseholdBudget', 'POST', '/v1/household/budget', {
+    body: 'HouseholdBudgetChangeRequest',
+    ...SCREEN,
+  }),
 ];
 
 export type RouteMatch =

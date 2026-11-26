@@ -152,6 +152,15 @@ export type HouseholdOp =
     }
   // 本人の家計簿の設定（ADR 0163）。行がなければ取り込みは入、版は 0。
   | { readonly kind: 'household.settings_get' }
+  // 分類ごとの予算（ADR 0166）。行がなければ予算なし・版 0。金額は暗号文のまま受け渡す。
+  | { readonly kind: 'household.budget_get' }
+  | {
+      readonly kind: 'household.budget_set';
+      readonly expected_revision: string;
+      // 新しい版（expected_revision + 1）の暗号文。
+      readonly content: SealedBlobInput;
+      readonly now: string;
+    }
   // 設定を変える。版を照合し、切から入へ戻すときは取り込みの基準を消す（止めていた間のメールを読まない。U334）。
   | {
       readonly kind: 'household.settings_set';
@@ -161,6 +170,12 @@ export type HouseholdOp =
     };
 
 export type HouseholdMailIntakeSetting = 'on' | 'off';
+
+export interface HouseholdBudgetValue {
+  readonly budget_revision: string;
+  // 予算がまだなければ null。
+  readonly content: HouseholdEnvelope | null;
+}
 
 export interface HouseholdSettingsValue {
   readonly mail_intake: HouseholdMailIntakeSetting;
@@ -192,6 +207,7 @@ export const HOUSEHOLD_WRITE_OPS: ReadonlySet<HouseholdOpKind> = new Set([
   'household.mail_pending',
   'household.mail_checked',
   'household.settings_set',
+  'household.budget_set',
 ]);
 
 export type HouseholdOpValue =
@@ -202,6 +218,7 @@ export type HouseholdOpValue =
   | HouseholdRuleValue
   | HouseholdMailPendingValue
   | HouseholdSettingsValue
+  | HouseholdBudgetValue
   | { readonly written: boolean }
   | null;
 
@@ -230,6 +247,8 @@ const OP_KINDS: ReadonlySet<string> = new Set<HouseholdOpKind>([
   'household.mail_checked',
   'household.settings_get',
   'household.settings_set',
+  'household.budget_get',
+  'household.budget_set',
 ]);
 
 class HouseholdRejection extends Error {
@@ -341,6 +360,16 @@ export function householdOpShapeReasons(op: HouseholdOp): string[] {
       needs(isTime(op.now), 'now_invalid');
       break;
     case 'household.settings_get':
+    case 'household.budget_get':
+      break;
+    case 'household.budget_set':
+      needs(
+        typeof op.expected_revision === 'string' &&
+          SETTINGS_REVISION.test(op.expected_revision),
+        'expected_revision_invalid',
+      );
+      needs(isSealedBlob(op.content), 'content_invalid');
+      needs(isTime(op.now), 'now_invalid');
       break;
     case 'household.settings_set':
       needs(
@@ -578,6 +607,62 @@ function listEntries(
   };
 }
 
+function readBudget(db: SqliteDatabase): HouseholdBudgetValue {
+  const row = db
+    .prepare(
+      'SELECT budget_revision, content_blob_id FROM household_budgets WHERE budget_id = 1',
+    )
+    .get() as { budget_revision: number; content_blob_id: string } | undefined;
+  return row === undefined
+    ? { budget_revision: '0', content: null }
+    : {
+        budget_revision: String(row.budget_revision),
+        content: readEnvelope(db, row.content_blob_id),
+      };
+}
+
+// 予算を差し替える。版を照合し、新しい暗号文を入れてから行を進め、古い暗号文を消す。
+function applyBudget(
+  db: SqliteDatabase,
+  op: Extract<HouseholdOp, { kind: 'household.budget_set' }>,
+): HouseholdBudgetValue {
+  const row = db
+    .prepare(
+      'SELECT budget_revision, content_blob_id FROM household_budgets WHERE budget_id = 1',
+    )
+    .get() as { budget_revision: number; content_blob_id: string } | undefined;
+  const current = row === undefined ? '0' : String(row.budget_revision);
+  if (current !== op.expected_revision)
+    throw new HouseholdRejection(['revision_mismatch']);
+  const next = Number(current) + 1;
+  const now = Date.parse(op.now);
+  db.prepare(
+    "INSERT INTO sealed_blobs (blob_id, purpose, owner_table, owner_id, owner_version, format_version, key_id, nonce, ciphertext, tag, created_at, delete_at) VALUES (?, 'household_budget', 'household_budgets', '1', ?, ?, ?, ?, ?, ?, ?, NULL)",
+  ).run(
+    op.content.blob_id,
+    next,
+    op.content.format_version,
+    op.content.key_id,
+    bytes(op.content.nonce),
+    bytes(op.content.ciphertext),
+    bytes(op.content.tag),
+    now,
+  );
+  if (row === undefined)
+    db.prepare(
+      'INSERT INTO household_budgets (budget_id, budget_revision, content_blob_id, updated_at) VALUES (1, ?, ?, ?)',
+    ).run(next, op.content.blob_id, now);
+  else {
+    db.prepare(
+      'UPDATE household_budgets SET budget_revision = ?, content_blob_id = ?, updated_at = ? WHERE budget_id = 1',
+    ).run(next, op.content.blob_id, now);
+    db.prepare('DELETE FROM sealed_blobs WHERE blob_id = ?').run(
+      row.content_blob_id,
+    );
+  }
+  return readBudget(db);
+}
+
 function readSettings(db: SqliteDatabase): HouseholdSettingsValue {
   const row = db
     .prepare(
@@ -720,6 +805,8 @@ export function executeHouseholdOp(
   }
   if (op.kind === 'household.settings_get')
     return { result: { ok: true, value: readSettings(db) }, halt: false };
+  if (op.kind === 'household.budget_get')
+    return { result: { ok: true, value: readBudget(db) }, halt: false };
   // 書込みを止めた worker は書かない（ADR 0018）。照会は続ける。
   if (context.halted)
     return { result: rejected(['worker_halted']), halt: false };
@@ -746,6 +833,8 @@ export function executeHouseholdOp(
           return mailChecked(db, op);
         case 'household.settings_set':
           return applySettings(db, op);
+        case 'household.budget_set':
+          return applyBudget(db, op);
         default:
           throw new HouseholdRejection(['kind_invalid']);
       }

@@ -54,6 +54,7 @@ const REQUEST_CHANNELS: readonly string[] = [
   'desktop.household_delete',
   'desktop.household_intake',
   'desktop.household_import',
+  'desktop.household_budget',
 ];
 const NOTIFICATION_CHANNELS: readonly string[] = [
   'desktop.state_changed',

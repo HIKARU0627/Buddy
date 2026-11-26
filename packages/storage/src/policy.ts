@@ -341,6 +341,12 @@ export const TABLE_POLICIES: Readonly<Record<string, TablePolicy>> = {
     retention: 'until_replaced',
     transaction: 'household',
   },
+  // 0019（ADR 0166）。分類ごとの予算（1 行だけ。金額は暗号文）。
+  household_budgets: {
+    body: 'sealed_refs',
+    retention: 'until_replaced',
+    transaction: 'household',
+  },
 };
 
 // 本文・宛先・要約を平文で持ってはいけない列名。暗号文は *_blob_id で sealed_blobs を参照する。

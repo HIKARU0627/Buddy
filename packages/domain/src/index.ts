@@ -106,5 +106,6 @@ export * from './web-research-limits.js';
 export * from './household.js';
 export * from './household-import.js';
 export * from './household-recurring.js';
+export * from './household-budget.js';
 // カード会社の利用通知メールの送り主の確かめと本文の読み取り（ADR 0159）。
 export * from './household-notice.js';

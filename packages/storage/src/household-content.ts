@@ -6,8 +6,12 @@
 // 暗号化・復号は Core main が行い、DB worker は暗号文だけを受け取る（ADR 0018）。
 
 import { randomUUID } from 'node:crypto';
-import { householdContentErrors } from '@buddy/domain';
-import type { HouseholdEntryContent } from '@buddy/domain';
+import {
+  householdBudgetErrors,
+  householdContentErrors,
+  sortHouseholdBudget,
+} from '@buddy/domain';
+import type { HouseholdBudgetItem, HouseholdEntryContent } from '@buddy/domain';
 import type { SealedBlobInput } from './operation-commands.js';
 import { openBlob, sealBlob } from './sealed-blob.js';
 import type {
@@ -122,4 +126,105 @@ export function openHouseholdContent(
   )
     return { ok: false, reason: 'content_invalid' };
   return { ok: true, content: rest as unknown as HouseholdEntryContent };
+}
+
+// --- 分類ごとの予算（ADR 0166、マイグレーション 0019） ---
+
+/** 予算の平文の形の版。 */
+export const HOUSEHOLD_BUDGET_SCHEMA = 'buddy.household_budget.v1';
+
+export function householdBudgetOwner(revision: number): SealedBlobOwner {
+  return {
+    ownerTable: 'household_budgets',
+    ownerId: '1',
+    ownerVersion: revision,
+    purpose: 'household_budget',
+  };
+}
+
+/** 予算の一覧を、その版を所有者にして暗号化する。分類の表示の順にそろえる。 */
+export function sealHouseholdBudget(
+  dataKey: DataKeyMaterial,
+  revision: number,
+  items: readonly HouseholdBudgetItem[],
+  blobId: string = randomUUID(),
+): SealHouseholdContentResult {
+  if (householdBudgetErrors(items).length > 0)
+    return { ok: false, reason: 'content_invalid' };
+  const plaintext = JSON.stringify({
+    schema: HOUSEHOLD_BUDGET_SCHEMA,
+    items: sortHouseholdBudget(items).map((item) => ({
+      category: item.category,
+      budget_yen: item.budget_yen,
+    })),
+  });
+  const sealed = sealBlob(
+    dataKey,
+    Buffer.from(plaintext, 'utf8'),
+    householdBudgetOwner(revision),
+  );
+  if (!sealed.ok) return { ok: false, reason: sealed.reason };
+  const envelope = sealed.envelope;
+  return {
+    ok: true,
+    content: {
+      blob_id: blobId,
+      format_version: envelope.formatVersion,
+      key_id: envelope.keyId,
+      nonce: envelope.nonce,
+      ciphertext: envelope.ciphertext,
+      tag: envelope.tag,
+    },
+  };
+}
+
+export type OpenHouseholdBudgetResult =
+  | { readonly ok: true; readonly items: readonly HouseholdBudgetItem[] }
+  | {
+      readonly ok: false;
+      readonly reason: OpenFailureReason | 'content_invalid';
+    };
+
+/** 予算の暗号文を復号し、中身を確かめる。 */
+export function openHouseholdBudget(
+  dataKey: DataKeyMaterial,
+  revision: number,
+  envelope: SealedEnvelope,
+): OpenHouseholdBudgetResult {
+  const opened = openBlob(dataKey, envelope, householdBudgetOwner(revision));
+  if (!opened.ok) return opened;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(
+      new TextDecoder('utf-8', { fatal: true }).decode(opened.plaintext),
+    );
+  } catch {
+    return { ok: false, reason: 'content_invalid' };
+  }
+  const record = parsed as Record<string, unknown> | null;
+  if (
+    record === null ||
+    typeof record !== 'object' ||
+    record['schema'] !== HOUSEHOLD_BUDGET_SCHEMA ||
+    !Array.isArray(record['items'])
+  )
+    return { ok: false, reason: 'content_invalid' };
+  const items = (record['items'] as unknown[]).map((item) => {
+    const value = (item ?? {}) as Record<string, unknown>;
+    return {
+      category: value['category'] as string,
+      budget_yen: value['budget_yen'] as number,
+    };
+  });
+  if (
+    householdBudgetErrors(items).length > 0 ||
+    (record['items'] as unknown[]).some(
+      (item) =>
+        item === null ||
+        typeof item !== 'object' ||
+        Object.keys(item).sort().join(',') !== 'budget_yen,category',
+    )
+  )
+    return { ok: false, reason: 'content_invalid' };
+  return { ok: true, items };
 }

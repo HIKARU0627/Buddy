@@ -2955,6 +2955,11 @@
             }
           ],
           "monthly_total_yen": 3000
+        },
+        "budget": {
+          "budget_revision": "0",
+          "items": [],
+          "total_budget_yen": 0
         }
       },
       "rejections": [
@@ -3303,6 +3308,87 @@
               "memo": null,
               "payment": "合成のカード",
               "occurred_time": "12:00"
+            }
+          ]
+        }
+      ]
+    },
+    "changeHouseholdBudget": {
+      "request": {
+        "request_id": "00000000-0000-4000-8000-0000000c0105",
+        "command_scope_id": "00000000-0000-4000-8000-000000009002",
+        "expected_budget_revision": "1",
+        "items": [
+          {
+            "category": "food",
+            "budget_yen": 40000
+          },
+          {
+            "category": "utilities",
+            "budget_yen": 12000
+          }
+        ]
+      },
+      "response": {
+        "budget_revision": "2",
+        "items": [
+          {
+            "category": "food",
+            "budget_yen": 40000
+          },
+          {
+            "category": "utilities",
+            "budget_yen": 12000
+          }
+        ],
+        "total_budget_yen": 52000
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"],
+        ["stale_scope", 410, "expired_scope"],
+        ["locked", 403, "device_locked"],
+        ["lock_unknown", 403, "device_locked"],
+        ["too_large", 413, "payload_too_large"],
+        ["voice_origin", 403, "screen_operation_required"],
+        ["chat_origin", 403, "screen_operation_required"],
+        ["system_origin", 403, "screen_operation_required"]
+      ],
+      "invalid_bodies": [
+        {
+          "request_id": "00000000-0000-4000-8000-0000000c0105",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "expected_budget_revision": "1",
+          "items": [
+            {
+              "category": "income",
+              "budget_yen": 1000
+            }
+          ]
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-0000000c0105",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "expected_budget_revision": "1",
+          "items": [
+            {
+              "category": "food",
+              "budget_yen": 0
+            }
+          ]
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-0000000c0105",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "items": [
+            {
+              "category": "food",
+              "budget_yen": 40000
+            },
+            {
+              "category": "utilities",
+              "budget_yen": 12000
             }
           ]
         }

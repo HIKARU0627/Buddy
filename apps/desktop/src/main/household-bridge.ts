@@ -18,6 +18,7 @@
 import type {
   DesktopHouseholdEntry,
   DesktopHouseholdView,
+  HouseholdBudgetItem,
   HouseholdCategoryId,
   HouseholdEntry,
   HouseholdMonth,
@@ -189,6 +190,13 @@ export class HouseholdBridge {
       list_seq: this.#listSeq,
       mail_intake: this.#overview?.settings.mail_intake ?? null,
       recurring: this.#overview?.recurring ?? null,
+      budget:
+        this.#overview === null
+          ? null
+          : {
+              items: [...this.#overview.budget.items],
+              total_budget_yen: this.#overview.budget.total_budget_yen,
+            },
       last_import: this.#lastImport,
     };
   }
@@ -442,6 +450,53 @@ export class HouseholdBridge {
   #finishImport(result: LastImport): void {
     this.#lastImport = result;
     this.#listSeq += 1;
+  }
+
+  // 分類ごとの予算を丸ごと差し替える（ADR 0166）。月ごとの合計で読んだ予算の版で照合して送る。
+  async budget(
+    items: readonly HouseholdBudgetItem[],
+  ): Promise<HouseholdOutcome<DesktopHouseholdView>> {
+    const gen = this.#gen;
+    const connection = this.#host.connection();
+    const scope = connection?.state.commandScopeId ?? null;
+    if (connection === null || scope === null) return fail('not_connected');
+    const current = this.#overview?.budget ?? null;
+    if (current === null) return fail('entry_not_found');
+    const outcome = await connection.request({
+      method: 'POST',
+      path: '/v1/household/budget',
+      body: {
+        expected_budget_revision: current.budget_revision,
+        items: items.map((item) => ({
+          category: item.category,
+          budget_yen: item.budget_yen,
+        })),
+      },
+      scoped: true,
+      screenOperation: true,
+      expectedScopeId: scope,
+    });
+    if (outcome.kind === 'not_sent') return fail('not_connected');
+    if (gen !== this.#gen) return fail('outcome_unknown');
+    if (
+      outcome.kind === 'response' &&
+      outcome.status === 200 &&
+      this.#host.contract.valid('HouseholdBudget', outcome.body)
+    ) {
+      await this.#reread();
+      if (gen !== this.#gen) return fail('not_connected');
+      return { ok: true, value: this.view() };
+    }
+    void this.#reread();
+    if (
+      outcome.kind === 'unknown' ||
+      outcome.status >= 500 ||
+      (outcome.status >= 200 && outcome.status < 300)
+    ) {
+      this.#host.log('household_budget_outcome_unknown');
+      return fail('outcome_unknown');
+    }
+    return fail(outcome.status === 409 ? 'preview_stale' : 'core_rejected');
   }
 
   remove(ref: string): Promise<HouseholdOutcome<DesktopHouseholdView>> {

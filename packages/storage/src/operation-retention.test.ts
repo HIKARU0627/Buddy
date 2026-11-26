@@ -1183,15 +1183,27 @@ test('0011 applies to a version 10 DB with 6000 operations within 10 seconds (ch
           );
         }
       })();
+      // 0011 だけを測る（試験の名前どおり）。0016・0019 は sealed_blobs を作り直す（全行を写し直す）ので、まとめて
+      // 測ると 0011 の索引の有無と関係なく時間が延びる。0012 以降は別に、全体の上限で測る。
+      const migrations = loadMigrations();
       const started = Date.now();
-      assert.deepEqual(applyMigrations(db), {
+      assert.deepEqual(applyMigrations(db, migrations.slice(0, 11)), {
         from: 10,
-        to: 19,
-        applied: [11, 12, 13, 14, 15, 16, 17, 18, 19],
+        to: 11,
+        applied: [11],
       });
       const elapsed = Date.now() - started;
       // 索引のない 0011 は同じ規模で 22.9 秒かかった。CI の遅い実行機でも通る上限（ADR 0051）。
       assert.ok(elapsed < 10_000, `0011 took ${elapsed} ms`);
+      const restStarted = Date.now();
+      assert.deepEqual(applyMigrations(db, migrations), {
+        from: 11,
+        to: 19,
+        applied: [12, 13, 14, 15, 16, 17, 18, 19],
+      });
+      const restElapsed = Date.now() - restStarted;
+      // 0016・0019 の作り直しの重さが極端に増えたことに気づくための緩い上限（手元の Linux では 0.3 秒ほど）。
+      assert.ok(restElapsed < 30_000, `0012-0019 took ${restElapsed} ms`);
       assert.equal(count(db, 'SELECT count(*) FROM operations'), ROWS);
       assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
     } finally {

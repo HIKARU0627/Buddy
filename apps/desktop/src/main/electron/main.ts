@@ -21,7 +21,7 @@ import {
   systemPreferences,
   type IpcMainInvokeEvent,
 } from 'electron';
-import { readFile, stat } from 'node:fs/promises';
+import { readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { networkInterfaces } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -32,6 +32,8 @@ import { fileURLToPath } from 'node:url';
 import { DESKTOP_IPC_CHANNELS, type DesktopPowerEvent } from '@buddy/domain';
 import { adminConfirmText } from '../admin-confirm.js';
 import { ConnectionPublisher } from '../connection-publisher.js';
+import { writeHouseholdExportFile } from '../household-export-file.js';
+import type { HouseholdExportSaver } from '../household-bridge.js';
 import { createDesktopContract, loadContractSchema } from '../contract.js';
 import type { DesktopCanvasDisplaySettings } from '@buddy/contracts';
 import {
@@ -876,6 +878,7 @@ function createLink(
     log,
     confirmAdmin: confirmAdminWithDialog,
     pickHouseholdExport: pickHouseholdExportWithDialog,
+    saveHouseholdExport: saveHouseholdExportWithDialog,
     // キャンバスのモード（開発用のフラグ）では、入力バーの発言を流れへ送り、キャンバスの記述をキャンバスの窓だけへ渡す
     // （役割の表 DESKTOP_ROLE_NOTIFICATIONS。状態の層・入力バーへは送らない）。
     canvasMode: uiMode === 'canvas',
@@ -908,6 +911,27 @@ async function pickHouseholdExportWithDialog(): Promise<Uint8Array | null> {
   if (!info.isFile() || info.size > HOUSEHOLD_EXPORT_MAX_BYTES)
     return new Uint8Array();
   return new Uint8Array(await readFile(path));
+}
+
+// 家計の記録の CSV の書き出し先（ADR 0172）。OS の保存先の選択で本人に選ばせ、選んだ場所へだけ書く（一時ファイルは作らない）。
+// 親の窓がない・やめたときは 'cancelled'。保存先が決まった後、書く直前にロック・切断していないかを確かめ直す。
+async function saveHouseholdExportWithDialog(
+  file: Parameters<HouseholdExportSaver>[0],
+): ReturnType<HouseholdExportSaver> {
+  const parent = confirmDialogParent(uiMode, statusPanel.open);
+  const window = parent === null ? null : liveWindow(parent);
+  if (window === null) return 'cancelled';
+  const picked = await dialog.showSaveDialog(window, {
+    title: '家計簿の記録を書き出す場所を選ぶ',
+    defaultPath: file.name,
+    filters: [{ name: 'CSV', extensions: ['csv'] }],
+  });
+  if (picked.canceled || picked.filePath === '') return 'cancelled';
+  if (!file.stillValid()) return 'cancelled';
+  return writeHouseholdExportFile(picked.filePath, file.text, {
+    writeFile: (path, text, options) => writeFile(path, text, options),
+    rm: (path, options) => rm(path, options),
+  });
 }
 
 // 承認・拒否・失効の前の本人の確認（本人の判断 2026-10-22、ADR 0026）。親付きのモーダルな OS の確認ダイアログで、

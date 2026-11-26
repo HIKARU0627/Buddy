@@ -91,6 +91,7 @@ const view = (
   list_seq: 2,
   mail_intake: 'on',
   last_import: null,
+  last_export: null,
   recurring: null,
   budget: null,
   ...overrides,

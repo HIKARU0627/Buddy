@@ -27,8 +27,17 @@ import type {
   HouseholdOverview,
 } from '@buddy/contracts';
 import type { ClientConnection } from '@buddy/client';
-import { readMoneyforwardExport } from '@buddy/domain';
-import type { DesktopIpcRejectReason, HouseholdImportRow } from '@buddy/domain';
+import {
+  buildHouseholdCsv,
+  householdExportFileName,
+  householdExportMonths,
+  readMoneyforwardExport,
+} from '@buddy/domain';
+import type {
+  DesktopIpcRejectReason,
+  HouseholdExportEntry,
+  HouseholdImportRow,
+} from '@buddy/domain';
 import type { DesktopContract } from './contract.js';
 
 export interface HouseholdHost {
@@ -57,6 +66,18 @@ const MONTH = /^20[0-9]{2}-(0[1-9]|1[0-2])$/u;
 export const HOUSEHOLD_IMPORT_BATCH = 100;
 
 type LastImport = NonNullable<DesktopHouseholdView['last_import']>;
+type LastExport = NonNullable<DesktopHouseholdView['last_export']>;
+
+/**
+ * 書き出す CSV を本人が選んだ場所へ書く処理（Electron の層が OS の保存先の選択で作る。ADR 0172）。本人が保存先を選ばずに
+ * やめたら 'cancelled'（何も書かない）、書けなかったら 'failed'（書きかけのファイルは消す）。stillValid は保存先が決まった後・
+ * 書く直前に呼び、false（その間にロック・切断した）なら何も書かずに 'cancelled' を返す。
+ */
+export type HouseholdExportSaver = (file: {
+  readonly name: string;
+  readonly text: string;
+  readonly stillValid: () => boolean;
+}) => Promise<'saved' | 'cancelled' | 'failed'>;
 
 /**
  * 書き出しのファイルの中身を文字にする。UTF-8（BOM の有無を問わない）として正しければ UTF-8、そうでなければ Shift_JIS と
@@ -127,6 +148,7 @@ export class HouseholdBridge {
   #fetchedAt: string | null = null;
   #failed = false;
   #lastImport: LastImport | null = null;
+  #lastExport: LastExport | null = null;
   #gen = 0;
   // 始めた読み取りの通し番号。
   #seq = 0;
@@ -148,6 +170,7 @@ export class HouseholdBridge {
     this.#fetchedAt = null;
     this.#failed = false;
     this.#lastImport = null;
+    this.#lastExport = null;
     this.#listSeq += 1;
   }
 
@@ -200,6 +223,7 @@ export class HouseholdBridge {
               total_budget_yen: this.#overview.budget.total_budget_yen,
             },
       last_import: this.#lastImport,
+      last_export: this.#lastExport,
     };
   }
 
@@ -452,6 +476,115 @@ export class HouseholdBridge {
   #finishImport(result: LastImport): void {
     this.#lastImport = result;
     this.#listSeq += 1;
+  }
+
+  // 家計の記録を月の範囲で CSV に書き出す（ADR 0172）。月ごとに既存の GET /v1/household/months/{month} で読み（新しい API は
+  // 足さない）、全部の月を欠けなく読めたときだけ、保存先を本人に選ばせて書く。打ち切られた月・読めない記録・読めない月が
+  // あれば、ファイルは作らず結果だけを残す（欠けたファイルを黙って作らない）。読んだ記録は画面の表示（今の月）に混ぜず、
+  // この関数の中の変数だけに持ち、保存先へ渡したら捨てる（画面・ログ・一時ファイルへ出さない）。ロック・切断をまたいだら
+  // 何も書かない。本人が保存先を選ばずにやめたときは、結果を残さずに今の表示を返す。
+  async exportCsv(
+    from: string,
+    to: string,
+    save: HouseholdExportSaver,
+  ): Promise<HouseholdOutcome<DesktopHouseholdView>> {
+    const gen = this.#gen;
+    const connection = this.#host.connection();
+    const scope = connection?.state.commandScopeId ?? null;
+    if (connection === null || scope === null) return fail('not_connected');
+    const months = householdExportMonths(from, to);
+    if (months === null) return fail('invalid_request');
+    this.#lastExport = null;
+    this.#listSeq += 1;
+    const entries: HouseholdExportEntry[] = [];
+    const seen = new Set<string>();
+    let read = 0;
+    let truncatedMonths = 0;
+    let unreadable = 0;
+    const finish = (
+      outcome: LastExport['outcome'],
+    ): HouseholdOutcome<DesktopHouseholdView> => {
+      this.#lastExport = {
+        outcome,
+        months: read,
+        entries: entries.length,
+        truncated_months: truncatedMonths,
+        unreadable,
+      };
+      this.#listSeq += 1;
+      return { ok: true, value: this.view() };
+    };
+    for (const month of months) {
+      const response = await connection.request({
+        method: 'GET',
+        path: `/v1/household/months/${encodeURIComponent(month)}`,
+        expectedScopeId: scope,
+      });
+      if (gen !== this.#gen) return fail('not_connected');
+      if (
+        response.kind !== 'response' ||
+        response.status !== 200 ||
+        !this.#host.contract.valid('HouseholdMonth', response.body)
+      ) {
+        this.#host.log('household_export_read_failed');
+        return finish('read_failed');
+      }
+      const body = response.body as HouseholdMonth;
+      // 月の指定と記録の日付が合わない・同じ記録が二度出る（月をまたいでも、同じ月の中でも）応答は信じない。
+      const inMonth = new Set<string>();
+      if (
+        body.month !== month ||
+        body.entries.some((entry) => {
+          const twice = seen.has(entry.entry_id) || inMonth.has(entry.entry_id);
+          inMonth.add(entry.entry_id);
+          return !entry.occurred_on.startsWith(`${month}-`) || twice;
+        })
+      ) {
+        this.#host.log('household_export_read_failed');
+        return finish('read_failed');
+      }
+      read += 1;
+      if (body.truncated) truncatedMonths += 1;
+      unreadable += body.unreadable;
+      for (const entry of body.entries) {
+        seen.add(entry.entry_id);
+        entries.push({
+          entry_id: entry.entry_id,
+          source_kind: entry.source_kind,
+          direction: entry.direction,
+          amount_yen: entry.amount_yen,
+          occurred_on: entry.occurred_on,
+          occurred_time: entry.occurred_time,
+          category: entry.category,
+          merchant: entry.merchant,
+          memo: entry.memo,
+          payment: entry.payment,
+        });
+      }
+    }
+    if (truncatedMonths > 0 || unreadable > 0) return finish('incomplete');
+    const text = buildHouseholdCsv(entries);
+    if (text === null) {
+      this.#host.log('household_export_read_failed');
+      return finish('read_failed');
+    }
+    let saved: 'saved' | 'cancelled' | 'failed';
+    try {
+      saved = await save({
+        name: householdExportFileName(from, to),
+        text,
+        stillValid: () => gen === this.#gen,
+      });
+    } catch {
+      saved = 'failed';
+    }
+    if (gen !== this.#gen) return fail('not_connected');
+    if (saved === 'cancelled') {
+      this.#listSeq += 1;
+      return { ok: true, value: this.view() };
+    }
+    if (saved === 'failed') this.#host.log('household_export_write_failed');
+    return finish(saved === 'saved' ? 'saved' : 'write_failed');
   }
 
   // 分類ごとの予算を丸ごと差し替える（ADR 0166）。月ごとの合計で読んだ予算の版で照合して送る。

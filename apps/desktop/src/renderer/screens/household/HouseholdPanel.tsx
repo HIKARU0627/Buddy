@@ -21,6 +21,8 @@ import {
   FETCH_LABELS,
   ADD_PLACE,
   BUDGET_PLACE,
+  EXPORT_PLACE,
+  EXPORT_RANGES,
   HOUSEHOLD_LABELS,
   IMPORT_PLACE,
   INTAKE_PLACE,
@@ -33,6 +35,8 @@ import {
   dayText,
   duplicateRefs,
   elapsedText,
+  exportRangeOf,
+  exportResultText,
   importResultText,
   inputFromEntry,
   manualEntryFromInput,
@@ -41,6 +45,7 @@ import {
   yenText,
 } from '../../state/household-state.js';
 import type {
+  ExportRangeId,
   HouseholdActions,
   HouseholdViewState,
   ManualEntryInput,
@@ -872,6 +877,75 @@ function ImportBlock({
   );
 }
 
+// 記録の CSV への書き出し（ADR 0172）。期間を選ぶと、main が月ごとに読み、すべて読めたときだけ OS の保存先の選択を出す。
+// 画面はパスも中身も持たない。結果は件数と理由だけ（打ち切られた月・読めない記録があるときは書き出さない）。
+function ExportBlock({
+  state,
+  actions,
+}: {
+  readonly state: HouseholdViewState;
+  readonly actions: HouseholdActions;
+}) {
+  const [rangeId, setRangeId] = useState<ExportRangeId>('year');
+  const rangeSelectId = 'household-export-range';
+  const notice = noticeAt(state, EXPORT_PLACE);
+  const mine = state.busy === EXPORT_PLACE;
+  const result = state.view?.last_export ?? null;
+  const range = exportRangeOf(
+    rangeId,
+    state.view?.current_month ?? null,
+    state.view?.month ?? null,
+  );
+  return (
+    <div className="flex flex-col gap-1.5">
+      <h3 className="text-sm font-semibold">{HOUSEHOLD_LABELS.exportTitle}</h3>
+      <p className="text-xs text-muted">{HOUSEHOLD_LABELS.exportNote}</p>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <label
+          htmlFor={rangeSelectId}
+          className="flex items-center gap-2 text-xs text-muted"
+        >
+          {HOUSEHOLD_LABELS.exportRange}
+          <select
+            id={rangeSelectId}
+            value={rangeId}
+            disabled={state.busy !== null}
+            onChange={(event) =>
+              setRangeId(event.currentTarget.value as ExportRangeId)
+            }
+            className="rounded-md border border-separator bg-transparent px-2 py-1 text-sm text-foreground"
+          >
+            {EXPORT_RANGES.map((choice) => (
+              <option key={choice.id} value={choice.id}>
+                {choice.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <Button
+          size="sm"
+          variant="secondary"
+          isDisabled={state.busy !== null || range === null}
+          onPress={() => {
+            if (range !== null) actions.exportCsv(range.from, range.to);
+          }}
+        >
+          {mine ? HOUSEHOLD_LABELS.exporting : HOUSEHOLD_LABELS.exportButton}
+        </Button>
+      </div>
+      {result === null ? null : (
+        <InlineNotice
+          tone={result.outcome === 'saved' ? 'success' : 'warning'}
+          text={exportResultText(result)}
+        />
+      )}
+      {notice === null ? null : (
+        <InlineNotice tone={notice.tone} text={notice.text} />
+      )}
+    </div>
+  );
+}
+
 export function HouseholdPanel({
   state,
   actions,
@@ -966,6 +1040,7 @@ export function HouseholdPanel({
         <RecurringBlock recurring={view.recurring} />
       )}
       {loaded ? <ImportBlock state={state} actions={actions} /> : null}
+      {loaded ? <ExportBlock state={state} actions={actions} /> : null}
       {!loaded || view.months.length === 0 ? null : (
         <MonthList
           months={view.months}

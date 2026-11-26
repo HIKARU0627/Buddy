@@ -1081,6 +1081,35 @@
         "expected_io_epoch": null,
         "state": { "stopScope": "local" },
         "expected": { "ok": true }
+      },
+      {
+        "id": "household-export-from-hidden-window",
+        "refs": ["ADR 0172"],
+        "channel": "desktop.household_export",
+        "expected_io_epoch": null,
+        "sender": { "windowFocused": false },
+        "expected": { "ok": false, "reason": "screen_operation_required" }
+      },
+      {
+        "id": "household-export-while-locked",
+        "channel": "desktop.household_export",
+        "expected_io_epoch": null,
+        "state": { "lockState": "locked" },
+        "expected": { "ok": false, "reason": "device_locked" }
+      },
+      {
+        "id": "household-export-while-lock-unknown",
+        "channel": "desktop.household_export",
+        "expected_io_epoch": null,
+        "state": { "lockState": "unknown" },
+        "expected": { "ok": false, "reason": "device_locked" }
+      },
+      {
+        "id": "household-export-while-stopped",
+        "channel": "desktop.household_export",
+        "expected_io_epoch": null,
+        "state": { "stopScope": "local" },
+        "expected": { "ok": true }
       }
     ]
   },

@@ -268,6 +268,7 @@ test('the view carries refs and display values only, and reads the current month
     list_seq: 2,
     mail_intake: 'on',
     last_import: null,
+    last_export: null,
     recurring: overview().recurring,
     budget: {
       items: [{ category: 'food', budget_yen: 40000 }],
@@ -1019,4 +1020,284 @@ test('a content edit of an unknown reference or without a scope sends nothing, a
     reason: 'not_connected',
   });
   assert.equal(r.posts().length, 1);
+});
+
+// --- 記録の CSV への書き出し（ADR 0172）。期待値の CSV は手で書いた文字列。 ---
+
+const EXPORT_HEADER_LINE =
+  '計算対象,日付,内容,金額（円）,保有金融機関,大項目,中項目,メモ,振替,ID,時刻,向き,出所の種類';
+
+interface Saved {
+  name: string;
+  text: string;
+  stillValid: boolean;
+}
+
+// 保存先の選択の模擬。呼ばれた内容を記録し、決めた結果を返す。
+function saver(
+  result: 'saved' | 'cancelled' | 'failed' | 'throw' = 'saved',
+  during: () => void = () => undefined,
+) {
+  const saved: Saved[] = [];
+  const save = (file: {
+    name: string;
+    text: string;
+    stillValid: () => boolean;
+  }): Promise<'saved' | 'cancelled' | 'failed'> => {
+    during();
+    saved.push({
+      name: file.name,
+      text: file.text,
+      stillValid: file.stillValid(),
+    });
+    if (result === 'throw') return Promise.reject(new Error('disk'));
+    return Promise.resolve(result);
+  };
+  return { saved, save };
+}
+
+test('export: reads each month with the existing read, writes a hand-checked CSV, and keeps no plaintext in the view', async () => {
+  const r = rig();
+  const s = saver();
+  const view = ok(await r.bridge.exportCsv('2030-10', '2030-11', s.save));
+  // 月ごとの読み取りだけ（月ごとの合計・書き込みは送らない）。古い月から。
+  assert.deepEqual(r.calls, [
+    {
+      method: 'GET',
+      path: '/v1/household/months/2030-10',
+      expectedScopeId: SCOPE,
+    },
+    {
+      method: 'GET',
+      path: '/v1/household/months/2030-11',
+      expectedScopeId: SCOPE,
+    },
+  ]);
+  assert.equal(s.saved.length, 1);
+  assert.equal(s.saved[0]?.name, 'buddy-household-2030-10_2030-11.csv');
+  assert.equal(s.saved[0]?.stillValid, true);
+  // 日付の古い順（給与 11/01、昼食 11/03）。支出は負、収入は正。時刻は昼食だけ。BOM と CRLF。
+  assert.equal(
+    s.saved[0]?.text,
+    `\uFEFF${EXPORT_HEADER_LINE}\r\n` +
+      '1,2030/11/01,,200000,,収入,,合成の給与,0,buddy:00000000-0000-4000-8000-000000000c02,,収入,書き出しの取り込み\r\n' +
+      '1,2030/11/03,合成の食堂,-1280,合成のカード,食費,,,0,buddy:00000000-0000-4000-8000-000000000c01,12:34,支出,利用通知メール\r\n',
+  );
+  assert.deepEqual(view.last_export, {
+    outcome: 'saved',
+    months: 2,
+    entries: 2,
+    truncated_months: 0,
+    unreadable: 0,
+  });
+  // 画面の値に記録も保存先も入らない（書き出しは今の表示を読み込まない）。
+  assert.equal(view.fetch, 'unavailable');
+  assert.deepEqual(view.entries, []);
+  const text = JSON.stringify(view);
+  for (const plain of ['合成の食堂', '合成の給与', LUNCH, 'buddy:', '1280'])
+    assert.equal(text.includes(plain), false, plain);
+  assert.deepEqual(
+    contract.responseErrors({
+      request_id: uuid(1),
+      channel: 'desktop.household_export',
+      outcome: 'ok',
+      household: view,
+    }),
+    [],
+  );
+  assert.deepEqual(r.logs, []);
+  // 次の書き出しを始めると、前の結果は消える（やめたときに古い結果を見せない）。
+  const cancelled = saver('cancelled');
+  const after = ok(
+    await r.bridge.exportCsv('2030-11', '2030-11', cancelled.save),
+  );
+  assert.equal(after.last_export, null);
+  assert.equal(cancelled.saved[0]?.name, 'buddy-household-2030-11.csv');
+});
+
+test('export: an empty range writes a header-only file; the same month alone has one name', async () => {
+  const r = rig();
+  r.month = (month) => ({
+    kind: 'response',
+    status: 200,
+    body: monthBody(month, []),
+  });
+  const s = saver();
+  const view = ok(await r.bridge.exportCsv('2030-01', '2030-03', s.save));
+  assert.equal(s.saved[0]?.text, `\uFEFF${EXPORT_HEADER_LINE}\r\n`);
+  assert.equal(s.saved[0]?.name, 'buddy-household-2030-01_2030-03.csv');
+  assert.deepEqual(view.last_export, {
+    outcome: 'saved',
+    months: 3,
+    entries: 0,
+    truncated_months: 0,
+    unreadable: 0,
+  });
+  assert.equal(r.calls.length, 3);
+});
+
+test('export: a truncated month or unreadable records write no file and say why', async () => {
+  const r = rig();
+  r.month = (month) => ({
+    kind: 'response',
+    status: 200,
+    body:
+      month === '2030-10'
+        ? { ...monthBody(month, []), truncated: true }
+        : month === '2030-11'
+          ? { ...monthBody(month), unreadable: 2 }
+          : monthBody(month, []),
+  });
+  const s = saver();
+  const view = ok(await r.bridge.exportCsv('2030-09', '2030-11', s.save));
+  assert.equal(s.saved.length, 0);
+  assert.deepEqual(view.last_export, {
+    outcome: 'incomplete',
+    months: 3,
+    entries: 2,
+    truncated_months: 1,
+    unreadable: 2,
+  });
+  assert.deepEqual(r.logs, []);
+});
+
+test('export: a month that cannot be read, or reads inconsistently, writes no file', async () => {
+  const bad: Record<string, (month: string) => Outcome> = {
+    '503': () => ({ kind: 'response', status: 503, body: {} }),
+    unknown: () => ({ kind: 'unknown' }),
+    'wrong shape': () => ({
+      kind: 'response',
+      status: 200,
+      body: { month: '2030-11' },
+    }),
+    'other month': () => ({
+      kind: 'response',
+      status: 200,
+      body: monthBody('2030-09', []),
+    }),
+    'entry outside the month': (month) => ({
+      kind: 'response',
+      status: 200,
+      body: monthBody(month, [lunch({ occurred_on: '2030-12-01' })]),
+    }),
+    'same entry twice': (month) => ({
+      kind: 'response',
+      status: 200,
+      body: monthBody(month, [lunch(), lunch()]),
+    }),
+    'impossible date': (month) => ({
+      kind: 'response',
+      status: 200,
+      body: monthBody(month, [lunch({ occurred_on: '2030-11-31' })]),
+    }),
+  };
+  for (const [name, outcome] of Object.entries(bad)) {
+    const r = rig();
+    // 10 月は読めて、11 月で問題が起きる（途中で止まる）。
+    r.month = (month) =>
+      month === '2030-11'
+        ? outcome(month)
+        : { kind: 'response', status: 200, body: monthBody(month, []) };
+    const s = saver();
+    const view = ok(await r.bridge.exportCsv('2030-10', '2030-11', s.save));
+    assert.equal(s.saved.length, 0, name);
+    assert.equal(view.last_export?.outcome, 'read_failed', name);
+    // 日付が暦にない記録は、読んだ後の CSV を作る段階で見つかる（2 か月とも読めている）。
+    assert.equal(
+      view.last_export?.months,
+      name === 'impossible date' ? 2 : 1,
+      name,
+    );
+    assert.deepEqual(r.logs, ['household_export_read_failed'], name);
+  }
+});
+
+test('export: cancelling the save leaves no result; a write failure or exception is reported and logged', async () => {
+  const r = rig();
+  const cancelled = saver('cancelled');
+  const none = ok(
+    await r.bridge.exportCsv('2030-11', '2030-11', cancelled.save),
+  );
+  assert.equal(none.last_export, null);
+  assert.equal(cancelled.saved.length, 1);
+  assert.deepEqual(r.logs, []);
+  for (const result of ['failed', 'throw'] as const) {
+    const s = saver(result);
+    const view = ok(await r.bridge.exportCsv('2030-11', '2030-11', s.save));
+    assert.deepEqual(view.last_export, {
+      outcome: 'write_failed',
+      months: 1,
+      entries: 2,
+      truncated_months: 0,
+      unreadable: 0,
+    });
+  }
+  assert.deepEqual(r.logs, [
+    'household_export_write_failed',
+    'household_export_write_failed',
+  ]);
+  // ログに記録も保存先も入らない（コードだけ）。
+  assert.equal(r.logs.join('').includes('合成'), false);
+});
+
+test('export: a bad range or no connection sends nothing and writes nothing', async () => {
+  const r = rig();
+  r.month = (month) => ({
+    kind: 'response',
+    status: 200,
+    body: monthBody(month, []),
+  });
+  const s = saver();
+  for (const [from, to] of [
+    ['2030-12', '2030-11'],
+    ['2020-11', '2030-11'],
+    ['1999-12', '2000-01'],
+    ['2099-12', '2100-01'],
+    ['2030-1', '2030-11'],
+    ['2030-11', '2030-13'],
+  ] as const)
+    assert.deepEqual(await r.bridge.exportCsv(from, to, s.save), {
+      ok: false,
+      reason: 'invalid_request',
+    });
+  assert.equal(r.calls.length, 0);
+  // ちょうど 120 か月は読める（上限）。
+  const ten = ok(await r.bridge.exportCsv('2021-01', '2030-12', s.save));
+  assert.equal(ten.last_export?.months, 120);
+  assert.equal(r.calls.length, 120);
+  const before = r.calls.length;
+  r.scope = null;
+  assert.deepEqual(await r.bridge.exportCsv('2030-11', '2030-11', s.save), {
+    ok: false,
+    reason: 'not_connected',
+  });
+  assert.equal(r.calls.length, before);
+  assert.equal(s.saved.length, 1);
+});
+
+test('export: locking or disconnecting while reading or choosing the place writes nothing and drops the data', async () => {
+  // 読んでいる最中（2 か月目の応答の前）に世代が進む: 保存先を出さない。
+  const reading = rig();
+  let count = 0;
+  reading.gate = () => {
+    count += 1;
+    if (count === 2) reading.bridge.reset();
+    return Promise.resolve();
+  };
+  const first = saver();
+  assert.deepEqual(
+    await reading.bridge.exportCsv('2030-10', '2030-11', first.save),
+    { ok: false, reason: 'not_connected' },
+  );
+  assert.equal(first.saved.length, 0);
+  assert.equal(reading.bridge.view().last_export, null);
+  // 保存先を選んでいる間に世代が進む: stillValid が false になり、結果は残さない。
+  const choosing = rig();
+  const second = saver('saved', () => choosing.bridge.reset());
+  assert.deepEqual(
+    await choosing.bridge.exportCsv('2030-11', '2030-11', second.save),
+    { ok: false, reason: 'not_connected' },
+  );
+  assert.equal(second.saved[0]?.stillValid, false);
+  assert.equal(choosing.bridge.view().last_export, null);
 });

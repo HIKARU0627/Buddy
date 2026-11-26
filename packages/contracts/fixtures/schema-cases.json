@@ -5911,6 +5911,46 @@
     }
   },
   {
+    "id": "desktop-ipc-household-export",
+    "schema": "DesktopIpcRequest",
+    "valid": true,
+    "value": {
+      "channel": "desktop.household_export",
+      "request_id": "00000000-0000-4000-8000-000000000a21",
+      "payload": { "from": "2029-12", "to": "2030-11" }
+    }
+  },
+  {
+    "id": "desktop-ipc-household-export-with-path",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.household_export",
+      "request_id": "00000000-0000-4000-8000-000000000a22",
+      "payload": { "from": "2029-12", "to": "2030-11", "path": "/tmp/a.csv" }
+    }
+  },
+  {
+    "id": "desktop-ipc-household-export-without-end",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.household_export",
+      "request_id": "00000000-0000-4000-8000-000000000a23",
+      "payload": { "from": "2029-12" }
+    }
+  },
+  {
+    "id": "desktop-ipc-household-export-bad-month",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.household_export",
+      "request_id": "00000000-0000-4000-8000-000000000a24",
+      "payload": { "from": "2029-13", "to": "2030-11" }
+    }
+  },
+  {
     "id": "desktop-ipc-io-stop",
     "schema": "DesktopIpcRequest",
     "valid": true,

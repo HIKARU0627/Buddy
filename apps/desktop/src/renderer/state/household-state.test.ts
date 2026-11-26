@@ -19,6 +19,8 @@ import {
   budgetItemsFromInput,
   budgetUseText,
   dayText,
+  exportRangeOf,
+  exportResultText,
   importResultText,
   inputFromEntry,
   manualEntryFromInput,
@@ -71,6 +73,7 @@ const view = (
   list_seq: 2,
   mail_intake: 'on',
   last_import: null,
+  last_export: null,
   recurring: null,
   budget: null,
   ...overrides,
@@ -397,6 +400,102 @@ test('the import is one request with no file data from the screen, and its resul
     importResultText({ ...result, outcome: 'unreadable' }),
     /^ファイルを読めませんでした。/u,
   );
+});
+
+test('the export sends only a month range, once at a time, and its result is written in counts and reasons', async () => {
+  const fake = fakeApi();
+  const store = new HouseholdStore(fake.api);
+  // 読む前は書き出させない。
+  store.actions.exportCsv('2029-12', '2030-11');
+  assert.equal(fake.sent.length, 0);
+  store.actions.refresh();
+  fake.answer((request) => okResponse(request, view([entry(0)])));
+  await settle();
+  store.actions.exportCsv('2029-12', '2030-11');
+  assert.equal(fake.sent.at(-1)?.channel, 'desktop.household_export');
+  assert.deepEqual(fake.sent.at(-1)?.payload, {
+    from: '2029-12',
+    to: '2030-11',
+  });
+  assert.equal(store.snapshot().busy, 'export');
+  // 処理中は二つ目を送らない。
+  const count = fake.sent.length;
+  store.actions.exportCsv('2030-01', '2030-02');
+  assert.equal(fake.sent.length, count);
+  const saved = {
+    outcome: 'saved' as const,
+    months: 12,
+    entries: 40,
+    truncated_months: 0,
+    unreadable: 0,
+  };
+  fake.answer((request) =>
+    okResponse(request, view([entry(0)], { last_export: saved, list_seq: 3 })),
+  );
+  await settle();
+  assert.equal(store.snapshot().busy, null);
+  assert.deepEqual(store.snapshot().view?.last_export, saved);
+  // 範囲の誤りなどの拒否は、知らせを出して処理中を解く。
+  store.actions.exportCsv('2030-11', '2029-12');
+  fake.answer((request) => rejected(request, 'invalid_request'));
+  await settle();
+  assert.equal(store.snapshot().busy, null);
+  assert.equal(store.snapshot().notice?.place, 'export');
+  assert.equal(
+    exportResultText(saved),
+    '書き出しました（12\u00a0か月分、記録\u00a040\u00a0件）。ファイルには金額・店名・メモがそのまま入っています。',
+  );
+  assert.equal(
+    exportResultText({
+      ...saved,
+      outcome: 'incomplete',
+      truncated_months: 1,
+      unreadable: 2,
+    }),
+    '件数が多くて一部しか読めなかった月が\u00a01\u00a0か月、読めない記録が\u00a02\u00a0件あるため、欠けたファイルになるので書き出しませんでした。期間を狭めて、もう一度お試しください。',
+  );
+  assert.equal(
+    exportResultText({ ...saved, outcome: 'incomplete', unreadable: 3 }),
+    '読めない記録が\u00a03\u00a0件あるため、欠けたファイルになるので書き出しませんでした。読めない記録が残る間は書き出せません。',
+  );
+  assert.match(
+    exportResultText({ ...saved, outcome: 'read_failed' }),
+    /^記録を読めなかったため、書き出しませんでした。/u,
+  );
+  assert.match(
+    exportResultText({ ...saved, outcome: 'write_failed' }),
+    /^選んだ場所に書けなかったため、書き出せませんでした（書きかけのファイルは消しました）。/u,
+  );
+});
+
+test('the export range choices count back from the month the hub decided', () => {
+  assert.deepEqual(exportRangeOf('shown', '2030-11', '2030-08'), {
+    from: '2030-08',
+    to: '2030-08',
+  });
+  assert.equal(exportRangeOf('shown', '2030-11', null), null);
+  assert.deepEqual(exportRangeOf('year', '2030-11', null), {
+    from: '2029-12',
+    to: '2030-11',
+  });
+  assert.deepEqual(exportRangeOf('year', '2030-01', null), {
+    from: '2029-02',
+    to: '2030-01',
+  });
+  assert.deepEqual(exportRangeOf('three_years', '2030-11', null), {
+    from: '2027-12',
+    to: '2030-11',
+  });
+  assert.deepEqual(exportRangeOf('ten_years', '2030-11', null), {
+    from: '2021-02',
+    to: '2030-11',
+  });
+  // 2000 年より前にさかのぼるときは 2000-01 から。
+  assert.deepEqual(exportRangeOf('ten_years', '2005-03', null), {
+    from: '2000-01',
+    to: '2005-03',
+  });
+  assert.equal(exportRangeOf('year', null, '2030-11'), null);
 });
 
 test('budget input accepts empty, full-width digits and commas, and refuses anything else', () => {

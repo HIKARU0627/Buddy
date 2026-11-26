@@ -74,6 +74,7 @@ const view = (
   list_seq: 2,
   mail_intake: 'on',
   last_import: null,
+  last_export: null,
   recurring: null,
   budget: null,
   ...overrides,
@@ -89,6 +90,7 @@ const ACTIONS: HouseholdActions = {
   confirmDelete: noop,
   setIntake: noop,
   importExport: noop,
+  exportCsv: noop,
   startBudget: noop,
   cancelBudget: noop,
   saveBudget: noop,
@@ -273,6 +275,56 @@ test('the import block offers to pick a file and shows the last result', () => {
   assert.match(done, /取り込みました（新しく記録\u00a03\u00a0件/u);
   // 読めていなければ取り込みの欄を出さない。
   assert.doesNotMatch(text(panel({})), /ファイルを選んで取り込む/u);
+});
+
+test('the export block warns that the file is plain text, offers the periods, and shows the last result', () => {
+  const none = panel({ view: view([entry(0)]), seq: 2 });
+  assert(buttons(none).includes('保存先を選んで書き出す'));
+  assert.match(text(none), /金額・店名・メモがそのまま（暗号化せず）入ります/u);
+  for (const label of [
+    '今出している月だけ',
+    '直近 12\u00a0か月',
+    '直近 36\u00a0か月',
+    '直近 10\u00a0年（120\u00a0か月）',
+  ])
+    assert.match(text(none), new RegExp(label, 'u'));
+  const saved = text(
+    panel({
+      view: view([entry(0)], {
+        last_export: {
+          outcome: 'saved',
+          months: 12,
+          entries: 40,
+          truncated_months: 0,
+          unreadable: 0,
+        },
+      }),
+      seq: 2,
+    }),
+  );
+  assert.match(
+    saved,
+    /書き出しました（12\u00a0か月分、記録\u00a040\u00a0件）/u,
+  );
+  const incomplete = text(
+    panel({
+      view: view([entry(0)], {
+        last_export: {
+          outcome: 'incomplete',
+          months: 3,
+          entries: 9,
+          truncated_months: 1,
+          unreadable: 0,
+        },
+      }),
+      seq: 2,
+    }),
+  );
+  assert.match(incomplete, /欠けたファイルになるので書き出しませんでした/u);
+  // 書き出し中は表示が変わり、読めていなければ欄を出さない。
+  const busy = panel({ view: view([entry(0)]), seq: 2, busy: 'export' });
+  assert.match(busy, /書き出しています…/u);
+  assert.doesNotMatch(text(panel({})), /保存先を選んで書き出す/u);
 });
 
 test('the recurring block lists fixed costs with the monthly estimate, and says when there are none', () => {

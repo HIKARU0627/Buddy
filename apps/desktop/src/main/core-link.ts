@@ -76,6 +76,7 @@ import { BudgetBridge } from './budget-bridge.js';
 import type { BudgetConfirmRequest } from './budget-bridge.js';
 import { AutoActionBridge } from './auto-action-bridge.js';
 import { HouseholdBridge } from './household-bridge.js';
+import type { HouseholdExportSaver } from './household-bridge.js';
 import { CandidateBridge } from './candidate-bridge.js';
 import { ConnectionsBridge } from './connections-bridge.js';
 import { CanvasBridge } from './canvas-bridge.js';
@@ -154,6 +155,7 @@ export const HOUSEHOLD_CHANNELS: readonly DesktopIpcChannel[] = [
   'desktop.household_budget',
   'desktop.household_add',
   'desktop.household_edit',
+  'desktop.household_export',
 ];
 
 // 連携の接続の一覧と取得範囲の変更のチャネル（B08-02 P3・B09-05、ADR 0142）。中枢の画面の端末でだけ使える
@@ -225,6 +227,9 @@ export interface DesktopCoreLinkOptions {
   // 家計簿の書き出しの取り込みで、本人に OS のファイル選択でファイルを選ばせて中身を返す（ADR 0164）。やめたら null。
   // 省略するとファイルを選べないので、取り込みは何もしない。
   readonly pickHouseholdExport?: () => Promise<Uint8Array | null>;
+  // 家計の記録の CSV の書き出しで、本人に OS の保存先の選択を出して選んだ場所へだけ書く（ADR 0172）。省略すると保存先を
+  // 選べないので、何も書かない。
+  readonly saveHouseholdExport?: HouseholdExportSaver;
   // 発言の結果が会話の操作（照合表に当たった発言。session_control）のとき、その操作を音声の制御へ渡す（B05-05）。
   // 画面のボタンと同じ処理を通す。省略すると何もしない（音声を使わない組み立て）。
   readonly onSessionControl?: (action: SessionControlAction) => void;
@@ -1303,7 +1308,8 @@ export class DesktopCoreLink {
         raw.channel !== 'desktop.household_import' &&
         raw.channel !== 'desktop.household_budget' &&
         raw.channel !== 'desktop.household_add' &&
-        raw.channel !== 'desktop.household_edit')
+        raw.channel !== 'desktop.household_edit' &&
+        raw.channel !== 'desktop.household_export')
     )
       return this.#reject(
         echoRequestId(raw),
@@ -1342,10 +1348,17 @@ export class DesktopCoreLink {
                   ? await this.#household.budget(raw.payload.items)
                   : raw.channel === 'desktop.household_add'
                     ? await this.#household.add(raw.payload.entry)
-                    : await this.#household.edit(
-                        raw.payload.ref,
-                        raw.payload.entry,
-                      );
+                    : raw.channel === 'desktop.household_export'
+                      ? await this.#household.exportCsv(
+                          raw.payload.from,
+                          raw.payload.to,
+                          this.#options.saveHouseholdExport ??
+                            (() => Promise.resolve('cancelled')),
+                        )
+                      : await this.#household.edit(
+                          raw.payload.ref,
+                          raw.payload.entry,
+                        );
     return this.#withinGeneration(
       generation,
       this.#operationOutcome(

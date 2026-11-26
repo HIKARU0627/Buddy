@@ -44,6 +44,7 @@ import { executeIntentShadowOp } from './intent-shadow-store.js';
 import { executeCandidateOp } from './candidate-store.js';
 import { executeSyncOp } from './sync-store.js';
 import { executeResearchOp } from './research-store.js';
+import { executeHouseholdOp } from './household-store.js';
 import { readAutoExecutionState } from './auto-execution-state.js';
 import { bindStore } from './store-binding.js';
 import type { StoreBindingResult } from './store-binding.js';
@@ -571,6 +572,29 @@ function main(): void {
     post({ type: 'research_result', id: message.id, result, halted });
   };
 
+  // 家計の記録と分類の規則（ADR 0158）。
+  const handleHousehold = (
+    message: Extract<MainToWorker, { type: 'household' }>,
+  ): void => {
+    let result;
+    try {
+      const run = executeHouseholdOp(connection, message.op, {
+        platform: data.platform,
+        halted,
+      });
+      if (run.halt) halted = true;
+      result = run.result;
+    } catch {
+      // 照会の想定外の失敗。書込みは executeHouseholdOp の中で巻き戻している。
+      result = {
+        ok: false as const,
+        outcome: 'rejected' as const,
+        reasons: ['household_op_failed'],
+      };
+    }
+    post({ type: 'household_result', id: message.id, result, halted });
+  };
+
   port.on('message', (message: MainToWorker) => {
     if (message.type === 'command') handleCommand(message);
     else if (message.type === 'query') handleQuery(message);
@@ -589,6 +613,7 @@ function main(): void {
     else if (message.type === 'candidate') handleCandidate(message);
     else if (message.type === 'sync') handleSync(message);
     else if (message.type === 'research') handleResearch(message);
+    else if (message.type === 'household') handleHousehold(message);
     else if (message.type === 'close') {
       halted = true;
       connection.close();

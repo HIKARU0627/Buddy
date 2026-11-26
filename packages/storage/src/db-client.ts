@@ -92,6 +92,16 @@ import type {
   SyncScopeSnapshot,
 } from './sync-store.js';
 import { RESEARCH_WRITE_OPS } from './research-store.js';
+import { HOUSEHOLD_WRITE_OPS } from './household-store.js';
+import type {
+  HouseholdEntryRecord,
+  HouseholdListValue,
+  HouseholdOp,
+  HouseholdOpResult,
+  HouseholdRecordValue,
+  HouseholdRevisionValue,
+  HouseholdRuleValue,
+} from './household-store.js';
 import type {
   ResearchAcceptValue,
   ResearchJobRecord,
@@ -355,6 +365,13 @@ interface PendingResearch {
   readonly resolve: (result: ResearchOpResult) => void;
 }
 
+interface PendingHousehold {
+  readonly kind: 'household';
+  readonly op: HouseholdOp;
+  readonly timer: NodeJS.Timeout;
+  readonly resolve: (result: HouseholdOpResult) => void;
+}
+
 export type SyncOpOutcome<T> =
   | { readonly ok: true; readonly value: T }
   | Extract<SyncOpResult, { ok: false }>;
@@ -362,6 +379,10 @@ export type SyncOpOutcome<T> =
 export type ResearchOpOutcome<T> =
   | { readonly ok: true; readonly value: T }
   | Extract<ResearchOpResult, { ok: false }>;
+
+export type HouseholdOpOutcome<T> =
+  | { readonly ok: true; readonly value: T }
+  | Extract<HouseholdOpResult, { ok: false }>;
 
 export type CandidateOpOutcome<K extends CandidateOpKind> =
   | { readonly ok: true; readonly value: CandidateOpValues[K] }
@@ -440,6 +461,7 @@ export class DbWorkerClient {
     | PendingCandidate
     | PendingSync
     | PendingResearch
+    | PendingHousehold
   >();
   #issued = new WeakSet<DispatchPermit>();
   #consumed = new WeakSet<DispatchPermit>();
@@ -1132,6 +1154,48 @@ export class DbWorkerClient {
     });
   }
 
+  // 家計の記録と分類の規則（ADR 0158）。暗号文は封筒のまま受け渡す（暗号化・復号は呼び出し側）。
+  household(
+    op: Extract<HouseholdOp, { kind: 'household.record' }>,
+  ): Promise<HouseholdOpOutcome<HouseholdRecordValue>>;
+  household(
+    op: Extract<HouseholdOp, { kind: 'household.update' | 'household.delete' }>,
+  ): Promise<HouseholdOpOutcome<HouseholdRevisionValue>>;
+  household(
+    op: Extract<HouseholdOp, { kind: 'household.list' }>,
+  ): Promise<HouseholdOpOutcome<HouseholdListValue>>;
+  household(
+    op: Extract<HouseholdOp, { kind: 'household.get' }>,
+  ): Promise<HouseholdOpOutcome<HouseholdEntryRecord | null>>;
+  household(
+    op: Extract<HouseholdOp, { kind: 'household.rule_get' }>,
+  ): Promise<HouseholdOpOutcome<HouseholdRuleValue | null>>;
+  household(
+    op: Extract<HouseholdOp, { kind: 'household.rule_set' }>,
+  ): Promise<HouseholdOpOutcome<{ readonly written: boolean }>>;
+  household(op: HouseholdOp): Promise<HouseholdOpResult> {
+    return new Promise<HouseholdOpResult>((resolve) => {
+      if (this.#state !== 'running') {
+        resolve({
+          ok: false,
+          outcome: 'rejected',
+          reasons: [
+            this.#state === 'closed' ? 'worker_closed' : 'worker_unavailable',
+          ],
+        });
+        return;
+      }
+      const id = this.#nextId++;
+      const timer = setTimeout(
+        () => this.#break('worker_timeout'),
+        this.#responseTimeoutMs,
+      );
+      this.#pending.set(id, { kind: 'household', op, timer, resolve });
+      const message: MainToWorker = { type: 'household', id, op };
+      this.#worker.postMessage(message);
+    });
+  }
+
   // 許可がこのクライアントの現在の世代で作られ、まだ使っておらず、worker が動いているか。
   isDispatchPermitCurrent(permit: DispatchPermit): boolean {
     return (
@@ -1297,6 +1361,16 @@ export class DbWorkerClient {
         pending.resolve({
           ok: false,
           outcome: RESEARCH_WRITE_OPS.has(pending.op.kind)
+            ? 'unknown'
+            : 'rejected',
+          reasons: [reason],
+        });
+        continue;
+      }
+      if (pending.kind === 'household') {
+        pending.resolve({
+          ok: false,
+          outcome: HOUSEHOLD_WRITE_OPS.has(pending.op.kind)
             ? 'unknown'
             : 'rejected',
           reasons: [reason],
@@ -1531,6 +1605,18 @@ export class DbWorkerClient {
     if (message.type === 'research_result') {
       const pending = this.#pending.get(message.id);
       if (pending?.kind !== 'research') return;
+      clearTimeout(pending.timer);
+      this.#pending.delete(message.id);
+      if (message.halted && this.#state === 'running') {
+        this.#state = 'broken';
+        this.#brokenReason = 'worker_halted';
+      }
+      pending.resolve(message.result);
+      return;
+    }
+    if (message.type === 'household_result') {
+      const pending = this.#pending.get(message.id);
+      if (pending?.kind !== 'household') return;
       clearTimeout(pending.timer);
       this.#pending.delete(message.id);
       if (message.halted && this.#state === 'running') {

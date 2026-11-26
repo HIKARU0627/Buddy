@@ -44,6 +44,9 @@ export * from './intent-shadow-store.js';
 export * from './candidate-store.js';
 export * from './sync-store.js';
 export * from './research-store.js';
+// 家計の記録と分類の規則の保存・記録の暗号文（ADR 0158）。
+export * from './household-store.js';
+export * from './household-content.js';
 export * from './restore-aftermath-store.js';
 export * from './restore-facts.js';
 // B06-08: バックアップの暗号・事実・スナップショット・封筒ファイル（ADR 0055）。

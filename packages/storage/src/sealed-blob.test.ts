@@ -398,10 +398,11 @@ test('KeyStore から鍵を取得できなければ暗号化・復号をせず�
   if (opened.ok) assert.ok(opened.plaintext.equals(plaintext));
 });
 
-test('用途の一覧は、最後に sealed_blobs を作ったマイグレーション（0011）の purpose の CHECK と一致する', () => {
-  // 0011 で task_content を足して表を作り直した（ADR 0051）。0001 の一覧に task_content だけを足したもの。
+test('用途の一覧は、最後に sealed_blobs を作ったマイグレーション（0016）の purpose の CHECK と一致する', () => {
+  // 0011 で task_content を足して表を作り直し（ADR 0051）、0016 で household_entry を足して作り直した（ADR 0158）。
+  // 0001 の一覧に task_content と household_entry を足したもの。
   const sql = readFileSync(
-    new URL('../migrations/0011_operation_body_retention.sql', import.meta.url),
+    new URL('../migrations/0016_household.sql', import.meta.url),
     'utf8',
   );
   const original = readFileSync(

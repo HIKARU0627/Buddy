@@ -17,6 +17,7 @@ import { constants } from 'node:fs';
 /** 開いたファイルの操作（node:fs/promises の FileHandle の一部）。 */
 export interface HouseholdExportFileHandle {
   readonly chmod: (mode: number) => Promise<void>;
+  readonly truncate: (length: number) => Promise<void>;
   readonly writeFile: (
     text: string,
     options: { readonly encoding: 'utf8' },
@@ -59,9 +60,10 @@ export const HOUSEHOLD_EXPORT_FILE_MODE = 0o600;
 // 新しく作る（すでにあれば EEXIST で失敗する。リンクもたどらない）。
 export const CREATE_FLAGS =
   constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL;
-// すでにあるファイルを切り詰めて開く。リンクはたどらない（O_NOFOLLOW がない Windows では 0。lstat の確認だけに頼る）。
-export const OVERWRITE_FLAGS =
-  constants.O_WRONLY | constants.O_TRUNC | (constants.O_NOFOLLOW ?? 0);
+// すでにあるファイルを開く。リンクはたどらない（O_NOFOLLOW がない Windows では 0。lstat の確認だけに頼る）。開くときには
+// 切り詰めない（O_TRUNC を付けない）。O_CREAT なしの O_TRUNC は、Windows では TRUNCATE_EXISTING で開くことになり、
+// 開けずに失敗する（CI の Windows で確かめた）。権限を本人だけにした後に、開いたファイルを切り詰める。
+export const OVERWRITE_FLAGS = constants.O_WRONLY | (constants.O_NOFOLLOW ?? 0);
 
 function errorCode(error: unknown): string | null {
   if (typeof error === 'object' && error !== null && 'code' in error) {
@@ -108,9 +110,15 @@ export async function writeHouseholdExportFile(
     }
   }
   let written = false;
+  // すでにあるファイルの中身を変えたか（切り詰めたか）。切り詰める前に失敗したなら、元の中身はそのまま残っている。
+  let touched = created;
   try {
     // 中身を書く前に権限を本人だけにする（すでにあるファイルの元の権限のまま平文を書かない）。
     await handle.chmod(HOUSEHOLD_EXPORT_FILE_MODE);
+    if (!created) {
+      touched = true;
+      await handle.truncate(0);
+    }
     await handle.writeFile(text, { encoding: 'utf8' });
     written = true;
   } catch {
@@ -125,7 +133,7 @@ export async function writeHouseholdExportFile(
   if (written && closed) return 'saved';
   // ここまで来たら失敗。新しく作ったファイルだけ消す。すでにあったファイルは、元の中身がもう失われているが、
   // 本人のファイルなので消さずに残す。
-  if (!created) return 'failed_left';
+  if (!created) return touched ? 'failed_left' : 'failed_unchanged';
   try {
     await fileSystem.rm(path, { force: true });
     return 'failed_removed';

@@ -53,6 +53,7 @@ function fake(options: {
   readonly createError?: string;
   readonly overwriteError?: string;
   readonly chmodError?: boolean;
+  readonly truncateError?: boolean;
   readonly writeError?: boolean;
   readonly closeError?: boolean;
   readonly rmError?: boolean;
@@ -63,6 +64,12 @@ function fake(options: {
       calls.push(`chmod ${mode.toString(8)}`);
       return options.chmodError === true
         ? Promise.reject(new Error('EPERM'))
+        : Promise.resolve();
+    },
+    truncate: (length) => {
+      calls.push(`truncate ${String(length)}`);
+      return options.truncateError === true
+        ? Promise.reject(new Error('EIO'))
         : Promise.resolve();
     },
     writeFile: (text, writeOptions) => {
@@ -148,6 +155,7 @@ test('an existing file is opened for overwriting, set to owner-only before the p
     'open create /chosen/a.csv 600',
     'open overwrite /chosen/a.csv 600',
     'chmod 600',
+    'truncate 0',
     'write x utf8',
     'close',
   ]);
@@ -231,8 +239,8 @@ test('a failure after creating a new file removes it (all of write, chmod and cl
 
 test('a failure after truncating an existing file leaves it in place (it is the user file; the old content is already gone) and reports that', async () => {
   for (const [name, options] of [
+    ['truncate', { truncateError: true }],
     ['write', { writeError: true }],
-    ['chmod', { chmodError: true }],
     ['close', { closeError: true }],
   ] as const) {
     const s = fake({ existing: true, ...options });
@@ -248,6 +256,19 @@ test('a failure after truncating an existing file leaves it in place (it is the 
     );
     assert.equal(s.calls.at(-1), 'close', name);
   }
+  // 権限を変えられず、切り詰める前に止まったときは、元の中身はそのまま残っている。
+  const s = fake({ existing: true, chmodError: true });
+  assert.equal(
+    await writeHouseholdExportFile('/chosen/e.csv', 'x', s.fileSystem),
+    'failed_unchanged',
+  );
+  assert.deepEqual(s.calls, [
+    'lstat /chosen/e.csv',
+    'open create /chosen/e.csv 600',
+    'open overwrite /chosen/e.csv 600',
+    'chmod 600',
+    'close',
+  ]);
 });
 
 test('with the real file system: a new file is owner-only (0600) and starts with the BOM; no temporary file is left', async (t) => {
@@ -374,6 +395,7 @@ test('with the real file system: a write failure on a newly created file removes
         const handle = await open(path, flags, mode);
         return {
           chmod: (m) => handle.chmod(m),
+          truncate: (length) => handle.truncate(length),
           writeFile: () => Promise.reject(new Error('ENOSPC')),
           close: () => handle.close(),
         };

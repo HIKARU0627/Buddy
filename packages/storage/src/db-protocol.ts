@@ -38,6 +38,8 @@ import type {
 import type { BudgetOp, BudgetOpKind, BudgetOpResult } from './budget-store.js';
 // B05-03: 音声の世代・入出力の停止・Live の制御の状態（ADR 0046）。
 import type { VoiceOp, VoiceOpKind, VoiceOpResult } from './voice-store.js';
+// B13-05: 自動実行の一覧と安全停止の解除（ADR 0152）。
+import type { SafetyOp, SafetyOpKind, SafetyOpResult } from './safety-store.js';
 // B06-06c: 終わった操作の本文の削除・90 日の削除・用事の正本の移行（ADR 0051）。
 import type {
   RetentionOp,
@@ -68,6 +70,7 @@ export type DbFaultKind =
   | DbCommandKind
   | BudgetOpKind
   | VoiceOpKind
+  | SafetyOpKind
   | RetentionOpKind
   | MemoryOpKind
   | IntentShadowOpKind
@@ -161,6 +164,8 @@ export type MainToWorker =
   | { readonly type: 'budget'; readonly id: number; readonly op: BudgetOp }
   // 音声の世代・入出力の停止・Live の制御の状態（ADR 0046）。
   | { readonly type: 'voice'; readonly id: number; readonly op: VoiceOp }
+  // 自動実行の一覧と安全停止の解除（ADR 0152）。
+  | { readonly type: 'safety'; readonly id: number; readonly op: SafetyOp }
   // 終わった操作の本文の削除・90 日の削除・用事の正本の移行（ADR 0051）。
   | {
       readonly type: 'retention';
@@ -265,6 +270,12 @@ export type WorkerToMain =
       readonly type: 'voice_result';
       readonly id: number;
       readonly result: VoiceOpResult;
+      readonly halted: boolean;
+    }
+  | {
+      readonly type: 'safety_result';
+      readonly id: number;
+      readonly result: SafetyOpResult;
       readonly halted: boolean;
     }
   | {

@@ -6,7 +6,9 @@
 // - 自動実行の一覧（auto_actions）は、方針による自動承認の操作が成功した transaction で書く。
 // - 取り消しは新しい補償の操作として作り、undo_records で元の操作と結び付ける（03、ADR 0074）。
 // - 停止の解除は登録済みの端末からだけ（03）。画面のロック解除の確認は Core が行う。
+// - 一覧の照会と停止の解除は worker の safety の通り道で受ける（ADR 0152）。
 
+import Database from 'better-sqlite3';
 import {
   COMPENSATION_FAILURE_LIMIT,
   POLICY_AUTO_LIMIT,
@@ -14,11 +16,18 @@ import {
   SAME_TARGET_REPEAT_LIMIT,
   SAME_TARGET_WINDOW_MINUTES,
   UNDO_WINDOW_MS,
+  autoActionUndoState,
   autoApprovalAllowed,
 } from '@buddy/domain';
-import type { AutoActionKind, AutoApprovalCounter } from '@buddy/domain';
-import type { SqliteDatabase } from './connection.js';
+import type {
+  AutoActionKind,
+  AutoActionUndoState,
+  AutoApprovalCounter,
+} from '@buddy/domain';
+import { writeConnectionReasons } from './connection.js';
+import type { SqliteDatabase, StoragePlatform } from './connection.js';
 import { runImmediate } from './operation-store.js';
+import { readConsistently } from './snapshot-store.js';
 
 export type SafetyStopReason =
   | 'rate_exceeded'
@@ -265,25 +274,267 @@ export type ResumeSafetyResult =
 
 // 本人の画面操作による停止の解除（03）。登録済みで失効していない端末からだけ受ける。
 // 解除と同時に時間窓の件数を消し、解除の直後に同じ件数で止まり直さないようにする（ADR 0147）。
+// transaction の中で呼ぶ。受けられなければ理由を返し、何も書かない。
+function applyResume(
+  db: SqliteDatabase,
+  input: ResumeSafetyInput,
+): readonly string[] | null {
+  const device = db
+    .prepare('SELECT revoked_at FROM devices WHERE device_id = ?')
+    .get(input.device_id) as { revoked_at: number | null } | undefined;
+  if (device === undefined || device.revoked_at !== null)
+    return ['device_not_registered'];
+  const row = breakerRow(db);
+  if (row?.state !== 'stopped') return ['safety_not_stopped'];
+  if (String(row.safety_revision) !== input.expected_safety_revision)
+    return ['safety_revision_changed'];
+  db.prepare(
+    "UPDATE safety_breaker SET state = 'running', safety_revision = safety_revision + 1, stop_reason = NULL, stopped_at = NULL, resumed_by_device_id = ? WHERE singleton = 1",
+  ).run(input.device_id);
+  db.prepare('DELETE FROM safety_window_counts').run();
+  return null;
+}
+
 export function resumeSafetyBreaker(
   db: SqliteDatabase,
   input: ResumeSafetyInput,
 ): ResumeSafetyResult {
   return runImmediate(db, (): ResumeSafetyResult => {
-    const device = db
-      .prepare('SELECT revoked_at FROM devices WHERE device_id = ?')
-      .get(input.device_id) as { revoked_at: number | null } | undefined;
-    if (device === undefined || device.revoked_at !== null)
-      return { ok: false, reasons: ['device_not_registered'] };
-    const row = breakerRow(db);
-    if (row?.state !== 'stopped')
-      return { ok: false, reasons: ['safety_not_stopped'] };
-    if (String(row.safety_revision) !== input.expected_safety_revision)
-      return { ok: false, reasons: ['safety_revision_changed'] };
-    db.prepare(
-      "UPDATE safety_breaker SET state = 'running', safety_revision = safety_revision + 1, stop_reason = NULL, stopped_at = NULL, resumed_by_device_id = ? WHERE singleton = 1",
-    ).run(input.device_id);
-    db.prepare('DELETE FROM safety_window_counts').run();
-    return { ok: true, safety_revision: String(row.safety_revision + 1) };
+    const reasons = applyResume(db, input);
+    return reasons === null
+      ? { ok: true, safety_revision: readSafetyState(db).safety_revision }
+      : { ok: false, reasons };
   }).value;
+}
+
+// ---- 自動実行の一覧（GET /v1/auto-actions、ADR 0152） ------------------------------------------------------
+
+// 取り消しの経路（補償の操作を作る API）はまだない。できるまで一覧は取り消せるように見せない（ADR 0152）。
+export const UNDO_SUPPORTED = false;
+
+// 一覧に載せる件数の上限。新しい順に返す（U309）。
+export const AUTO_ACTION_LIST_LIMIT = 200;
+
+export interface AutoActionRecord {
+  readonly operation_id: string;
+  readonly action_kind: AutoActionKind | 'create_note' | 'create_event';
+  readonly policy_version: string;
+  readonly state_revision: string;
+  readonly completed_at: string;
+  readonly undo_state: AutoActionUndoState;
+  readonly undo_deadline: string;
+  // 実行した確定 intent の内容版。版の行が無ければ null。
+  readonly undo_target: {
+    readonly content_version: string;
+    readonly content_hash: string;
+  } | null;
+}
+
+export interface AutoActionListRecord {
+  readonly safety: SafetyStateRecord;
+  readonly items: readonly AutoActionRecord[];
+}
+
+interface AutoActionRow {
+  readonly operation_id: string;
+  readonly action_kind: AutoActionRecord['action_kind'];
+  readonly policy_version: number;
+  readonly completed_at: number;
+  readonly undo_deadline: number;
+  readonly state_revision: number;
+  readonly content_version: number | null;
+  readonly content_hash: string | null;
+  readonly active_undo: 'in_progress' | 'undone' | 'unknown' | null;
+}
+
+// 安全停止の状態と自動実行の一覧を一つの読み取り transaction で読む。本文（確定 intent）は読まない。
+export function listAutoActions(
+  db: SqliteDatabase,
+  now: number,
+): AutoActionListRecord {
+  return readConsistently(db, () => {
+    const rows = db
+      .prepare(
+        `SELECT a.operation_id, a.action_kind, a.policy_version, a.completed_at, a.undo_deadline,
+                o.state_revision, v.content_version, v.content_hash,
+                (SELECT u.status FROM undo_records u
+                   WHERE u.operation_id = a.operation_id AND u.status IN ('in_progress', 'undone', 'unknown')) AS active_undo
+           FROM auto_actions a
+           JOIN operations o ON o.operation_id = a.operation_id
+           LEFT JOIN operation_versions v
+             ON v.operation_id = o.operation_id AND v.content_version = o.current_content_version
+          ORDER BY a.completed_at DESC, a.operation_id
+          LIMIT ?`,
+      )
+      .all(AUTO_ACTION_LIST_LIMIT) as AutoActionRow[];
+    return {
+      safety: readSafetyState(db),
+      items: rows.map((row): AutoActionRecord => ({
+        operation_id: row.operation_id,
+        action_kind: row.action_kind,
+        policy_version: String(row.policy_version),
+        state_revision: String(row.state_revision),
+        completed_at: iso(row.completed_at),
+        undo_state: autoActionUndoState({
+          now,
+          undo_deadline: row.undo_deadline,
+          active_undo: row.active_undo,
+          undo_supported: UNDO_SUPPORTED,
+        }),
+        undo_deadline: iso(row.undo_deadline),
+        undo_target:
+          row.content_version === null || row.content_hash === null
+            ? null
+            : {
+                content_version: String(row.content_version),
+                content_hash: row.content_hash,
+              },
+      })),
+    };
+  });
+}
+
+// ---- worker の safety の通り道（ADR 0152） ----------------------------------------------------------------
+
+export type SafetyOp =
+  // 安全停止の状態（解除の expected_revision の照合に使う）。
+  | { readonly kind: 'safety.state' }
+  // 安全停止の状態と自動実行の一覧。now は取り消しの期限の判定に使う。
+  | { readonly kind: 'safety.auto_actions'; readonly now: number }
+  // 停止の解除。成功すれば解除の後の状態を返す。
+  | {
+      readonly kind: 'safety.resume';
+      readonly device_id: string;
+      readonly expected_safety_revision: string;
+      readonly now: number;
+    };
+
+export type SafetyOpKind = SafetyOp['kind'];
+
+export interface SafetyOpValues {
+  'safety.state': SafetyStateRecord;
+  'safety.auto_actions': AutoActionListRecord;
+  'safety.resume': SafetyStateRecord;
+}
+
+export type SafetyOpValue = SafetyOpValues[SafetyOpKind];
+
+export type SafetyOpResult =
+  | { readonly ok: true; readonly value: SafetyOpValue }
+  | {
+      readonly ok: false;
+      // rejected: 書いていないことが確か。unknown: COMMIT の失敗で成否不明。
+      readonly outcome: 'rejected' | 'unknown';
+      readonly reasons: readonly string[];
+    };
+
+export interface SafetyStoreResult {
+  readonly result: SafetyOpResult;
+  readonly halt: boolean;
+}
+
+export const SAFETY_WRITE_OPS: ReadonlySet<SafetyOpKind> = new Set([
+  'safety.resume',
+]);
+
+class SafetyRejection extends Error {
+  readonly reasons: readonly string[];
+  constructor(reasons: readonly string[]) {
+    super(reasons.join(', '));
+    this.name = 'SafetyRejection';
+    this.reasons = reasons;
+  }
+}
+
+const rejected = (reasons: readonly string[]): SafetyOpResult => ({
+  ok: false,
+  outcome: 'rejected',
+  reasons,
+});
+
+const DECIMAL = /^(0|[1-9][0-9]*)$/;
+
+function safetyOpShapeReasons(op: SafetyOp): readonly string[] {
+  if (op.kind === 'safety.state') return [];
+  if (op.kind === 'safety.auto_actions')
+    return Number.isFinite(op.now) ? [] : ['now_invalid'];
+  if (op.kind === 'safety.resume') {
+    const reasons: string[] = [];
+    if (typeof op.device_id !== 'string' || op.device_id === '')
+      reasons.push('device_id_invalid');
+    if (
+      typeof op.expected_safety_revision !== 'string' ||
+      !DECIMAL.test(op.expected_safety_revision)
+    )
+      reasons.push('expected_safety_revision_invalid');
+    if (!Number.isFinite(op.now)) reasons.push('now_invalid');
+    return reasons;
+  }
+  return ['kind_invalid'];
+}
+
+function sqliteCode(error: unknown): string | null {
+  return error instanceof Database.SqliteError ? error.code : null;
+}
+
+export function executeSafetyOp(
+  db: SqliteDatabase,
+  op: SafetyOp,
+  context: {
+    readonly platform: StoragePlatform;
+    readonly halted: boolean;
+    readonly beforeCommit?: (op: SafetyOp) => void;
+  },
+): SafetyStoreResult {
+  const shape = safetyOpShapeReasons(op);
+  if (shape.length > 0) return { result: rejected(shape), halt: false };
+  if (op.kind === 'safety.state')
+    return { result: { ok: true, value: readSafetyState(db) }, halt: false };
+  if (op.kind === 'safety.auto_actions')
+    return {
+      result: { ok: true, value: listAutoActions(db, op.now) },
+      halt: false,
+    };
+  // 書込みを止めた worker は書かない（ADR 0018）。照会は続ける。
+  if (context.halted)
+    return { result: rejected(['worker_halted']), halt: false };
+  const durability = writeConnectionReasons(db, context.platform);
+  if (durability.length > 0)
+    return {
+      result: rejected(['durability_mismatch', ...durability]),
+      halt: true,
+    };
+  try {
+    const run = runImmediate(
+      db,
+      () => {
+        const reasons = applyResume(db, op);
+        if (reasons !== null) throw new SafetyRejection(reasons);
+        return readSafetyState(db);
+      },
+      context.beforeCommit === undefined
+        ? undefined
+        : () => context.beforeCommit?.(op),
+    );
+    return { result: { ok: true, value: run.value }, halt: false };
+  } catch (error) {
+    if (error instanceof SafetyRejection)
+      return { result: rejected(error.reasons), halt: false };
+    if (error instanceof Error && error.name === 'CommitUncertain')
+      return {
+        result: { ok: false, outcome: 'unknown', reasons: ['commit_failed'] },
+        halt: true,
+      };
+    const code = sqliteCode(error);
+    if (code === 'SQLITE_BUSY' || code === 'SQLITE_LOCKED')
+      return { result: rejected(['database_busy']), halt: false };
+    if (code?.startsWith('SQLITE_CONSTRAINT'))
+      return { result: rejected(['constraint_violation']), halt: false };
+    return {
+      result: rejected([
+        code === 'SQLITE_FULL' ? 'database_full' : 'transaction_failed',
+      ]),
+      halt: true,
+    };
+  }
 }

@@ -76,6 +76,7 @@ import type {
 } from './conversation-store.js';
 import { BUDGET_WRITE_OPS } from './budget-store.js';
 import { VOICE_WRITE_OPS } from './voice-store.js';
+import { SAFETY_WRITE_OPS } from './safety-store.js';
 import { RETENTION_WRITE_OPS } from './retention-store.js';
 import { MEMORY_WRITE_OPS } from './memory-store.js';
 import { INTENT_SHADOW_WRITE_OPS } from './intent-shadow-store.js';
@@ -129,6 +130,12 @@ import type {
   VoiceOpResult,
   VoiceOpValues,
 } from './voice-store.js';
+import type {
+  SafetyOp,
+  SafetyOpKind,
+  SafetyOpResult,
+  SafetyOpValues,
+} from './safety-store.js';
 import type {
   BudgetOp,
   BudgetOpKind,
@@ -298,6 +305,14 @@ interface PendingVoice {
   readonly resolve: (result: VoiceOpResult) => void;
 }
 
+// 自動実行の一覧と安全停止の解除（ADR 0152）。
+interface PendingSafety {
+  readonly kind: 'safety';
+  readonly op: SafetyOp;
+  readonly timer: NodeJS.Timeout;
+  readonly resolve: (result: SafetyOpResult) => void;
+}
+
 interface PendingRetention {
   readonly kind: 'retention';
   readonly op: RetentionOp;
@@ -368,6 +383,10 @@ export type VoiceOpOutcome<K extends VoiceOpKind> =
   | { readonly ok: true; readonly value: VoiceOpValues[K] }
   | Extract<VoiceOpResult, { ok: false }>;
 
+export type SafetyOpOutcome<K extends SafetyOpKind> =
+  | { readonly ok: true; readonly value: SafetyOpValues[K] }
+  | Extract<SafetyOpResult, { ok: false }>;
+
 export type BudgetOpOutcome<K extends BudgetOpKind> =
   | { readonly ok: true; readonly value: BudgetOpValues[K] }
   | Extract<BudgetOpResult, { ok: false }>;
@@ -414,6 +433,7 @@ export class DbWorkerClient {
     | PendingConversation
     | PendingBudget
     | PendingVoice
+    | PendingSafety
     | PendingRetention
     | PendingMemory
     | PendingIntentShadow
@@ -885,6 +905,33 @@ export class DbWorkerClient {
     }) as Promise<VoiceOpOutcome<K>>;
   }
 
+  // 自動実行の一覧と安全停止の解除（ADR 0152）。扱いは budget と同じ（使えなければ送らずに rejected、
+  // 書込みの応答を失えば成否不明で broken）。
+  safety<K extends SafetyOpKind>(
+    op: Extract<SafetyOp, { kind: K }>,
+  ): Promise<SafetyOpOutcome<K>> {
+    return new Promise<SafetyOpResult>((resolve) => {
+      if (this.#state !== 'running') {
+        resolve({
+          ok: false,
+          outcome: 'rejected',
+          reasons: [
+            this.#state === 'closed' ? 'worker_closed' : 'worker_unavailable',
+          ],
+        });
+        return;
+      }
+      const id = this.#nextId++;
+      const timer = setTimeout(
+        () => this.#break('worker_timeout'),
+        this.#responseTimeoutMs,
+      );
+      this.#pending.set(id, { kind: 'safety', op, timer, resolve });
+      const message: MainToWorker = { type: 'safety', id, op };
+      this.#worker.postMessage(message);
+    }) as Promise<SafetyOpOutcome<K>>;
+  }
+
   // 終わった操作の本文の削除・90 日の削除・用事の正本の移行（ADR 0051）。扱いは budget と同じ。
   retention<K extends RetentionOpKind>(
     op: Extract<RetentionOp, { kind: K }>,
@@ -1266,6 +1313,16 @@ export class DbWorkerClient {
         });
         continue;
       }
+      if (pending.kind === 'safety') {
+        pending.resolve({
+          ok: false,
+          outcome: SAFETY_WRITE_OPS.has(pending.op.kind)
+            ? 'unknown'
+            : 'rejected',
+          reasons: [reason],
+        });
+        continue;
+      }
       if (pending.kind === 'conversation') {
         pending.resolve({
           ok: false,
@@ -1414,6 +1471,18 @@ export class DbWorkerClient {
     if (message.type === 'voice_result') {
       const pending = this.#pending.get(message.id);
       if (pending?.kind !== 'voice') return;
+      clearTimeout(pending.timer);
+      this.#pending.delete(message.id);
+      if (message.halted && this.#state === 'running') {
+        this.#state = 'broken';
+        this.#brokenReason = 'worker_halted';
+      }
+      pending.resolve(message.result);
+      return;
+    }
+    if (message.type === 'safety_result') {
+      const pending = this.#pending.get(message.id);
+      if (pending?.kind !== 'safety') return;
       clearTimeout(pending.timer);
       this.#pending.delete(message.id);
       if (message.halted && this.#state === 'running') {

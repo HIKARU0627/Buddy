@@ -266,9 +266,10 @@ test('日付: 年のない日付が受信日より後でも、7 日以内なら�
     parseHouseholdNoticeDate('10/05', '2030-10-05')?.on,
     '2030-10-05',
   );
+  // ちょうど 7 日先の月日は、受信日に近い翌年になる（358 日前の同じ年より近い）。
   assert.equal(
     parseHouseholdNoticeDate('01/07', '2030-12-31')?.on,
-    '2030-01-07',
+    '2031-01-07',
   );
 });
 
@@ -471,5 +472,142 @@ test('本文: ご利用金額とお支払い金額が並ぶ通知は 1 件、支
   assert.deepEqual(
     twoUsages.entries.map((entry) => entry.content.amount_yen),
     [500, 700],
+  );
+});
+
+test('日付: 年のない日付は、受信日の前の年・同じ年・翌年のうち、7 日先から 358 日前までに入るものにする（ADR 0170）', () => {
+  const year = (value, received) =>
+    parseHouseholdNoticeDate(value, received)?.on ?? null;
+  // 年末の受信に年初の日付: 翌年。タイムゾーンの違いで 1 日先になる場合。
+  assert.deepEqual(parseHouseholdNoticeDate('01/01 00:10', '2030-12-31'), {
+    on: '2031-01-01',
+    time: '00:10',
+  });
+  assert.equal(year('01/02', '2030-12-31'), '2031-01-02');
+  assert.equal(year('01/06', '2030-12-31'), '2031-01-06');
+  // ちょうど 7 日先（01/07）は、受信日と同じ年の 358 日前も範囲に入るが、受信日に近い翌年を使う。8 日先（01/08）は範囲の外
+  // なので、357 日前の同じ年。境目の前後で年が揺れない（01/06・01/07 は翌年、01/08 から同じ年）。
+  assert.equal(year('01/07', '2030-12-31'), '2031-01-07');
+  assert.equal(year('01/08', '2030-12-31'), '2030-01-08');
+  // 年始の受信に年末の日付: 前の年。
+  assert.equal(year('12/31', '2031-01-01'), '2030-12-31');
+  assert.equal(year('12/25', '2031-01-03'), '2030-12-25');
+  // 年内の境目（受信日の年のまま）。
+  assert.equal(year('12/31', '2030-12-31'), '2030-12-31');
+  assert.equal(year('12/31', '2030-12-24'), '2030-12-31');
+  assert.equal(year('12/31', '2030-12-23'), '2029-12-31');
+  // 年始の受信で、年初の過去の日付は同じ年。
+  assert.equal(year('01/01', '2031-01-01'), '2031-01-01');
+  assert.equal(year('11/30', '2031-01-01'), '2030-11-30');
+  // 範囲の下の端: 受信日の 358 日前までは前の年。
+  assert.equal(year('10/12', '2030-10-05'), '2030-10-12');
+  assert.equal(year('10/13', '2030-10-05'), '2029-10-13');
+  // うるう年をまたぐ 7 日先と 8 日先、358 日前。
+  assert.equal(year('03/06', '2028-02-28'), '2028-03-06');
+  assert.equal(year('03/07', '2028-02-28'), '2027-03-07');
+  assert.equal(year('03/01', '2028-02-22'), '2027-03-01');
+  // 年のある日付は受信日と離れていてもそのまま。
+  assert.equal(year('2029/01/05', '2030-12-31'), '2029-01-05');
+});
+
+test('日付: 年のない 2/29 は、その年にうるう日がある年だけで読み、ないときは丸めず null にする（ADR 0170）', () => {
+  const year = (value, received) =>
+    parseHouseholdNoticeDate(value, received)?.on ?? null;
+  assert.equal(year('02/29', '2032-03-01'), '2032-02-29');
+  assert.equal(year('02/29', '2028-03-03'), '2028-02-29');
+  assert.equal(year('02/29', '2028-02-25'), '2028-02-29');
+  // 2029〜2031 年には 2/29 がなく、2028 年は 358 日より前、2032 年は 7 日より先。
+  assert.equal(year('02/29', '2029-03-01'), null);
+  assert.equal(year('02/29', '2030-03-01'), null);
+  assert.equal(year('02/29', '2031-03-01'), null);
+  assert.equal(year('02/29', '2027-03-02'), null);
+  // 本文の日付が読めなければ、受信日を使う（既存の扱い）。
+  const reading = readHouseholdNotice({
+    issuer: issuer('smbc_card'),
+    subject: 'ご利用のお知らせ',
+    text: ['◇利用日：02/29', '◇ご利用金額：500円'].join('\n'),
+    received_on: '2030-03-01',
+  });
+  assert.equal(reading.outcome, 'entries');
+  assert.equal(reading.entries[0].content.occurred_on, '2030-03-01');
+});
+
+test('本文: 利用の金額の項目がなく支払いの金額の項目が 2 種類並ぶ通知は 1 件にし、金額が食い違えば読まない（ADR 0170）', () => {
+  const read = (lines) =>
+    readHouseholdNotice({
+      issuer: issuer('smbc_card'),
+      subject: 'ご利用のお知らせ',
+      text: lines.join('\n'),
+      received_on: '2030-10-05',
+    });
+  const same = read([
+    '◇利用日：2030/10/05 12:34',
+    '◇利用先：合成マート',
+    '◇お支払い金額：1,200円',
+    '◇決済金額：1,200円',
+  ]);
+  assert.equal(same.outcome, 'entries');
+  assert.deepEqual(
+    same.entries.map((entry) => [entry.index, entry.content.amount_yen]),
+    [[0, 1200]],
+  );
+  assert.deepEqual(same.skipped, []);
+  // 順序が逆でも 1 件。
+  const reversed = read(['◇決済金額：800円', '◇お支払金額：800円']);
+  assert.deepEqual(
+    reversed.entries.map((entry) => entry.content.amount_yen),
+    [800],
+  );
+  // 金額が食い違えば、どちらも信じず、その利用は読まない。
+  const differ = read([
+    '◇利用日：2030/10/05 12:34',
+    '◇利用先：合成マート',
+    '◇お支払い金額：1,200円',
+    '◇決済金額：1,300円',
+  ]);
+  assert.equal(differ.outcome, 'entries');
+  assert.deepEqual(differ.entries, []);
+  assert.deepEqual(differ.skipped, [{ index: 0, reason: 'amount_unreadable' }]);
+  // 一方が外貨なら、その理由で読まない。
+  const foreign = read(['◇お支払い金額：1,200円', '◇決済金額：USD 12.00']);
+  assert.deepEqual(foreign.entries, []);
+  assert.deepEqual(foreign.skipped, [{ index: 0, reason: 'foreign_currency' }]);
+  // 一通に 2 件の利用があり、それぞれに 2 種類の支払いの金額が並ぶ本文は 2 件。
+  const two = read([
+    '◇利用日：2030/10/01',
+    '◇利用先：合成マート',
+    '◇お支払い金額：500円',
+    '◇決済金額：500円',
+    '◇利用日：2030/10/02',
+    '◇利用先：合成書店',
+    '◇お支払い金額：700円',
+    '◇決済金額：700円',
+  ]);
+  assert.deepEqual(
+    two.entries.map((entry) => [
+      entry.index,
+      entry.content.amount_yen,
+      entry.content.merchant,
+    ]),
+    [
+      [0, 500, '合成マート'],
+      [1, 700, '合成書店'],
+    ],
+  );
+  // 種類の同じ支払いの金額の項目が二度出れば、これまでどおり次の利用。
+  const sameKind = read(['◇お支払い金額：500円', '◇お支払金額：700円']);
+  assert.deepEqual(
+    sameKind.entries.map((entry) => entry.content.amount_yen),
+    [500, 700],
+  );
+  // 利用の金額の項目があれば、支払いの金額の項目が 2 種類あっても 1 件（既存の扱い）。
+  const usage = read([
+    '◇ご利用金額：900円',
+    '◇お支払い金額：900円',
+    '◇決済金額：900円',
+  ]);
+  assert.deepEqual(
+    usage.entries.map((entry) => entry.content.amount_yen),
+    [900],
   );
 });

@@ -227,3 +227,125 @@ test('支出の話でない一言・問い・仮定・数のない「円」は�
   ])
     assert.deepEqual(readHouseholdUtterance(said, TODAY), NONE, said);
 });
+
+test('金額でない「円」（円ショップ・円札・円玉・円引き・円オフ）の前の数は金額に数えない', () => {
+  for (const text of [
+    '100円ショップで買った',
+    '100 円 ショップで買った',
+    '１００円ショップで買った',
+    '100円均一で買った',
+    '1000円札で払った',
+    '1,000 円 札で払った',
+    '500円玉で払った',
+    '500円引きで買った',
+    '500円offで買った',
+    '500円OFFで買った',
+    '500円オフで買った',
+    '１万円札で払った',
+  ])
+    assert.deepEqual(
+      readHouseholdUtterance(text, TODAY),
+      unreadable('amount_missing'),
+      text,
+    );
+  // 実際の金額が別にあれば、それを読む。店名は「100円ショップ」。
+  assert.deepEqual(
+    readHouseholdUtterance('100円ショップで500円使った', TODAY),
+    draft({ merchant: '100円ショップ' }),
+  );
+  assert.deepEqual(
+    readHouseholdUtterance('１００円ショップで５００円使った', TODAY),
+    draft({ merchant: '100円ショップ' }),
+  );
+  assert.deepEqual(
+    readHouseholdUtterance('100 円 ショップで 500 円使った', TODAY),
+    draft({ merchant: '100 円 ショップ' }),
+  );
+  assert.deepEqual(
+    readHouseholdUtterance('1000円札で払って、本屋で1,200円使った', TODAY),
+    draft({ amount_yen: 1200, merchant: '本屋' }),
+  );
+  // 「円」の直後がほかの言葉なら、これまでどおり金額。
+  assert.deepEqual(readHouseholdUtterance('500円で買った', TODAY), draft({}));
+  assert.deepEqual(
+    readHouseholdUtterance('500円ちょうど払った', TODAY),
+    draft({}),
+  );
+});
+
+test('日付の言葉: さきおとといは 3 日前、昨夜・昨晩は昨日、年・月・週の言葉は日付を空にする', () => {
+  assert.deepEqual(
+    readHouseholdUtterance('さきおととい500円使った', TODAY),
+    draft({ occurred_on: '2030-11-23' }),
+  );
+  assert.deepEqual(
+    readHouseholdUtterance('さきおとといコンビニで500円使った', TODAY),
+    draft({ occurred_on: '2030-11-23', merchant: 'コンビニ' }),
+  );
+  assert.deepEqual(
+    readHouseholdUtterance('おととい500円使った', TODAY),
+    draft({ occurred_on: '2030-11-24' }),
+  );
+  assert.deepEqual(
+    readHouseholdUtterance('昨夜500円使った', TODAY),
+    draft({ occurred_on: '2030-11-25' }),
+  );
+  assert.deepEqual(
+    readHouseholdUtterance('昨晩500円使った', TODAY),
+    draft({ occurred_on: '2030-11-25' }),
+  );
+  for (const word of [
+    '去年',
+    '昨年',
+    '今年',
+    '今月',
+    '今週',
+    '先週',
+    '先々週',
+    '先月',
+    '先々月',
+    '来週',
+  ])
+    assert.deepEqual(
+      readHouseholdUtterance(`${word}コンビニで500円使った`, TODAY),
+      draft({ occurred_on: null, merchant: 'コンビニ' }),
+      word,
+    );
+});
+
+test('店名の前の時の言葉は助詞がなくても除き、日付の言葉が二つ以上あれば日付を空にして店名に入れない', () => {
+  const cases = [
+    ['朝コンビニで500円使った', TODAY, 'コンビニ'],
+    ['昼マックで500円使った', TODAY, 'マック'],
+    ['夜ガストで500円使った', TODAY, 'ガスト'],
+    ['夕方コンビニで500円使った', TODAY, 'コンビニ'],
+    ['今朝コンビニで500円使った', TODAY, 'コンビニ'],
+    ['朝 コンビニで500円使った', TODAY, 'コンビニ'],
+    ['朝は コンビニで500円使った', TODAY, 'コンビニ'],
+    ['昨夜コンビニで500円使った', '2030-11-25', 'コンビニ'],
+    ['昨日の朝コンビニで500円使った', '2030-11-25', 'コンビニ'],
+    // 店名の頭が漢字なら、朝・昼・夜は店名の一部。
+    ['朝日食堂で500円使った', TODAY, '朝日食堂'],
+    ['夜景の見えるバーで500円使った', TODAY, '夜景の見えるバー'],
+    // 「と」が次の時の言葉につながらなければ店名の一部。
+    ['昨日とんかつ屋で500円使った', '2030-11-25', 'とんかつ屋'],
+  ];
+  for (const [text, on, merchant] of cases)
+    assert.deepEqual(
+      readHouseholdUtterance(text, TODAY),
+      draft({ occurred_on: on, merchant }),
+      text,
+    );
+  assert.deepEqual(
+    readHouseholdUtterance('おとといと昨日で500円使った', TODAY),
+    draft({ occurred_on: null, merchant: null }),
+  );
+  assert.deepEqual(
+    readHouseholdUtterance('昨日や今日で500円使った', TODAY),
+    draft({ occurred_on: null, merchant: null }),
+  );
+  assert.deepEqual(
+    readHouseholdUtterance('昨日と今日コンビニで500円使った', TODAY),
+    draft({ occurred_on: null, merchant: 'コンビニ' }),
+  );
+});

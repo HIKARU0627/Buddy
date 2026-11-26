@@ -21,7 +21,7 @@ import {
   systemPreferences,
   type IpcMainInvokeEvent,
 } from 'electron';
-import { readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { lstat, open, readFile, rm, stat } from 'node:fs/promises';
 import { networkInterfaces } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -914,7 +914,7 @@ async function pickHouseholdExportWithDialog(): Promise<Uint8Array | null> {
 }
 
 // 家計の記録の CSV の書き出し先（ADR 0172）。OS の保存先の選択で本人に選ばせ、選んだ場所へだけ書く（一時ファイルは作らない）。
-// 親の窓がない・やめたときは 'cancelled'。保存先が決まった後、書く直前にロック・切断していないかを確かめ直す。
+// 親の窓がない・やめたときは 'cancelled'。書けなかったときは保存先がどうなったかを分けて返す。保存先が決まった後、書く直前にロック・切断していないかを確かめ直す。
 async function saveHouseholdExportWithDialog(
   file: Parameters<HouseholdExportSaver>[0],
 ): ReturnType<HouseholdExportSaver> {
@@ -929,7 +929,8 @@ async function saveHouseholdExportWithDialog(
   if (picked.canceled || picked.filePath === '') return 'cancelled';
   if (!file.stillValid()) return 'cancelled';
   return writeHouseholdExportFile(picked.filePath, file.text, {
-    writeFile: (path, text, options) => writeFile(path, text, options),
+    lstat: (path) => lstat(path),
+    open: (path, flags, mode) => open(path, flags, mode),
     rm: (path, options) => rm(path, options),
   });
 }

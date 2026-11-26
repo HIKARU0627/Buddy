@@ -8025,15 +8025,22 @@ export interface DesktopHouseholdView {
    */
   last_export: {
     /**
-     * saved は本人が選んだ場所へ書けた、incomplete は打ち切られた月か読めない記録があったのでファイルを作らなかった、read_failed は月を読めなかった（接続の失敗・形の違う応答・記録の不整合）のでファイルを作らなかった、write_failed は保存先へ書けなかった（書きかけのファイルは消す）。本人が保存先を選ばずにやめたときは結果を残さない（null）。
+     * saved は本人が選んだ場所へ書けた、incomplete は打ち切られた月か読めない記録があったのでファイルを作らなかった、read_failed は月を読めなかった（接続の失敗・形の違う応答・記録の不整合）のでファイルを作らなかった、write_failed は保存先へ書けず、新しく作った書きかけのファイルを消した、write_failed_unchanged は保存先を開けず、何も作らず何も変えなかった（すでにあるファイルはそのまま）、write_failed_left は保存先へ書けず、書きかけのファイルが残っているか、選んだファイルの中身が不完全になっているか、保存先の状態を確かめられない（消せなかった・すでにあるファイルを上書きの途中・保存の処理の例外）、link_refused は保存先がシンボリックリンクなので何も書かなかった。本人が保存先を選ばずにやめたときは結果を残さない（null）。
      */
-    outcome: 'saved' | 'incomplete' | 'read_failed' | 'write_failed';
+    outcome:
+      | 'saved'
+      | 'incomplete'
+      | 'read_failed'
+      | 'write_failed'
+      | 'write_failed_unchanged'
+      | 'write_failed_left'
+      | 'link_refused';
     /**
      * 読めた月の数。
      */
     months: number;
     /**
-     * ファイルに書いた（incomplete・read_failed・write_failed ではファイルに入れるはずだった）記録の数。
+     * ファイルに書いた（書けた以外ではファイルに入れるはずだった）記録の数。
      */
     entries: number;
     /**

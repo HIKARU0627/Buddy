@@ -7,13 +7,18 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { ClientConnection } from '@buddy/client';
+import type { DesktopHouseholdView } from '@buddy/contracts';
 import { createDesktopContract, loadContractSchema } from './contract.js';
 import {
   HouseholdBridge,
   decodeHouseholdExport,
   householdImportBatches,
 } from './household-bridge.js';
-import type { HouseholdHost } from './household-bridge.js';
+import type {
+  HouseholdExportSaveResult,
+  HouseholdExportSaver,
+  HouseholdHost,
+} from './household-bridge.js';
 
 const contract = createDesktopContract(loadContractSchema());
 const uuid = (n: number) =>
@@ -1035,7 +1040,7 @@ interface Saved {
 
 // 保存先の選択の模擬。呼ばれた内容を記録し、決めた結果を返す。
 function saver(
-  result: 'saved' | 'cancelled' | 'failed' | 'throw' = 'saved',
+  result: HouseholdExportSaveResult | 'throw' = 'saved',
   during: () => void = () => undefined,
 ) {
   const saved: Saved[] = [];
@@ -1043,13 +1048,12 @@ function saver(
     name: string;
     text: string;
     stillValid: () => boolean;
-  }): Promise<'saved' | 'cancelled' | 'failed'> => {
+  }): Promise<HouseholdExportSaveResult> => {
     during();
-    saved.push({
-      name: file.name,
-      text: file.text,
-      stillValid: file.stillValid(),
-    });
+    const stillValid = file.stillValid();
+    saved.push({ name: file.name, text: file.text, stillValid });
+    // 本物の保存の処理と同じく、書く直前に世代が進んでいたら何も書かず 'cancelled' を返す。
+    if (!stillValid) return Promise.resolve('cancelled');
     if (result === 'throw') return Promise.reject(new Error('disk'));
     return Promise.resolve(result);
   };
@@ -1221,23 +1225,69 @@ test('export: cancelling the save leaves no result; a write failure or exception
   assert.equal(none.last_export, null);
   assert.equal(cancelled.saved.length, 1);
   assert.deepEqual(r.logs, []);
-  for (const result of ['failed', 'throw'] as const) {
+  // 結果の種類ごとに、手で書いた結果の種類とログのコードになる。例外は、保存先の状態が分からないので「残っているかもしれない」。
+  const expectations: ReadonlyArray<
+    readonly [
+      HouseholdExportSaveResult | 'throw',
+      NonNullable<DesktopHouseholdView['last_export']>['outcome'],
+    ]
+  > = [
+    ['failed_removed', 'write_failed'],
+    ['failed_unchanged', 'write_failed_unchanged'],
+    ['failed_left', 'write_failed_left'],
+    ['link_refused', 'link_refused'],
+    ['throw', 'write_failed_left'],
+  ];
+  for (const [result, outcome] of expectations) {
     const s = saver(result);
     const view = ok(await r.bridge.exportCsv('2030-11', '2030-11', s.save));
-    assert.deepEqual(view.last_export, {
-      outcome: 'write_failed',
-      months: 1,
-      entries: 2,
-      truncated_months: 0,
-      unreadable: 0,
-    });
+    assert.deepEqual(
+      view.last_export,
+      {
+        outcome,
+        months: 1,
+        entries: 2,
+        truncated_months: 0,
+        unreadable: 0,
+      },
+      result,
+    );
   }
   assert.deepEqual(r.logs, [
+    'household_export_write_failed',
+    'household_export_write_failed',
+    'household_export_write_failed',
     'household_export_write_failed',
     'household_export_write_failed',
   ]);
   // ログに記録も保存先も入らない（コードだけ）。
   assert.equal(r.logs.join('').includes('合成'), false);
+});
+
+test('export: locking or disconnecting while writing still returns the write result (the file exists), and drops the data', async () => {
+  for (const [result, outcome, logs] of [
+    ['saved', 'saved', []],
+    ['failed_left', 'write_failed_left', ['household_export_write_failed']],
+  ] as const) {
+    const r = rig();
+    const s = saver(result);
+    // 書き終えた後（保存の処理が返った後）に切断する。
+    const save: HouseholdExportSaver = async (file) => {
+      const written = await s.save(file);
+      r.bridge.reset();
+      return written;
+    };
+    const view = ok(await r.bridge.exportCsv('2030-11', '2030-11', save));
+    assert.deepEqual(
+      view.last_export,
+      { outcome, months: 1, entries: 2, truncated_months: 0, unreadable: 0 },
+      result,
+    );
+    assert.deepEqual(r.logs, logs, result);
+    // 新しい世代の状態には結果を残さず、読んだ記録も持たない。
+    assert.equal(r.bridge.view().last_export, null);
+    assert.deepEqual(r.bridge.view().entries, []);
+  }
 });
 
 test('export: a bad range or no connection sends nothing and writes nothing', async () => {

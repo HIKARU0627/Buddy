@@ -39,6 +39,7 @@ import type {
   HouseholdImportRow,
 } from '@buddy/domain';
 import type { DesktopContract } from './contract.js';
+import type { HouseholdExportWriteResult } from './household-export-file.js';
 
 export interface HouseholdHost {
   readonly contract: DesktopContract;
@@ -68,16 +69,33 @@ export const HOUSEHOLD_IMPORT_BATCH = 100;
 type LastImport = NonNullable<DesktopHouseholdView['last_import']>;
 type LastExport = NonNullable<DesktopHouseholdView['last_export']>;
 
+const EXPORT_OUTCOME_OF_SAVE: Readonly<
+  Record<Exclude<HouseholdExportSaveResult, 'cancelled'>, LastExport['outcome']>
+> = {
+  saved: 'saved',
+  link_refused: 'link_refused',
+  failed_unchanged: 'write_failed_unchanged',
+  failed_removed: 'write_failed',
+  failed_left: 'write_failed_left',
+};
+
+/**
+ * 保存の結果。cancelled は何も書かなかった。それ以外は書こうとした結果で、writeHouseholdExportFile の結果と同じ（saved・
+ * link_refused・failed_unchanged・failed_removed・failed_left）。
+ */
+export type HouseholdExportSaveResult =
+  'cancelled' | HouseholdExportWriteResult;
+
 /**
  * 書き出す CSV を本人が選んだ場所へ書く処理（Electron の層が OS の保存先の選択で作る。ADR 0172）。本人が保存先を選ばずに
- * やめたら 'cancelled'（何も書かない）、書けなかったら 'failed'（書きかけのファイルは消す）。stillValid は保存先が決まった後・
+ * やめたら 'cancelled'（何も書かない）、書けなかったら保存先がどうなったかを分けて返す。stillValid は保存先が決まった後・
  * 書く直前に呼び、false（その間にロック・切断した）なら何も書かずに 'cancelled' を返す。
  */
 export type HouseholdExportSaver = (file: {
   readonly name: string;
   readonly text: string;
   readonly stillValid: () => boolean;
-}) => Promise<'saved' | 'cancelled' | 'failed'>;
+}) => Promise<HouseholdExportSaveResult>;
 
 /**
  * 書き出しのファイルの中身を文字にする。UTF-8（BOM の有無を問わない）として正しければ UTF-8、そうでなければ Shift_JIS と
@@ -568,7 +586,7 @@ export class HouseholdBridge {
       this.#host.log('household_export_read_failed');
       return finish('read_failed');
     }
-    let saved: 'saved' | 'cancelled' | 'failed';
+    let saved: HouseholdExportSaveResult;
     try {
       saved = await save({
         name: householdExportFileName(from, to),
@@ -576,15 +594,34 @@ export class HouseholdBridge {
         stillValid: () => gen === this.#gen,
       });
     } catch {
-      saved = 'failed';
+      // 保存の処理が例外を出した。保存先がどうなったか分からない（書きかけが残っているかもしれない）。
+      saved = 'failed_left';
     }
-    if (gen !== this.#gen) return fail('not_connected');
     if (saved === 'cancelled') {
+      if (gen !== this.#gen) return fail('not_connected');
       this.#listSeq += 1;
       return { ok: true, value: this.view() };
     }
-    if (saved === 'failed') this.#host.log('household_export_write_failed');
-    return finish(saved === 'saved' ? 'saved' : 'write_failed');
+    if (saved !== 'saved') this.#host.log('household_export_write_failed');
+    const outcome = EXPORT_OUTCOME_OF_SAVE[saved];
+    if (gen !== this.#gen) {
+      // 書こうとした後にロック・切断した。ファイルの状態は変わっているので、not_connected にせず結果を返す。読んだ記録は
+      // ここで捨てる。新しい世代の状態には結果を残さない。
+      return {
+        ok: true,
+        value: {
+          ...this.view(),
+          last_export: {
+            outcome,
+            months: read,
+            entries: entries.length,
+            truncated_months: truncatedMonths,
+            unreadable,
+          },
+        },
+      };
+    }
+    return finish(outcome);
   }
 
   // 分類ごとの予算を丸ごと差し替える（ADR 0166）。月ごとの合計で読んだ予算の版で照合して送る。

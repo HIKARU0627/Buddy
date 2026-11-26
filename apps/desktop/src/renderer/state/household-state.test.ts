@@ -462,9 +462,30 @@ test('the export sends only a month range, once at a time, and its result is wri
     exportResultText({ ...saved, outcome: 'read_failed' }),
     /^記録を読めなかったため、書き出しませんでした。/u,
   );
-  assert.match(
+  assert.equal(
     exportResultText({ ...saved, outcome: 'write_failed' }),
-    /^選んだ場所に書けなかったため、書き出せませんでした（書きかけのファイルは消しました）。/u,
+    '選んだ場所に書けなかったため、書き出せませんでした（書きかけのファイルは消しました）。空き容量と保存先を確かめて、もう一度お試しください。',
+  );
+  // 何も作らず、元のファイルも変えていないときは、「消した」と言わない。
+  const unchanged = exportResultText({
+    ...saved,
+    outcome: 'write_failed_unchanged',
+  });
+  assert.equal(
+    unchanged,
+    '選んだ場所を開けなかったため、書き出せませんでした（ファイルは作らず、元のファイルも変えていません）。保存先の権限と空き容量を確かめて、もう一度お試しください。',
+  );
+  assert.equal(unchanged.includes('消しました'), false);
+  // 消せなかった・状態が分からないときは、残っているかもしれないと言い、「消した」と言わない。
+  const left = exportResultText({ ...saved, outcome: 'write_failed_left' });
+  assert.equal(
+    left,
+    '選んだ場所に書けなかったため、書き出せませんでした。書きかけのファイルが残っているか、選んだファイルの中身が不完全になっている可能性があります。保存先のファイルを確かめてください。',
+  );
+  assert.equal(left.includes('消しました'), false);
+  assert.equal(
+    exportResultText({ ...saved, outcome: 'link_refused' }),
+    '選んだ場所はシンボリックリンクなので、何も書きませんでした。リンクではない場所を選んで、もう一度お試しください。',
   );
 });
 

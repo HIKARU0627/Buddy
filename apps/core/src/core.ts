@@ -30,6 +30,7 @@ import type {
   StoreGenerationSource,
 } from '@buddy/storage';
 import { webResearchNotificationParts } from '@buddy/domain';
+import { createGoogleReadConnector } from '@buddy/connectors';
 import type { ResearchJobRecord } from '@buddy/storage';
 import {
   UNAVAILABLE_TAILSCALE_STATUS,
@@ -81,6 +82,7 @@ import {
 import type { PreviewCheck } from './api-operations.js';
 import { DeviceConnections } from './device-connections.js';
 import { deviceTimeZone } from './device-time-zone.js';
+import { createHouseholdMailIntake } from './household-mail-intake.js';
 import {
   TaskMigrationError,
   migrateTaskContents,
@@ -1020,6 +1022,33 @@ export async function startCore(
         : (connection: ConnectionRecord) =>
             oauthRun?.service.targetsFor(connection) ??
             Promise.resolve([] as readonly SyncSchedulerTarget[]));
+    // 家計簿の利用通知メールの取り込み（ADR 0160）。Gmail のトークンの口があるときだけ、メールの走査の公開の後に呼ぶ。
+    const householdMailIntake =
+      googleTokenSourceFor === undefined
+        ? null
+        : createHouseholdMailIntake({
+            store: opened.store,
+            gmailFor: (connection) => {
+              const tokenSource = googleTokenSourceFor(connection);
+              return tokenSource === null
+                ? null
+                : createGoogleReadConnector({ tokenSource }).gmail;
+            },
+            dataKey: async () => {
+              const keyResult = await options.keyStore.loadDataKey();
+              return keyResult.ok ? keyResult.dataKey : null;
+            },
+            timeZone: () => deviceTimeZone() ?? 'UTC',
+            now,
+            log,
+            retention: {
+              ready: async () => {
+                await retention?.idle();
+              },
+              gate: () => (retention as RetentionSweeper).gate(),
+              lease: () => (retention as RetentionSweeper).lease(),
+            },
+          });
     let syncScheduler: SyncScheduler | null = null;
     if (options.sync?.scheduler !== undefined) {
       syncScheduler = createSyncScheduler({
@@ -1027,6 +1056,22 @@ export async function startCore(
         executor: syncExecutor,
         log,
         ...(syncTargetsFor === undefined ? {} : { targetsFor: syncTargetsFor }),
+        ...(householdMailIntake === null
+          ? {}
+          : {
+              onPublished: async (connection, target) => {
+                if (target.resource !== 'mail') return;
+                const result = await householdMailIntake.run({
+                  connection,
+                  account_id: target.account_id,
+                  scope_id: target.scope_id,
+                });
+                if (result.recorded > 0 || result.outcome === 'stopped')
+                  log(
+                    `家計簿の利用通知を取り込みました（記録 ${String(result.recorded)} 件・確かめたメール ${String(result.checked)} 通${result.reason === null ? '' : `・${result.reason}`}）。`,
+                  );
+              },
+            }),
         ...options.sync.scheduler,
       });
       syncScheduler.start();

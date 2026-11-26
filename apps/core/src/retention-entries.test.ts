@@ -130,6 +130,13 @@ const ENTRIES: Readonly<Record<string, readonly Entry[]>> = {
       anchors: ['retention.ready()', 'retention.lease()'],
     },
   ],
+  'household-mail-intake.ts': [
+    {
+      kind: 'gated',
+      what: '家計簿の利用通知の取り込み（同期したメールの見出し・本文の読み取りと記録。ADR 0160）',
+      anchors: ['options.retention.ready()', 'options.retention.lease()'],
+    },
+  ],
   'graph-mail-attachments.ts': [
     {
       kind: 'gated',
@@ -198,7 +205,7 @@ test('exempt entries state their reason and name the call they exempt', async ()
 
 test('the Core hands the gate to every gated entry', async () => {
   const text = await readFile(join(SOURCE_DIR, 'core.ts'), 'utf8');
-  // 発言の入口・実行担当・Live・同期の実行器（Google・Graph）・調査の実行器・自動実行の取り消しの 7 つに、同じ掃除の
+  // 発言の入口・実行担当・Live・同期の実行器（Google・Graph）・調査の実行器・自動実行の取り消し・家計簿の利用通知の取り込みの 8 つに、同じ掃除の
   // job の gate／lease を渡している。
   for (const anchor of [
     'retention: {',
@@ -209,6 +216,6 @@ test('the Core hands the gate to every gated entry', async () => {
   assert.equal(
     text.split('lease: () => (retention as RetentionSweeper).lease()').length -
       1,
-    7,
+    8,
   );
 });

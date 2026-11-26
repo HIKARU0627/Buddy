@@ -104,6 +104,13 @@ const sixteenthBytes = readFileSync(
   new URL('0016_household.sql', MIGRATIONS_DIR),
 );
 const sixteenthSha = createHash('sha256').update(sixteenthBytes).digest('hex');
+// 0017（ADR 0160）: 利用通知メールの取り込みで確かめたメールと、口座ごとの取り込みの開始。
+const seventeenthBytes = readFileSync(
+  new URL('0017_household_mail_checks.sql', MIGRATIONS_DIR),
+);
+const seventeenthSha = createHash('sha256')
+  .update(seventeenthBytes)
+  .digest('hex');
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
 
 function withTempDir(run: (dir: string) => void): void {
@@ -164,7 +171,7 @@ function schemaSnapshot(db: SqliteDatabase): unknown {
   };
 }
 
-test('0001 to 0016 apply to a temporary file DB: 59 STRICT tables, version 16 and the content hashes', () => {
+test('0001 to 0017 apply to a temporary file DB: 61 STRICT tables, version 17 and the content hashes', () => {
   withTempDir((dir) => {
     const path = join(dir, 'buddy.sqlite');
     const db = openWriteConnection(path, { platform: 'macos' });
@@ -172,18 +179,18 @@ test('0001 to 0016 apply to a temporary file DB: 59 STRICT tables, version 16 an
       assert.equal(readSchemaVersion(db), 0);
       assert.deepEqual(applyMigrations(db), {
         from: 0,
-        to: 16,
-        applied: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
+        to: 17,
+        applied: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17],
       });
       const tables = tableNames(db);
-      assert.equal(tables.length, 59);
+      assert.equal(tables.length, 61);
       assert.deepEqual(tables, Object.keys(TABLE_POLICIES).sort());
       const strict = db
         .prepare(
           "SELECT name, strict FROM pragma_table_list WHERE schema = 'main' AND name NOT LIKE 'sqlite_%'",
         )
         .all() as { name: string; strict: number }[];
-      assert.equal(strict.length, 59);
+      assert.equal(strict.length, 61);
       for (const row of strict) assert.equal(row.strict, 1, row.name);
       assert.deepEqual(meta(db), {
         'migration_sha256:0001': initialSha,
@@ -202,20 +209,21 @@ test('0001 to 0016 apply to a temporary file DB: 59 STRICT tables, version 16 an
         'migration_sha256:0014': fourteenthSha,
         'migration_sha256:0015': fifteenthSha,
         'migration_sha256:0016': sixteenthSha,
-        schema_version: '16',
+        'migration_sha256:0017': seventeenthSha,
+        schema_version: '17',
       });
       assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
       assert.equal(db.pragma('integrity_check', { simple: true }), 'ok');
     } finally {
       db.close();
     }
-    // 開き直しても版は 16 のまま、適用するものはない。
+    // 開き直しても版は 17 のまま、適用するものはない。
     const reopened = openWriteConnection(path, { platform: 'macos' });
     try {
-      assert.equal(readSchemaVersion(reopened), 16);
+      assert.equal(readSchemaVersion(reopened), 17);
       assert.deepEqual(applyMigrations(reopened), {
-        from: 16,
-        to: 16,
+        from: 17,
+        to: 17,
         applied: [],
       });
     } finally {
@@ -398,6 +406,7 @@ test('migration files are numbered from 1 without gaps and contain no transactio
       [14, '0014_research.sql'],
       [15, '0015_auto_candidate_guard.sql'],
       [16, '0016_household.sql'],
+      [17, '0017_household_mail_checks.sql'],
     ],
   );
   withTempDir((dir) => {

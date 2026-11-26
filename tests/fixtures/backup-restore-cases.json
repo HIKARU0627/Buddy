@@ -3179,7 +3179,9 @@
           "research_attempts",
           "research_sources",
           "household_entries",
-          "household_category_rules"
+          "household_category_rules",
+          "household_mail_checks",
+          "household_mail_baselines"
         ]
       },
       "expect": {
@@ -4693,7 +4695,9 @@
       "research_attempts",
       "research_sources",
       "household_entries",
-      "household_category_rules"
+      "household_category_rules",
+      "household_mail_checks",
+      "household_mail_baselines"
     ],
     "restored_store_generation": "00000000-0000-4000-8000-000000009201",
     "restored_ledger_id": "00000000-0000-4000-8000-000000009301",
@@ -4708,6 +4712,8 @@
         "command_scopes",
         "event_outbox",
         "home_network_reports",
+        "household_mail_baselines",
+        "household_mail_checks",
         "pairing_claims",
         "pairing_sessions",
         "source_items",

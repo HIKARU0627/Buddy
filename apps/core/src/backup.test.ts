@@ -492,7 +492,7 @@ test('バックアップ: 封筒は契約と手書きの期待値のとおりで
   assert.ok(run.ok, JSON.stringify(run));
   assert.equal(run.created_at, '2031-03-01T00:00:05.000Z');
   assert.equal(run.forgetting_generation, '0');
-  assert.equal(run.excluded_tables, 10);
+  assert.equal(run.excluded_tables, 12);
   assert.equal(run.sync_folder_warning, false);
   const files = await backupFiles(r);
   assert.deepEqual(files, [`buddy-${run.backup_id}.buddybackup`]);
@@ -503,7 +503,7 @@ test('バックアップ: 封筒は契約と手書きの期待値のとおりで
   assert.equal(manifest['schema'], 'buddy.backup-manifest.v1');
   assert.equal(manifest['backup_id'], run.backup_id);
   assert.equal(manifest['store_generation'], r.handle.storeGeneration);
-  assert.equal(manifest['db_schema_version'], 16);
+  assert.equal(manifest['db_schema_version'], 17);
   assert.equal(manifest['forgetting_generation'], '0');
   assert.equal(manifest['ledger_head_hash'], '0'.repeat(64));
   assert.deepEqual(manifest['included_storage_modes'], ['normal', 'extended']);
@@ -519,6 +519,8 @@ test('バックアップ: 封筒は契約と手書きの期待値のとおりで
     'command_scopes',
     'event_outbox',
     'home_network_reports',
+    'household_mail_baselines',
+    'household_mail_checks',
     'pairing_claims',
     'pairing_sessions',
     'source_items',

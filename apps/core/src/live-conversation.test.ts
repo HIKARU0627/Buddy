@@ -5,8 +5,8 @@
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { uuid } from './budget-test-support.js';
-import { createApiContract, loadContractSchema } from './api-contract.js';
+import { sharedApiContract, uuid } from './budget-test-support.js';
+import { loadContractSchema } from './api-contract.js';
 import { createFakeAdapter, syntheticProfile } from '@buddy/ai/testing';
 import { createModelInterpreter } from './model-interpreter.js';
 import { API_ROUTES } from './api-routes.js';
@@ -992,7 +992,7 @@ test(
         unknown
       >;
       // 契約（VoiceEvent）に合う形で、本文・文字起こしを載せない。
-      assert(createApiContract().valid('VoiceEvent', event));
+      assert(sharedApiContract().valid('VoiceEvent', event));
       assert.equal(event['silence_extension_ms'], 60000);
       assert.equal(event['live_session_id'], c.liveId);
       assert.equal(event['device_id'], DEV_A);
@@ -1025,7 +1025,7 @@ test(
           () => controlEvents(c.rig, 'audio_control').length >= 1,
         );
         assert(
-          createApiContract().valid(
+          sharedApiContract().valid(
             'VoiceEvent',
             controlEvents(c.rig, 'audio_control')[0],
           ),
@@ -2738,7 +2738,7 @@ test(
   TIMEOUT,
   async () => {
     const schema = loadContractSchema() as Record<string, unknown>;
-    const contract = createApiContract();
+    const contract = sharedApiContract();
     const step = (text: string) => ({
       kind: 'response' as const,
       text,

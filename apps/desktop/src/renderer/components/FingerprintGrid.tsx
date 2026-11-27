@@ -33,7 +33,7 @@ export function FingerprintGrid({
       {note === undefined ? null : <p className="text-xs text-muted">{note}</p>}
       <ol
         aria-labelledby={id}
-        className="grid w-fit grid-cols-4 gap-x-4 gap-y-1 rounded-md border border-border px-4 py-3 font-mono text-lg tabular-nums"
+        className="grid w-fit grid-cols-4 gap-x-4 gap-y-1 rounded-box border border-border px-4 py-3 font-mono text-lg tabular-nums"
       >
         {groups.map((group, index) =>
           index !== last ? (

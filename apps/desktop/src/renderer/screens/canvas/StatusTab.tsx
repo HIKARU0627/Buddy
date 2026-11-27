@@ -34,7 +34,7 @@ const SHAPE_CLASS: Readonly<
 
 function PrivacySlot({ mark }: { readonly mark: PrivacyMark }) {
   const base =
-    'flex size-7 items-center justify-center rounded-md transition-colors';
+    'flex size-7 items-center justify-center rounded-part transition-colors';
   const shape =
     mark.state === 'on'
       ? `border ${ON_CLASS[mark.key]}`

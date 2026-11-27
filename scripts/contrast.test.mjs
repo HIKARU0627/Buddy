@@ -449,9 +449,14 @@ test('the HeroUI theme variables are available to measure', () => {
 
 test('the overrides are only colors, one light block and one dark block', () => {
   const { myLight, myDark, myCommon } = themes();
-  // 共通の上書きは形（角丸・入力欄の枠の太さ）だけで、色を含まない。
+  // 共通の上書きは形（角丸・入力欄の丸みと枠の太さ）と動きの時間（ADR 0181。動きを減らす設定の 0 を含む）だけで、
+  // 色を含まない。
   assert.deepEqual(Object.keys(myCommon).sort(), [
     '--field-border-width',
+    '--field-radius',
+    '--motion-island',
+    '--motion-move',
+    '--motion-panel',
     '--radius',
   ]);
   assert.deepEqual(Object.keys(myLight).sort(), [

@@ -47,6 +47,7 @@ import {
   householdCandidateNote,
   householdCandidateText,
 } from '../../state/household-candidate.js';
+import { FRAME_CLASS } from '../../shapes.js';
 
 export const WORK_LABELS = {
   conversation: '会話',
@@ -137,7 +138,7 @@ function HouseholdCandidateCard({
     <div
       role="group"
       aria-label={HOUSEHOLD_CANDIDATE_LABELS.title}
-      className="flex max-w-prose flex-col gap-2 rounded-md border border-separator p-3 text-sm"
+      className={`flex max-w-prose flex-col gap-2 p-3 text-sm ${FRAME_CLASS}`}
     >
       <span className="text-xs text-muted">
         {HOUSEHOLD_CANDIDATE_LABELS.title}
@@ -423,7 +424,9 @@ function ChangeTable({
       {long.map((row) => (
         <div key={row.field} className="flex flex-col gap-1">
           <h4 className="text-sm text-muted">{row.name}</h4>
-          <p className="max-w-prose whitespace-pre-wrap break-words rounded-lg border border-separator px-3 py-2 text-sm leading-6">
+          <p
+            className={`max-w-prose whitespace-pre-wrap break-words px-3 py-2 text-sm leading-6 ${FRAME_CLASS}`}
+          >
             {row.after}
           </p>
         </div>

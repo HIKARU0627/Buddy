@@ -83,7 +83,7 @@ export function VoiceStrip({
         role="img"
         aria-label={VOICE_LABELS.hidden}
         data-voice="hidden"
-        className="flex h-44 items-center justify-center rounded-md bg-default"
+        className="flex h-44 items-center justify-center rounded-box bg-default"
       >
         <LockIcon className="size-6 text-muted" />
       </div>
@@ -96,7 +96,7 @@ export function VoiceStrip({
       className="flex min-h-44 flex-col gap-2"
     >
       <div
-        className={`grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-x-3 gap-y-2 rounded-md px-3 py-2 ${live ? 'border border-warning-soft-foreground bg-warning-soft' : 'border border-separator'}`}
+        className={`grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-x-3 gap-y-2 rounded-box px-3 py-2 ${live ? 'border border-warning-soft-foreground bg-warning-soft' : 'border border-separator'}`}
       >
         <StatusItemIcon
           item="voice"
@@ -118,7 +118,7 @@ export function VoiceStrip({
             role="img"
             aria-label={EXTERNAL_NAME[view.external]}
             data-external={view.external}
-            className={`flex size-8 items-center justify-center rounded-md outline-none focus-visible:ring-2 focus-visible:ring-accent ${EXTERNAL_CLASS[view.external]}`}
+            className={`flex size-8 items-center justify-center rounded-part outline-none focus-visible:ring-2 focus-visible:ring-accent ${EXTERNAL_CLASS[view.external]}`}
           >
             <PrivacyIcon
               mark="voice_external"

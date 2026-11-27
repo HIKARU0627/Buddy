@@ -1349,10 +1349,7 @@
         "X59-private-conversation-no-memory-save",
         "X15-forget-and-late-result-order"
       ],
-      "faults": [
-        "review_boundary",
-        "explicit_continue"
-      ],
+      "faults": ["review_boundary", "explicit_continue"],
       "observed": {
         "checked": {
           "steps": [
@@ -1372,10 +1369,7 @@
                   "delete_at": null
                 }
               ],
-              "ciphertext_in_db_files": [
-                "M_CONTINUE",
-                "M_REVIEW"
-              ]
+              "ciphertext_in_db_files": ["M_CONTINUE", "M_REVIEW"]
             },
             {
               "step": "review_at",
@@ -1393,10 +1387,7 @@
                   "delete_at": "2031-05-01T00:00:00.000Z"
                 }
               ],
-              "ciphertext_in_db_files": [
-                "M_CONTINUE",
-                "M_REVIEW"
-              ]
+              "ciphertext_in_db_files": ["M_CONTINUE", "M_REVIEW"]
             },
             {
               "step": "delete_one_ms_before",
@@ -1414,10 +1405,7 @@
                   "delete_at": null
                 }
               ],
-              "ciphertext_in_db_files": [
-                "M_CONTINUE",
-                "M_REVIEW"
-              ]
+              "ciphertext_in_db_files": ["M_CONTINUE", "M_REVIEW"]
             },
             {
               "step": "delete_at",
@@ -1429,17 +1417,13 @@
                   "delete_at": null
                 }
               ],
-              "ciphertext_in_db_files": [
-                "M_CONTINUE"
-              ]
+              "ciphertext_in_db_files": ["M_CONTINUE"]
             }
           ],
           "memory_notices": [
             {
               "reason": "review_unanswered",
-              "items": [
-                "memory:M_REVIEW"
-              ]
+              "items": ["memory:M_REVIEW"]
             }
           ],
           "plaintext_found": []
@@ -1465,9 +1449,7 @@
         "X59-private-conversation-no-memory-save",
         "X15-forget-and-late-result-order"
       ],
-      "faults": [
-        "restore_backup_older_than_ledger"
-      ],
+      "faults": ["restore_backup_older_than_ledger"],
       "observed": {
         "checked": {
           "settings_after_restore": {
@@ -1475,16 +1457,9 @@
             "settings_revision": "2"
           },
           "first_backup_generation": "0",
-          "old_backup_ciphertext": [
-            "M",
-            "M_OTHER",
-            "T_OTHER",
-            "T_SRC"
-          ],
+          "old_backup_ciphertext": ["M", "M_OTHER", "T_OTHER", "T_SRC"],
           "forget": {
-            "plan": [
-              "M"
-            ],
+            "plan": ["M"],
             "generation": "1"
           },
           "sweep_before_new_backup": {
@@ -1494,35 +1469,21 @@
           "second_backup": {
             "generation": "1",
             "deleted_first": true,
-            "files_in_backup_dir": [
-              "second"
-            ],
-            "ciphertext": [
-              "M_OTHER",
-              "T_OTHER",
-              "T_SRC"
-            ]
+            "files_in_backup_dir": ["second"],
+            "ciphertext": ["M_OTHER", "T_OTHER", "T_SRC"]
           },
           "restore": {
             "outcome": "restored",
             "forgotten_applied_count": 1,
             "approvals_revoked_count": 0,
-            "ciphertext_in_db_files": [
-              "M_OTHER",
-              "T_OTHER",
-              "T_SRC"
-            ]
+            "ciphertext_in_db_files": ["M_OTHER", "T_OTHER", "T_SRC"]
           },
           "after_restart": {
-            "visible_memory_markers": [
-              "M_OTHER"
-            ],
+            "visible_memory_markers": ["M_OTHER"],
             "ledger_generation": "1",
             "late_from_forgotten_source": {
               "saved": false,
-              "reasons": [
-                "source_forgotten"
-              ]
+              "reasons": ["source_forgotten"]
             },
             "late_from_unrelated_source": {
               "saved": true,
@@ -1552,28 +1513,16 @@
         "X59-private-conversation-no-memory-save",
         "X15-forget-and-late-result-order"
       ],
-      "faults": [
-        "deadline_boundary",
-        "resummary"
-      ],
+      "faults": ["deadline_boundary", "resummary"],
       "observed": {
         "checked": {
           "steps": [
             {
               "step": "one_ms_before_deadline",
               "status": "completed",
-              "turns": [
-                "T_DUE",
-                "T_LIVE",
-                "T_S2"
-              ],
-              "summaries": [
-                "S",
-                "S2"
-              ],
-              "live_turn_expires_at": [
-                "2031-01-08T00:00:00.001Z"
-              ],
+              "turns": ["T_DUE", "T_LIVE", "T_S2"],
+              "summaries": ["S", "S2"],
+              "live_turn_expires_at": ["2031-01-08T00:00:00.001Z"],
               "ciphertext_in_db_files": [
                 "SUM_S",
                 "SUM_S2",
@@ -1585,44 +1534,28 @@
             {
               "step": "at_deadline",
               "status": "completed",
-              "turns": [
-                "T_LIVE",
-                "T_S2"
-              ],
+              "turns": ["T_LIVE", "T_S2"],
               "summaries": [],
-              "live_turn_expires_at": [
-                "2031-01-08T00:00:00.001Z"
-              ],
-              "ciphertext_in_db_files": [
-                "T_LIVE",
-                "T_S2"
-              ]
+              "live_turn_expires_at": ["2031-01-08T00:00:00.001Z"],
+              "ciphertext_in_db_files": ["T_LIVE", "T_S2"]
             },
             {
               "step": "one_ms_after_deadline",
               "status": "completed",
-              "turns": [
-                "T_S2"
-              ],
+              "turns": ["T_S2"],
               "summaries": [],
               "live_turn_expires_at": [],
-              "ciphertext_in_db_files": [
-                "T_S2"
-              ]
+              "ciphertext_in_db_files": ["T_S2"]
             }
           ],
           "turn_notices": [
             {
               "reason": "retention_due",
-              "items": [
-                "turn:T_DUE"
-              ]
+              "items": ["turn:T_DUE"]
             },
             {
               "reason": "retention_due",
-              "items": [
-                "turn:T_LIVE"
-              ]
+              "items": ["turn:T_LIVE"]
             }
           ],
           "plaintext_found": []
@@ -1725,10 +1658,7 @@
               "turns": 2
             }
           ],
-          "visible_turn_markers": [
-            "NORMAL_1",
-            "NORMAL_2"
-          ],
+          "visible_turn_markers": ["NORMAL_1", "NORMAL_2"],
           "plaintext_found": []
         },
         "variant": null,
@@ -1752,25 +1682,15 @@
         "X59-private-conversation-no-memory-save",
         "X15-forget-and-late-result-order"
       ],
-      "faults": [
-        "clock_rolled_back_after_restart"
-      ],
+      "faults": ["clock_rolled_back_after_restart"],
       "observed": {
         "checked": {
           "rolled_back": {
-            "gate_reasons": [
-              "clock_regression"
-            ],
-            "turns": [
-              "T_LIVE"
-            ],
-            "expires_at": [
-              "2031-01-09T00:00:00.000Z"
-            ],
+            "gate_reasons": ["clock_regression"],
+            "turns": ["T_LIVE"],
+            "expires_at": ["2031-01-09T00:00:00.000Z"],
             "last_checked_at": "2031-01-08T12:00:00Z",
-            "ciphertext_in_db_files": [
-              "T_LIVE"
-            ]
+            "ciphertext_in_db_files": ["T_LIVE"]
           },
           "reached_deadline": {
             "turns": [],
@@ -1800,19 +1720,14 @@
         "X59-private-conversation-no-memory-save",
         "X15-forget-and-late-result-order"
       ],
-      "faults": [
-        "private_memory_save",
-        "private_resend_after_exit"
-      ],
+      "faults": ["private_memory_save", "private_resend_after_exit"],
       "observed": {
         "checked": {
           "steps": [
             {
               "step": "allow_preference",
               "status": 200,
-              "allowed_kinds": [
-                "preference"
-              ]
+              "allowed_kinds": ["preference"]
             },
             {
               "step": "enter_private",
@@ -1854,12 +1769,8 @@
               "memories": 1
             }
           ],
-          "visible_memory_markers": [
-            "NORMAL"
-          ],
-          "memory_sources": [
-            "turn:explicit_request"
-          ],
+          "visible_memory_markers": ["NORMAL"],
+          "memory_sources": ["turn:explicit_request"],
           "plaintext_found": []
         },
         "variant": null,
@@ -1899,11 +1810,7 @@
                   "generation": "1"
                 }
               ],
-              "plans": [
-                [
-                  "M"
-                ]
-              ]
+              "plans": [["M"]]
             },
             "late_from_unrelated_source": {
               "saved": true,
@@ -1911,32 +1818,19 @@
             },
             "late_from_forgotten_source": {
               "saved": false,
-              "reasons": [
-                "source_forgotten"
-              ]
+              "reasons": ["source_forgotten"]
             }
           },
           "final": {
-            "memories": [
-              "L2",
-              "M_OTHER"
-            ],
-            "turns": [
-              "T_OTHER",
-              "T_SRC"
-            ],
+            "memories": ["L2", "M_OTHER"],
+            "turns": ["T_OTHER", "T_SRC"],
             "ledger_generation": "1",
             "ledger_file_generation": "1",
-            "visible_memory_markers": [
-              "L2",
-              "M_OTHER"
-            ],
+            "visible_memory_markers": ["L2", "M_OTHER"],
             "notices": [
               {
                 "reason": "forgotten",
-                "items": [
-                  "memory:M"
-                ]
+                "items": ["memory:M"]
               }
             ],
             "ledger_notices": 1
@@ -1944,30 +1838,13 @@
           "late_after_restart": {
             "forgotten_source": {
               "saved": false,
-              "reasons": [
-                "source_forgotten"
-              ]
+              "reasons": ["source_forgotten"]
             }
           },
           "ciphertext_in_db_files": {
-            "before_forget": [
-              "M",
-              "M_OTHER",
-              "T_OTHER",
-              "T_SRC"
-            ],
-            "after_forget": [
-              "L2",
-              "M_OTHER",
-              "T_OTHER",
-              "T_SRC"
-            ],
-            "after_restart": [
-              "L2",
-              "M_OTHER",
-              "T_OTHER",
-              "T_SRC"
-            ]
+            "before_forget": ["M", "M_OTHER", "T_OTHER", "T_SRC"],
+            "after_forget": ["L2", "M_OTHER", "T_OTHER", "T_SRC"],
+            "after_restart": ["L2", "M_OTHER", "T_OTHER", "T_SRC"]
           },
           "plaintext_found": []
         },
@@ -2014,24 +1891,14 @@
                 {
                   "ok": false,
                   "reason": "replan_required",
-                  "reasons": [
-                    "forget_plan_stale"
-                  ]
+                  "reasons": ["forget_plan_stale"]
                 },
                 {
                   "ok": true,
                   "generation": "1"
                 }
               ],
-              "plans": [
-                [
-                  "M"
-                ],
-                [
-                  "L1",
-                  "M"
-                ]
-              ]
+              "plans": [["M"], ["L1", "M"]]
             },
             "late_from_unrelated_source": {
               "saved": true,
@@ -2039,32 +1906,19 @@
             }
           },
           "final": {
-            "memories": [
-              "L2",
-              "M_OTHER"
-            ],
-            "turns": [
-              "T_OTHER",
-              "T_SRC"
-            ],
+            "memories": ["L2", "M_OTHER"],
+            "turns": ["T_OTHER", "T_SRC"],
             "ledger_generation": "1",
             "ledger_file_generation": "1",
-            "visible_memory_markers": [
-              "L2",
-              "M_OTHER"
-            ],
+            "visible_memory_markers": ["L2", "M_OTHER"],
             "notices": [
               {
                 "reason": "forgotten",
-                "items": [
-                  "memory:M"
-                ]
+                "items": ["memory:M"]
               },
               {
                 "reason": "derived_from_forgotten",
-                "items": [
-                  "memory:L1"
-                ]
+                "items": ["memory:L1"]
               }
             ],
             "ledger_notices": 1
@@ -2072,30 +1926,13 @@
           "late_after_restart": {
             "forgotten_source": {
               "saved": false,
-              "reasons": [
-                "source_forgotten"
-              ]
+              "reasons": ["source_forgotten"]
             }
           },
           "ciphertext_in_db_files": {
-            "before_forget": [
-              "M",
-              "M_OTHER",
-              "T_OTHER",
-              "T_SRC"
-            ],
-            "after_forget": [
-              "L2",
-              "M_OTHER",
-              "T_OTHER",
-              "T_SRC"
-            ],
-            "after_restart": [
-              "L2",
-              "M_OTHER",
-              "T_OTHER",
-              "T_SRC"
-            ]
+            "before_forget": ["M", "M_OTHER", "T_OTHER", "T_SRC"],
+            "after_forget": ["L2", "M_OTHER", "T_OTHER", "T_SRC"],
+            "after_restart": ["L2", "M_OTHER", "T_OTHER", "T_SRC"]
           },
           "plaintext_found": []
         },
@@ -2124,9 +1961,7 @@
         "X44-memory-review-deadline",
         "X59-private-conversation-no-memory-save"
       ],
-      "faults": [
-        "restore_backup_older_than_ledger"
-      ],
+      "faults": ["restore_backup_older_than_ledger"],
       "observed": {
         "checked": {
           "settings_after_restore": {
@@ -2134,16 +1969,9 @@
             "settings_revision": "2"
           },
           "first_backup_generation": "0",
-          "old_backup_ciphertext": [
-            "M",
-            "M_OTHER",
-            "T_OTHER",
-            "T_SRC"
-          ],
+          "old_backup_ciphertext": ["M", "M_OTHER", "T_OTHER", "T_SRC"],
           "forget": {
-            "plan": [
-              "M"
-            ],
+            "plan": ["M"],
             "generation": "1"
           },
           "sweep_before_new_backup": {
@@ -2153,35 +1981,21 @@
           "second_backup": {
             "generation": "1",
             "deleted_first": true,
-            "files_in_backup_dir": [
-              "second"
-            ],
-            "ciphertext": [
-              "M_OTHER",
-              "T_OTHER",
-              "T_SRC"
-            ]
+            "files_in_backup_dir": ["second"],
+            "ciphertext": ["M_OTHER", "T_OTHER", "T_SRC"]
           },
           "restore": {
             "outcome": "restored",
             "forgotten_applied_count": 1,
             "approvals_revoked_count": 0,
-            "ciphertext_in_db_files": [
-              "M_OTHER",
-              "T_OTHER",
-              "T_SRC"
-            ]
+            "ciphertext_in_db_files": ["M_OTHER", "T_OTHER", "T_SRC"]
           },
           "after_restart": {
-            "visible_memory_markers": [
-              "M_OTHER"
-            ],
+            "visible_memory_markers": ["M_OTHER"],
             "ledger_generation": "1",
             "late_from_forgotten_source": {
               "saved": false,
-              "reasons": [
-                "source_forgotten"
-              ]
+              "reasons": ["source_forgotten"]
             },
             "late_from_unrelated_source": {
               "saved": true,
@@ -2211,25 +2025,15 @@
         "X44-memory-review-deadline",
         "X59-private-conversation-no-memory-save"
       ],
-      "faults": [
-        "clock_rolled_back_after_restart"
-      ],
+      "faults": ["clock_rolled_back_after_restart"],
       "observed": {
         "checked": {
           "rolled_back": {
-            "gate_reasons": [
-              "clock_regression"
-            ],
-            "turns": [
-              "T_LIVE"
-            ],
-            "expires_at": [
-              "2031-01-09T00:00:00.000Z"
-            ],
+            "gate_reasons": ["clock_regression"],
+            "turns": ["T_LIVE"],
+            "expires_at": ["2031-01-09T00:00:00.000Z"],
             "last_checked_at": "2031-01-08T12:00:00Z",
-            "ciphertext_in_db_files": [
-              "T_LIVE"
-            ]
+            "ciphertext_in_db_files": ["T_LIVE"]
           },
           "reached_deadline": {
             "turns": [],
@@ -2336,10 +2140,7 @@
               "turns": 2
             }
           ],
-          "visible_turn_markers": [
-            "NORMAL_1",
-            "NORMAL_2"
-          ],
+          "visible_turn_markers": ["NORMAL_1", "NORMAL_2"],
           "plaintext_found": []
         },
         "variant": null,
@@ -2363,28 +2164,16 @@
         "X44-memory-review-deadline",
         "X59-private-conversation-no-memory-save"
       ],
-      "faults": [
-        "deadline_boundary",
-        "resummary"
-      ],
+      "faults": ["deadline_boundary", "resummary"],
       "observed": {
         "checked": {
           "steps": [
             {
               "step": "one_ms_before_deadline",
               "status": "completed",
-              "turns": [
-                "T_DUE",
-                "T_LIVE",
-                "T_S2"
-              ],
-              "summaries": [
-                "S",
-                "S2"
-              ],
-              "live_turn_expires_at": [
-                "2031-01-08T00:00:00.001Z"
-              ],
+              "turns": ["T_DUE", "T_LIVE", "T_S2"],
+              "summaries": ["S", "S2"],
+              "live_turn_expires_at": ["2031-01-08T00:00:00.001Z"],
               "ciphertext_in_db_files": [
                 "SUM_S",
                 "SUM_S2",
@@ -2396,44 +2185,28 @@
             {
               "step": "at_deadline",
               "status": "completed",
-              "turns": [
-                "T_LIVE",
-                "T_S2"
-              ],
+              "turns": ["T_LIVE", "T_S2"],
               "summaries": [],
-              "live_turn_expires_at": [
-                "2031-01-08T00:00:00.001Z"
-              ],
-              "ciphertext_in_db_files": [
-                "T_LIVE",
-                "T_S2"
-              ]
+              "live_turn_expires_at": ["2031-01-08T00:00:00.001Z"],
+              "ciphertext_in_db_files": ["T_LIVE", "T_S2"]
             },
             {
               "step": "one_ms_after_deadline",
               "status": "completed",
-              "turns": [
-                "T_S2"
-              ],
+              "turns": ["T_S2"],
               "summaries": [],
               "live_turn_expires_at": [],
-              "ciphertext_in_db_files": [
-                "T_S2"
-              ]
+              "ciphertext_in_db_files": ["T_S2"]
             }
           ],
           "turn_notices": [
             {
               "reason": "retention_due",
-              "items": [
-                "turn:T_DUE"
-              ]
+              "items": ["turn:T_DUE"]
             },
             {
               "reason": "retention_due",
-              "items": [
-                "turn:T_LIVE"
-              ]
+              "items": ["turn:T_LIVE"]
             }
           ],
           "plaintext_found": []
@@ -2459,10 +2232,7 @@
         "X44-memory-review-deadline",
         "X59-private-conversation-no-memory-save"
       ],
-      "faults": [
-        "review_boundary",
-        "explicit_continue"
-      ],
+      "faults": ["review_boundary", "explicit_continue"],
       "observed": {
         "checked": {
           "steps": [
@@ -2482,10 +2252,7 @@
                   "delete_at": null
                 }
               ],
-              "ciphertext_in_db_files": [
-                "M_CONTINUE",
-                "M_REVIEW"
-              ]
+              "ciphertext_in_db_files": ["M_CONTINUE", "M_REVIEW"]
             },
             {
               "step": "review_at",
@@ -2503,10 +2270,7 @@
                   "delete_at": "2031-05-01T00:00:00.000Z"
                 }
               ],
-              "ciphertext_in_db_files": [
-                "M_CONTINUE",
-                "M_REVIEW"
-              ]
+              "ciphertext_in_db_files": ["M_CONTINUE", "M_REVIEW"]
             },
             {
               "step": "delete_one_ms_before",
@@ -2524,10 +2288,7 @@
                   "delete_at": null
                 }
               ],
-              "ciphertext_in_db_files": [
-                "M_CONTINUE",
-                "M_REVIEW"
-              ]
+              "ciphertext_in_db_files": ["M_CONTINUE", "M_REVIEW"]
             },
             {
               "step": "delete_at",
@@ -2539,17 +2300,13 @@
                   "delete_at": null
                 }
               ],
-              "ciphertext_in_db_files": [
-                "M_CONTINUE"
-              ]
+              "ciphertext_in_db_files": ["M_CONTINUE"]
             }
           ],
           "memory_notices": [
             {
               "reason": "review_unanswered",
-              "items": [
-                "memory:M_REVIEW"
-              ]
+              "items": ["memory:M_REVIEW"]
             }
           ],
           "plaintext_found": []
@@ -2575,19 +2332,14 @@
         "X44-memory-review-deadline",
         "X59-private-conversation-no-memory-save"
       ],
-      "faults": [
-        "private_memory_save",
-        "private_resend_after_exit"
-      ],
+      "faults": ["private_memory_save", "private_resend_after_exit"],
       "observed": {
         "checked": {
           "steps": [
             {
               "step": "allow_preference",
               "status": 200,
-              "allowed_kinds": [
-                "preference"
-              ]
+              "allowed_kinds": ["preference"]
             },
             {
               "step": "enter_private",
@@ -2629,12 +2381,8 @@
               "memories": 1
             }
           ],
-          "visible_memory_markers": [
-            "NORMAL"
-          ],
-          "memory_sources": [
-            "turn:explicit_request"
-          ],
+          "visible_memory_markers": ["NORMAL"],
+          "memory_sources": ["turn:explicit_request"],
           "plaintext_found": []
         },
         "variant": null,
@@ -2658,9 +2406,7 @@
         "X44-memory-review-deadline",
         "X17-private-conversation-not-saved"
       ],
-      "faults": [
-        "restore_backup_older_than_ledger"
-      ],
+      "faults": ["restore_backup_older_than_ledger"],
       "observed": {
         "checked": {
           "settings_after_restore": {
@@ -2668,16 +2414,9 @@
             "settings_revision": "2"
           },
           "first_backup_generation": "0",
-          "old_backup_ciphertext": [
-            "M",
-            "M_OTHER",
-            "T_OTHER",
-            "T_SRC"
-          ],
+          "old_backup_ciphertext": ["M", "M_OTHER", "T_OTHER", "T_SRC"],
           "forget": {
-            "plan": [
-              "M"
-            ],
+            "plan": ["M"],
             "generation": "1"
           },
           "sweep_before_new_backup": {
@@ -2687,35 +2426,21 @@
           "second_backup": {
             "generation": "1",
             "deleted_first": true,
-            "files_in_backup_dir": [
-              "second"
-            ],
-            "ciphertext": [
-              "M_OTHER",
-              "T_OTHER",
-              "T_SRC"
-            ]
+            "files_in_backup_dir": ["second"],
+            "ciphertext": ["M_OTHER", "T_OTHER", "T_SRC"]
           },
           "restore": {
             "outcome": "restored",
             "forgotten_applied_count": 1,
             "approvals_revoked_count": 0,
-            "ciphertext_in_db_files": [
-              "M_OTHER",
-              "T_OTHER",
-              "T_SRC"
-            ]
+            "ciphertext_in_db_files": ["M_OTHER", "T_OTHER", "T_SRC"]
           },
           "after_restart": {
-            "visible_memory_markers": [
-              "M_OTHER"
-            ],
+            "visible_memory_markers": ["M_OTHER"],
             "ledger_generation": "1",
             "late_from_forgotten_source": {
               "saved": false,
-              "reasons": [
-                "source_forgotten"
-              ]
+              "reasons": ["source_forgotten"]
             },
             "late_from_unrelated_source": {
               "saved": true,
@@ -2745,28 +2470,16 @@
         "X44-memory-review-deadline",
         "X17-private-conversation-not-saved"
       ],
-      "faults": [
-        "deadline_boundary",
-        "resummary"
-      ],
+      "faults": ["deadline_boundary", "resummary"],
       "observed": {
         "checked": {
           "steps": [
             {
               "step": "one_ms_before_deadline",
               "status": "completed",
-              "turns": [
-                "T_DUE",
-                "T_LIVE",
-                "T_S2"
-              ],
-              "summaries": [
-                "S",
-                "S2"
-              ],
-              "live_turn_expires_at": [
-                "2031-01-08T00:00:00.001Z"
-              ],
+              "turns": ["T_DUE", "T_LIVE", "T_S2"],
+              "summaries": ["S", "S2"],
+              "live_turn_expires_at": ["2031-01-08T00:00:00.001Z"],
               "ciphertext_in_db_files": [
                 "SUM_S",
                 "SUM_S2",
@@ -2778,44 +2491,28 @@
             {
               "step": "at_deadline",
               "status": "completed",
-              "turns": [
-                "T_LIVE",
-                "T_S2"
-              ],
+              "turns": ["T_LIVE", "T_S2"],
               "summaries": [],
-              "live_turn_expires_at": [
-                "2031-01-08T00:00:00.001Z"
-              ],
-              "ciphertext_in_db_files": [
-                "T_LIVE",
-                "T_S2"
-              ]
+              "live_turn_expires_at": ["2031-01-08T00:00:00.001Z"],
+              "ciphertext_in_db_files": ["T_LIVE", "T_S2"]
             },
             {
               "step": "one_ms_after_deadline",
               "status": "completed",
-              "turns": [
-                "T_S2"
-              ],
+              "turns": ["T_S2"],
               "summaries": [],
               "live_turn_expires_at": [],
-              "ciphertext_in_db_files": [
-                "T_S2"
-              ]
+              "ciphertext_in_db_files": ["T_S2"]
             }
           ],
           "turn_notices": [
             {
               "reason": "retention_due",
-              "items": [
-                "turn:T_DUE"
-              ]
+              "items": ["turn:T_DUE"]
             },
             {
               "reason": "retention_due",
-              "items": [
-                "turn:T_LIVE"
-              ]
+              "items": ["turn:T_LIVE"]
             }
           ],
           "plaintext_found": []
@@ -2857,17 +2554,11 @@
                   "generation": "1"
                 }
               ],
-              "plans": [
-                [
-                  "M"
-                ]
-              ]
+              "plans": [["M"]]
             },
             "late_from_forgotten_source": {
               "saved": false,
-              "reasons": [
-                "source_forgotten"
-              ]
+              "reasons": ["source_forgotten"]
             },
             "late_from_unrelated_source": {
               "saved": true,
@@ -2875,26 +2566,15 @@
             }
           },
           "final": {
-            "memories": [
-              "L2",
-              "M_OTHER"
-            ],
-            "turns": [
-              "T_OTHER",
-              "T_SRC"
-            ],
+            "memories": ["L2", "M_OTHER"],
+            "turns": ["T_OTHER", "T_SRC"],
             "ledger_generation": "1",
             "ledger_file_generation": "1",
-            "visible_memory_markers": [
-              "L2",
-              "M_OTHER"
-            ],
+            "visible_memory_markers": ["L2", "M_OTHER"],
             "notices": [
               {
                 "reason": "forgotten",
-                "items": [
-                  "memory:M"
-                ]
+                "items": ["memory:M"]
               }
             ],
             "ledger_notices": 1
@@ -2902,30 +2582,13 @@
           "late_after_restart": {
             "forgotten_source": {
               "saved": false,
-              "reasons": [
-                "source_forgotten"
-              ]
+              "reasons": ["source_forgotten"]
             }
           },
           "ciphertext_in_db_files": {
-            "before_forget": [
-              "M",
-              "M_OTHER",
-              "T_OTHER",
-              "T_SRC"
-            ],
-            "after_forget": [
-              "L2",
-              "M_OTHER",
-              "T_OTHER",
-              "T_SRC"
-            ],
-            "after_restart": [
-              "L2",
-              "M_OTHER",
-              "T_OTHER",
-              "T_SRC"
-            ]
+            "before_forget": ["M", "M_OTHER", "T_OTHER", "T_SRC"],
+            "after_forget": ["L2", "M_OTHER", "T_OTHER", "T_SRC"],
+            "after_restart": ["L2", "M_OTHER", "T_OTHER", "T_SRC"]
           },
           "plaintext_found": []
         },
@@ -2954,19 +2617,14 @@
         "X44-memory-review-deadline",
         "X17-private-conversation-not-saved"
       ],
-      "faults": [
-        "private_memory_save",
-        "private_resend_after_exit"
-      ],
+      "faults": ["private_memory_save", "private_resend_after_exit"],
       "observed": {
         "checked": {
           "steps": [
             {
               "step": "allow_preference",
               "status": 200,
-              "allowed_kinds": [
-                "preference"
-              ]
+              "allowed_kinds": ["preference"]
             },
             {
               "step": "enter_private",
@@ -3008,12 +2666,8 @@
               "memories": 1
             }
           ],
-          "visible_memory_markers": [
-            "NORMAL"
-          ],
-          "memory_sources": [
-            "turn:explicit_request"
-          ],
+          "visible_memory_markers": ["NORMAL"],
+          "memory_sources": ["turn:explicit_request"],
           "plaintext_found": []
         },
         "variant": null,
@@ -3037,25 +2691,15 @@
         "X44-memory-review-deadline",
         "X17-private-conversation-not-saved"
       ],
-      "faults": [
-        "clock_rolled_back_after_restart"
-      ],
+      "faults": ["clock_rolled_back_after_restart"],
       "observed": {
         "checked": {
           "rolled_back": {
-            "gate_reasons": [
-              "clock_regression"
-            ],
-            "turns": [
-              "T_LIVE"
-            ],
-            "expires_at": [
-              "2031-01-09T00:00:00.000Z"
-            ],
+            "gate_reasons": ["clock_regression"],
+            "turns": ["T_LIVE"],
+            "expires_at": ["2031-01-09T00:00:00.000Z"],
             "last_checked_at": "2031-01-08T12:00:00Z",
-            "ciphertext_in_db_files": [
-              "T_LIVE"
-            ]
+            "ciphertext_in_db_files": ["T_LIVE"]
           },
           "reached_deadline": {
             "turns": [],
@@ -3085,10 +2729,7 @@
         "X44-memory-review-deadline",
         "X17-private-conversation-not-saved"
       ],
-      "faults": [
-        "review_boundary",
-        "explicit_continue"
-      ],
+      "faults": ["review_boundary", "explicit_continue"],
       "observed": {
         "checked": {
           "steps": [
@@ -3108,10 +2749,7 @@
                   "delete_at": null
                 }
               ],
-              "ciphertext_in_db_files": [
-                "M_CONTINUE",
-                "M_REVIEW"
-              ]
+              "ciphertext_in_db_files": ["M_CONTINUE", "M_REVIEW"]
             },
             {
               "step": "review_at",
@@ -3129,10 +2767,7 @@
                   "delete_at": "2031-05-01T00:00:00.000Z"
                 }
               ],
-              "ciphertext_in_db_files": [
-                "M_CONTINUE",
-                "M_REVIEW"
-              ]
+              "ciphertext_in_db_files": ["M_CONTINUE", "M_REVIEW"]
             },
             {
               "step": "delete_one_ms_before",
@@ -3150,10 +2785,7 @@
                   "delete_at": null
                 }
               ],
-              "ciphertext_in_db_files": [
-                "M_CONTINUE",
-                "M_REVIEW"
-              ]
+              "ciphertext_in_db_files": ["M_CONTINUE", "M_REVIEW"]
             },
             {
               "step": "delete_at",
@@ -3165,17 +2797,13 @@
                   "delete_at": null
                 }
               ],
-              "ciphertext_in_db_files": [
-                "M_CONTINUE"
-              ]
+              "ciphertext_in_db_files": ["M_CONTINUE"]
             }
           ],
           "memory_notices": [
             {
               "reason": "review_unanswered",
-              "items": [
-                "memory:M_REVIEW"
-              ]
+              "items": ["memory:M_REVIEW"]
             }
           ],
           "plaintext_found": []
@@ -3278,10 +2906,7 @@
               "turns": 2
             }
           ],
-          "visible_turn_markers": [
-            "NORMAL_1",
-            "NORMAL_2"
-          ],
+          "visible_turn_markers": ["NORMAL_1", "NORMAL_2"],
           "plaintext_found": []
         },
         "variant": null,

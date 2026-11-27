@@ -137,6 +137,13 @@ const ENTRIES: Readonly<Record<string, readonly Entry[]>> = {
       anchors: ['options.retention.ready()', 'options.retention.lease()'],
     },
   ],
+  'calendar-candidate-intake.ts': [
+    {
+      kind: 'gated',
+      what: '予定の重複の気づきの取り込み（選んだカレンダーの予定の読み直しと候補の保存。ADR 0194）',
+      anchors: ['options.retention.ready()', 'options.retention.lease()'],
+    },
+  ],
   'household-receipt.ts': [
     {
       kind: 'gated',
@@ -220,7 +227,7 @@ test('exempt entries state their reason and name the call they exempt', async ()
 test('the Core hands the gate to every gated entry', async () => {
   const text = await readFile(join(SOURCE_DIR, 'core.ts'), 'utf8');
   // 発言の入口・実行担当・Live・同期の実行器（Google・Graph）・調査の実行器・自動実行の取り消し・家計簿の利用通知の取り込み・
-  // レシートの写真の読み取り（ADR 0177）の 9 つに、同じ掃除の job の gate／lease を渡している。
+  // レシートの写真の読み取り（ADR 0177）・予定の重複の気づきの取り込み（ADR 0194）の 10 個に、同じ掃除の job の gate／lease を渡している。
   for (const anchor of [
     'retention: {',
     'cloudGate: {',
@@ -230,6 +237,6 @@ test('the Core hands the gate to every gated entry', async () => {
   assert.equal(
     text.split('lease: () => (retention as RetentionSweeper).lease()').length -
       1,
-    9,
+    10,
   );
 });

@@ -111,7 +111,7 @@ const failed = (reason: string, scanId: string | null): SyncScanOutcome => ({
 });
 
 // 接続の保存済みの取得対象（ワイヤの形）を domain の FetchScope にする（storage の写しと同じ）。
-function toFetchScope(record: ConnectionRecord): FetchScope {
+export function toFetchScope(record: ConnectionRecord): FetchScope {
   return {
     calendarIds: record.targets.calendar_ids,
     mailContainerIds: record.targets.mail_container_ids,

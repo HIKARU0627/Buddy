@@ -651,6 +651,60 @@ test('Calendar listEventsPage: 最終ページは nextPageToken を含まない'
   assert.deepEqual(page, { items: [{ id: 'ev-9', status: 'cancelled' }] });
 });
 
+test('Calendar listEventsPage: 空き時間・種類・本人の出欠だけを写し、ほかの参加者は写さない', async () => {
+  const { connector } = setup([
+    json({
+      items: [
+        {
+          id: 'ev-1',
+          status: 'confirmed',
+          transparency: 'transparent',
+          eventType: 'workingLocation',
+          attendees: [
+            { email: 'other@example.com', responseStatus: 'accepted' },
+            {
+              email: 'me@example.com',
+              self: true,
+              responseStatus: 'declined',
+            },
+          ],
+        },
+        // 本人が参加者に居ない予定は出欠を持たない。
+        {
+          id: 'ev-2',
+          status: 'confirmed',
+          attendees: [
+            { email: 'other@example.com', responseStatus: 'accepted' },
+          ],
+        },
+      ],
+    }),
+  ]);
+
+  const page = await connector.calendar.listEventsPage(WINDOW);
+
+  assert.deepEqual(page, {
+    items: [
+      {
+        id: 'ev-1',
+        status: 'confirmed',
+        transparency: 'transparent',
+        eventType: 'workingLocation',
+        selfResponseStatus: 'declined',
+      },
+      { id: 'ev-2', status: 'confirmed' },
+    ],
+  });
+});
+
+test('Calendar listEventsPage: 参加者の一覧が配列でなければ不正な応答として拒む', async () => {
+  const { connector } = setup([
+    json({ items: [{ id: 'ev-1', status: 'confirmed', attendees: 'x' }] }),
+  ]);
+
+  await assert.rejects(connector.calendar.listEventsPage(WINDOW));
+});
+
 test('Gmail listMessageIdsPage: pageToken を伝え、1 ページだけ読んで nextPageToken を返す', async () => {
   const { connector, urls, requests } = setup([
     json({

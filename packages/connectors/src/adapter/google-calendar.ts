@@ -31,6 +31,12 @@ export interface GoogleCalendarEvent {
   readonly recurringEventId?: string;
   readonly originalStartTime?: GoogleCalendarEventTime;
   readonly sequence?: number;
+  // 空き時間扱いか（opaque・transparent）。予定の重複の判定に使う（ADR 0194）。
+  readonly transparency?: string;
+  // 予定の種類（default・outOfOffice・focusTime・workingLocation・birthday など）。
+  readonly eventType?: string;
+  // 本人の出欠（attendees のうち self が真の 1 件の responseStatus）。ほかの参加者・アドレスは写さない。
+  readonly selfResponseStatus?: string;
 }
 
 export interface ListCalendarEventsRequest {
@@ -104,6 +110,9 @@ function toEvent(value: unknown): GoogleCalendarEvent {
     recurringEventId?: string;
     originalStartTime?: GoogleCalendarEventTime;
     sequence?: number;
+    transparency?: string;
+    eventType?: string;
+    selfResponseStatus?: string;
   } = { id, status };
   const updated = optionalString(value, 'updated');
   const etag = optionalString(value, 'etag');
@@ -128,7 +137,26 @@ function toEvent(value: unknown): GoogleCalendarEvent {
   if (recurringEventId !== undefined) event.recurringEventId = recurringEventId;
   if (originalStartTime !== undefined)
     event.originalStartTime = originalStartTime;
+  const transparency = optionalString(value, 'transparency');
+  const eventType = optionalString(value, 'eventType');
+  if (transparency !== undefined) event.transparency = transparency;
+  if (eventType !== undefined) event.eventType = eventType;
+  const selfResponseStatus = selfResponse(value['attendees']);
+  if (selfResponseStatus !== undefined)
+    event.selfResponseStatus = selfResponseStatus;
   return event;
+}
+
+// 参加者の一覧から、本人（self が真）の出欠だけを取り出す。一覧そのもの・ほかの参加者のアドレスは返さない。
+function selfResponse(value: unknown): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (!Array.isArray(value)) throw invalidResponse();
+  for (const attendee of value) {
+    if (!isRecord(attendee)) throw invalidResponse();
+    if (attendee['self'] === true)
+      return optionalString(attendee, 'responseStatus');
+  }
+  return undefined;
 }
 
 function toEventsPage(body: unknown): GooglePage<GoogleCalendarEvent> {

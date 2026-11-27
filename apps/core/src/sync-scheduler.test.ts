@@ -16,7 +16,10 @@ import type {
   SyncScanRequest,
 } from './sync-executor.js';
 import { createSyncScheduler } from './sync-scheduler.js';
-import type { SyncSchedulerTarget } from './sync-scheduler.js';
+import type {
+  SyncSchedulerOptions,
+  SyncSchedulerTarget,
+} from './sync-scheduler.js';
 
 const T0 = Date.parse('2026-01-05T00:00:00.000Z');
 const iso = (ms: number): string => new Date(ms).toISOString();
@@ -168,6 +171,7 @@ function harness(
     jitterMs?: number;
     backoffMaxMs?: number;
     withTargets?: boolean;
+    onPublished?: SyncSchedulerOptions['onPublished'];
   } = {},
 ): { h: Harness; scheduler: ReturnType<typeof createSyncScheduler> } {
   const store = new FakeStore([connection('conn-1')], scopes);
@@ -195,6 +199,9 @@ function harness(
     ...(over.backoffMaxMs === undefined
       ? {}
       : { backoffMaxMs: over.backoffMaxMs }),
+    ...(over.onPublished === undefined
+      ? {}
+      : { onPublished: over.onPublished }),
   });
   return { h, scheduler };
 }
@@ -236,6 +243,39 @@ test('startup recovers every scope once, then runs a full scan for each target',
   assert.equal(h.store.scopes.get('scope-mail')?.executor_generation, '2');
   // 次の周期は 60 秒（乱数 0.5 でジッター 0）に予約される。
   assert.equal(h.timers.pending?.ms, 60_000);
+  scheduler.stop();
+});
+
+test('after a publish the hook receives the target, the diff count and the published scope (ADR 0194)', async () => {
+  const notified: [string, string, number, string][] = [];
+  const { h, scheduler } = harness(recentScopes(), TARGETS, {
+    onPublished: (conn, target, published) => {
+      notified.push([
+        conn.connection_id,
+        target.scope_id,
+        published.diff_count,
+        published.scope.active_generation,
+      ]);
+    },
+  });
+  h.executor.handler = async (request) => ({
+    status: 'published',
+    scan_id: 'scan-x',
+    diff_count: request.resource === 'calendar' ? 2 : 0,
+    resumed: false,
+    scope: scopeRecord({
+      scope_id: request.scope_id,
+      active_generation: request.resource === 'calendar' ? '7' : '3',
+    }),
+  });
+  scheduler.start();
+  await scheduler.idle();
+  // 知らせは待たずに呼ばれるので、次の順番まで待つ。
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(notified, [
+    ['conn-1', 'scope-mail', 0, '3'],
+    ['conn-1', 'scope-cal', 2, '7'],
+  ]);
   scheduler.stop();
 });
 

@@ -3,7 +3,7 @@
 // ビルドした CSS に同じ値が出ることは apps/desktop/src/main/renderer-build.test.ts が確かめる。
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
@@ -171,7 +171,9 @@ test('the renderer draws no shadows except the dragged canvas item left for stag
     for (const match of text.matchAll(
       /(?<![\w-])(?:[\w-]+:)*shadow(?:-[^\s'"`{}]+)?(?![\w])/gu,
     ))
-      found.push(`${path.slice(rendererDir.length)}: ${match[0]}`);
+      found.push(
+        `${path.slice(rendererDir.length).replaceAll(sep, '/')}: ${match[0]}`,
+      );
   }
   assert.deepEqual(found, ['screens/canvas/CanvasBoard.tsx: shadow-overlay']);
 });

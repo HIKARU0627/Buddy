@@ -24,13 +24,15 @@ import {
 
 const CLI = fileURLToPath(new URL('./cli.js', import.meta.url));
 
+// 上限は呼び出し元の試験の期限（signal）だけ。固定の時間では打ち切らない（Issue #108）。
 function runCli(
+  signal: AbortSignal,
   args: readonly string[],
 ): Promise<{ code: number | null; stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [CLI, ...args], {
       stdio: ['ignore', 'pipe', 'pipe'],
-      timeout: 15_000,
+      signal,
     });
     let stdout = '';
     let stderr = '';
@@ -74,12 +76,19 @@ test(
 
     // 承認の前にペアリング ID が要る（使い方の誤り）。
     assert.equal(
-      (await runCli(['first-device', 'approve', '--data-dir', dataDir])).code,
+      (
+        await runCli(t.signal, [
+          'first-device',
+          'approve',
+          '--data-dir',
+          dataDir,
+        ])
+      ).code,
       2,
     );
     assert.equal(
       (
-        await runCli([
+        await runCli(t.signal, [
           'first-device',
           'start',
           '--pairing-id',
@@ -90,7 +99,7 @@ test(
       ).code,
       2,
     );
-    const started = await runCli([
+    const started = await runCli(t.signal, [
       'first-device',
       'start',
       '--data-dir',
@@ -117,7 +126,7 @@ test(
     const pairingId = String(session['pairing_id']);
 
     // 承認の前（申請がない）は拒否する。
-    const early = await runCli([
+    const early = await runCli(t.signal, [
       'first-device',
       'approve',
       '--pairing-id',
@@ -149,7 +158,7 @@ test(
       409,
     );
 
-    const approved = await runCli([
+    const approved = await runCli(t.signal, [
       'first-device',
       'approve',
       '--pairing-id',
@@ -181,7 +190,7 @@ test(
     );
 
     // 1 台でも登録があれば、CLI の開始は拒否する（終了コード 7）。
-    const refused = await runCli([
+    const refused = await runCli(t.signal, [
       'first-device',
       'start',
       '--data-dir',
@@ -193,7 +202,7 @@ test(
       error: 'refused',
       reason: 'devices_registered',
     });
-    const refusedApprove = await runCli([
+    const refusedApprove = await runCli(t.signal, [
       'first-device',
       'approve',
       '--pairing-id',
@@ -205,7 +214,7 @@ test(
     // 不正なペアリング ID は制御チャネルが形式で拒否する（使い方の誤り）。
     assert.equal(
       (
-        await runCli([
+        await runCli(t.signal, [
           'first-device',
           'approve',
           '--pairing-id',
@@ -217,7 +226,10 @@ test(
       2,
     );
 
-    assert.equal((await runCli(['stop', '--data-dir', dataDir])).code, 0);
+    assert.equal(
+      (await runCli(t.signal, ['stop', '--data-dir', dataDir])).code,
+      0,
+    );
     assert.equal((await core.exited).code, 0);
     // Core のログ（標準エラー）・機械向けの出力にコード・秘密・トークンを出さない。
     const coreOutput = `${core.stderr()}\n${JSON.stringify(core.events)}`;
@@ -228,7 +240,8 @@ test(
     assert(core.stderr().includes(claimId));
     // 動いている Core がなければ終了コード 3。
     assert.equal(
-      (await runCli(['first-device', 'start', '--data-dir', dataDir])).code,
+      (await runCli(t.signal, ['first-device', 'start', '--data-dir', dataDir]))
+        .code,
       3,
     );
   },
@@ -249,7 +262,7 @@ test(
     });
     onCleanup(t, () => handle.stop('test').catch(() => undefined));
     assert.equal(handle.pairing, null);
-    const refused = await runCli([
+    const refused = await runCli(t.signal, [
       'first-device',
       'start',
       '--data-dir',
@@ -259,7 +272,8 @@ test(
     assert.equal(lastJson(refused.stdout)['reason'], 'https_not_configured');
     await handle.stop('test');
     assert.equal(
-      (await runCli(['first-device', 'start', '--data-dir', dataDir])).code,
+      (await runCli(t.signal, ['first-device', 'start', '--data-dir', dataDir]))
+        .code,
       3,
     );
   },

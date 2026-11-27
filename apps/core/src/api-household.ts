@@ -6,11 +6,14 @@
 //   決め、決まっていなければ 503（端末の時計・UTC で代用しない）。
 // - 1 か月（GET /v1/household/months/{month}）は記録と集計。出所の識別子（メールの ID など）は返さない。
 //   引き落とし日がその月の請求予定（ADR 0176）は bills に分けて返す。記録・集計・予算・定期の支出には入れない。
+// - 請求予定を消す（POST /v1/household/bills/{bill_id}/delete、ADR 0179）は家計の記録の削除と同じく内容版で照合する。
+//   内容版の違い・消した後は 409、ない請求予定は 422。
 // - 分類の変更・削除は内容版で照合する。内容版の違い・削除済みは 409（画面は読み直す）、向きの違う分類・ない記録は 422。
 //   同じ request_id の再送は、成功済みなら内容版が進んでいる・削除済みなので 409 になり、二重に効かない。
 // - 中身の変更（POST /v1/household/entries/{entry_id}/content、ADR 0169）も内容版で照合する。向きの違い・検査に合わない中身は 422。
 // - 設定の変更（POST /v1/household/settings）は利用通知の取り込みの入・切（ADR 0163）。版の違いは 409。
-// - レシートの写真の読み取りの入・切と読み取り（ADR 0177）は household-receipt.ts。月ごとの合計に今の入・切を返す。
+// - レシートの写真の読み取りの入・切と読み取り（ADR 0177）は household-receipt.ts。月ごとの合計に今の入・切を返す。入・切は
+//   家計簿の設定の行に保存し（ADR 0179）、版は利用通知の取り込みの入・切と共通。
 // - データ鍵が読めない・保存の失敗・成否不明は 503 dependency_unavailable にし、成功にも競合にも見せない。
 // 承認・実行経路・effect_kind は関わらない（家計の記録は Buddy 自身の記録で、外部を変えない。ADR 0158）。
 
@@ -35,7 +38,7 @@ import {
 import type { DataKeyMaterial, DbWorkerClient } from '@buddy/storage';
 import { apiErrorResponse } from './api-server.js';
 import type { ApiRouteHandler } from './api-server.js';
-import { readHouseholdBills } from './household-bills.js';
+import { deleteHouseholdBill, readHouseholdBills } from './household-bills.js';
 import {
   HouseholdMerchantKey,
   changeHouseholdCategory,
@@ -84,6 +87,7 @@ export interface HouseholdRoutes {
     readonly getHouseholdMonth: ApiRouteHandler;
     readonly changeHouseholdCategory: ApiRouteHandler;
     readonly deleteHouseholdEntry: ApiRouteHandler;
+    readonly deleteHouseholdBill: ApiRouteHandler;
     readonly changeHouseholdSettings: ApiRouteHandler;
     readonly importHouseholdRows: ApiRouteHandler;
     readonly changeHouseholdBudget: ApiRouteHandler;
@@ -98,6 +102,7 @@ export interface HouseholdRoutes {
 const CONFLICT_REASONS: ReadonlySet<string> = new Set([
   'revision_mismatch',
   'entry_deleted',
+  'bill_deleted',
 ]);
 // 本人の入力の誤り・ない記録。422。
 const INVALID_REASONS: ReadonlySet<string> = new Set([
@@ -106,6 +111,8 @@ const INVALID_REASONS: ReadonlySet<string> = new Set([
   'direction_mismatch',
   'entry_missing',
   'entry_id_invalid',
+  'bill_missing',
+  'bill_id_invalid',
   'expected_revision_invalid',
 ]);
 
@@ -296,7 +303,11 @@ export function createHouseholdRoutes(
         generated_at: new Date(at).toISOString(),
         months,
         truncated: read.truncated,
-        settings: settings.value,
+        // 契約の HouseholdSettings は利用通知の取り込みの入・切と版だけ。レシートの入・切は receipt_reading で返す。
+        settings: {
+          mail_intake: settings.value.mail_intake,
+          settings_revision: settings.value.settings_revision,
+        },
         // 定期の支出と固定費の目安（ADR 0165）。同じ 12 か月の記録から計算し、保存しない。
         recurring: detectHouseholdRecurring(
           read.months.flatMap((month) =>
@@ -305,8 +316,10 @@ export function createHouseholdRoutes(
           current,
         ),
         budget: budgetBody(budget.revision, budget.items),
-        // レシートの写真の読み取りの入・切（ADR 0177）。読み取りの口がなければ unavailable。
-        receipt_reading: options.receipt?.state() ?? 'unavailable',
+        // レシートの写真の読み取りの入・切（ADR 0177）。保存した値（ADR 0179）を、読み取りの口がなければ unavailable にする。
+        receipt_reading: (options.receipt ?? NO_RECEIPT).stateOf(
+          settings.value.receipt_reading,
+        ),
       },
     };
   };
@@ -343,6 +356,8 @@ export function createHouseholdRoutes(
         truncated: read.truncated,
         bills: {
           items: bills.bills.items.map((bill) => ({
+            bill_id: bill.bill_id,
+            content_revision: bill.content_revision,
             issuer: bill.issuer,
             amount_yen: bill.amount_yen,
             due_on: bill.due_on,
@@ -414,6 +429,31 @@ export function createHouseholdRoutes(
     };
   };
 
+  // 請求予定を消す（ADR 0179）。内容版は保存層が同じ transaction で照合する。結果不明は 503 で、自動では送り直さない。
+  const deleteBill: ApiRouteHandler = async (request) => {
+    const body = request.body ?? {};
+    const fail = failWith(stringOf(body['request_id']));
+    const billId = request.params['bill_id'] ?? '';
+    const expected = stringOf(body['expected_content_revision']);
+    if (!STORED_REVISION.test(expected)) return fail(422, 'invalid_input');
+    const deleted = await deleteHouseholdBill(
+      {
+        client: options.store,
+        now: () => new Date(options.now()).toISOString(),
+      },
+      billId,
+      expected,
+    );
+    if (deleted.outcome !== 'deleted') {
+      const failure = failureStatus(deleted.outcome, deleted.reasons);
+      return fail(failure.status, failure.code);
+    }
+    return {
+      status: 200,
+      body: { bill_id: deleted.bill_id, state: 'deleted' },
+    };
+  };
+
   // 利用通知の取り込みを止める・再開する（ADR 0163）。版は保存層が同じ transaction で照合する。
   const changeSettings: ApiRouteHandler = async (request) => {
     const body = request.body ?? {};
@@ -432,7 +472,13 @@ export function createHouseholdRoutes(
       const failure = failureStatus(changed.outcome, changed.reasons);
       return fail(failure.status, failure.code);
     }
-    return { status: 200, body: changed.value };
+    return {
+      status: 200,
+      body: {
+        mail_intake: changed.value.mail_intake,
+        settings_revision: changed.value.settings_revision,
+      },
+    };
   };
 
   // 家計の記録の手入力（ADR 0167）。出所の鍵は request_id から作るので、同じ要求の再送は二つ目を作らない。支出の記録で店名があり
@@ -781,6 +827,7 @@ export function createHouseholdRoutes(
       getHouseholdMonth,
       changeHouseholdCategory: changeCategory,
       deleteHouseholdEntry: deleteEntry,
+      deleteHouseholdBill: deleteBill,
       changeHouseholdSettings: changeSettings,
       importHouseholdRows: importRows,
       changeHouseholdBudget: changeBudget,

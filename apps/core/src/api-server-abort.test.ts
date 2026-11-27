@@ -187,7 +187,11 @@ test(
     });
     // 設定を入にする（中枢の画面の操作の代わりに、経路の処理を直接呼ぶ）。
     await routes.handlers.changeHouseholdReceiptSetting({
-      body: { request_id: randomUUID(), receipt_reading: 'on' },
+      body: {
+        request_id: randomUUID(),
+        expected_settings_revision: '0',
+        receipt_reading: 'on',
+      },
     } as unknown as ApiHandlerRequest);
     // 挙げていない経路には signal も要求が届いた時刻も付かない。
     const plain: (AbortSignal | number | undefined)[] = [];
@@ -306,7 +310,10 @@ test(
       },
       changeHouseholdReceiptSetting: async () => {
         atHandler['setting'] = zeroed(settingText);
-        return { status: 200, body: { receipt_reading: 'off' } };
+        return {
+          status: 200,
+          body: { receipt_reading: 'off', settings_revision: '1' },
+        };
       },
     });
     const scope = await scopeOf(hub.target, hub.device.token);
@@ -318,6 +325,7 @@ test(
     settingText = JSON.stringify({
       request_id: randomUUID(),
       command_scope_id: scope,
+      expected_settings_revision: '0',
       receipt_reading: 'off',
     });
     bodies.set(receiptText, []);

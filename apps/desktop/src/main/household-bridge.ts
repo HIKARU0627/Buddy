@@ -5,14 +5,18 @@
 //   解決する。解決できなければ entry_not_found）。接続範囲は接続が本文に付ける。
 // - 読み取りは中枢の GET /v1/household/months（月ごとの合計と今月）と GET /v1/household/months/{month}（1 か月の記録）。
 //   月を指定しなければ中枢が決めた今月を読む（端末の時計で今月を決めない。U331）。1 か月の読み取りの請求予定（ADR 0176）は
-//   そのまま画面へ渡す（会社・金額・引き落とし日だけで、ID は中枢も返さない）。読めなかったとき（接続の失敗・503・
+//   会社・金額・引き落とし日と、main が作る参照だけを画面へ渡す（請求予定の ID・内容版は main が持つ。ADR 0179）。
+//   読めなかったとき（接続の失敗・503・
 //   形の違う応答）は前の値のまま、取得の状態を stale（読めたことがなければ unavailable）にする。読めなかったことを
 //   「記録なし」にしない。
 // - 分類の変更・削除は、読んだ内容版を expected_content_revision にして送る。受け付けられたら読み直す。表示が古かった
 //   （409）は preview_stale、中枢が受け付けなかった（422 など）は core_rejected にして読み直す。結果が分からない
 //   （届いたか分からない・5xx・形の違う 2xx）は自動では送り直さず、その記録を次の読み取りまで操作させない。
 // - 中身の変更（ADR 0169）も同じ流れで、受け付けたらその記録の月（日付を直したときは直した後の月）を読み直す。
-// - 利用通知の取り込みの入・切（ADR 0163）は、月ごとの合計で読んだ設定の版で照合して送る。
+// - 請求予定を消す（ADR 0179）も同じ流れで、読んだ内容版で照合して送る。結果が分からなければ、その請求予定を次の読み取り
+//   まで操作させない。
+// - 利用通知の取り込みの入・切（ADR 0163）とレシートの写真の読み取りの入・切（ADR 0179）は、月ごとの合計で読んだ設定の版で
+//   照合して送る。
 // - レシートの写真の読み取り（ADR 0177）は、設定が入のときだけ写真を選ばせ、縮めた JPEG を一度だけ送り、候補を画面へ渡す
 //   （main は候補も写真も持たない）。記録は作らない。入にするときは OS の確認ダイアログを挟む。
 // - 世代（ロック・切断）: reset で記録・参照・保留を捨て、非同期の処理は await の後に世代を照合する（またいだ読み取りは
@@ -20,6 +24,7 @@
 // - 読み取りが重なったときは、後から始めた読み取りだけを反映する（古い月の応答で新しい月の表示を戻さない）。
 // Electron に依存しない（node:test で試験する）。
 import type {
+  DesktopHouseholdBill,
   DesktopHouseholdEntry,
   DesktopHouseholdReceiptView,
   DesktopHouseholdView,
@@ -222,6 +227,9 @@ export class HouseholdBridge {
   readonly #refs = new Map<string, string>();
   // 結果が分からなかった記録（記録の ID → そのときの読み取りの通し番号）。それより後に始めた読み取りが成功するまで操作させない。
   readonly #held = new Map<string, number>();
+  // 請求予定の ID → 参照と、結果が分からなかった請求予定（ADR 0179）。記録の参照とは別に持つ。
+  readonly #billRefs = new Map<string, string>();
+  readonly #billHeld = new Map<string, number>();
   #fetchedAt: string | null = null;
   #failed = false;
   #lastImport: LastImport | null = null;
@@ -248,6 +256,8 @@ export class HouseholdBridge {
     this.#records = new Map();
     this.#refs.clear();
     this.#held.clear();
+    this.#billRefs.clear();
+    this.#billHeld.clear();
     this.#fetchedAt = null;
     this.#failed = false;
     this.#lastImport = null;
@@ -300,7 +310,20 @@ export class HouseholdBridge {
       bills:
         this.#month === null
           ? null
-          : { ...this.#month.bills, items: [...this.#month.bills.items] },
+          : {
+              items: this.#month.bills.items.map(
+                (bill): DesktopHouseholdBill => ({
+                  ref: this.#billRefs.get(bill.bill_id) as string,
+                  issuer: bill.issuer,
+                  amount_yen: bill.amount_yen,
+                  due_on: bill.due_on,
+                  delivery_unknown: this.#billHeld.has(bill.bill_id),
+                }),
+              ),
+              total_yen: this.#month.bills.total_yen,
+              unreadable: this.#month.bills.unreadable,
+              truncated: this.#month.bills.truncated,
+            },
       budget:
         this.#overview === null
           ? null
@@ -378,6 +401,18 @@ export class HouseholdBridge {
       }
     for (const [key, heldAt] of [...this.#held])
       if (heldAt < seq) this.#held.delete(key);
+    // 請求予定も同じ請求予定のあいだ同じ参照を保ち、消えた請求予定の参照と保留を捨てる（ADR 0179）。
+    const bills = new Set(month.bills.items.map((bill) => bill.bill_id));
+    for (const billId of bills)
+      if (!this.#billRefs.has(billId))
+        this.#billRefs.set(billId, this.#host.newRef());
+    for (const key of [...this.#billRefs.keys()])
+      if (!bills.has(key)) {
+        this.#billRefs.delete(key);
+        this.#billHeld.delete(key);
+      }
+    for (const [key, heldAt] of [...this.#billHeld])
+      if (heldAt < seq) this.#billHeld.delete(key);
     this.#records = next;
     this.#overview = overview;
     this.#month = month;
@@ -487,7 +522,8 @@ export class HouseholdBridge {
     const scope = connection?.state.commandScopeId ?? null;
     if (connection === null || scope === null) return fail('not_connected');
     const current = this.#overview?.receipt_reading ?? null;
-    if (current === null) return fail('entry_not_found');
+    const revision = this.#overview?.settings.settings_revision ?? null;
+    if (current === null || revision === null) return fail('entry_not_found');
     if (current === value || (current === 'unavailable' && value === 'off'))
       return { ok: true, value: this.view() };
     if (current === 'unavailable') return fail('core_rejected');
@@ -505,7 +541,7 @@ export class HouseholdBridge {
     const outcome = await connection.request({
       method: 'POST',
       path: '/v1/household/receipt-setting',
-      body: { receipt_reading: value },
+      body: { expected_settings_revision: revision, receipt_reading: value },
       scoped: true,
       screenOperation: true,
       expectedScopeId: scope,
@@ -530,7 +566,8 @@ export class HouseholdBridge {
       this.#host.log('household_receipt_setting_outcome_unknown');
       return fail('outcome_unknown');
     }
-    return fail('core_rejected');
+    // 設定の版が違った（取り込みの入・切か、この設定が別に変わっていた）: 読み直して今の設定を見せる。
+    return fail(outcome.status === 409 ? 'preview_stale' : 'core_rejected');
   }
 
   // レシートの写真 1 枚を読む（ADR 0177）。設定が入のときだけ、pick（Electron の層の OS のファイル選択）で本人に選ばせ、
@@ -1003,6 +1040,65 @@ export class HouseholdBridge {
       same: false,
       month: entry.occurred_on.slice(0, 7),
     }));
+  }
+
+  // 請求予定を消す（ADR 0179）。読んだ内容版で照合して送り、受け付けたら今の月を読み直す。結果が分からないときは送り直さず、
+  // その請求予定を次の読み取りまで操作させない。
+  async removeBill(
+    ref: string,
+  ): Promise<HouseholdOutcome<DesktopHouseholdView>> {
+    const gen = this.#gen;
+    const connection = this.#host.connection();
+    const scope = connection?.state.commandScopeId ?? null;
+    if (connection === null || scope === null) return fail('not_connected');
+    let billId: string | null = null;
+    for (const [id, billRef] of this.#billRefs)
+      if (billRef === ref) billId = id;
+    const bill =
+      billId === null
+        ? undefined
+        : this.#month?.bills.items.find((item) => item.bill_id === billId);
+    if (billId === null || bill === undefined || this.#billHeld.has(billId))
+      return fail('entry_not_found');
+    const hold = (): void => {
+      this.#billHeld.set(billId, this.#seq);
+      this.#listSeq += 1;
+      this.#host.log('household_bill_delete_outcome_unknown');
+    };
+    const outcome = await connection.request({
+      method: 'POST',
+      path: `/v1/household/bills/${encodeURIComponent(billId)}/delete`,
+      body: { expected_content_revision: bill.content_revision },
+      scoped: true,
+      screenOperation: true,
+      expectedScopeId: scope,
+    });
+    if (outcome.kind === 'not_sent') return fail('not_connected');
+    if (gen !== this.#gen) return fail('outcome_unknown');
+    if (outcome.kind === 'unknown') {
+      hold();
+      void this.#reread();
+      return fail('outcome_unknown');
+    }
+    if (
+      outcome.status === 200 &&
+      this.#host.contract.valid('HouseholdBillDeleteResult', outcome.body)
+    ) {
+      await this.#reread();
+      if (gen !== this.#gen) return fail('not_connected');
+      return { ok: true, value: this.view() };
+    }
+    if (
+      outcome.status >= 500 ||
+      (outcome.status >= 200 && outcome.status < 300)
+    ) {
+      hold();
+      void this.#reread();
+      return fail('outcome_unknown');
+    }
+    // 消した後だった・内容版が違った（409）・中枢が受け付けなかった。読み直して今の値を見せる。
+    void this.#reread();
+    return fail(outcome.status === 409 ? 'preview_stale' : 'core_rejected');
   }
 
   remove(ref: string): Promise<HouseholdOutcome<DesktopHouseholdView>> {

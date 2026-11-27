@@ -93,6 +93,7 @@ import {
   receiptBudgetOf,
 } from './household-receipt.js';
 import type { ReceiptReadingSetup } from './household-receipt.js';
+import { receiptSettingStoreOf } from './household-receipt-setting.js';
 import {
   HOUSEHOLD_RECEIPT_ENDPOINT_HOST,
   householdReceiptSetup,
@@ -1676,7 +1677,7 @@ async function startHttps(
   // 予算の門（本人の依頼の枠）と保存期限の掃除の門を通してから外部へ送る。設定は既定で切。掃除の門は待たない（掃除の
   // 途中なら送らずに 503 not_sent。端末が待つのをやめた後に送らないため。ADR 0177 の追補）。https.limits で
   // requestTimeout・確かめる間隔を上書きして、端末の時間切れ（150 秒）との関係が破れるなら、読み取りを使わない
-  // （unavailable。ADR 0177 の追補 2）。
+  // （unavailable。ADR 0177 の追補 2）。入・切は家計簿の設定の行に保存し、起動し直しても変わらない（ADR 0179）。
   // 外部のモデルの鍵が起動の設定にあれば、Gemini の読み取りの口と profile を作る（ADR 0178）。単価の版は予算の設定から
   // 今の時刻で見積もれるものだけ（なければ unavailable）。
   const receiptProvider = https.household?.receiptProvider;
@@ -1721,6 +1722,7 @@ async function startHttps(
       connectionsCheckingIntervalMs: apiLimits.connectionsCheckingIntervalMs,
     },
     log,
+    settings: receiptSettingStoreOf(store, () => now().getTime()),
     ...(retention === null
       ? {}
       : {

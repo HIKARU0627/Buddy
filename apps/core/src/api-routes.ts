@@ -251,6 +251,11 @@ export const API_ROUTES: readonly ApiRoute[] = [
     '/v1/household/entries/{entry_id}/delete',
     { body: 'HouseholdEntryDeleteRequest', ...SCREEN },
   ),
+  // 請求予定を消す（ADR 0179）。家計の記録の削除と同じ検査。処理は api-household.ts。
+  route('deleteHouseholdBill', 'POST', '/v1/household/bills/{bill_id}/delete', {
+    body: 'HouseholdBillDeleteRequest',
+    ...SCREEN,
+  }),
   // 家計簿の設定（利用通知の取り込みの入・切。ADR 0163）。
   route('changeHouseholdSettings', 'POST', '/v1/household/settings', {
     body: 'HouseholdSettingsChangeRequest',

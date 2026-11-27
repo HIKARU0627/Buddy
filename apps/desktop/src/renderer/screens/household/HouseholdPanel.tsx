@@ -1,15 +1,17 @@
 // 家計簿の欄（ADR 0162。API は ADR 0161）。標準の端末画面（従来の窓）の本体に置く。
 // 頭に取得状態と最終取得（経過）。次に選んでいる月の合計（支出・収入・収支・振替・件数）と分類ごとの支出。次に記録の行:
 // 日付・時刻・店名・金額・向き・支払い手段・出所と、分類の選択（向きが同じ分類だけ）と「削除する」（画面の中で
-// もう一度確かめてから送る）。記録の後に、その月の請求予定（会社・金額・引き落とし日。ADR 0176）を支出の合計と分けて出す。
+// もう一度確かめてから送る）。記録の後に、その月の請求予定（会社・金額・引き落とし日。ADR 0176）を支出の合計と分けて出し、
+// 行ごとに「消す」（画面の中でもう一度確かめてから送る。ADR 0179）を置く。
 // 最後に月ごとの合計（今月から 11 か月前まで）で、押すとその月の記録を出す。
 // 未取得・取得の失敗を「記録はありません」と言わない。理由のコード・API の名前・記録の ID は出さない。
 import { Button } from '@heroui/react';
 import { useEffect, useRef, useState } from 'react';
 import { householdBudgetUse } from '@buddy/domain';
 import type {
+  DesktopHouseholdBill,
+  DesktopHouseholdBills,
   DesktopHouseholdEntry,
-  HouseholdMonthBills,
   HouseholdRecurringSummary,
   HouseholdCategoryId,
   HouseholdMonthSummary,
@@ -986,8 +988,17 @@ function RecurringBlock({
 }
 
 // その月の請求予定（ADR 0176）。カード会社の請求のお知らせから中枢が読んだ会社・金額・引き落とし日を、支出の合計とは
-// 分けて出す（支出の合計・予算・定期の支出には入っていない）。画面からの変更・削除はない。
-function BillsBlock({ bills }: { readonly bills: HouseholdMonthBills }) {
+// 分けて出す（支出の合計・予算・定期の支出には入っていない）。行ごとに「消す」を置き、画面の中で一度確かめてから送る
+// （ADR 0179）。直す操作はない。
+function BillsBlock({
+  bills,
+  state,
+  actions,
+}: {
+  readonly bills: DesktopHouseholdBills;
+  readonly state: HouseholdViewState;
+  readonly actions: HouseholdActions;
+}) {
   return (
     <div className="flex flex-col gap-1.5" data-bills="">
       <h3 className="text-sm font-semibold">{HOUSEHOLD_LABELS.billsTitle}</h3>
@@ -1006,16 +1017,13 @@ function BillsBlock({ bills }: { readonly bills: HouseholdMonthBills }) {
             aria-label={HOUSEHOLD_LABELS.billsTitle}
             className="flex flex-col gap-0.5 text-sm"
           >
-            {bills.items.map((bill, index) => (
-              <li
-                key={`${bill.due_on}|${bill.issuer}|${String(index)}`}
-                className="flex flex-wrap justify-between gap-2"
-              >
-                <span className="min-w-0 break-words">{bill.issuer}</span>
-                <span className="tabular-nums">
-                  {`${yenText(bill.amount_yen)} ・ ${billDueText(bill.due_on)}`}
-                </span>
-              </li>
+            {bills.items.map((bill) => (
+              <BillRow
+                key={bill.ref}
+                bill={bill}
+                state={state}
+                actions={actions}
+              />
             ))}
           </ul>
         </>
@@ -1030,6 +1038,85 @@ function BillsBlock({ bills }: { readonly bills: HouseholdMonthBills }) {
         <InlineNotice tone="warning" text={HOUSEHOLD_LABELS.billsTruncated} />
       ) : null}
     </div>
+  );
+}
+
+// 請求予定の 1 行（ADR 0179）。会社・金額・引き落とし日と「消す」。消す前に、行の中で一度確かめる。
+function BillRow({
+  bill,
+  state,
+  actions,
+}: {
+  readonly bill: DesktopHouseholdBill;
+  readonly state: HouseholdViewState;
+  readonly actions: HouseholdActions;
+}) {
+  const notice = noticeAt(state, bill.ref);
+  const mine = state.busy === bill.ref;
+  const confirming = state.confirmingBill === bill.ref;
+  const label = `${bill.issuer} ${billDueText(bill.due_on)}`;
+  return (
+    <li className="flex flex-col gap-1.5 py-1" data-bill="">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="min-w-0 break-words">{bill.issuer}</span>
+        <span className="ml-auto tabular-nums">
+          {`${yenText(bill.amount_yen)} ・ ${billDueText(bill.due_on)}`}
+        </span>
+        {bill.delivery_unknown || confirming ? null : (
+          <Button
+            size="sm"
+            variant="ghost"
+            isDisabled={!canChange(state, bill)}
+            aria-label={`${HOUSEHOLD_LABELS.billDelete}（${label}）`}
+            onPress={() => actions.startBillDelete(bill.ref)}
+          >
+            {HOUSEHOLD_LABELS.billDelete}
+          </Button>
+        )}
+      </div>
+      {bill.delivery_unknown ? (
+        <StatusText
+          className="text-sm"
+          line={{
+            tone: 'danger',
+            mark: 'warning',
+            text: HOUSEHOLD_LABELS.billUnknown,
+          }}
+        />
+      ) : null}
+      {confirming ? (
+        <div
+          role="group"
+          aria-label={HOUSEHOLD_LABELS.billDelete}
+          className="flex flex-col gap-2 rounded-md border border-danger-soft-foreground p-3"
+        >
+          <p className="text-sm">{HOUSEHOLD_LABELS.billDeleteConfirm}</p>
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button
+              size="sm"
+              variant="secondary"
+              isDisabled={mine}
+              onPress={actions.cancelBillDelete}
+            >
+              {HOUSEHOLD_LABELS.cancel}
+            </Button>
+            <Button
+              size="sm"
+              variant="danger"
+              isDisabled={mine}
+              onPress={actions.confirmBillDelete}
+            >
+              {mine
+                ? HOUSEHOLD_LABELS.billDeleting
+                : HOUSEHOLD_LABELS.billDeleteSubmit}
+            </Button>
+          </div>
+        </div>
+      ) : null}
+      {notice === null ? null : (
+        <InlineNotice tone={notice.tone} text={notice.text} />
+      )}
+    </li>
   );
 }
 
@@ -1226,7 +1313,9 @@ export function HouseholdPanel({
               ))}
             </ul>
           )}
-          {view.bills === null ? null : <BillsBlock bills={view.bills} />}
+          {view.bills === null ? null : (
+            <BillsBlock bills={view.bills} state={state} actions={actions} />
+          )}
         </>
       )}
       {loaded ? <AddBlock state={state} actions={actions} /> : null}

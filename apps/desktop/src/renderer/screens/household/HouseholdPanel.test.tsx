@@ -93,6 +93,9 @@ const ACTIONS: HouseholdActions = {
   startDelete: noop,
   cancelDelete: noop,
   confirmDelete: noop,
+  startBillDelete: noop,
+  cancelBillDelete: noop,
+  confirmBillDelete: noop,
   setIntake: noop,
   importExport: noop,
   exportCsv: noop,
@@ -383,8 +386,20 @@ test('the bills block shows the month bills by company, amount and debit day apa
       view: view([entry(0)], {
         bills: {
           items: [
-            { issuer: '合成カードA', amount_yen: 12345, due_on: '2030-11-10' },
-            { issuer: '合成カードB', amount_yen: 3000, due_on: '2030-11-27' },
+            {
+              ref: id(80),
+              issuer: '合成カードA',
+              amount_yen: 12345,
+              due_on: '2030-11-10',
+              delivery_unknown: false,
+            },
+            {
+              ref: id(81),
+              issuer: '合成カードB',
+              amount_yen: 3000,
+              due_on: '2030-11-27',
+              delivery_unknown: false,
+            },
           ],
           total_yen: 15345,
           unreadable: 1,
@@ -424,6 +439,64 @@ test('the bills block shows the month bills by company, amount and debit day apa
     text(panel({ view: view([entry(0)]), seq: 2 })),
     /請求予定/u,
   );
+});
+
+test('each bill row has a delete button that asks once in the screen; an unknown result disables the row (ADR 0179)', () => {
+  const bill = (n: number, delivery_unknown = false) => ({
+    ref: id(n),
+    issuer: `合成カード${String(n)}`,
+    amount_yen: 1000 + n,
+    due_on: '2030-11-10',
+    delivery_unknown,
+  });
+  const bills = (items: ReturnType<typeof bill>[]) => ({
+    items,
+    total_yen: items.reduce((sum, item) => sum + item.amount_yen, 0),
+    unreadable: 0,
+    truncated: false,
+  });
+  const plain = panel({
+    view: view([entry(0)], { bills: bills([bill(80), bill(81)]) }),
+    seq: 2,
+  });
+  // 記録の「削除する」とは別に、請求予定の行ごとに「消す」がある。
+  assert.equal(buttons(plain).filter((label) => label === '消す').length, 2);
+  assert.match(
+    plain,
+    /aria-label="消す（合成カード80 引き落とし\u00a011\u00a0月\u00a010\u00a0日）"/u,
+  );
+  assert.doesNotMatch(text(plain), /この請求予定を消しますか。/u);
+  // 押すと、その行の中で一度だけ問う。問っている行の「消す」は確かめの中のボタンだけになる。
+  const asking = panel({
+    view: view([entry(0)], { bills: bills([bill(80), bill(81)]) }),
+    seq: 2,
+    confirmingBill: id(80),
+  });
+  assert.match(
+    text(asking),
+    /この請求予定を消しますか。消した請求予定は請求予定の一覧と合計から外れ、同じメールからは作り直しません。/u,
+  );
+  assert.deepEqual(
+    buttons(asking).filter((label) => label === 'やめる' || label === '消す'),
+    ['やめる', '消す', '消す'],
+  );
+  // 送っている間は「消しています…」で、押せない。
+  const sending = panel({
+    view: view([entry(0)], { bills: bills([bill(80)]) }),
+    seq: 2,
+    confirmingBill: id(80),
+    busy: id(80),
+  });
+  assert.match(text(sending), /消しています…/u);
+  // 結果が分からない行は「消す」を出さない。
+  const unknown = panel({
+    view: view([entry(0)], { bills: bills([bill(80, true)]) }),
+    seq: 2,
+  });
+  assert.match(text(unknown), /消した結果を確認できませんでした/u);
+  assert.equal(buttons(unknown).filter((label) => label === '消す').length, 0);
+  // 請求予定の ID・内容版は画面に来ない（参照だけ）。
+  assert.doesNotMatch(plain, /content_revision|bill_id/u);
 });
 
 test('the budget block compares the month spending with the budget, and the editor lists the expense categories', () => {

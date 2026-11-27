@@ -2774,16 +2774,22 @@
       "bills": {
         "items": [
           {
+            "bill_id": "00000000-0000-4000-8000-0000000d0001",
+            "content_revision": "1",
             "issuer": "合成カードA",
             "amount_yen": 12345,
             "due_on": "2030-11-10"
           },
           {
+            "bill_id": "00000000-0000-4000-8000-0000000d0002",
+            "content_revision": "1",
             "issuer": "合成カードA",
             "amount_yen": 500,
             "due_on": "2030-11-27"
           },
           {
+            "bill_id": "00000000-0000-4000-8000-0000000d0003",
+            "content_revision": "1",
             "issuer": "合成カードB",
             "amount_yen": 3000,
             "due_on": "2030-11-27"
@@ -3385,6 +3391,8 @@
       "bills": {
         "items": [
           {
+            "bill_id": "00000000-0000-4000-8000-0000000d0004",
+            "content_revision": "1",
             "issuer": "合成カードA",
             "amount_yen": 1000,
             "due_on": "2031-01-10"
@@ -3417,6 +3425,8 @@
       "bills": {
         "items": [
           {
+            "bill_id": "00000000-0000-4000-8000-0000000d0005",
+            "content_revision": "1",
             "issuer": "合成カードA",
             "amount_yen": 0,
             "due_on": "2030-12-10"
@@ -3429,7 +3439,7 @@
     }
   },
   {
-    "id": "household-month-bill-extra-field",
+    "id": "household-month-bill-source-key",
     "schema": "HouseholdMonth",
     "valid": false,
     "value": {
@@ -3448,10 +3458,12 @@
       "bills": {
         "items": [
           {
+            "bill_id": "00000000-0000-4000-8000-0000000d0006",
+            "content_revision": "1",
             "issuer": "合成カードA",
             "amount_yen": 1000,
             "due_on": "2030-12-10",
-            "bill_id": "00000000-0000-4000-8000-0000000d0001"
+            "source_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
           }
         ],
         "total_yen": 1000,
@@ -3467,11 +3479,15 @@
     "value": {
       "items": [
         {
+          "bill_id": "00000000-0000-4000-8000-0000000d0007",
+          "content_revision": "1",
           "issuer": "合成カードB",
           "amount_yen": 3000,
           "due_on": "2030-12-27"
         },
         {
+          "bill_id": "00000000-0000-4000-8000-0000000d0008",
+          "content_revision": "1",
           "issuer": "合成カードA",
           "amount_yen": 500,
           "due_on": "2030-12-27"
@@ -3490,11 +3506,15 @@
     "value": {
       "items": [
         {
+          "bill_id": "00000000-0000-4000-8000-0000000d0009",
+          "content_revision": "1",
           "issuer": "合成カードA",
           "amount_yen": 500,
           "due_on": "2030-12-10"
         },
         {
+          "bill_id": "00000000-0000-4000-8000-0000000d000a",
+          "content_revision": "1",
           "issuer": "合成カードA",
           "amount_yen": 700,
           "due_on": "2030-12-10"
@@ -3513,6 +3533,8 @@
     "value": {
       "items": [
         {
+          "bill_id": "00000000-0000-4000-8000-0000000d000b",
+          "content_revision": "1",
           "issuer": "合成カードA",
           "amount_yen": 500,
           "due_on": "2030-11-31"
@@ -3525,12 +3547,159 @@
     "semantic_errors": ["due_on_invalid"]
   },
   {
+    "id": "household-month-bills-duplicate-id",
+    "refs": ["ADR 0179"],
+    "schema": "HouseholdMonthBills",
+    "valid": true,
+    "value": {
+      "items": [
+        {
+          "bill_id": "00000000-0000-4000-8000-0000000d0101",
+          "content_revision": "1",
+          "issuer": "合成カードA",
+          "amount_yen": 500,
+          "due_on": "2030-12-10"
+        },
+        {
+          "bill_id": "00000000-0000-4000-8000-0000000d0101",
+          "content_revision": "1",
+          "issuer": "合成カードB",
+          "amount_yen": 700,
+          "due_on": "2030-12-10"
+        }
+      ],
+      "total_yen": 1200,
+      "unreadable": 0,
+      "truncated": false
+    },
+    "semantic_errors": ["bill_duplicate"]
+  },
+  {
+    "id": "household-month-bills-without-revision",
+    "refs": ["ADR 0179"],
+    "schema": "HouseholdMonthBills",
+    "valid": false,
+    "value": {
+      "items": [
+        {
+          "bill_id": "00000000-0000-4000-8000-0000000d0102",
+          "issuer": "合成カードA",
+          "amount_yen": 500,
+          "due_on": "2030-12-10"
+        }
+      ],
+      "total_yen": 500,
+      "unreadable": 0,
+      "truncated": false
+    }
+  },
+  {
+    "id": "household-bill-delete",
+    "refs": ["ADR 0179"],
+    "schema": "HouseholdBillDeleteRequest",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-0000000d0201",
+      "command_scope_id": "00000000-0000-4000-8000-000000009002",
+      "expected_content_revision": "1"
+    }
+  },
+  {
+    "id": "household-bill-delete-without-revision",
+    "schema": "HouseholdBillDeleteRequest",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-0000000d0201",
+      "command_scope_id": "00000000-0000-4000-8000-000000009002"
+    }
+  },
+  {
+    "id": "household-bill-delete-with-content",
+    "schema": "HouseholdBillDeleteRequest",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-0000000d0201",
+      "command_scope_id": "00000000-0000-4000-8000-000000009002",
+      "expected_content_revision": "1",
+      "amount_yen": 1000
+    }
+  },
+  {
+    "id": "household-bill-delete-result",
+    "schema": "HouseholdBillDeleteResult",
+    "valid": true,
+    "value": {
+      "bill_id": "00000000-0000-4000-8000-0000000d0202",
+      "state": "deleted"
+    }
+  },
+  {
+    "id": "household-bill-delete-result-active",
+    "schema": "HouseholdBillDeleteResult",
+    "valid": false,
+    "value": {
+      "bill_id": "00000000-0000-4000-8000-0000000d0202",
+      "state": "active"
+    }
+  },
+  {
+    "id": "desktop-household-bills",
+    "refs": ["ADR 0179"],
+    "schema": "DesktopHouseholdBills",
+    "valid": true,
+    "value": {
+      "items": [
+        {
+          "ref": "00000000-0000-4000-8000-0000000d0301",
+          "issuer": "合成カードA",
+          "amount_yen": 500,
+          "due_on": "2030-12-10",
+          "delivery_unknown": false
+        },
+        {
+          "ref": "00000000-0000-4000-8000-0000000d0302",
+          "issuer": "合成カードB",
+          "amount_yen": 700,
+          "due_on": "2030-12-27",
+          "delivery_unknown": true
+        }
+      ],
+      "total_yen": 1200,
+      "unreadable": 0,
+      "truncated": false
+    }
+  },
+  {
+    "id": "desktop-household-bills-with-id",
+    "refs": ["ADR 0179"],
+    "schema": "DesktopHouseholdBills",
+    "valid": false,
+    "value": {
+      "items": [
+        {
+          "ref": "00000000-0000-4000-8000-0000000d0301",
+          "bill_id": "00000000-0000-4000-8000-0000000d0303",
+          "content_revision": "1",
+          "issuer": "合成カードA",
+          "amount_yen": 500,
+          "due_on": "2030-12-10",
+          "delivery_unknown": false
+        }
+      ],
+      "total_yen": 500,
+      "unreadable": 0,
+      "truncated": false
+    }
+  },
+  {
     "id": "household-month-bills-empty-issuer",
     "schema": "HouseholdMonthBills",
     "valid": false,
     "value": {
       "items": [
         {
+          "bill_id": "00000000-0000-4000-8000-0000000d000c",
+          "content_revision": "1",
           "issuer": "",
           "amount_yen": 500,
           "due_on": "2030-11-30"
@@ -29557,6 +29726,7 @@
     "value": {
       "request_id": "00000000-0000-4000-8000-0000000c0109",
       "command_scope_id": "00000000-0000-4000-8000-000000009002",
+      "expected_settings_revision": "0",
       "receipt_reading": "on"
     }
   },
@@ -29567,7 +29737,30 @@
     "value": {
       "request_id": "00000000-0000-4000-8000-0000000c0109",
       "command_scope_id": "00000000-0000-4000-8000-000000009002",
+      "expected_settings_revision": "0",
       "receipt_reading": "unavailable"
+    }
+  },
+  {
+    "id": "household-receipt-setting-change-without-revision",
+    "refs": ["ADR 0179"],
+    "schema": "HouseholdReceiptSettingRequest",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-0000000c0109",
+      "command_scope_id": "00000000-0000-4000-8000-000000009002",
+      "receipt_reading": "on"
+    }
+  },
+  {
+    "id": "household-receipt-setting-change-leading-zero-revision",
+    "schema": "HouseholdReceiptSettingRequest",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-0000000c0109",
+      "command_scope_id": "00000000-0000-4000-8000-000000009002",
+      "expected_settings_revision": "01",
+      "receipt_reading": "off"
     }
   },
   {
@@ -29575,7 +29768,8 @@
     "schema": "HouseholdReceiptSetting",
     "valid": true,
     "value": {
-      "receipt_reading": "unavailable"
+      "receipt_reading": "unavailable",
+      "settings_revision": "3"
     }
   },
   {
@@ -29583,7 +29777,17 @@
     "schema": "HouseholdReceiptSetting",
     "valid": false,
     "value": {
-      "receipt_reading": "paused"
+      "receipt_reading": "paused",
+      "settings_revision": "3"
+    }
+  },
+  {
+    "id": "household-receipt-setting-without-revision",
+    "refs": ["ADR 0179"],
+    "schema": "HouseholdReceiptSetting",
+    "valid": false,
+    "value": {
+      "receipt_reading": "on"
     }
   },
   {

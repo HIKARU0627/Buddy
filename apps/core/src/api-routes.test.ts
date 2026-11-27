@@ -86,9 +86,9 @@ test(
     // 家計簿の月ごとの合計・1 か月・分類の変更・削除（ADR 0161）で 4 つ、設定の変更（ADR 0163）で 1 つ、
     // 書き出しの取り込み（ADR 0164）で 1 つ、予算の変更（ADR 0166）で 1 つ、
     // 手入力（ADR 0167）で 1 つ、中身の変更（ADR 0169）で 1 つ、
-    // レシートの写真の読み取りの入・切と読み取り（ADR 0177）で 2 つ増えた。
-    assert.equal(operations.length, 62);
-    assert.equal(API_ROUTES.length, 62);
+    // レシートの写真の読み取りの入・切と読み取り（ADR 0177）で 2 つ、請求予定を消す操作（ADR 0179）で 1 つ増えた。
+    assert.equal(operations.length, 63);
+    assert.equal(API_ROUTES.length, 63);
     for (const { path, method, operation } of operations) {
       const route = API_ROUTES.find(
         (candidate) => candidate.operationId === operation.operationId,
@@ -179,8 +179,8 @@ test(
     // で 1 つ増えた。気づきの一覧・根拠の再取得・状態の変更（B11-04 P2、ADR 0130）で 3 つ増えた。
     // 選べる取得対象（listConnectionTargetOptions、ADR 0145）で 1 つ増えた。
     // 家計簿の 4 経路（ADR 0161）で 4 つ、設定の変更（ADR 0163）で 1 つ、取り込み（ADR 0164）で 1 つ、予算の変更（ADR 0166）で 1 つ、手入力（ADR 0167）で 1 つ、中身の変更（ADR 0169）で 1 つ、
-    // レシートの写真の読み取りの入・切と読み取り（ADR 0177）で 2 つ増えた。
-    assert.equal(declared.length, 51);
+    // レシートの写真の読み取りの入・切と読み取り（ADR 0177）で 2 つ、請求予定を消す操作（ADR 0179）で 1 つ増えた。
+    assert.equal(declared.length, 52);
   },
 );
 

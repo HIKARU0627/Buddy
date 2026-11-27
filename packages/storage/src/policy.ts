@@ -335,7 +335,7 @@ export const TABLE_POLICIES: Readonly<Record<string, TablePolicy>> = {
     retention: 'until_replaced',
     transaction: 'household',
   },
-  // 0018（ADR 0163）。本人の家計簿の設定（1 行だけ）。
+  // 0018（ADR 0163）。本人の家計簿の設定（1 行だけ）。0022 でレシートの写真の読み取りの入・切を足した（ADR 0179）。
   household_settings: {
     body: 'none',
     retention: 'until_replaced',
@@ -347,9 +347,9 @@ export const TABLE_POLICIES: Readonly<Record<string, TablePolicy>> = {
     retention: 'until_replaced',
     transaction: 'household',
   },
-  // 0021（ADR 0176）。請求予定（会社・金額・引き落とし日は暗号文。平文は出所の種類と鍵・引き落とし日の月・作成時刻だけ）。
-  // 家計の記録と同じく本人が消すまで残す分類。画面からの削除はまだなく、DB の trigger が削除を拒否する（消す操作を作る
-  // ときは trigger を外すマイグレーションが要る。ADR 0176・U360）。
+  // 0021（ADR 0176）。請求予定（会社・金額・引き落とし日は暗号文。平文は出所の種類と鍵・状態・内容版・引き落とし日の月・
+  // 時刻だけ）。家計の記録と同じく本人が消すまで残す。本人が消すと、行は残して状態を deleted にし、月と暗号文を消す
+  // （0022、ADR 0179。出所の鍵で同じメールから作り直さない）。行の削除は DB の trigger が拒否する。
   household_bills: {
     body: 'sealed_refs',
     retention: 'until_user_deletes',

@@ -200,6 +200,12 @@
       "$ref": "#/$defs/HouseholdEntryDeleteResult"
     },
     {
+      "$ref": "#/$defs/HouseholdBillDeleteRequest"
+    },
+    {
+      "$ref": "#/$defs/HouseholdBillDeleteResult"
+    },
+    {
       "$ref": "#/$defs/HouseholdSettingsChangeRequest"
     },
     {
@@ -6509,6 +6515,14 @@
     "HouseholdBill": {
       "type": "object",
       "properties": {
+        "bill_id": {
+          "$ref": "#/$defs/Id",
+          "description": "請求予定の ID（消す操作の経路に使う。ADR 0179）。"
+        },
+        "content_revision": {
+          "$ref": "#/$defs/HouseholdRevision",
+          "description": "請求予定の内容版（作ったときは 1。消す操作の照合に使う。ADR 0179）。"
+        },
         "issuer": {
           "type": "string",
           "minLength": 1,
@@ -6527,9 +6541,15 @@
           "description": "引き落とし日（本人の地域の日付）。暦に実在する日かは意味検査で確かめる。"
         }
       },
-      "required": ["issuer", "amount_yen", "due_on"],
+      "required": [
+        "bill_id",
+        "content_revision",
+        "issuer",
+        "amount_yen",
+        "due_on"
+      ],
       "additionalProperties": false,
-      "description": "請求予定 1 件（ADR 0176）。カード会社の請求のお知らせから読んだ、引き落としの予定。出所の識別子（メールの ID など）は返さない。"
+      "description": "請求予定 1 件（ADR 0176）。カード会社の請求のお知らせから読んだ、引き落としの予定。出所の識別子（メールの ID など）は返さない。本人が消した請求予定は返さない（ADR 0179）。"
     },
     "HouseholdMonthBills": {
       "type": "object",
@@ -6560,7 +6580,7 @@
       },
       "required": ["items", "total_yen", "unreadable", "truncated"],
       "additionalProperties": false,
-      "description": "1 か月の請求予定（ADR 0176）。請求の金額は利用の記録（支払い済み）を後からまとめて知らせるものなので、家計の記録・月の集計・予算・定期の支出に入れない（二重に数えない）。合計は並べた請求予定の和で、どれも引き落とし日がその月（意味検査）。"
+      "description": "1 か月の請求予定（ADR 0176）。請求の金額は利用の記録（支払い済み）を後からまとめて知らせるものなので、家計の記録・月の集計・予算・定期の支出に入れない（二重に数えない）。合計は並べた請求予定の和で、どれも引き落とし日がその月、請求予定の ID は重ならない（意味検査）。本人が消した請求予定は並べず、合計にも入れない（ADR 0179）。"
     },
     "HouseholdMonthTotals": {
       "type": "object",
@@ -6708,7 +6728,7 @@
     "HouseholdSettingsRevision": {
       "type": "string",
       "pattern": "^(0|[1-9][0-9]*)$",
-      "description": "本人の家計簿の設定の版（ADR 0003 の共通の 10 進の形）。まだ変えていなければ 0、変えるたびに 1 進む（ADR 0163）。"
+      "description": "本人の家計簿の設定の版（ADR 0003 の共通の 10 進の形）。まだ変えていなければ 0、変えるたびに 1 進む（ADR 0163）。利用通知の取り込みの入・切とレシートの写真の読み取りの入・切で共通の版（ADR 0179）。"
     },
     "HouseholdSettings": {
       "type": "object",
@@ -7203,10 +7223,46 @@
       "additionalProperties": false,
       "description": "削除の結果。"
     },
+    "HouseholdBillDeleteRequest": {
+      "type": "object",
+      "properties": {
+        "request_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "command_scope_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "expected_content_revision": {
+          "$ref": "#/$defs/HouseholdRevision"
+        }
+      },
+      "required": [
+        "request_id",
+        "command_scope_id",
+        "expected_content_revision"
+      ],
+      "additionalProperties": false,
+      "description": "請求予定を消す（POST /v1/household/bills/{bill_id}/delete、ADR 0179）。本人の画面操作だけが送る（チャット・音声からは受けない）。内容版が今と違う・消した後なら 409、ない請求予定は 422。行は残して月と中身を消し、同じメールからは作り直さない。直す操作はない。"
+    },
+    "HouseholdBillDeleteResult": {
+      "type": "object",
+      "properties": {
+        "bill_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "state": {
+          "type": "string",
+          "const": "deleted"
+        }
+      },
+      "required": ["bill_id", "state"],
+      "additionalProperties": false,
+      "description": "請求予定を消した結果（ADR 0179）。"
+    },
     "HouseholdReceiptReadingState": {
       "type": "string",
       "enum": ["on", "off", "unavailable"],
-      "description": "レシートの写真を外部のモデルの画像の読み取りへ送る設定（ADR 0177、U363）。既定は off（送らない）。on は本人が家計簿の欄で明示的に入にした状態で、本人が選んだ一枚の写真をその都度の画面操作でだけ送る。unavailable は中枢に読み取りの口（provider と profile）がないので入にできない。中枢のメモリーにだけ持ち、中枢を起動し直すと off に戻る（U364）。"
+      "description": "レシートの写真を外部のモデルの画像の読み取りへ送る設定（ADR 0177、U363）。既定は off（送らない）。on は本人が家計簿の欄で明示的に入にした状態で、本人が選んだ一枚の写真をその都度の画面操作でだけ送る。unavailable は中枢に読み取りの口（provider と profile）がないので入にできない（保存した値によらない）。入・切は家計簿の設定として DB に保存し、中枢を起動し直しても変わらない（ADR 0179、U364）。"
     },
     "HouseholdReceiptSettingRequest": {
       "type": "object",
@@ -7217,25 +7273,38 @@
         "command_scope_id": {
           "$ref": "#/$defs/Id"
         },
+        "expected_settings_revision": {
+          "$ref": "#/$defs/HouseholdSettingsRevision",
+          "description": "月ごとの合計で読んだ家計簿の設定の版（利用通知の取り込みの入・切と共通。ADR 0179）。"
+        },
         "receipt_reading": {
           "type": "string",
           "enum": ["on", "off"]
         }
       },
-      "required": ["request_id", "command_scope_id", "receipt_reading"],
+      "required": [
+        "request_id",
+        "command_scope_id",
+        "expected_settings_revision",
+        "receipt_reading"
+      ],
       "additionalProperties": false,
-      "description": "レシートの写真の読み取りの入・切（POST /v1/household/receipt-setting、ADR 0177）。本人の画面操作だけが送る。望む値をそのまま送るので、今と同じ値なら何も変えない。読み取りの口がないときに on を求めると 503。切にすると、送っている途中の読み取りを止める（送る前なら送らない）。"
+      "description": "レシートの写真の読み取りの入・切（POST /v1/household/receipt-setting、ADR 0177・0179）。本人の画面操作だけが送る。望む値をそのまま送り、家計簿の設定として保存する（同じ値でも版は進む）。設定の版が今と違えば 409（同じ要求の再送も 409）。読み取りの口がないときに on を求めると 503。切にすると、送っている途中の読み取りを止める（送る前なら送らない）。"
     },
     "HouseholdReceiptSetting": {
       "type": "object",
       "properties": {
         "receipt_reading": {
           "$ref": "#/$defs/HouseholdReceiptReadingState"
+        },
+        "settings_revision": {
+          "$ref": "#/$defs/HouseholdSettingsRevision",
+          "description": "保存した後の家計簿の設定の版（ADR 0179）。"
         }
       },
-      "required": ["receipt_reading"],
+      "required": ["receipt_reading", "settings_revision"],
       "additionalProperties": false,
-      "description": "レシートの写真の読み取りの今の設定（ADR 0177）。"
+      "description": "レシートの写真の読み取りの今の設定（ADR 0177・0179）。"
     },
     "HouseholdReceiptImageRequest": {
       "type": "object",
@@ -13949,9 +14018,10 @@
         "desktop.household_edit",
         "desktop.household_export",
         "desktop.household_receipt_setting",
-        "desktop.household_receipt_read"
+        "desktop.household_receipt_read",
+        "desktop.household_bill_delete"
       ],
-      "description": "UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014・0025）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。中枢との接続・ペアリングは用途別のチャネルだけで、要求の宛先・本文を Renderer が決められない。音声レンダラーの IPC（B05）は別に定める。 発言・承認表示の準備・承認・取消・照合は用途別のチャネルで、操作は main が持つ参照（ref）で指す（B04-05、ADR 0031）。 キャンバスを前に出す（canvas_summon）は状態の層と入力バーからだけ使う（UI-02、ADR 0032）。状態の層のパネルを出す・しまう（status_panel）は状態の層からだけ使う（UI-04、ADR 0032）。キャンバスのユーザーの操作（canvas_user_op）はキャンバスの窓からだけ、キャンバスが前に出ている間だけ使う（UI-06、ADR 0032）。 予算の確認（超過枠の承認・見送り budget_overage_decide、M 超過の確認 budget_overrun_review、不明な費用の手での精算 budget_manual_settle）は状態の層からだけ使う。承認・確認・精算は main の OS の確認ダイアログを 1 回だけ挟み、画面が持つのは main が作る参照（ref）だけ（B07-05、ADR 0039）。 音声（B05-06、ADR 0050）: 音声の状態の取得（get_voice）・呼びかけなしで音声の会話を始める「続ける」（voice_continue）・外部への送信の同意の取り消し（voice_consent_revoke）は状態の層からだけ使う。外部への送信の同意は main の OS の確認ダイアログで 1 回だけ取り、画面は同意を作れない。音声レンダラーへの IPC は VoiceRendererRequest で、このチャネルとは別。 気づき（B11-05、ADR 0132）: 一覧の取得（candidates_list）と状態の変更（candidate_state。開く・今回は扱わない・再通知）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バーは使えない。候補は main が作る参照（ref）で指し、候補 ID・expected_state・接続範囲は main が持つ。 連携の接続（B08-02 P3・B09-05、ADR 0142）: 一覧の取得（connections_list）と取得範囲の変更（connection_targets_update）は中枢の画面（接続・端末）でだけ使い、キャンバス・入力バーは使えない。接続は main が作る参照（ref）で指し、接続 ID・permission_revision は main が持つ。画面が送れるのは今の保存値と、この世代で中枢から読んだ選べる対象（connection_targets_discover）のうちの選択と、期間・添付の範囲だけ（ADR 0145）。選べる対象の読み取りは提供元への読み取りを伴うので、中枢の画面のロック解除済みの画面操作だけ。 自動実行（B13-05、ADR 0154）: 一覧と安全停止の状態の取得（auto_actions_list）・取り消し（auto_action_undo）・安全停止の解除（safety_resume）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バーは使えない。自動実行した操作と安全停止の状態は main が作る参照（ref）で指し、操作 ID・state_revision・safety_revision・接続範囲は main が持つ。 家計簿（ADR 0162）: 月ごとの合計と 1 か月の記録の取得（household_view）・分類の変更（household_category）・削除（household_delete）・利用通知の取り込みの入・切（household_intake、ADR 0163）・書き出しの取り込み（household_import、ADR 0164。ファイルは main が OS のファイル選択で本人に選ばせ、画面はパスも中身も渡さない）・分類ごとの予算の変更（household_budget、ADR 0166）・記録の手入力（household_add、ADR 0167）・記録の中身の変更（household_edit、ADR 0169）・記録の CSV への書き出し（household_export、ADR 0172。保存先は main が OS の保存先の選択で本人に選ばせ、画面はパスも中身も渡さない）・レシートの写真の読み取りの入・切（household_receipt_setting、ADR 0177。入にするときは main の OS の確認ダイアログを挟む）・レシートの写真の読み取り（household_receipt_read、ADR 0177。写真は main が OS のファイル選択で本人に選ばせ、画面はパスも中身も渡さない。結果は手入力の欄に入れる候補だけ）は従来の窓（標準の端末画面）から使い、キャンバス・入力バーは使えない。記録は main が作る参照（ref）で指し、記録の ID・内容版・接続範囲は main が持つ。"
+      "description": "UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014・0025）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。中枢との接続・ペアリングは用途別のチャネルだけで、要求の宛先・本文を Renderer が決められない。音声レンダラーの IPC（B05）は別に定める。 発言・承認表示の準備・承認・取消・照合は用途別のチャネルで、操作は main が持つ参照（ref）で指す（B04-05、ADR 0031）。 キャンバスを前に出す（canvas_summon）は状態の層と入力バーからだけ使う（UI-02、ADR 0032）。状態の層のパネルを出す・しまう（status_panel）は状態の層からだけ使う（UI-04、ADR 0032）。キャンバスのユーザーの操作（canvas_user_op）はキャンバスの窓からだけ、キャンバスが前に出ている間だけ使う（UI-06、ADR 0032）。 予算の確認（超過枠の承認・見送り budget_overage_decide、M 超過の確認 budget_overrun_review、不明な費用の手での精算 budget_manual_settle）は状態の層からだけ使う。承認・確認・精算は main の OS の確認ダイアログを 1 回だけ挟み、画面が持つのは main が作る参照（ref）だけ（B07-05、ADR 0039）。 音声（B05-06、ADR 0050）: 音声の状態の取得（get_voice）・呼びかけなしで音声の会話を始める「続ける」（voice_continue）・外部への送信の同意の取り消し（voice_consent_revoke）は状態の層からだけ使う。外部への送信の同意は main の OS の確認ダイアログで 1 回だけ取り、画面は同意を作れない。音声レンダラーへの IPC は VoiceRendererRequest で、このチャネルとは別。 気づき（B11-05、ADR 0132）: 一覧の取得（candidates_list）と状態の変更（candidate_state。開く・今回は扱わない・再通知）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バーは使えない。候補は main が作る参照（ref）で指し、候補 ID・expected_state・接続範囲は main が持つ。 連携の接続（B08-02 P3・B09-05、ADR 0142）: 一覧の取得（connections_list）と取得範囲の変更（connection_targets_update）は中枢の画面（接続・端末）でだけ使い、キャンバス・入力バーは使えない。接続は main が作る参照（ref）で指し、接続 ID・permission_revision は main が持つ。画面が送れるのは今の保存値と、この世代で中枢から読んだ選べる対象（connection_targets_discover）のうちの選択と、期間・添付の範囲だけ（ADR 0145）。選べる対象の読み取りは提供元への読み取りを伴うので、中枢の画面のロック解除済みの画面操作だけ。 自動実行（B13-05、ADR 0154）: 一覧と安全停止の状態の取得（auto_actions_list）・取り消し（auto_action_undo）・安全停止の解除（safety_resume）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バーは使えない。自動実行した操作と安全停止の状態は main が作る参照（ref）で指し、操作 ID・state_revision・safety_revision・接続範囲は main が持つ。 家計簿（ADR 0162）: 月ごとの合計と 1 か月の記録の取得（household_view）・分類の変更（household_category）・削除（household_delete）・利用通知の取り込みの入・切（household_intake、ADR 0163）・書き出しの取り込み（household_import、ADR 0164。ファイルは main が OS のファイル選択で本人に選ばせ、画面はパスも中身も渡さない）・分類ごとの予算の変更（household_budget、ADR 0166）・記録の手入力（household_add、ADR 0167）・記録の中身の変更（household_edit、ADR 0169）・記録の CSV への書き出し（household_export、ADR 0172。保存先は main が OS の保存先の選択で本人に選ばせ、画面はパスも中身も渡さない）・レシートの写真の読み取りの入・切（household_receipt_setting、ADR 0177。入にするときは main の OS の確認ダイアログを挟む）・レシートの写真の読み取り（household_receipt_read、ADR 0177。写真は main が OS のファイル選択で本人に選ばせ、画面はパスも中身も渡さない。結果は手入力の欄に入れる候補だけ）・請求予定を消す（household_bill_delete、ADR 0179）は従来の窓（標準の端末画面）から使い、キャンバス・入力バーは使えない。記録と請求予定は main が作る参照（ref）で指し、記録・請求予定の ID・内容版・接続範囲は main が持つ。"
     },
     "DesktopIpcRequest": {
       "oneOf": [
@@ -15272,6 +15342,31 @@
           "required": ["channel", "request_id", "payload"],
           "additionalProperties": false,
           "description": "レシートの写真 1 枚を読む（ADR 0177）。main が OS のファイル選択を出して本人に選ばせ、形式・大きさを確かめて縮め、JPEG にし直して中枢へ送る。画面はパスも中身も渡さない。結果は手入力の欄に入れる候補だけで、記録は作らない。ロック解除済みの画面操作で、入出力の停止中は受け付けない。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "channel": {
+              "type": "string",
+              "const": "desktop.household_bill_delete"
+            },
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "ref": {
+                  "$ref": "#/$defs/Id"
+                }
+              },
+              "required": ["ref"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["channel", "request_id", "payload"],
+          "additionalProperties": false,
+          "description": "請求予定を消す（ADR 0179）。ref は請求予定の行の参照。画面の中で一度確かめてから送る。同じメールからは作り直さない。ロック解除済みの画面操作だけ。"
         }
       ],
       "description": "UI レンダラーから main への要求（設計 10 §1、07 §2、02 停止、ADR 0014）。main は受け取ったら最初にこの定義で検査し、未知のチャネル・未知の項目・型違いは invalid_request で拒否する。引数のない要求の payload は null。端末 ID は名乗れず、送信元は main が webContents から判定する。"
@@ -16611,7 +16706,8 @@
                 "desktop.household_add",
                 "desktop.household_edit",
                 "desktop.household_export",
-                "desktop.household_receipt_setting"
+                "desktop.household_receipt_setting",
+                "desktop.household_bill_delete"
               ]
             },
             "outcome": {
@@ -17355,6 +17451,64 @@
       "additionalProperties": false,
       "description": "家計の記録 1 行の表示用の値（ADR 0162）。記録の ID・内容版は main の中にだけ持ち、画面へ渡さない。"
     },
+    "DesktopHouseholdBill": {
+      "type": "object",
+      "properties": {
+        "ref": {
+          "$ref": "#/$defs/Id",
+          "description": "main が作る参照（請求予定の ID ではない）。同じ請求予定のあいだ変えず、世代（ロック・切断）が進んだら捨てる。"
+        },
+        "issuer": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "amount_yen": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9999999999
+        },
+        "due_on": {
+          "type": "string",
+          "pattern": "^20[0-9]{2}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$"
+        },
+        "delivery_unknown": {
+          "type": "boolean",
+          "description": "この請求予定を消した結果が分からない。次に読み直せるまで操作させない（自動では送り直さない）。"
+        }
+      },
+      "required": ["ref", "issuer", "amount_yen", "due_on", "delivery_unknown"],
+      "additionalProperties": false,
+      "description": "請求予定 1 行の表示用の値（ADR 0179）。請求予定の ID・内容版は main の中にだけ持ち、画面へ渡さない。"
+    },
+    "DesktopHouseholdBills": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "$ref": "#/$defs/DesktopHouseholdBill"
+          },
+          "description": "中枢が並べた順（引き落とし日の早い順）。"
+        },
+        "total_yen": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "unreadable": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "truncated": {
+          "type": "boolean"
+        }
+      },
+      "required": ["items", "total_yen", "unreadable", "truncated"],
+      "additionalProperties": false,
+      "description": "記録を出している月の請求予定の表示用の値（ADR 0176・0179）。中枢の HouseholdMonthBills から請求予定の ID と内容版を除き、行ごとに参照を付けた形。並び・合計は、中枢の応答を契約で確かめた値をそのまま写す。"
+    },
     "DesktopHouseholdView": {
       "type": "object",
       "properties": {
@@ -17499,13 +17653,13 @@
         "bills": {
           "anyOf": [
             {
-              "$ref": "#/$defs/HouseholdMonthBills"
+              "$ref": "#/$defs/DesktopHouseholdBills"
             },
             {
               "type": "null"
             }
           ],
-          "description": "記録を出している月の請求予定（ADR 0176）。支出の合計とは別に見せる。読めていなければ null。"
+          "description": "記録を出している月の請求予定（ADR 0176）。支出の合計とは別に見せる。行ごとに消す操作の参照を付ける（ADR 0179）。読めていなければ null。"
         },
         "last_import": {
           "anyOf": [

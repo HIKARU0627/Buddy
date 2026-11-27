@@ -412,7 +412,12 @@ async function billsOf(
   );
   assert.equal(read.outcome, 'ok');
   if (read.outcome !== 'ok') throw new Error('unreachable');
-  return [...read.bills.items];
+  // 中身だけを比べる（請求予定の ID と内容版は ADR 0179 で足した、消す操作のための値）。
+  return read.bills.items.map((bill) => ({
+    issuer: bill.issuer,
+    amount_yen: bill.amount_yen,
+    due_on: bill.due_on,
+  }));
 }
 
 test('請求のお知らせは、家計の記録に入れず請求予定として記録する（利用通知と同じ送り主の確かめ）', async (t) => {

@@ -16,6 +16,7 @@ import {
   createHouseholdReceiptRoutes,
   receiptBudgetOf,
 } from './household-receipt.js';
+import { memoryReceiptSettingStore } from './household-receipt-setting.js';
 import type {
   HouseholdReceiptOptions,
   ReceiptBudget,
@@ -103,9 +104,11 @@ const readBody = (
   image: { media_type: 'image/jpeg', data_base64: base64(bytes) },
 });
 
-const settingBody = (value: 'on' | 'off'): JsonObject => ({
+// 設定の版は、中枢のメモリーの保存（memoryReceiptSettingStore）を新しく作ったときは 0（ADR 0179）。
+const settingBody = (value: 'on' | 'off', revision = '0'): JsonObject => ({
   request_id: uuid(800),
   command_scope_id: uuid(900),
+  expected_settings_revision: revision,
   receipt_reading: value,
 });
 
@@ -259,17 +262,23 @@ function harness(
 ) {
   const reader = new MockReader();
   const budget = new MockBudget();
+  const settings = over.settings ?? memoryReceiptSettingStore();
   const routes = createHouseholdReceiptRoutes({
     setup: setupOf(reader, setupOver),
     budget,
     zone: () => ZONE,
     now: () => NOW,
     ...over,
+    settings,
   });
-  const on = () =>
-    call(routes.handlers.changeHouseholdReceiptSetting, settingBody('on'));
-  const off = () =>
-    call(routes.handlers.changeHouseholdReceiptSetting, settingBody('off'));
+  // 今の設定の版で送る（版の照合は household-receipt-setting.test.ts で確かめる）。
+  const change = async (value: 'on' | 'off') =>
+    call(
+      routes.handlers.changeHouseholdReceiptSetting,
+      settingBody(value, (await settings.read())?.settings_revision ?? '0'),
+    );
+  const on = () => change('on');
+  const off = () => change('off');
   const read = (
     requestId: string,
     bytes?: Uint8Array,
@@ -299,15 +308,21 @@ const CANDIDATE = {
 
 test('既定は切で、切のあいだは予算の受付も送信もしない', async () => {
   const h = harness();
-  assert.equal(h.routes.state(), 'off');
+  assert.equal(await h.routes.state(), 'off');
   const result = await h.read(uuid(1));
   assert.equal(result.status, 403);
   assert.equal(result.body['code'], 'external_send_consent_required');
   assert.equal(h.reader.commands.length, 0);
   assert.equal(h.budget.runs.length, 0);
   // 入にしてから切に戻しても送らない。
-  assert.deepEqual((await h.on()).body, { receipt_reading: 'on' });
-  assert.deepEqual((await h.off()).body, { receipt_reading: 'off' });
+  assert.deepEqual((await h.on()).body, {
+    receipt_reading: 'on',
+    settings_revision: '1',
+  });
+  assert.deepEqual((await h.off()).body, {
+    receipt_reading: 'off',
+    settings_revision: '2',
+  });
   assert.equal((await h.read(uuid(2))).status, 403);
   assert.equal(h.reader.commands.length, 0);
 });
@@ -324,10 +339,10 @@ test('読み取りの口がなければ unavailable で、入にもできず送�
     { setup: setupOf(new MockReader(), { max_input_tokens: 0 }) },
   ]) {
     const h = harness(options);
-    assert.equal(h.routes.state(), 'unavailable');
+    assert.equal(await h.routes.state(), 'unavailable');
     const on = await h.on();
     assert.equal(on.status, 503);
-    assert.equal(h.routes.state(), 'unavailable');
+    assert.equal(await h.routes.state(), 'unavailable');
     assert.equal((await h.read(uuid(1))).status, 503);
     assert.equal(h.budget.runs.length, 0);
   }
@@ -560,7 +575,7 @@ test('中枢の受付の期限で端末の時間切れとの関係が破れる�
     },
     log: (message) => logs.push(message),
   });
-  assert.equal(fits.routes.state(), 'off');
+  assert.equal(await fits.routes.state(), 'off');
   assert.equal(logs.length, 0);
   // requestTimeout を 45 秒に上書きすると 45 + 30 + 10 + 60 + 5 = 150 秒で、端末の 150 秒に収まらない。期限なし（0）も同じ。
   for (const requestTimeoutMs of [45_000, 0]) {
@@ -571,7 +586,7 @@ test('中枢の受付の期限で端末の時間切れとの関係が破れる�
       },
       log: (message) => logs.push(message),
     });
-    assert.equal(broken.routes.state(), 'unavailable');
+    assert.equal(await broken.routes.state(), 'unavailable');
     assert.equal((await broken.on()).status, 503);
     assert.equal((await broken.read(uuid(1))).status, 503);
     assert.equal(broken.budget.runs.length, 0);
@@ -582,19 +597,19 @@ test('中枢の受付の期限で端末の時間切れとの関係が破れる�
   ]);
 });
 
-test('読み取りの期限が 60 秒を超える profile は使わない', () => {
+test('読み取りの期限が 60 秒を超える profile は使わない', async () => {
   const over = harness({
     setup: setupOf(new MockReader(), {
       profile: profile({ timeout_ms: 60_001 }),
     }),
   });
-  assert.equal(over.routes.state(), 'unavailable');
+  assert.equal(await over.routes.state(), 'unavailable');
   const limit = harness({
     setup: setupOf(new MockReader(), {
       profile: profile({ timeout_ms: 60_000 }),
     }),
   });
-  assert.equal(limit.routes.state(), 'off');
+  assert.equal(await limit.routes.state(), 'off');
 });
 
 test('読み取り中に切にすると、中断を伝えて結果を捨てる', async () => {
@@ -616,7 +631,7 @@ test('読み取り中に切にすると、中断を伝えて結果を捨てる',
   const discarded = await running;
   assert.equal(discarded.status, 503);
   assert.equal(discarded.body['code'], 'dependency_unavailable');
-  assert.equal(h.routes.state(), 'off');
+  assert.equal(await h.routes.state(), 'off');
 });
 
 test('予算の門が先に返っても、読み取りが終わるまで画像を埋めず貸し出しも返さない', async () => {
@@ -943,11 +958,18 @@ test('応答は信用しない入力として確かめ直し、読めない・�
   }
 });
 
-test('月ごとの合計の設定は読み取りの経路の今の値', () => {
+test('月ごとの合計の設定は読み取りの経路の今の値', async () => {
   const h = harness();
-  assert.equal(h.routes.state(), 'off');
-  void h.on();
-  assert.equal(h.routes.state(), 'on');
+  assert.equal(await h.routes.state(), 'off');
+  await h.on();
+  assert.equal(await h.routes.state(), 'on');
+  // 保存した値から決める（読み取りの口があれば保存した値のまま）。
+  assert.equal(h.routes.stateOf('on'), 'on');
+  assert.equal(h.routes.stateOf('off'), 'off');
+  assert.equal(
+    harness({ setup: null, budget: null }).routes.stateOf('on'),
+    'unavailable',
+  );
 });
 
 // 予算の門（BudgetGate）につないだ口。合成の設定は入力・出力とも 1 token 1 単位、LLM の本人の依頼の枠は 100。

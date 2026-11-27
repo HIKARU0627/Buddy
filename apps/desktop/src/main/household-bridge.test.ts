@@ -29,6 +29,7 @@ const uuid = (n: number) =>
 const SCOPE = uuid(0x5c);
 const LUNCH = uuid(0xc01);
 const SALARY = uuid(0xc02);
+const BILL = uuid(0xb01);
 const NOW = Date.parse('2030-11-05T03:00:00.000Z');
 
 const totals = (month: string, fields: Record<string, number> = {}) => ({
@@ -159,7 +160,13 @@ const monthBody = (
     month === '2030-11'
       ? {
           items: [
-            { issuer: '合成のカード', amount_yen: 25800, due_on: '2030-11-27' },
+            {
+              bill_id: BILL,
+              content_revision: '1',
+              issuer: '合成のカード',
+              amount_yen: 25800,
+              due_on: '2030-11-27',
+            },
           ],
           total_yen: 25800,
           unreadable: 0,
@@ -293,9 +300,16 @@ test('the view carries refs and display values only, and reads the current month
     last_import: null,
     last_export: null,
     recurring: overview().recurring,
+    // 請求予定は参照と表示用の値だけ（請求予定の ID・内容版は渡さない。ADR 0179）。
     bills: {
       items: [
-        { issuer: '合成のカード', amount_yen: 25800, due_on: '2030-11-27' },
+        {
+          ref: uuid(0x102),
+          issuer: '合成のカード',
+          amount_yen: 25800,
+          due_on: '2030-11-27',
+          delivery_unknown: false,
+        },
       ],
       total_yen: 25800,
       unreadable: 0,
@@ -316,7 +330,15 @@ test('the view carries refs and display values only, and reads the current month
     [],
   );
   const text = JSON.stringify(view);
-  for (const secret of [LUNCH, SALARY, '"3"', 'content_revision', 'created_at'])
+  for (const secret of [
+    LUNCH,
+    SALARY,
+    BILL,
+    '"3"',
+    'content_revision',
+    'created_at',
+    'bill_id',
+  ])
     assert.equal(text.includes(secret), false, secret);
   assert.deepEqual(r.calls, [
     { method: 'GET', path: '/v1/household/months', expectedScopeId: SCOPE },
@@ -1497,7 +1519,7 @@ test('receipt setting: turning on asks the OS confirmation first and never sends
   r.post = () => ({
     kind: 'response',
     status: 200,
-    body: { receipt_reading: 'on' },
+    body: { receipt_reading: 'on', settings_revision: '3' },
   });
   r.overview = () => ({
     kind: 'response',
@@ -1508,11 +1530,12 @@ test('receipt setting: turning on asks the OS confirmation first and never sends
     await r.bridge.receiptSetting('on', () => Promise.resolve(true)),
   );
   assert.equal(view.receipt_reading, 'on');
+  // 月ごとの合計で読んだ設定の版（取り込みの入・切と共通。ADR 0179）で照合して送る。
   assert.deepEqual(r.posts(), [
     {
       method: 'POST',
       path: '/v1/household/receipt-setting',
-      body: { receipt_reading: 'on' },
+      body: { expected_settings_revision: '2', receipt_reading: 'on' },
       scoped: true,
       screenOperation: true,
       expectedScopeId: SCOPE,
@@ -1535,6 +1558,153 @@ test('receipt setting: turning on asks the OS confirmation first and never sends
   // 結果不明は送り直さない。
   assert.equal(r.posts().length, 2);
   assert.ok(r.logs.includes('household_receipt_setting_outcome_unknown'));
+});
+
+test('receipt setting: a changed settings revision (409) is preview_stale and re-reads without resending (ADR 0179)', async () => {
+  const r = rig();
+  ok(await r.bridge.show(null));
+  r.post = () => ({
+    kind: 'response',
+    status: 409,
+    body: { code: 'conflict' },
+  });
+  const before = r.calls.length;
+  assert.deepEqual(
+    await r.bridge.receiptSetting('on', () => Promise.resolve(true)),
+    { ok: false, reason: 'preview_stale' },
+  );
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(r.posts().length, 1);
+  assert(
+    r.calls.slice(before).some((call) => call.path === '/v1/household/months'),
+  );
+  // 422 は core_rejected。
+  r.post = () => ({
+    kind: 'response',
+    status: 422,
+    body: { code: 'invalid_input' },
+  });
+  assert.deepEqual(
+    await r.bridge.receiptSetting('on', () => Promise.resolve(true)),
+    { ok: false, reason: 'core_rejected' },
+  );
+  assert.equal(r.posts().length, 2);
+});
+
+test('bill deletion sends the revision it read, and the deleted bill leaves the view (ADR 0179)', async () => {
+  const r = rig();
+  const shown = ok(await r.bridge.show(null));
+  const ref = shown.bills?.items[0]?.ref;
+  assert.equal(ref, uuid(0x102));
+  if (ref === undefined) throw new Error('unreachable');
+  // 記録の参照では請求予定を消せず、請求予定の参照では記録を消せない。
+  assert.deepEqual(await r.bridge.removeBill(uuid(0x100)), {
+    ok: false,
+    reason: 'entry_not_found',
+  });
+  assert.deepEqual(await r.bridge.remove(ref), {
+    ok: false,
+    reason: 'entry_not_found',
+  });
+  assert.deepEqual(r.posts(), []);
+  r.post = () => ({
+    kind: 'response',
+    status: 200,
+    body: { bill_id: BILL, state: 'deleted' },
+  });
+  r.month = (month) => ({
+    kind: 'response',
+    status: 200,
+    body: {
+      ...monthBody(month),
+      bills: { items: [], total_yen: 0, unreadable: 0, truncated: false },
+    },
+  });
+  const after = ok(await r.bridge.removeBill(ref));
+  assert.deepEqual(after.bills, {
+    items: [],
+    total_yen: 0,
+    unreadable: 0,
+    truncated: false,
+  });
+  assert.deepEqual(r.posts(), [
+    {
+      method: 'POST',
+      path: `/v1/household/bills/${BILL}/delete`,
+      body: { expected_content_revision: '1' },
+      scoped: true,
+      screenOperation: true,
+      expectedScopeId: SCOPE,
+    },
+  ]);
+  // 消えた請求予定の参照は解決できない（送らない）。
+  assert.deepEqual(await r.bridge.removeBill(ref), {
+    ok: false,
+    reason: 'entry_not_found',
+  });
+  assert.equal(r.posts().length, 1);
+});
+
+test('bill deletion: 409 is preview_stale, 422 core_rejected, and an unknown outcome holds the bill without resending (ADR 0179)', async () => {
+  const r = rig();
+  ok(await r.bridge.show(null));
+  const ref = uuid(0x102);
+  for (const [status, reason] of [
+    [409, 'preview_stale'],
+    [422, 'core_rejected'],
+  ] as const) {
+    r.post = () => ({ kind: 'response', status, body: { code: 'conflict' } });
+    const before = r.calls.length;
+    assert.deepEqual(await r.bridge.removeBill(ref), { ok: false, reason });
+    await new Promise((resolve) => setImmediate(resolve));
+    const after = r.calls.slice(before);
+    assert.equal(after.filter((call) => call.method === 'POST').length, 1);
+    assert(after.some((call) => call.path === '/v1/household/months'));
+  }
+  // 結果が分からず、読み直しも失敗する: 送り直さず、その請求予定を操作させない。
+  r.post = () => ({ kind: 'unknown' });
+  r.overview = () => ({ kind: 'response', status: 503, body: {} });
+  const posted = r.posts().length;
+  assert.deepEqual(await r.bridge.removeBill(ref), {
+    ok: false,
+    reason: 'outcome_unknown',
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(r.bridge.view().bills?.items[0]?.delivery_unknown, true);
+  assert.deepEqual(await r.bridge.removeBill(ref), {
+    ok: false,
+    reason: 'entry_not_found',
+  });
+  assert.equal(r.posts().length, posted + 1);
+  assert(r.logs.includes('household_bill_delete_outcome_unknown'));
+  // 後の読み取りが成功すれば、保留を解く。5xx も結果不明。
+  r.overview = () => ({ kind: 'response', status: 200, body: overview() });
+  assert.equal(
+    ok(await r.bridge.show('2030-11')).bills?.items[0]?.delivery_unknown,
+    false,
+  );
+  r.post = () => ({ kind: 'response', status: 503, body: {} });
+  assert.deepEqual(await r.bridge.removeBill(ref), {
+    ok: false,
+    reason: 'outcome_unknown',
+  });
+  // 送った後に世代が進んだ: 結果不明（送り直さない）。
+  r.overview = () => ({ kind: 'response', status: 200, body: overview() });
+  ok(await r.bridge.show('2030-11'));
+  r.post = () => {
+    r.bridge.reset();
+    return {
+      kind: 'response',
+      status: 200,
+      body: { bill_id: BILL, state: 'deleted' },
+    };
+  };
+  const fresh = ok(await r.bridge.show('2030-11')).bills?.items[0]?.ref;
+  assert.ok(fresh);
+  assert.deepEqual(await r.bridge.removeBill(fresh), {
+    ok: false,
+    reason: 'outcome_unknown',
+  });
 });
 
 test('receipt setting: without a reader on the hub it cannot be turned on', async () => {

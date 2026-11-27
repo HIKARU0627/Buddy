@@ -13,7 +13,10 @@ import type {
 import {
   DbWorkerClient,
   HOUSEHOLD_BILL_LIST_LIMIT,
+  applyMigrations,
   executeHouseholdOp,
+  loadMigrations,
+  openWriteConnection,
   openHouseholdBill,
   openHouseholdBudget,
   openHouseholdContent,
@@ -23,6 +26,7 @@ import {
 } from './index.js';
 import type {
   DataKeyMaterial,
+  HouseholdBillDeleteValue,
   HouseholdBillListValue,
   HouseholdBillRecord,
   HouseholdBillRecordValue,
@@ -587,6 +591,7 @@ test('household.settings: 行がなければ取り込みは入で版 0。止め�
   await withDb((db) => {
     assert.deepEqual(settings(db), {
       mail_intake: 'on',
+      receipt_reading: 'off',
       settings_revision: '0',
     });
     seedMail(db, 'm-before', 1000);
@@ -596,11 +601,13 @@ test('household.settings: 行がなければ取り込みは入で版 0。止め�
     // 止める。古い版では拒否する。
     assert.deepEqual(value(setIntake(db, '0', 'off')), {
       mail_intake: 'off',
+      receipt_reading: 'off',
       settings_revision: '1',
     });
     assert.deepEqual(reasons(setIntake(db, '0', 'on')), ['revision_mismatch']);
     assert.deepEqual(settings(db), {
       mail_intake: 'off',
+      receipt_reading: 'off',
       settings_revision: '1',
     });
     // 止めている間は何も返さず、基準も作らない（別の口座でも）。
@@ -626,6 +633,7 @@ test('household.settings: 行がなければ取り込みは入で版 0。止め�
     // 再開すると基準を作り直し、止めていた間のメール（と確かめていなかったメール）を読まない。
     assert.deepEqual(value(setIntake(db, '1', 'on')), {
       mail_intake: 'on',
+      receipt_reading: 'off',
       settings_revision: '2',
     });
     assert.deepEqual(pending(db), {
@@ -638,6 +646,7 @@ test('household.settings: 行がなければ取り込みは入で版 0。止め�
     // 入のまま入にしても版は進む（基準は消さない）。
     assert.deepEqual(value(setIntake(db, '2', 'on')), {
       mail_intake: 'on',
+      receipt_reading: 'off',
       settings_revision: '3',
     });
     assert.deepEqual(pending(db).remote_ids, ['m-after']);
@@ -970,7 +979,7 @@ test('household.bill_record: 請求予定と暗号文を書き、同じ出所の
       value<HouseholdBillRecordValue>(
         run(db, billOp(randomUUID(), { now: T1 })),
       ),
-      { outcome: 'duplicate', bill_id: id },
+      { outcome: 'duplicate', bill_id: id, state: 'active' },
     );
     // 別の出所で同じ ID は使い回せない。
     assert.deepEqual(reasons(run(db, billOp(id, { source_key: SOURCE_B }))), [
@@ -983,16 +992,24 @@ test('household.bill_record: 請求予定と暗号文を書き、同じ出所の
     assert.ok(record);
     assert.equal(record.bill_id, id);
     assert.equal(record.month, '2030-12');
+    assert.equal(record.content_revision, '1');
     assert.equal(record.created_at, T0);
     assert.deepEqual(openBill(record), BILL);
-    // 平文の列は出所の種類と鍵・月・時刻だけで、暗号文は household_bill の用途。
+    // 平文の列は出所の種類と鍵・状態・月・内容版・時刻だけで、暗号文は household_bill の用途。
     assert.deepEqual(
       db
         .prepare(
-          'SELECT source_kind, source_key, month FROM household_bills WHERE bill_id = ?',
+          'SELECT source_kind, source_key, state, month, content_revision, deleted_at FROM household_bills WHERE bill_id = ?',
         )
         .get(id),
-      { source_kind: 'mail_bill', source_key: SOURCE_A, month: '2030-12' },
+      {
+        source_kind: 'mail_bill',
+        source_key: SOURCE_A,
+        state: 'active',
+        month: '2030-12',
+        content_revision: 1,
+        deleted_at: null,
+      },
     );
     assert.equal(
       (
@@ -1100,7 +1117,7 @@ test('DB の trigger: 請求予定の行は変えられず消せず、暗号文�
       () =>
         db
           .prepare(
-            "INSERT INTO household_bills (bill_id, source_kind, source_key, month, content_blob_id, created_at) VALUES (?, 'mail_bill', ?, '2030-12', ?, 1)",
+            "INSERT INTO household_bills (bill_id, source_kind, source_key, state, month, content_revision, content_blob_id, created_at) VALUES (?, 'mail_bill', ?, 'active', '2030-12', 1, ?, 1)",
           )
           .run(randomUUID(), 'd'.repeat(64), entryBlob),
       /household_bill_blob_owner_mismatch/u,
@@ -1112,7 +1129,7 @@ test('DB の trigger: 請求予定の行は変えられず消せず、暗号文�
       () =>
         db
           .prepare(
-            "INSERT INTO household_bills (bill_id, source_kind, source_key, month, content_blob_id, created_at) VALUES (?, 'manual', ?, '2030-12', ?, 1)",
+            "INSERT INTO household_bills (bill_id, source_kind, source_key, state, month, content_revision, content_blob_id, created_at) VALUES (?, 'manual', ?, 'active', '2030-12', 1, ?, 1)",
           )
           .run(other, 'e'.repeat(64), sealedBill.content.blob_id),
       /CHECK|household_bill_blob_owner_mismatch/u,
@@ -1147,6 +1164,461 @@ test('DB worker を通しても請求予定の記録と読み取りが往復す�
       assert.deepEqual(openBill(record), BILL);
     } finally {
       await client.close();
+    }
+  });
+});
+
+// --- 請求予定を消す・レシートの写真の読み取りの設定（ADR 0179、マイグレーション 0022） ---
+
+const deleteBill = (
+  db: SqliteDatabase,
+  billId: string,
+  expected: string,
+  now = T1,
+): HouseholdOpResult =>
+  run(db, {
+    kind: 'household.bill_delete',
+    bill_id: billId,
+    expected_revision: expected,
+    now,
+  });
+
+const billBlobCount = (db: SqliteDatabase): number =>
+  (
+    db
+      .prepare(
+        "SELECT count(*) AS n FROM sealed_blobs WHERE purpose = 'household_bill'",
+      )
+      .get() as { n: number }
+  ).n;
+
+test('household.bill_delete: 内容版を照合して消し、行は残して月と暗号文を消す。同じメールから作り直さない', async () => {
+  await withDb((db) => {
+    const id = randomUUID();
+    const other = randomUUID();
+    value(run(db, billOp(id)));
+    value(
+      run(
+        db,
+        billOp(other, { source_key: SOURCE_B }, { ...BILL, amount_yen: 500 }),
+      ),
+    );
+    assert.equal(billBlobCount(db), 2);
+    // 内容版が違えば消さない。
+    assert.deepEqual(reasons(deleteBill(db, id, '2')), ['revision_mismatch']);
+    assert.equal(bills(db, '2030-12').bills.length, 2);
+    // 消す。内容版は 2 に進み、暗号文は消える。
+    assert.deepEqual(value<HouseholdBillDeleteValue>(deleteBill(db, id, '1')), {
+      bill_id: id,
+      content_revision: '2',
+    });
+    assert.deepEqual(
+      db
+        .prepare(
+          'SELECT state, month, content_revision, content_blob_id, deleted_at FROM household_bills WHERE bill_id = ?',
+        )
+        .get(id),
+      {
+        state: 'deleted',
+        month: null,
+        content_revision: 2,
+        content_blob_id: null,
+        deleted_at: Date.parse(T1),
+      },
+    );
+    assert.equal(billBlobCount(db), 1);
+    // 月の一覧に出ない（もう一つの請求予定だけ）。
+    const listed = bills(db, '2030-12');
+    assert.deepEqual(
+      listed.bills.map((bill) => bill.bill_id),
+      [other],
+    );
+    // 消した後の再送（同じ版・新しい版）は消した請求予定として拒否する。
+    assert.deepEqual(reasons(deleteBill(db, id, '1')), ['bill_deleted']);
+    assert.deepEqual(reasons(deleteBill(db, id, '2')), ['bill_deleted']);
+    // ない請求予定。
+    assert.deepEqual(reasons(deleteBill(db, randomUUID(), '1')), [
+      'bill_missing',
+    ]);
+    // 同じメール（同じ出所の鍵）の読み直しでは作り直さない。
+    assert.deepEqual(
+      value<HouseholdBillRecordValue>(
+        run(db, billOp(randomUUID(), { now: T2 })),
+      ),
+      { outcome: 'duplicate', bill_id: id, state: 'deleted' },
+    );
+    assert.equal(bills(db, '2030-12').bills.length, 1);
+    // 作成時刻より前の時刻で消しても、消した時刻は作成時刻より前にならない。
+    assert.equal(
+      value<HouseholdBillDeleteValue>(
+        deleteBill(db, other, '1', '2030-09-01T00:00:00.000Z'),
+      ).content_revision,
+      '2',
+    );
+    assert.equal(
+      (
+        db
+          .prepare('SELECT deleted_at FROM household_bills WHERE bill_id = ?')
+          .get(other) as { deleted_at: number }
+      ).deleted_at,
+      Date.parse(T0),
+    );
+    assert.equal(billBlobCount(db), 0);
+    assert.deepEqual(bills(db, '2030-12').bills, []);
+  });
+});
+
+test('household.bill_delete: 形の誤りは書かずに拒否し、書込みを止めた worker は消さない', async () => {
+  await withDb((db) => {
+    const id = randomUUID();
+    value(run(db, billOp(id)));
+    assert.deepEqual(
+      reasons(
+        run(db, {
+          kind: 'household.bill_delete',
+          bill_id: 'not-a-uuid',
+          expected_revision: '0',
+          now: 'later',
+        }),
+      ),
+      ['bill_id_invalid', 'expected_revision_invalid', 'now_invalid'],
+    );
+    assert.deepEqual(
+      reasons(
+        run(
+          db,
+          {
+            kind: 'household.bill_delete',
+            bill_id: id,
+            expected_revision: '1',
+            now: T1,
+          },
+          true,
+        ),
+      ),
+      ['worker_halted'],
+    );
+    assert.equal(bills(db, '2030-12').bills.length, 1);
+  });
+});
+
+test('DB の trigger（0022）: 請求予定の変更は有効から消したへの変更だけで、行は消せない', async () => {
+  await withDb((db) => {
+    const id = randomUUID();
+    value(run(db, billOp(id)));
+    const blob = bills(db, '2030-12').bills[0]?.content?.blob_id;
+    assert.ok(blob);
+    // 有効のまま月・出所・作成時刻を変える。
+    for (const sql of [
+      "UPDATE household_bills SET month = '2030-11' WHERE bill_id = ?",
+      "UPDATE household_bills SET source_key = '" +
+        'f'.repeat(64) +
+        "' WHERE bill_id = ?",
+      'UPDATE household_bills SET created_at = 2 WHERE bill_id = ?',
+      'UPDATE household_bills SET content_revision = 2 WHERE bill_id = ?',
+    ])
+      assert.throws(
+        () => db.prepare(sql).run(id),
+        /household_bill_fixed/u,
+        sql,
+      );
+    // 内容版を飛ばして消す。
+    assert.throws(
+      () =>
+        db
+          .prepare(
+            "UPDATE household_bills SET state = 'deleted', month = NULL, content_blob_id = NULL, content_revision = 3, deleted_at = 5 WHERE bill_id = ?",
+          )
+          .run(id),
+      /household_bill_fixed/u,
+    );
+    // 消したのに月・暗号文を残す形は表の CHECK が拒否する。
+    assert.throws(
+      () =>
+        db
+          .prepare(
+            "UPDATE household_bills SET state = 'deleted', content_revision = 2, deleted_at = 5 WHERE bill_id = ?",
+          )
+          .run(id),
+      /CHECK constraint failed/u,
+    );
+    assert.throws(
+      () => db.prepare('DELETE FROM household_bills WHERE bill_id = ?').run(id),
+      /household_bill_no_delete/u,
+    );
+    // 保存層の手順で消した後は、有効へ戻す・消した行を変えることもできない。
+    value(deleteBill(db, id, '1'));
+    assert.throws(
+      () =>
+        db
+          .prepare(
+            "UPDATE household_bills SET state = 'active', month = '2030-12', content_revision = 3, content_blob_id = ?, deleted_at = NULL WHERE bill_id = ?",
+          )
+          .run(blob, id),
+      /household_bill_fixed/u,
+    );
+    assert.throws(
+      () =>
+        db
+          .prepare(
+            'UPDATE household_bills SET deleted_at = deleted_at + 1 WHERE bill_id = ?',
+          )
+          .run(id),
+      /household_bill_fixed/u,
+    );
+    assert.throws(
+      () => db.prepare('DELETE FROM household_bills WHERE bill_id = ?').run(id),
+      /household_bill_no_delete/u,
+    );
+    // 作るときは有効・内容版 1 だけ。
+    const fresh = billOp(randomUUID(), { source_key: 'e'.repeat(64) });
+    assert.throws(
+      () =>
+        db
+          .prepare(
+            "INSERT INTO household_bills (bill_id, source_kind, source_key, state, month, content_revision, content_blob_id, created_at, deleted_at) VALUES (?, 'mail_bill', ?, 'deleted', NULL, 2, NULL, 1, 1)",
+          )
+          .run(fresh.bill_id, 'e'.repeat(64)),
+      /household_bill_insert_active/u,
+    );
+  });
+});
+
+const setReceipt = (
+  db: SqliteDatabase,
+  expected: string,
+  receiptReading: 'on' | 'off',
+): HouseholdOpResult =>
+  run(db, {
+    kind: 'household.receipt_setting_set',
+    expected_revision: expected,
+    receipt_reading: receiptReading,
+    now: T2,
+  });
+
+test('household.receipt_setting_set: 既定は切。版を照合して保存し、利用通知の取り込みの入・切と同じ版を進める', async () => {
+  await withDb((db) => {
+    assert.deepEqual(settings(db), {
+      mail_intake: 'on',
+      receipt_reading: 'off',
+      settings_revision: '0',
+    });
+    // 行がないときに入にすると、利用通知の取り込みは入のまま行を作る。
+    assert.deepEqual(value(setReceipt(db, '0', 'on')), {
+      mail_intake: 'on',
+      receipt_reading: 'on',
+      settings_revision: '1',
+    });
+    // 古い版では変えない。
+    assert.deepEqual(reasons(setReceipt(db, '0', 'off')), [
+      'revision_mismatch',
+    ]);
+    assert.equal(settings(db).receipt_reading, 'on');
+    // 利用通知の取り込みを変えても、レシートの設定は入のまま。版は共通に進む。
+    assert.deepEqual(value(setIntake(db, '1', 'off')), {
+      mail_intake: 'off',
+      receipt_reading: 'on',
+      settings_revision: '2',
+    });
+    // 取り込みの入・切を変えた後に、前の版でレシートの設定を変えようとすると拒否する。
+    assert.deepEqual(reasons(setReceipt(db, '1', 'off')), [
+      'revision_mismatch',
+    ]);
+    // 同じ値でも版は進む（同じ要求の再送は版の違いで拒否される）。
+    assert.deepEqual(value(setReceipt(db, '2', 'on')), {
+      mail_intake: 'off',
+      receipt_reading: 'on',
+      settings_revision: '3',
+    });
+    assert.deepEqual(reasons(setReceipt(db, '2', 'on')), ['revision_mismatch']);
+    assert.deepEqual(value(setReceipt(db, '3', 'off')), {
+      mail_intake: 'off',
+      receipt_reading: 'off',
+      settings_revision: '4',
+    });
+    // 形の誤り。DB の CHECK は on・off 以外を拒否する。
+    assert.deepEqual(
+      reasons(
+        run(db, {
+          kind: 'household.receipt_setting_set',
+          expected_revision: '01',
+          receipt_reading: 'unavailable' as 'on',
+          now: 'later',
+        }),
+      ),
+      ['expected_revision_invalid', 'receipt_reading_invalid', 'now_invalid'],
+    );
+    // 書込みを止めた worker は保存しない。
+    assert.deepEqual(
+      reasons(
+        run(
+          db,
+          {
+            kind: 'household.receipt_setting_set',
+            expected_revision: '4',
+            receipt_reading: 'on',
+            now: T2,
+          },
+          true,
+        ),
+      ),
+      ['worker_halted'],
+    );
+    assert.equal(settings(db).receipt_reading, 'off');
+    assert.throws(
+      () =>
+        db
+          .prepare(
+            "UPDATE household_settings SET receipt_reading = 'unavailable', settings_revision = settings_revision + 1 WHERE setting_id = 1",
+          )
+          .run(),
+      /CHECK constraint failed/u,
+    );
+  });
+});
+
+test('マイグレーション 0022: 版 21 の DB の請求予定は有効・内容版 1 で残り、設定は版を保ったままレシートの設定が切になる', async () => {
+  await withTempDir((dir) => {
+    const all = loadMigrations();
+    const db = openWriteConnection(databasePath(dir), { platform: 'macos' });
+    try {
+      assert.deepEqual(applyMigrations(db, all.slice(0, 21)).to, 21);
+      const id = randomUUID();
+      const sealedBill = billOp(id).content;
+      // 版 21 の形で請求予定と暗号文、設定の行を書く。
+      db.prepare(
+        "INSERT INTO sealed_blobs (blob_id, purpose, owner_table, owner_id, owner_version, format_version, key_id, nonce, ciphertext, tag, created_at, delete_at) VALUES (?, 'household_bill', 'household_bills', ?, 1, ?, ?, ?, ?, ?, 1000, NULL)",
+      ).run(
+        sealedBill.blob_id,
+        id,
+        sealedBill.format_version,
+        sealedBill.key_id,
+        Buffer.from(sealedBill.nonce),
+        Buffer.from(sealedBill.ciphertext),
+        Buffer.from(sealedBill.tag),
+      );
+      db.prepare(
+        "INSERT INTO household_bills (bill_id, source_kind, source_key, month, content_blob_id, created_at) VALUES (?, 'mail_bill', ?, '2030-12', ?, 1000)",
+      ).run(id, SOURCE_A, sealedBill.blob_id);
+      db.prepare(
+        "INSERT INTO household_settings (setting_id, mail_intake, settings_revision, updated_at) VALUES (1, 'off', 3, 1000)",
+      ).run();
+      assert.deepEqual(applyMigrations(db, all), {
+        from: 21,
+        to: 22,
+        applied: [22],
+      });
+      assert.deepEqual(
+        db
+          .prepare(
+            'SELECT bill_id, source_kind, source_key, state, month, content_revision, content_blob_id, created_at, deleted_at FROM household_bills',
+          )
+          .all(),
+        [
+          {
+            bill_id: id,
+            source_kind: 'mail_bill',
+            source_key: SOURCE_A,
+            state: 'active',
+            month: '2030-12',
+            content_revision: 1,
+            content_blob_id: sealedBill.blob_id,
+            created_at: 1000,
+            deleted_at: null,
+          },
+        ],
+      );
+      // 移した請求予定は読めて、消せる。設定は版 3 のまま、レシートの設定は切。
+      const [record] = bills(db, '2030-12').bills;
+      assert.ok(record);
+      assert.deepEqual(openBill(record), BILL);
+      assert.deepEqual(settings(db), {
+        mail_intake: 'off',
+        receipt_reading: 'off',
+        settings_revision: '3',
+      });
+      assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
+      assert.deepEqual(
+        value<HouseholdBillDeleteValue>(deleteBill(db, id, '1')),
+        {
+          bill_id: id,
+          content_revision: '2',
+        },
+      );
+      assert.equal(billBlobCount(db), 0);
+      // trigger と索引は作り直されている。
+      assert.deepEqual(
+        (
+          db
+            .prepare(
+              "SELECT name FROM sqlite_schema WHERE tbl_name = 'household_bills' AND type IN ('trigger', 'index') AND name NOT LIKE 'sqlite_%' ORDER BY name",
+            )
+            .all() as { name: string }[]
+        ).map((row) => row.name),
+        [
+          'household_bills_blob_owner',
+          'household_bills_delete_only',
+          'household_bills_insert_active',
+          'household_bills_month',
+          'household_bills_no_delete',
+        ],
+      );
+    } finally {
+      db.close();
+    }
+  });
+});
+
+test('DB worker を通しても請求予定を消す操作とレシートの設定の保存が往復する', async () => {
+  await withTempDir(async (dir) => {
+    const path = databasePath(dir);
+    openSeededDatabase(path).close();
+    const client = await DbWorkerClient.start({
+      path,
+      storeGeneration: STORE_GENERATION,
+      responseTimeoutMs: 10_000,
+    });
+    try {
+      const id = randomUUID();
+      await client.household(billOp(id));
+      assert.deepEqual(
+        await client.household({
+          kind: 'household.bill_delete',
+          bill_id: id,
+          expected_revision: '1',
+          now: T1,
+        }),
+        { ok: true, value: { bill_id: id, content_revision: '2' } },
+      );
+      assert.deepEqual(
+        await client.household({
+          kind: 'household.receipt_setting_set',
+          expected_revision: '0',
+          receipt_reading: 'on',
+          now: T1,
+        }),
+        {
+          ok: true,
+          value: {
+            mail_intake: 'on',
+            receipt_reading: 'on',
+            settings_revision: '1',
+          },
+        },
+      );
+    } finally {
+      await client.close();
+    }
+    // DB を開き直しても（中枢を起動し直しても）入のまま。
+    const reopened = openWriteConnection(path, { platform: 'macos' });
+    try {
+      assert.deepEqual(settings(reopened), {
+        mail_intake: 'on',
+        receipt_reading: 'on',
+        settings_revision: '1',
+      });
+    } finally {
+      reopened.close();
     }
   });
 });

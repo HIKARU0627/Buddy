@@ -13,6 +13,10 @@
 //   メールの行が消えれば一緒に消える。
 // - household.bill_record / household.bill_list: カード会社の請求のお知らせから読んだ請求予定（ADR 0176、マイグレーション 0021）。
 //   家計の記録とは別の表に置き、月の集計・予算・定期の支出に入れない。同じ出所の鍵の行があれば書かずに duplicate を返す。
+// - household.bill_delete: 本人が請求予定を消す（ADR 0179、マイグレーション 0022）。家計の記録の削除と同じく、内容版を照合し、
+//   行は残して状態を deleted にし、月と暗号文を消す（出所の鍵が残るので、同じメールから作り直さない）。
+// - household.receipt_setting_set: レシートの写真の読み取りの入・切を保存する（ADR 0179）。版は利用通知の取り込みの入・切と
+//   同じ settings_revision で照合する。
 // 時刻は呼び出し側の値を信じる（DB は時計を持たない）。結果には ID・件数・状態だけを入れ、SQL・パスを入れない。
 
 import {
@@ -91,18 +95,31 @@ export interface HouseholdListValue {
   readonly truncated: boolean;
 }
 
-// 請求予定（ADR 0176）。暗号文は封筒のまま返す（復号は Core）。
+// 請求予定（ADR 0176）。暗号文は封筒のまま返す（復号は Core）。一覧は有効な請求予定だけを返す。
 export interface HouseholdBillRecord {
   readonly bill_id: string;
   // 引き落とし日の月。
   readonly month: string;
+  // 内容版（ADR 0179。消す操作の照合に使う）。
+  readonly content_revision: string;
   readonly created_at: string;
   readonly content: HouseholdEnvelope | null;
 }
 
 export type HouseholdBillRecordValue =
   | { readonly outcome: 'created'; readonly bill_id: string }
-  | { readonly outcome: 'duplicate'; readonly bill_id: string };
+  | {
+      readonly outcome: 'duplicate';
+      readonly bill_id: string;
+      // 消した請求予定の出所の鍵でも duplicate（作り直さない）。
+      readonly state: 'active' | 'deleted';
+    };
+
+// 請求予定を消した結果（ADR 0179）。
+export interface HouseholdBillDeleteValue {
+  readonly bill_id: string;
+  readonly content_revision: string;
+}
 
 export interface HouseholdBillListValue {
   // 作った順（古い方から）。
@@ -202,10 +219,26 @@ export type HouseholdOp =
       readonly content: SealedBlobInput;
       readonly now: string;
     }
-  // 1 か月（引き落とし日の月）の請求予定。
-  | { readonly kind: 'household.bill_list'; readonly month: string };
+  // 1 か月（引き落とし日の月）の有効な請求予定。
+  | { readonly kind: 'household.bill_list'; readonly month: string }
+  // 請求予定を消す（ADR 0179）。内容版を照合し、行は残して月と暗号文を消す。
+  | {
+      readonly kind: 'household.bill_delete';
+      readonly bill_id: string;
+      readonly expected_revision: string;
+      readonly now: string;
+    }
+  // レシートの写真の読み取りの入・切を保存する（ADR 0179）。設定の版を照合する。
+  | {
+      readonly kind: 'household.receipt_setting_set';
+      readonly expected_revision: string;
+      readonly receipt_reading: HouseholdReceiptReadingSetting;
+      readonly now: string;
+    };
 
 export type HouseholdMailIntakeSetting = 'on' | 'off';
+// 保存するレシートの写真の読み取りの入・切（ADR 0179）。読み取りの口がないときの unavailable は Core が決める。
+export type HouseholdReceiptReadingSetting = 'on' | 'off';
 
 export interface HouseholdBudgetValue {
   readonly budget_revision: string;
@@ -215,6 +248,8 @@ export interface HouseholdBudgetValue {
 
 export interface HouseholdSettingsValue {
   readonly mail_intake: HouseholdMailIntakeSetting;
+  // 行がなければ切（ADR 0179）。
+  readonly receipt_reading: HouseholdReceiptReadingSetting;
   readonly settings_revision: string;
 }
 
@@ -245,6 +280,8 @@ export const HOUSEHOLD_WRITE_OPS: ReadonlySet<HouseholdOpKind> = new Set([
   'household.settings_set',
   'household.budget_set',
   'household.bill_record',
+  'household.bill_delete',
+  'household.receipt_setting_set',
 ]);
 
 export type HouseholdOpValue =
@@ -258,6 +295,7 @@ export type HouseholdOpValue =
   | HouseholdBudgetValue
   | HouseholdBillRecordValue
   | HouseholdBillListValue
+  | HouseholdBillDeleteValue
   | { readonly written: boolean }
   | null;
 
@@ -290,6 +328,8 @@ const OP_KINDS: ReadonlySet<string> = new Set<HouseholdOpKind>([
   'household.budget_set',
   'household.bill_record',
   'household.bill_list',
+  'household.bill_delete',
+  'household.receipt_setting_set',
 ]);
 
 class HouseholdRejection extends Error {
@@ -315,6 +355,7 @@ const isRemoteText = (value: unknown): value is string =>
   typeof value === 'string' && REMOTE_TEXT.test(value);
 const MAIL_PROVIDERS: ReadonlySet<string> = new Set(['google', 'microsoft']);
 const MAIL_INTAKE_SETTINGS: ReadonlySet<string> = new Set(['on', 'off']);
+const RECEIPT_READING_SETTINGS: ReadonlySet<string> = new Set(['on', 'off']);
 // 設定の版（行がなければ 0）。
 const SETTINGS_REVISION = /^(0|[1-9][0-9]{0,15})$/u;
 
@@ -433,6 +474,23 @@ export function householdOpShapeReasons(op: HouseholdOp): string[] {
       break;
     case 'household.bill_list':
       needs(isHouseholdMonth(op.month), 'month_invalid');
+      break;
+    case 'household.bill_delete':
+      needs(isId(op.bill_id), 'bill_id_invalid');
+      needs(isRevision(op.expected_revision), 'expected_revision_invalid');
+      needs(isTime(op.now), 'now_invalid');
+      break;
+    case 'household.receipt_setting_set':
+      needs(
+        typeof op.expected_revision === 'string' &&
+          SETTINGS_REVISION.test(op.expected_revision),
+        'expected_revision_invalid',
+      );
+      needs(
+        RECEIPT_READING_SETTINGS.has(op.receipt_reading),
+        'receipt_reading_invalid',
+      );
+      needs(isTime(op.now), 'now_invalid');
       break;
   }
   return reasons;
@@ -720,15 +778,20 @@ function applyBudget(
 function readSettings(db: SqliteDatabase): HouseholdSettingsValue {
   const row = db
     .prepare(
-      'SELECT mail_intake, settings_revision FROM household_settings WHERE setting_id = 1',
+      'SELECT mail_intake, receipt_reading, settings_revision FROM household_settings WHERE setting_id = 1',
     )
     .get() as
-    | { mail_intake: HouseholdMailIntakeSetting; settings_revision: number }
+    | {
+        mail_intake: HouseholdMailIntakeSetting;
+        receipt_reading: HouseholdReceiptReadingSetting;
+        settings_revision: number;
+      }
     | undefined;
   return row === undefined
-    ? { mail_intake: 'on', settings_revision: '0' }
+    ? { mail_intake: 'on', receipt_reading: 'off', settings_revision: '0' }
     : {
         mail_intake: row.mail_intake,
+        receipt_reading: row.receipt_reading,
         settings_revision: String(row.settings_revision),
       };
 }
@@ -753,7 +816,37 @@ function applySettings(
   // 切から入へ戻す: 止めていた間に届いたメールは読まない。基準を消し、次の取り込みでいまある全部を確かめ済みにする。
   if (current.mail_intake === 'off' && op.mail_intake === 'on')
     db.prepare('DELETE FROM household_mail_baselines').run();
-  return { mail_intake: op.mail_intake, settings_revision: String(next) };
+  return {
+    mail_intake: op.mail_intake,
+    receipt_reading: current.receipt_reading,
+    settings_revision: String(next),
+  };
+}
+
+// レシートの写真の読み取りの入・切を保存する（ADR 0179）。版は利用通知の取り込みの入・切と同じ行の版で照合し、同じ値でも
+// 版を進める（同じ要求の再送は版の違いで拒否される）。行がなければ、利用通知の取り込みは行がないときの値（入）で作る。
+function applyReceiptSetting(
+  db: SqliteDatabase,
+  op: Extract<HouseholdOp, { kind: 'household.receipt_setting_set' }>,
+): HouseholdSettingsValue {
+  const current = readSettings(db);
+  if (current.settings_revision !== op.expected_revision)
+    throw new HouseholdRejection(['revision_mismatch']);
+  const now = Date.parse(op.now);
+  const next = Number(current.settings_revision) + 1;
+  if (current.settings_revision === '0')
+    db.prepare(
+      'INSERT INTO household_settings (setting_id, mail_intake, receipt_reading, settings_revision, updated_at) VALUES (1, ?, ?, ?, ?)',
+    ).run(current.mail_intake, op.receipt_reading, next, now);
+  else
+    db.prepare(
+      'UPDATE household_settings SET receipt_reading = ?, settings_revision = ?, updated_at = ? WHERE setting_id = 1',
+    ).run(op.receipt_reading, next, now);
+  return {
+    mail_intake: current.mail_intake,
+    receipt_reading: op.receipt_reading,
+    settings_revision: String(next),
+  };
 }
 
 // 確かめていないメール。初回（基準がない取得集合）は、その取得集合の同期済みのメールを確かめ済みにして基準を作る（ADR 0170）。本人が止めていれば
@@ -826,10 +919,15 @@ function applyBillRecord(
   op: Extract<HouseholdOp, { kind: 'household.bill_record' }>,
 ): HouseholdBillRecordValue {
   const existing = db
-    .prepare('SELECT bill_id FROM household_bills WHERE source_key = ?')
-    .get(op.source_key) as { bill_id: string } | undefined;
+    .prepare('SELECT bill_id, state FROM household_bills WHERE source_key = ?')
+    .get(op.source_key) as
+    { bill_id: string; state: 'active' | 'deleted' } | undefined;
   if (existing !== undefined)
-    return { outcome: 'duplicate', bill_id: existing.bill_id };
+    return {
+      outcome: 'duplicate',
+      bill_id: existing.bill_id,
+      state: existing.state,
+    };
   if (
     db
       .prepare('SELECT 1 FROM household_bills WHERE bill_id = ?')
@@ -850,24 +948,58 @@ function applyBillRecord(
     now,
   );
   db.prepare(
-    "INSERT INTO household_bills (bill_id, source_kind, source_key, month, content_blob_id, created_at) VALUES (?, 'mail_bill', ?, ?, ?, ?)",
+    "INSERT INTO household_bills (bill_id, source_kind, source_key, state, month, content_revision, content_blob_id, created_at, deleted_at) VALUES (?, 'mail_bill', ?, 'active', ?, 1, ?, ?, NULL)",
   ).run(op.bill_id, op.source_key, op.month, op.content.blob_id, now);
   return { outcome: 'created', bill_id: op.bill_id };
+}
+
+// 請求予定を消す（ADR 0179）。家計の記録の削除（applyDelete）と同じく、内容版を照合し、行は残して状態を deleted にし、月と
+// 暗号文を消す。無い・消した・版が違えば拒否する。
+function applyBillDelete(
+  db: SqliteDatabase,
+  op: Extract<HouseholdOp, { kind: 'household.bill_delete' }>,
+): HouseholdBillDeleteValue {
+  const row = db
+    .prepare(
+      'SELECT state, content_revision, content_blob_id, created_at FROM household_bills WHERE bill_id = ?',
+    )
+    .get(op.bill_id) as
+    | {
+        state: 'active' | 'deleted';
+        content_revision: number;
+        content_blob_id: string | null;
+        created_at: number;
+      }
+    | undefined;
+  if (row === undefined) throw new HouseholdRejection(['bill_missing']);
+  if (row.state !== 'active') throw new HouseholdRejection(['bill_deleted']);
+  if (String(row.content_revision) !== op.expected_revision)
+    throw new HouseholdRejection(['revision_mismatch']);
+  const now = Math.max(Date.parse(op.now), row.created_at);
+  const next = row.content_revision + 1;
+  db.prepare(
+    "UPDATE household_bills SET state = 'deleted', month = NULL, content_revision = ?, content_blob_id = NULL, deleted_at = ? WHERE bill_id = ?",
+  ).run(next, now, op.bill_id);
+  db.prepare('DELETE FROM sealed_blobs WHERE blob_id = ?').run(
+    row.content_blob_id,
+  );
+  return { bill_id: op.bill_id, content_revision: String(next) };
 }
 
 function listBills(
   db: SqliteDatabase,
   op: Extract<HouseholdOp, { kind: 'household.bill_list' }>,
 ): HouseholdBillListValue {
-  // 新しく作った順に上限まで読み、作った順（古い方から）に並べ直して返す。
+  // 新しく作った順に上限まで読み、作った順（古い方から）に並べ直して返す。消した請求予定は読まない。
   const rows = db
     .prepare(
-      `SELECT bill_id, month, content_blob_id, created_at FROM household_bills
-        WHERE month = ? ORDER BY created_at DESC, bill_id DESC LIMIT ?`,
+      `SELECT bill_id, month, content_revision, content_blob_id, created_at FROM household_bills
+        WHERE state = 'active' AND month = ? ORDER BY created_at DESC, bill_id DESC LIMIT ?`,
     )
     .all(op.month, HOUSEHOLD_BILL_LIST_LIMIT + 1) as {
     bill_id: string;
     month: string;
+    content_revision: number;
     content_blob_id: string;
     created_at: number;
   }[];
@@ -878,6 +1010,7 @@ function listBills(
       .map((row) => ({
         bill_id: row.bill_id,
         month: row.month,
+        content_revision: String(row.content_revision),
         created_at: toIso(row.created_at),
         content: readEnvelope(db, row.content_blob_id),
       })),
@@ -958,6 +1091,10 @@ export function executeHouseholdOp(
           return applyBudget(db, op);
         case 'household.bill_record':
           return applyBillRecord(db, op);
+        case 'household.bill_delete':
+          return applyBillDelete(db, op);
+        case 'household.receipt_setting_set':
+          return applyReceiptSetting(db, op);
         default:
           throw new HouseholdRejection(['kind_invalid']);
       }

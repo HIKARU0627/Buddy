@@ -2087,6 +2087,50 @@ paths:
           $ref: '#/components/responses/RateLimited'
         '503':
           $ref: '#/components/responses/Unavailable'
+  /v1/household/bills/{bill_id}/delete:
+    post:
+      operationId: deleteHouseholdBill
+      summary: 請求予定を消す
+      description: 本人がロック解除済みの画面で請求予定を消す（ADR 0179）。家計の記録の削除と同じく、行は残して中身と月を消し、同じメールから作り直さない。消した請求予定は 1 か月の請求予定に並べず、合計にも入れない。内容版が今と違う・消した後は 409、存在しない請求予定は 422。同じ request_id の再送は、成功済みなら消した後なので 409。成否が不明なときは 503 で、自動では送り直さない。チャット窓口・音声からは受けない。請求予定を直す操作はない。
+      x-buddy-core-checks:
+        - device_token
+        - home_network
+        - command_scope
+        - unlocked
+        - screen_operation
+      parameters:
+        - $ref: '#/components/parameters/HouseholdBillId'
+        - $ref: '#/components/parameters/InputOrigin'
+        - $ref: '#/components/parameters/LockState'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas/buddy.schema.json#/$defs/HouseholdBillDeleteRequest
+      responses:
+        '200':
+          description: 消した結果。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/HouseholdBillDeleteResult
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/Gone'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
   /v1/household/settings:
     post:
       operationId: changeHouseholdSettings
@@ -2263,7 +2307,7 @@ paths:
     post:
       operationId: changeHouseholdReceiptSetting
       summary: レシートの写真の読み取りの入・切
-      description: 本人がロック解除済みの画面で、レシートの写真を外部のモデルの画像の読み取りへ送る設定を入・切にする（ADR 0177、U363）。既定は切。望む値をそのまま送り、今と同じなら何も変えない。中枢に読み取りの口がないときに入を求めると 503。切にすると、送っている途中の読み取りを止める。設定は中枢のメモリーにだけ持ち、中枢を起動し直すと切に戻る（U364）。今の設定は月ごとの合計（listHouseholdMonths）も返す。
+      description: 本人がロック解除済みの画面で、レシートの写真を外部のモデルの画像の読み取りへ送る設定を入・切にする（ADR 0177、U363）。既定は切。望む値をそのまま送り、家計簿の設定として DB に保存する（中枢を起動し直しても変わらない。ADR 0179、U364）。設定の版（利用通知の取り込みの入・切と共通）が今と違えば 409 で、同じ request_id の再送も版が進んでいるので 409。中枢に読み取りの口がないときに入を求めると 503。成否が不明なときは 503 で、自動では送り直さない。切にすると、送っている途中の読み取りを止める。今の設定と版は月ごとの合計（listHouseholdMonths）も返す。
       x-buddy-core-checks:
         - device_token
         - home_network
@@ -2429,6 +2473,13 @@ components:
       schema:
         $ref: ./schemas/buddy.schema.json#/$defs/Id
       description: 家計の記録の ID。
+    HouseholdBillId:
+      name: bill_id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/buddy.schema.json#/$defs/Id
+      description: 請求予定の ID（ADR 0179）。
     Cursor:
       name: cursor
       in: query

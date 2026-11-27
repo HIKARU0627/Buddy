@@ -12,6 +12,7 @@ import {
   runtimeSpecifiers,
 } from './b04-evidence-sources.mjs';
 import { b05SourceFiles, b05SourceSha256 } from './b05-evidence-sources.mjs';
+import { b06SourceFiles, b06SourceSha256 } from './b06-evidence-sources.mjs';
 import { b07SourceFiles, b07SourceSha256 } from './b07-evidence-sources.mjs';
 
 // 試験 ID の対応表・B04 へ渡す故障点・証拠の形式を検査する（B00-10 #29、ADR 0011）。
@@ -828,4 +829,170 @@ test('B05 の証拠の対象は実行器が読み込むファイルだけで、B
   // B04・B07 の対象に B05 の実行器は入らない（B05 の変更で B04・B07 の証拠を作り直さない）。
   assert(!b04SourceFiles().some((path) => /\/b05[-.]/u.test(path)));
   assert(!b07SourceFiles().some((path) => /\/b05[-.]/u.test(path)));
+});
+
+// B06 の証拠（B06-09、#145）。手書きの期待値・全ケース・seed・順序の入れ替え・対応表の範囲・証拠の対象を、B05・B07 と同じ規則で
+// 検査する。模擬の統合だけで、実機の Mac mini での実際のバックアップと鍵の復元・実 API・実請求の合格を意味しない。
+test('B06 のケース・seed・観測値・順序の入れ替え・対応表の範囲が証拠と一致する', async () => {
+  const spec = await read('tests/integration/b06-expectations.json');
+  const evidence = await read('tests/integration/evidence-b06-simulated.json');
+  const ids = spec.cases.map((c) => c.id);
+  assert.equal(new Set(ids).size, ids.length);
+  assert.equal(evidence.runs.length, ids.length * spec.seeds.length);
+  const orders = new Set();
+  const variants = new Set();
+  for (const seed of spec.seeds) {
+    const runs = evidence.runs.filter((r) => r.seed === String(seed));
+    assert.deepEqual(runs.map((r) => r.case_id).sort(), [...ids].sort());
+    assert.deepEqual(
+      runs.map((r) => r.case_id),
+      runs[0].order,
+    );
+    orders.add(runs[0].order.join(','));
+    for (const run of runs) {
+      const entry = spec.cases.find((c) => c.id === run.case_id);
+      // 観測した値は、手書きの期待値（順序で分かれるケースはその順序の期待値）と完全に一致する。
+      const expected =
+        entry.expected.variants === undefined
+          ? entry.expected
+          : entry.expected.variants[run.observed.variant];
+      assert(expected !== undefined, `${run.case_id}: ${run.observed.variant}`);
+      assert.deepEqual(run.observed.checked, expected, run.case_id);
+      assert.deepEqual(run.faults, entry.faults);
+      if (entry.expected.variants !== undefined) {
+        variants.add(run.observed.variant);
+        // 記録した出来事の順序から、期待値の選び方（遅着が実行の前か後か）が決まる。
+        const order = run.observed.event_order;
+        assert.equal(
+          run.observed.variant,
+          order.indexOf('late_from_forgotten_source') < order.indexOf('execute')
+            ? 'late_source_before_execute'
+            : 'late_source_after_execute',
+        );
+      } else assert.equal(run.observed.event_order, null);
+      // 平文の目印は、どのケースのどのファイルにも出ない。
+      assert.deepEqual(run.observed.checked.plaintext_found, [], run.case_id);
+    }
+  }
+  // seed ごとにケースの順序が違い、忘却と遅着の順序は両方を観測した。
+  assert(orders.size > 1);
+  assert.deepEqual([...variants].sort(), [
+    'late_source_after_execute',
+    'late_source_before_execute',
+  ]);
+  assert.equal(evidence.records.length, ids.length);
+  assertCurrentEvidenceDbVersion(
+    evidence,
+    b06SourceSha256(),
+    spec.db_version,
+    'B06',
+  );
+  for (const entry of spec.cases) {
+    const record = evidence.records.find((r) => r.case_id === entry.id);
+    assert(record, entry.id);
+    assert.equal(record.kind, 'simulated');
+    assert.equal(record.outcome, 'matched_expectation');
+    assert.equal(record.seed, spec.seeds.join(','));
+    assert.match(record.deviation, /実機の Mac mini.*未実施（B15）/u);
+  }
+  // 対応表: 観測した範囲だけを simulated_partial にする（他工程の担当・実機・未実装の経路が残る）。X59・QA38 は not_run。
+  const expectedMap = {
+    X15: [
+      'X15-forget-and-late-result-order',
+      'X16-old-backup-restore-applies-ledger',
+    ],
+    X16: [
+      'X16-retention-deadline-and-resummary',
+      'X16-clock-rollback-no-extension',
+      'X16-old-backup-restore-applies-ledger',
+    ],
+    X17: ['X17-private-conversation-not-saved'],
+    X44: ['X44-memory-review-deadline'],
+    QA34: ['X15-forget-and-late-result-order'],
+  };
+  for (const [id, cases] of Object.entries(expectedMap)) {
+    const entry = map.tests.find((e) => e.id === id);
+    assert.equal(entry.product_test, 'simulated_partial', id);
+    assert.deepEqual(
+      entry.product_evidence.map((ref) => ref.split('#')[1]),
+      cases,
+      id,
+    );
+    for (const ref of entry.product_evidence)
+      assert(ref.startsWith('tests/integration/evidence-b06-simulated.json#'));
+    assert.match(entry.product_scope, /未実施/u, id);
+    assert.match(entry.product_scope, /B15/u, id);
+  }
+  for (const id of ['X59', 'QA38'])
+    assert.equal(map.tests.find((e) => e.id === id).product_test, 'not_run');
+  // 目印・期待値は合成の値だけ（実データ・内部の URL を入れない）。
+  const text = JSON.stringify(spec);
+  assert(!/https?:\/\//u.test(text));
+  assert(!/@[a-z0-9-]+\./iu.test(text));
+});
+
+test('B06 の証拠の対象は実行器が読み込むファイルだけで、B04・B05・B07 の実行器・画面・別の試験を含めない', () => {
+  const files = b06SourceFiles();
+  for (const path of [
+    'tests/integration/b06.test.mjs',
+    'tests/integration/b06-cases.mjs',
+    'tests/integration/b06-support.mjs',
+    'tests/integration/b06-expectations.json',
+    'tests/integration/evidence-run.mjs',
+    'scripts/b06-evidence-sources.mjs',
+    'scripts/evidence-sources.mjs',
+    'apps/core/src/retention-sweeper.ts',
+    'apps/core/src/forget-service.ts',
+    'apps/core/src/restore-run.ts',
+    'apps/core/src/backup-service.ts',
+    'apps/core/src/storage-gate.ts',
+    'apps/core/src/voice-rig-test-support.ts',
+    'packages/domain/src/retention-sweep.ts',
+    'packages/domain/src/forget-plan.ts',
+    'packages/storage/src/forget-store.ts',
+    'packages/storage/src/memory-store.ts',
+    'packages/storage/src/expiry-store.ts',
+    'packages/storage/src/db-worker.ts',
+    'packages/storage/migrations/0012_forget_and_restore.sql',
+  ])
+    assert(files.includes(path), path);
+  for (const path of [
+    'apps/desktop/src/renderer/screens/memory/MemoryPanel.tsx',
+    'apps/core/src/forget-service.test.ts',
+    'apps/core/src/retention-real.test.ts',
+    'tests/integration/b04-cases.mjs',
+    'tests/integration/b05-cases.mjs',
+    'tests/integration/b07-cases.mjs',
+    'scripts/b04-evidence-sources.mjs',
+    'scripts/b07-evidence-sources.mjs',
+    'tests/integration/evidence-b06-simulated.json',
+    'docs/b06/README.md',
+  ])
+    assert(!files.includes(path), path);
+  assert(files.every((path) => !path.startsWith('apps/desktop/src/renderer/')));
+  // B04・B05・B07 の対象に B06 の実行器は入らない（B06 の変更で他の工程の証拠を作り直さない）。
+  assert(!b04SourceFiles().some((path) => /\/b06[-.]/u.test(path)));
+  assert(!b05SourceFiles().some((path) => /\/b06[-.]/u.test(path)));
+  assert(!b07SourceFiles().some((path) => /\/b06[-.]/u.test(path)));
+});
+
+test('B06 の証拠の対象外のファイルが変わっても hash は同じで、対象のファイルが変われば hash が変わる', () => {
+  const base = b06SourceSha256();
+  const outside = readOverridden({
+    'apps/desktop/src/renderer/screens/memory/MemoryPanel.tsx':
+      '// 合成の変更\n',
+    'apps/core/src/forget-service.test.ts': '// 合成の変更\n',
+  });
+  assert.deepEqual(b06SourceSha256(outside), base);
+  for (const path of [
+    'apps/core/src/forget-service.ts',
+    'packages/storage/src/forget-store.ts',
+    'packages/storage/migrations/0012_forget_and_restore.sql',
+    'tests/integration/b06-expectations.json',
+  ]) {
+    const inside = readOverridden({
+      [path]: `${readOverridden({})(path)}\n// 合成の変更\n`,
+    });
+    assert.notDeepEqual(b06SourceSha256(inside), base, path);
+  }
 });

@@ -20,11 +20,11 @@ B00 では期待遷移と故障点（`fault-points.json`）、証拠の形式（
 
 - PR の CI は、実行器を回して手書きの期待値と一致すること（G2/G5）と、`tests/test-map.json` の構造・参照・期待値の整合を検査します。コミット済み証拠の hash が現在の木と一致すること（G1/G4）は必須にしません。
 - `pnpm run evidence:check` が、コミット済み証拠の `source_sha256` と現行ソースの対象一覧・hash の完全一致を検査します。これは工程の完了時と main の freshness の確認で実行し、PR の必須チェック（`Verify (<os>)`・`Public content / secrets`）とは分けます。
-- 通常の PR の CI の macOS の既存 shard 2（B07）・shard 3（B04）が証拠を生成して artifact に残します（追加の macOS job は作りません）。工程の完了時など明示的に作り直すときは `Simulated evidence (macOS)` を手動で実行します。main の記録の更新は、artifact を人が取り込む PR または定期の作業で行います（[開発手順](../../docs/development.md)）。
+- 通常の PR の CI の macOS の既存 shard 1（B06）・shard 2（B07）・shard 3（B04）・shard 4（B05）が証拠を生成して artifact に残します（追加の macOS job は作りません）。工程の完了時など明示的に作り直すときは `Simulated evidence (macOS)` を手動で実行します。main の記録の更新は、artifact を人が取り込む PR または定期の作業で行います（[開発手順](../../docs/development.md)）。
 
 main への push・週 1 回の schedule・手動の `evidence-freshness.yml` が、読み取りだけで `pnpm run evidence:check` を実行し、不一致を job summary に出します。更新は次の順で行います。
 
-1. その commit の CI の macOS shard 2/3 の artifact（`simulated-evidence-b04-<sha>`・`simulated-evidence-b07-<sha>`）を取得します。schedule・手動のときは、直近の main の CI の artifact を使うか、`Simulated evidence (macOS)` を実行して作り直します。
+1. その commit の CI の macOS shard 1〜4 の artifact（`simulated-evidence-b04-<sha>`・`simulated-evidence-b05-<sha>`・`simulated-evidence-b06-<sha>`・`simulated-evidence-b07-<sha>`）を取得します。schedule・手動のときは、直近の main の CI の artifact を使うか、`Simulated evidence (macOS)` を実行して作り直します。
 2. ワーカーが `tests/integration/` へ取り込み、`pnpm run evidence:check` を通す PR を作ります。
 3. 手動で作り直すときは `Simulated evidence (macOS)` を実行します。
 
@@ -45,3 +45,11 @@ bot PR・`contents: write` は作りません。freshness は必須チェック�
 `b05-world.mjs` が世界（端末と中枢のつなぎ。HTTP・WSS・Electron・マイク・WebRTC・実 API は通さず、中枢の入口を直接呼ぶ）、`b05-conversation.mjs` が会話の処理のつなぎ、`b05-cases*.mjs` がケース、`b05-observe.mjs` が観測の共通部品、`b05-support.mjs` が突き合わせの規則（端末が送った命令の世代の後退・存在しない Live の開始・provider 自身の真の使用時間と精算の食い違い・送出意図のある予約の解放・音声の枠の上限）です。期待値は `b05-expectations.json` の手書きの値だけで、実装の処理から作りません。実行器は失敗や未登録のケースを無視しません。
 
 `evidence-b05-simulated.json` は `kind: simulated` の観測結果で、`source_sha256` の対象は実行器が読み込むファイルだけです（`scripts/b05-evidence-sources.mjs`。B04・B07 と共通の集め方は `scripts/evidence-sources.mjs`）。記録方法・完了条件・既知の未了は [B05 の完了判定](../../docs/b05/README.md) を参照してください。実機・実 API・実請求は未実施（#132・#133）で、模擬の時間は T04 の実測ではありません。
+
+## B06-09 の実行器
+
+`pnpm run build` の後、`node --test tests/integration/b06.test.mjs` で、保存期限の掃除（`apps/core` の `RetentionSweeper`）・記憶と忘却の命令（DB worker）・忘却の Core の経路（`ForgetService`。忘却の公開ゲートは製品では閉じたままで、試験の組み立てで開いた関数を渡す）・バックアップと復元（`startCore`・`runBackupSetup`・`runRestoreRun`）・記録しない会話（製品の Core の HTTPS の流れの経路と保存境界の保持者、音声の制御の模擬の組み立て）をつないだ 6 ケース（X15・X16・X17・X44 と QA34）を確認できます。`pnpm test` / `pnpm run check` にも含みます。6 ケース × 固定 seed 3 個 = 18 回を、関門と異なる順序で実行し、忘却と遅着の順序も seed で入れ替えます（遅着が先・忘却が先の両方を観測しないと証拠を書きません）。
+
+`b06-support.mjs` が合成のデータ鍵での封筒・合成の目印・目印の探し方（平文は DB・WAL・台帳の別ファイル・バックアップ・ログ・知らせ・応答から、暗号文のバイト列は DB・WAL・復号したバックアップの中身から）、`b06-cases.mjs` がケース、`b06-expectations.json` が手書きの期待値です。期待値は実装の処理から作りません。実行器は失敗や未登録のケースを無視しません。
+
+`evidence-b06-simulated.json` は `kind: simulated` の観測結果で、`source_sha256` の対象は実行器が読み込むファイルだけです（`scripts/b06-evidence-sources.mjs`。集め方は B04・B05・B07 と共通の `scripts/evidence-sources.mjs`）。通常の CI では macOS の shard 1 が生成して artifact に残します。記録方法・完了条件・未実装と未実施の一覧は [B06 の完了判定](../../docs/b06/README.md) を参照してください。実機の Mac mini での実際のバックアップと鍵の復元・実 API・実請求は未実施（B15）です。

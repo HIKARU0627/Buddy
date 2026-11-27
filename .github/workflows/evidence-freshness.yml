@@ -1,7 +1,7 @@
-# 模擬証拠（B04・B07）の記録が現在のソースと一致するかを知らせる専用のシグナル（ADR 0085）。
+# 模擬証拠（B04・B05・B06・B07）の記録が現在のソースと一致するかを知らせる専用のシグナル（ADR 0085）。
 #
 # - push: main・schedule・workflow_dispatch のどれでも、コミット済みの証拠を strict に照合するだけ。
-# - 生成はしない（既存の macOS shard 2/3 の artifact か、手動の evidence-macos.yml を使う）。
+# - 生成はしない（既存の macOS shard 1〜4 の artifact か、手動の evidence-macos.yml を使う）。
 #   追加の macOS job は 0。
 # - 権限は contents: read だけ。commit・push・PR の作成をしない。不一致は job summary に出す。
 # - これは必須チェックではない。main の記録が一時的に古い間も PR のマージは止めない。
@@ -54,12 +54,12 @@ jobs:
             echo "## 模擬証拠の freshness"
             echo ""
             if [ "$CHECK_OUTCOME" = "success" ]; then
-              echo "B04・B07 の記録は現在のソースと一致しています。"
+              echo "B04・B05・B06・B07 の記録は現在のソースと一致しています。"
             else
               echo "**stale**: コミット済みの記録が現在のソースと一致しません。"
               echo ""
               echo "更新の手順:"
-              echo "1. この commit（main）の CI の macOS shard 2/3 の artifact \`simulated-evidence-b04-<sha>\`・\`simulated-evidence-b07-<sha>\` を取得する。"
+              echo "1. この commit（main）の CI の macOS shard 1〜4 の artifact \`simulated-evidence-b04-<sha>\`・\`simulated-evidence-b05-<sha>\`・\`simulated-evidence-b06-<sha>\`・\`simulated-evidence-b07-<sha>\` を取得する。"
               echo "2. ワーカーが \`tests/integration/\` へ取り込み、\`pnpm run evidence:check\` を通す PR を作る。"
               echo "3. artifact がないときは、Actions の \`Simulated evidence (macOS)\` を main で実行して作り直す。"
               echo ""

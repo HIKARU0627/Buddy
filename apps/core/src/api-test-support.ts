@@ -7,15 +7,20 @@
 // - DB は一時ディレクトリに作って消す。端末トークンは試験の中で作る合成の値で、出力に出さない。
 
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { constants, mkdtempSync, rmSync } from 'node:fs';
+import { copyFile, mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { request as httpsRequest } from 'node:https';
 import type { IncomingHttpHeaders } from 'node:http';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import type test from 'node:test';
 import { connect } from 'node:tls';
 import type { PeerCertificate, SecureVersion, TLSSocket } from 'node:tls';
-import { DbWorkerClient } from '@buddy/storage';
+import {
+  DbWorkerClient,
+  openWriteConnection,
+  storagePlatform,
+} from '@buddy/storage';
 import type { DeviceRecord } from '@buddy/storage';
 import { createDeviceToken, deviceTokenHash } from './api-auth.js';
 import { createApiContract } from './api-contract.js';
@@ -88,12 +93,64 @@ export function withTimeout<T>(
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
+// 移行済みの DB の雛形（store_generation ごとに、プロセスで 1 つ）。DB worker の起動は全マイグレーションを
+// 適用するので、試験ごとに新しいファイルから起動すると、1 回の準備で書込みと同期（fsync）を数十回行う。
+// 同期の遅い Windows の CI では、DB を使う試験の時間の大半がこの準備になり、同じ shard の音声・予算の試験が
+// 20 秒の上限を超えた（Issue #348）。雛形は本番と同じ DB worker の起動で作り、試験ごとにファイルを写す。
+// 写した DB でも DB worker の起動はマイグレーションの照合と store_generation の確認を行う（適用済みなら書かない）。
+const migratedTemplates = new Map<string, Promise<string>>();
+
+function migratedTemplate(storeGeneration: string): Promise<string> {
+  let template = migratedTemplates.get(storeGeneration);
+  if (template === undefined) {
+    template = (async () => {
+      const dir = mkdtempSync(join(tmpdir(), 'buddy-core-template-'));
+      process.once('exit', () => rmSync(dir, { recursive: true, force: true }));
+      const path = join(dir, 'buddy.sqlite');
+      const store = await DbWorkerClient.start({
+        path,
+        storeGeneration,
+        responseTimeoutMs: 10_000,
+      });
+      await store.close();
+      // WAL に残った分を本体へ書き戻す（本体のファイルだけを写すため）。
+      const db = openWriteConnection(path, { platform: storagePlatform() });
+      try {
+        const [checkpoint] = db.pragma('wal_checkpoint(TRUNCATE)') as {
+          busy: number;
+        }[];
+        if (checkpoint?.busy !== 0)
+          throw new Error(
+            '試験の DB の雛形の WAL を本体へ書き戻せませんでした。',
+          );
+      } finally {
+        db.close();
+      }
+      return path;
+    })();
+    migratedTemplates.set(storeGeneration, template);
+  }
+  return template;
+}
+
+// path（まだ無いこと）に、移行済みの DB の雛形を写す。
+export async function copyMigratedDatabase(
+  path: string,
+  storeGeneration: string,
+): Promise<void> {
+  const template = await migratedTemplate(storeGeneration);
+  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+  await copyFile(template, path, constants.COPYFILE_EXCL);
+}
+
 export async function startTestStore(
   t: test.TestContext,
 ): Promise<DbWorkerClient> {
   const dir = await tempDir(t, 'buddy-api-store-');
+  const path = join(dir, 'data', 'buddy.sqlite');
+  await copyMigratedDatabase(path, STORE_GENERATION);
   const store = await DbWorkerClient.start({
-    path: join(dir, 'data', 'buddy.sqlite'),
+    path,
     storeGeneration: STORE_GENERATION,
     responseTimeoutMs: 10_000,
   });

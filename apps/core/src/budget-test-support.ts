@@ -15,7 +15,7 @@ import {
 } from '@buddy/storage';
 import type { SqliteDatabase } from '@buddy/storage';
 import type { CreditObservationInput } from '@buddy/domain';
-import { sharedApiContract } from './api-test-support.js';
+import { copyMigratedDatabase, sharedApiContract } from './api-test-support.js';
 import { checkBudgetConfigText } from './budget-config.js';
 import type {
   CreditObservationSource,
@@ -428,6 +428,8 @@ export async function withBudgetStore(
 ): Promise<void> {
   const dir = mkdtempSync(join(tmpdir(), 'buddy-budget-gate-'));
   const path = join(dir, 'buddy.sqlite');
+  // 全マイグレーションを試験ごとに適用し直さない（移行済みの雛形を写す。copyMigratedDatabase の説明）。
+  await copyMigratedDatabase(path, STORE_GENERATION);
   const start = () =>
     DbWorkerClient.start({
       path,

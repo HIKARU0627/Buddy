@@ -65,6 +65,29 @@ test('重いファイルは別の shard に分かれ、予約した負荷の sha
   );
 });
 
+test('pinned のファイルは重みに依らず指定の shard に入り、番号が総数を超えると固定しない', () => {
+  const weights = {
+    default_weight: 1,
+    reserved: { 1: 100 },
+    pinned: { 'p.test.mjs': 1, 'q.test.mjs': 3 },
+    files: { 'p.test.mjs': 50, 'a.test.mjs': 40 },
+  };
+  const files = ['a.test.mjs', 'b.test.mjs', 'p.test.mjs', 'q.test.mjs'];
+  // 総数 3: p は予約で最も重い shard 1 でも 1 に、q は 3 に入る。残りは負荷の小さい方へ。
+  assert.deepEqual(partition(files, 3, weights), [
+    ['p.test.mjs'],
+    ['a.test.mjs'],
+    ['b.test.mjs', 'q.test.mjs'],
+  ]);
+  // 総数 2: q の 3 は範囲外なので固定せず、重みで入れる。
+  assert.deepEqual(partition(files, 2, weights), [
+    ['p.test.mjs'],
+    ['a.test.mjs', 'b.test.mjs', 'q.test.mjs'],
+  ]);
+  for (let total = 1; total <= 5; total += 1)
+    assertExactlyOnce(files, partition(files, total, weights));
+});
+
 test('B04 と B07 の統合試験は同じ shard に入らず、全体の総数 4 でも別々になる', async () => {
   const shards = partition(await discoverTests(), 4, await readWeights());
   const where = (name) => shards.findIndex((list) => list.includes(name));

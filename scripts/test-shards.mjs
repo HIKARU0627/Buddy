@@ -31,8 +31,9 @@ export async function readWeights() {
   return raw;
 }
 
-// weights: { default_weight, reserved: { "<shard>": 重み }, files: { path: 重み } }。
-// 重いファイルから順に、そのときいちばん負荷の小さい shard へ入れる（同じなら番号の小さい方）。
+// weights: { default_weight, reserved: { "<shard>": 重み }, pinned: { path: shard の番号 }, files: { path: 重み } }。
+// pinned のファイルは、その番号の shard に先に入れる（番号が総数を超えるときは固定しない）。
+// 残りは重いファイルから順に、そのときいちばん負荷の小さい shard へ入れる（同じなら番号の小さい方）。
 // 重みは負荷の目安にすぎず、割り当ての正しさ（ちょうど 1 回）には影響しない。
 export function partition(files, total, weights) {
   if (!Number.isInteger(total) || total < 1) {
@@ -45,10 +46,23 @@ export function partition(files, total, weights) {
   );
   const shards = Array.from({ length: total }, () => []);
   const weightOf = (file) => weights.files?.[file] ?? defaultWeight;
+  const pinnedOf = (file) => {
+    const shard = weights.pinned?.[file];
+    return Number.isInteger(shard) && shard >= 1 && shard <= total
+      ? shard - 1
+      : null;
+  };
   const ordered = [...files].sort(
     (a, b) => weightOf(b) - weightOf(a) || (a < b ? -1 : a > b ? 1 : 0),
   );
   for (const file of ordered) {
+    const target = pinnedOf(file);
+    if (target === null) continue;
+    shards[target].push(file);
+    loads[target] += weightOf(file);
+  }
+  for (const file of ordered) {
+    if (pinnedOf(file) !== null) continue;
     let target = 0;
     for (let i = 1; i < total; i += 1) if (loads[i] < loads[target]) target = i;
     shards[target].push(file);

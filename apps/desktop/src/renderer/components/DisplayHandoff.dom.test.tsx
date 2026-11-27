@@ -71,7 +71,11 @@ test('another device shows: the field names the target and the button calls once
       `#${group.getAttribute('aria-labelledby') ?? ''}`,
     );
     assert.equal(heading?.textContent, '表示先');
-    assert.match(group.textContent ?? '', /他の端末/u);
+    // 今の表示先の値はここに重ねて出さない（既存の 8 項目の「表示先」が出す）。
+    assert.doesNotMatch(
+      group.textContent ?? '',
+      /他の端末|この端末|受け取っていません/u,
+    );
     const button = view.button();
     assert.equal(button?.textContent, 'このPCに出す');
     assert.equal(
@@ -80,14 +84,14 @@ test('another device shows: the field names the target and the button calls once
     );
     await act(async () => button?.click());
     assert.equal(calls, 1);
-    // 押しても表示は変えない（今の表示先は中枢の値のまま）。
-    assert.match(group.textContent ?? '', /他の端末/u);
+    // 押しても欄は変えない（今の表示先は中枢の値のまま）。
+    assert.ok(view.button());
   } finally {
     view.cleanup();
   }
 });
 
-test('this device shows: no button; unknown target: the button and the not-yet-received line', async () => {
+test('this device shows: nothing at all; unknown target: the button', async () => {
   const view = mount();
   try {
     await view.draw(
@@ -98,7 +102,7 @@ test('this device shows: no button; unknown target: the button and the not-yet-r
       />,
     );
     assert.equal(view.button(), null);
-    assert.match(view.host.textContent ?? '', /●この端末/u);
+    assert.equal(view.host.textContent, '');
     await view.draw(
       <DisplayHandoffControl
         view={displayHandoffView(shown(null))}
@@ -107,10 +111,6 @@ test('this device shows: no button; unknown target: the button and the not-yet-r
       />,
     );
     assert.ok(view.button());
-    assert.match(
-      view.host.textContent ?? '',
-      /表示先を中枢から受け取っていません。/u,
-    );
   } finally {
     view.cleanup();
   }
@@ -158,6 +158,34 @@ test('nothing is drawn while locked, unknown or not connected', async () => {
       );
       assert.equal(view.host.textContent, '');
     }
+  } finally {
+    view.cleanup();
+  }
+});
+
+test('while a move is pending the button is disabled and a second press sends nothing', async () => {
+  const view = mount();
+  let calls = 0;
+  try {
+    await view.draw(
+      <DisplayHandoffControl
+        view={displayHandoffView(shown('other_device'))}
+        message={null}
+        pending
+        onHandoff={() => {
+          calls += 1;
+        }}
+      />,
+    );
+    const button = view.button();
+    assert.equal(button?.disabled, true);
+    assert.equal(
+      button?.getAttribute('aria-label'),
+      'キャンバスの表示先をこの端末に移す（移しています。）',
+    );
+    await act(async () => button?.click());
+    await act(async () => button?.click());
+    assert.equal(calls, 0);
   } finally {
     view.cleanup();
   }

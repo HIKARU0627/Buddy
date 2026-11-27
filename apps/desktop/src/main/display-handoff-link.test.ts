@@ -59,6 +59,8 @@ interface Device {
   io: DesktopIoState;
   // 表示先の読み取りの応答を受けた直後に 1 回だけ呼ぶ（読んだ後に他の端末が移した、を再現する）。
   afterRead: (() => Promise<void>) | null;
+  // キャンバスを前に出す処理を呼んだ回数（窓を出す処理は、出したことにして canvasShown を呼ぶ）。
+  summoned: number;
   handoff(options?: {
     readonly sender?: typeof SCREEN;
     readonly io?: DesktopIoState;
@@ -70,7 +72,7 @@ interface Device {
 async function startDevice(
   t: test.TestContext,
   hub: TestHub,
-  options: { readonly canvasMode: boolean },
+  options: { readonly canvasMode: boolean; readonly summon?: boolean },
 ): Promise<Device> {
   const dir = await tempDir(t, 'bdh-');
   const protector = mockProtector();
@@ -112,6 +114,7 @@ async function startDevice(
     notices,
     io: UNLOCKED,
     afterRead: null,
+    summoned: 0,
     link: null as unknown as DesktopCoreLink,
     async stopOnHub() {
       const scope = device.link.linkState?.commandScopeId ?? null;
@@ -157,6 +160,15 @@ async function startDevice(
     backoff: { baseMs: 50, maxMs: 200, jitterRatio: 0 },
     confirmAdmin: () => Promise.resolve(false),
     ioState: () => device.io,
+    ...(options.summon === false
+      ? {}
+      : {
+          summonCanvas: () => {
+            device.summoned += 1;
+            // 窓を出したことにする（Electron の層は窓を表示して canvasShown を呼ぶ）。
+            setImmediate(() => device.link.canvasShown());
+          },
+        }),
     ...(options.canvasMode
       ? {
           canvasMode: true,
@@ -374,15 +386,21 @@ test(
       );
     }
     assert.equal(a.sent.length, before, 'nothing reached the hub');
-    // A の入出力が止まっている: 画面の受付は通るが、中枢が断る（B の表示は消えない）。
+    // A の入出力が止まっている: 画面の受付は通るが、main が中枢へ送らずに断る（B の表示は消えない）。
     a.io = { ...UNLOCKED, stopScope: 'local' };
-    // 中枢にもこの端末の停止（ローカル）を知らせる。
-    assert.equal(await a.stopOnHub(), 202);
-    const refused = await a.handoff();
+    const beforeStop = a.sent.length;
+    const refusedLocally = await a.handoff();
     assert.deepEqual(
-      [refused.outcome, 'reason' in refused && refused.reason],
+      [
+        refusedLocally.outcome,
+        'reason' in refusedLocally && refusedLocally.reason,
+      ],
       ['rejected', 'core_rejected'],
     );
+    assert.equal(a.sent.length, beforeStop, 'a stopped device sends nothing');
+    // 中枢にもこの端末の停止（ローカル）を知らせても、中枢が断る前に main が断っている（中枢の判断は Core の試験）。
+    assert.equal(await a.stopOnHub(), 202);
+    assert.equal(a.summoned, 0);
     // B は表示を失っていない（2 秒後の更新が受け付けられる）。
     await b.lease.advance(2000);
     await b.lease.advance(10);
@@ -405,5 +423,84 @@ test(
     assert.deepEqual(legacy.sent, []);
     assert.equal(target(legacy), null);
     assert.notEqual(NIL, legacy.id);
+  },
+);
+
+test(
+  'a device whose canvas window is only hidden shows the canvas first and then moves the display; other reasons not to hold the lease send nothing',
+  { timeout: 60_000 },
+  async (t) => {
+    const hub = await startHandoffHub(t);
+    const a = await startDevice(t, hub, { canvasMode: true });
+    const b = await startDevice(t, hub, { canvasMode: true });
+    await waitUntil(() => a.link.displayLeaseState === 'held', 'A holds');
+    await waitUntil(() => b.link.displayLeaseState === 'held', 'B holds');
+    // A のキャンバスの窓が隠れた（表示のリースを取る条件が外れ、更新をやめる）。
+    a.link.canvasHidden();
+    assert.equal(a.link.displayLeaseState, 'idle');
+    const moved = await a.handoff();
+    assert.equal(moved.outcome, 'ok');
+    // 前に出す処理を 1 回呼び、移動を 1 回送り、窓が出たので表示のリースを取る。
+    assert.equal(a.summoned, 1);
+    assert.equal(posts(a).length, 1);
+    await waitUntil(() => a.link.displayLeaseState === 'held', 'A holds again');
+    await b.lease.advance(2000);
+    await waitUntil(() => b.link.displayLeaseState === 'lost', 'B loses');
+    assert.equal(a.link.displayLeaseState, 'held');
+    // 窓が隠れていて、しかも停止中: 窓を出さず、送らない。
+    b.link.canvasHidden();
+    b.io = { ...UNLOCKED, stopScope: 'local' };
+    const refused = await b.handoff();
+    assert.deepEqual(
+      [refused.outcome, 'reason' in refused && refused.reason],
+      ['rejected', 'core_rejected'],
+    );
+    assert.equal(b.summoned, 0);
+    assert.equal(posts(b).length, 0);
+  },
+);
+
+test(
+  'a hidden canvas window without a way to show it does not move the display (nothing is sent)',
+  { timeout: 60_000 },
+  async (t) => {
+    const hub = await startHandoffHub(t);
+    const a = await startDevice(t, hub, { canvasMode: true, summon: false });
+    await waitUntil(() => a.link.displayLeaseState === 'held', 'A holds');
+    a.link.canvasHidden();
+    const before = a.sent.length;
+    const refused = await a.handoff();
+    assert.deepEqual(
+      [refused.outcome, 'reason' in refused && refused.reason],
+      ['rejected', 'core_rejected'],
+    );
+    assert.equal(a.sent.length, before);
+  },
+);
+
+test(
+  'pressing twice in a row sends one move and both presses get the same success (no "could not move" for the second)',
+  { timeout: 60_000 },
+  async (t) => {
+    const hub = await startHandoffHub(t);
+    const a = await startDevice(t, hub, { canvasMode: true });
+    const b = await startDevice(t, hub, { canvasMode: true });
+    await waitUntil(() => target(a) === 'this_device', 'A target');
+    await waitUntil(() => b.link.displayLeaseState === 'held', 'B holds');
+    const [first, second] = await Promise.all([a.handoff(), a.handoff()]);
+    assert.deepEqual(
+      [first.outcome, 'handoff_state' in first && first.handoff_state],
+      ['ok', 'moving'],
+    );
+    assert.deepEqual(
+      [second.outcome, 'handoff_state' in second && second.handoff_state],
+      ['ok', 'moving'],
+    );
+    assert.equal(posts(a).length, 1);
+    // 結果を受け取った後の次の押下は、新しい移動として送られる（版は 1）。
+    const third = await a.handoff();
+    assert.equal(third.outcome, 'ok');
+    assert.equal(posts(a).length, 2);
+    assert.equal(posts(a)[1]?.body['expected_route_revision'], '1');
   },
 );

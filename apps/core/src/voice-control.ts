@@ -26,6 +26,7 @@ import { randomUUID } from 'node:crypto';
 import {
   AUDIO_CONTROL_RULES,
   SESSION_CONTROL_EFFECTS,
+  STREAM_UNDECIDED_ID,
   LIVE_INITIAL_RESERVE_SECONDS,
   SIDEBAND_CONNECT_DEADLINE_MS,
   BUDGET_CLOSE_GRACE_MS,
@@ -439,8 +440,8 @@ const bump = (epoch: string): string => (BigInt(epoch) + 1n).toString();
 const TIMED_OUT: unique symbol = Symbol('timed_out');
 
 // 流れの表示先の移動（UI-05 の段階 5、ADR 0193）。流れには会話の ID を見せないので、応答の session_id と、表示先が
-// 決まっていないときの display_device_id は、全て 0 の ID（ID の形は満たすが、どの会話・端末でもない印）にする。
-const STREAM_NIL_ID = '00000000-0000-4000-8000-000000000000';
+// 決まっていないときの display_device_id は、domain の STREAM_UNDECIDED_ID（全て 0 の ID）にする。
+const STREAM_NIL_ID = STREAM_UNDECIDED_ID;
 // 同じ request_id の再送に同じ応答を返す控えの有効時間と件数の上限（RAM だけ。超えたら古い順に捨てる。捨てた後の
 // 再送は expected_route_revision が合わず 409 になるので、移動を二度行わない）。
 const HANDOFF_REPLAY_TTL_MS = 60 * 60 * 1000;

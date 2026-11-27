@@ -274,8 +274,8 @@ export const DESKTOP_PAIRING_SCREEN_CHANNELS: readonly DesktopIpcChannel[] = [
   // 止めない）。
   'desktop.storage_mode_change',
   // 流れの表示先の移動（UI-05 の段階 5、ADR 0193）も本人の画面操作。音声・チャット・発言・島・キャンバスからは移さない。
-  // 中枢の表示先の記録を変えるだけで外部へは送らないので、この端末の入出力の停止中も受け付ける（停止中の端末へ移すこと
-  // そのものは、中枢が io_suspended で断る）。
+  // 中枢の表示先の記録を変えるだけで外部へは送らないので、受付は止めない（停止中の端末へ移すことは、main が中枢へ送らずに断り、
+  // 中枢も io_suspended で断る）。
   'desktop.display_handoff',
 ];
 

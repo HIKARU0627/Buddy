@@ -2,6 +2,11 @@
 // （設計 07 §2〜§5、02 端末登録と接続、11 §10、ADR 0009）。
 // 形式（OpenAPI と JSON Schema）の検査はこの前に別に行い、不正なら invalid_input（422）にする。
 
+// 流れの表示先の移動（UI-05 の段階 5、ADR 0193）で、流れに会話の ID を見せないために `HandoffState.session_id` と、表示先が
+// 決まっていないときの `display_device_id` に使う固定の印（全て 0 の ID。ID の形は満たすが、どの会話・端末でもない）。
+// 中枢が返し、端末は読まない。実在の ID と取り違えないよう、両方がこの定数だけを参照する。
+export const STREAM_UNDECIDED_ID = '00000000-0000-4000-8000-000000000000';
+
 export const MAX_CONTROL_JSON_BYTES = 262_144;
 // 認証前の要求の上限（02 の「認証前のサイズ制限」。値は設計初期値、ADR 0009）。
 export const MAX_PREAUTH_JSON_BYTES = 16_384;

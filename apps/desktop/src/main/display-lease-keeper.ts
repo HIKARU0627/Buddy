@@ -95,6 +95,8 @@ export class DisplayLeaseKeeper {
   #heartbeat: (() => void) | null = null;
   #watchdog: (() => void) | null = null;
   #retry: (() => void) | null = null;
+  // 取り直しの要求の途中で retryNow が呼ばれた印。その要求が拒否されたら、間隔を待たずにもう一度取る。
+  #retryRequested = false;
 
   constructor(options: DisplayLeaseKeeperOptions) {
     this.#options = options;
@@ -132,7 +134,14 @@ export class DisplayLeaseKeeper {
   // 失っている間、取り直しの間隔を待たずにすぐ取り直す（本人が「このPCに出す」で表示先をこの端末へ移したとき。ADR 0193）。
   // 失っていないとき・取り直しの途中のときは何もしない。条件が外れていれば止める。
   retryNow(): void {
-    if (this.#state !== 'lost' || this.#retry === null) return;
+    if (this.#state !== 'lost') return;
+    // 移動を受け付けたので、続けて失った回数は数え直す。
+    this.#failures = 0;
+    if (this.#retry === null) {
+      // 取り直しの要求の途中（答えを待っている）。その要求が拒否されたら待たずにもう一度取る。
+      this.#retryRequested = true;
+      return;
+    }
     const context = this.#options.port.wanted();
     if (context === null) {
       this.#halt();
@@ -141,7 +150,6 @@ export class DisplayLeaseKeeper {
     this.#retry();
     this.#retry = null;
     this.#context = context;
-    this.#failures = 0;
     void this.#acquire(this.#generation);
   }
 
@@ -173,6 +181,7 @@ export class DisplayLeaseKeeper {
   }
 
   #halt(): void {
+    this.#retryRequested = false;
     this.#clear();
     this.#context = null;
     this.#failures = 0;
@@ -191,11 +200,15 @@ export class DisplayLeaseKeeper {
     if (this.#state === 'idle') return;
     this.#clear();
     this.#options.log?.(`display_lease_lost:${reason}`);
-    const delay =
-      DISPLAY_LEASE_RETRY_MS[
-        Math.min(this.#failures, DISPLAY_LEASE_RETRY_MS.length - 1)
-      ] ?? 30000;
-    this.#failures += 1;
+    // 取り直しの途中で retryNow が呼ばれていたら、間隔を待たずにもう一度取る（1 回だけ）。
+    const again = this.#retryRequested;
+    this.#retryRequested = false;
+    const delay = again
+      ? 0
+      : (DISPLAY_LEASE_RETRY_MS[
+          Math.min(this.#failures, DISPLAY_LEASE_RETRY_MS.length - 1)
+        ] ?? 30000);
+    if (!again) this.#failures += 1;
     this.#set('lost');
     const generation = this.#generation;
     this.#retry = this.#options.clock.setTimer(delay, () => {
@@ -352,6 +365,7 @@ export class DisplayLeaseKeeper {
     this.#previousNonce = nonce;
     this.#rotating = false;
     this.#failures = 0;
+    this.#retryRequested = false;
     this.#armWatchdog(generation);
     if (this.#heartbeat === null) this.#armHeartbeat(generation);
     this.#set('held');

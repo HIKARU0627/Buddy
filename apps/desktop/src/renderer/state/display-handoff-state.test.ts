@@ -1,13 +1,11 @@
-// 流れの表示先「このPCに出す」の欄を決める純粋な関数の試験（UI-05 の段階 5、ADR 0193）。期待値の文言・記号は手で書いた。
+// 流れの表示先「このPCに出す」の欄を決める純粋な関数の試験（UI-05 の段階 5、ADR 0193）。期待値の文言は手で書いた。
+// 今の表示先の値（この端末・他の端末）は既存の 8 項目の「表示先」が出すので、この欄は操作だけを決める。
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { DesktopStatusBar } from '@buddy/contracts';
 import { rejectMessage } from '../labels.js';
 import { request } from '../desktop-api.js';
-import {
-  displayHandoffView,
-  displayTargetLine,
-} from './display-handoff-state.js';
+import { displayHandoffView } from './display-handoff-state.js';
 
 const shown = (
   target: 'this_device' | 'other_device' | null,
@@ -34,24 +32,6 @@ const shown = (
     safety_stopped: null,
   };
 };
-
-test('the line says this device, another device, or that the hub has not told yet', () => {
-  assert.deepEqual(displayTargetLine('this_device'), {
-    tone: 'neutral',
-    mark: 'dot',
-    text: 'この端末',
-  });
-  assert.deepEqual(displayTargetLine('other_device'), {
-    tone: 'neutral',
-    mark: 'none',
-    text: '他の端末',
-  });
-  assert.deepEqual(displayTargetLine(null), {
-    tone: 'neutral',
-    mark: 'none',
-    text: '表示先を中枢から受け取っていません。',
-  });
-});
 
 test('the button is offered only when another device or an unknown device shows, the hub is connected and input is permitted', () => {
   const other = displayHandoffView(shown('other_device'));

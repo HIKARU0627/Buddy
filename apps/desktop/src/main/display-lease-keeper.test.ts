@@ -375,3 +375,32 @@ test('retryNow while the conditions are gone stops the keeper instead of sending
   await s.clock.advance(60_000);
   assert.equal(s.bodies.length, 1);
 });
+
+test('retryNow during a retry request that is then rejected takes the lease again at once, and resets the failure count', async () => {
+  // 1・2・3 回目は拒否（表示先が他の端末）、4 回目から受け付ける。
+  const s = setup((body, n) =>
+    n <= 3 ? rejected(body, ['display_owned_elsewhere']) : renewed(body),
+  );
+  s.keeper.update();
+  await s.clock.advance(10);
+  // 最初の拒否（1010）。2 秒後（3010）に取り直しの要求を送り、答え（3020）を待っている間に本人が移した。
+  await s.clock.advance(2000);
+  assert.equal(s.bodies.length, 2);
+  s.keeper.retryNow();
+  // 要求の途中なので、今は何も送らない。
+  assert.equal(s.bodies.length, 2);
+  // その要求が拒否された（3020）: 4 秒の間隔を待たずに、すぐ取り直す。
+  await s.clock.advance(10);
+  assert.equal(s.bodies.length, 3);
+  assert.equal(s.sentAt[2], 3020);
+  // これも拒否（3030）されたが、印は 1 回だけ。失敗の数は数え直したので、次の間隔は 2 秒（4 秒ではない）。
+  await s.clock.advance(10);
+  assert.equal(s.keeper.state, 'lost');
+  await s.clock.advance(1999);
+  assert.equal(s.bodies.length, 3);
+  await s.clock.advance(1);
+  assert.equal(s.bodies.length, 4);
+  assert.equal(s.sentAt[3], 5030);
+  await s.clock.advance(10);
+  assert.equal(s.keeper.state, 'held');
+});

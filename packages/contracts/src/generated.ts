@@ -2591,7 +2591,7 @@ export type LeaseRenewalResponse =
       ttl_ms: null;
     };
 /**
- * リースの更新を中枢が拒否する理由（設計 07 §5、10 §2A）。lease_rotation_required は、同じリースで受け付けた更新の数が上限に達したこと（nonce の履歴の保持量の上限。端末は新しい lease_id・previous_nonce null で取り直す。ADR 0046・U69）。display_owned_elsewhere は、流れの表示先が別の端末に移っていて、この端末が表示のリース（kind が display）を取れない・保てないこと（UI-05 の段階 5、ADR 0193。端末は表示を失い、取り直さずに「このPCに出す」の操作を待つ）。
+ * リースの更新を中枢が拒否する理由（設計 07 §5、10 §2A）。lease_rotation_required は、同じリースで受け付けた更新の数が上限に達したこと（nonce の履歴の保持量の上限。端末は新しい lease_id・previous_nonce null で取り直す。ADR 0046・U69）。display_owned_elsewhere は、流れの表示先が別の端末に移っていて、この端末が表示のリース（kind が display）を取れない・保てないこと（UI-05 の段階 5、ADR 0193。端末は表示を失い（ADR 0188 の「失う」と同じ）、間隔を置いた取り直しを続ける。表示先の端末の失効・中枢の再起動で表示先が未決定に戻れば自動で取り戻せ、そうでなければ本人が「このPCに出す」を押すまで取れない）。
  */
 export type LeaseRenewalRejectReason =
   | 'core_restarted'
@@ -6693,7 +6693,7 @@ export interface HandoffRequest {
   expected_route_revision: RouteRevision;
 }
 /**
- * 旧端末の表示退避か期限切れを確認するまで moving のまま。
+ * 旧端末の表示退避か期限切れを確認するまで moving のまま。流れの経路（GET・POST /v1/stream/handoff。UI-05 の段階 5、ADR 0193）では、会話の ID を見せないため session_id と、表示先が決まっていないときの display_device_id は全て 0 の ID（00000000-0000-4000-8000-000000000000。どの会話・端末でもない印）で、端末は読まない。moving は、前の端末の表示のリースを取り消したが、その端末の更新を拒否した（または中枢の見積もりの期限が来た）ことをまだ確かめていないこと。拒否を返した時点で中枢は completed とするので、拒否を受け取れなかった前の端末は、自分の期限まで描き続け得る。
  */
 export interface HandoffState {
   session_id: Id;

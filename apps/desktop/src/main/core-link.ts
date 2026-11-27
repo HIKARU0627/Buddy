@@ -309,6 +309,9 @@ export interface DesktopCoreLinkOptions {
   // clock を渡すと、その時計とタイマーで更新する（試験が実時間を待たないため）。false は取らない（リースと関係のない試験だけ。
   // 製品の起動では渡さない）。
   readonly displayLease?: false | { readonly clock?: LeaseClock };
+  // キャンバスを前に出す（「このPCに出す」が、隠れているキャンバスの窓を出してから移すため。UI-05 の段階 5、ADR 0193）。
+  // 省略すると出せないので、キャンバスの窓が隠れている間は移さない。Electron の層が canvas_summon と同じ処理を渡す。
+  readonly summonCanvas?: () => void;
   // 忘却台帳の複製の保存先（Electron の userData 配下の forget-ledger-replica.json。B06-07b-3、ADR 0182）。省略すると
   // 複製しない（中枢への要求の数を数える試験で、背景の同期を混ぜないため）。
   readonly forgetLedgerReplicaPath?: string;
@@ -493,6 +496,9 @@ export class DesktopCoreLink {
   readonly #storage: StorageModeBridge;
   // 中枢の流れの表示先と「このPCに出す」（UI-05 の段階 5、ADR 0193）。キャンバス表示の組み立てだけが読む・呼ぶ。
   readonly #route: DisplayRouteBridge;
+  // 移動の途中の要求（続けて押されたとき、2 つ目を送らずに同じ結果を返す）。
+  #handoffInFlight: Promise<BridgeOutcome<'moving' | 'completed'>> | null =
+    null;
 
   constructor(options: DesktopCoreLinkOptions) {
     this.#options = options;
@@ -1641,7 +1647,24 @@ export class DesktopCoreLink {
     if (this.#display === null)
       return this.#reject(raw.request_id, raw.channel, 'invalid_request');
     const generation = this.#viewGeneration;
-    const result = await this.#route.handoff();
+    // 続けて押された（移動の途中）: 2 つ目は送らず、1 つ目と同じ結果を返す（「移せませんでした」を出さない）。
+    let pending = this.#handoffInFlight;
+    if (pending === null) {
+      // 表示のリースを取る条件が揃っていないとき。キャンバスの窓が隠れているだけなら、「ここに表示する」意図なので
+      // canvas_summon と同じ処理で前に出してから移す（出すと表示のリースを取る）。停止中など、ほかの理由で揃っていない
+      // ときは、移すと他の端末の表示だけが消えるので、中枢へ送らずに断る。
+      if (this.#displayLeaseContext() === null) {
+        const hiddenOnly = this.#displayLeaseBlockedOnlyByWindow();
+        if (!hiddenOnly || this.#options.summonCanvas === undefined)
+          return this.#reject(raw.request_id, raw.channel, 'core_rejected');
+        this.#options.summonCanvas();
+      }
+      pending = this.#route.handoff().finally(() => {
+        this.#handoffInFlight = null;
+      });
+      this.#handoffInFlight = pending;
+    }
+    const result = await pending;
     // 移った: 失っていた表示のリースを待たずに取り直す。取れたら今の記述を読む（取り直しの経路は段階 4 のまま）。
     if (result.ok) this.#display.retryNow();
     return this.#withinGeneration(
@@ -2658,6 +2681,23 @@ export class DesktopCoreLink {
       commandScopeId: state.commandScopeId,
       ioEpoch: state.ioEpoch,
     };
+  }
+
+  // 表示のリースを取る条件が揃っていないのが、キャンバスの窓が隠れているためだけか（ロック解除済み・入出力が止まって
+  // いない・中枢に接続中で事実が揃っている）。
+  #displayLeaseBlockedOnlyByWindow(): boolean {
+    if (!this.#canvas.hidden || this.#lockState !== 'unlocked') return false;
+    const io = this.#options.ioState?.() ?? null;
+    if (io !== null && !desktopInputPermitted(io)) return false;
+    const state = this.#connection?.state ?? null;
+    return (
+      state !== null &&
+      state.phase === 'live' &&
+      state.deviceId !== null &&
+      state.coreInstanceId !== null &&
+      state.commandScopeId !== null &&
+      state.ioEpoch !== null
+    );
   }
 
   // 表示のリースの更新を送る。本文は要求 ID・接続範囲を自分で持つ（ClientConnection の scoped で置き換えない）。送った時点の

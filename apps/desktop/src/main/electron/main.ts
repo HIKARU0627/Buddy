@@ -922,6 +922,8 @@ function createLink(
         stopScope: 'local',
         ioEpoch: '0',
       },
+    // 「このPCに出す」が、隠れているキャンバスの窓を canvas_summon と同じ処理で前に出す（UI-05 の段階 5、ADR 0193）。
+    summonCanvas: () => summonCanvas('status'),
     onChange: pushConnection,
     log,
     confirmAdmin: confirmAdminWithDialog,

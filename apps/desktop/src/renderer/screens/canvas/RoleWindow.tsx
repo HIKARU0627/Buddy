@@ -156,6 +156,7 @@ function StatusWindow({ api }: { readonly api: BuddyDesktopApi }) {
     controlVoice,
     changeStorageMode,
     handoffDisplay,
+    handoffPending,
   } = useRoleWindowState(api, 'status');
   const now = useNow();
   const visibility = usePageVisibility();
@@ -233,6 +234,7 @@ function StatusWindow({ api }: { readonly api: BuddyDesktopApi }) {
           view={displayHandoffView(state.status)}
           message={messageFor(state, ['desktop.display_handoff'])}
           onHandoff={handoffDisplay}
+          pending={handoffPending}
         />
       }
       storage={

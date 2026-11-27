@@ -14,12 +14,13 @@
 // - ログは理由のコードだけ（端末の ID・版は出さない）。
 // Electron に依存しない（node:test で試験する）。
 import type { HandoffState } from '@buddy/contracts';
+import { STREAM_UNDECIDED_ID } from '@buddy/domain';
 import type { ClientConnection } from '@buddy/client';
 import type { DesktopContract } from './contract.js';
 import type { BridgeOutcome } from './operation-bridge.js';
 
-// 中枢が表示先を決めていないときの display_device_id（全て 0 の ID。Core の STREAM_NIL_ID と同じ契約の印）。
-const UNDECIDED = '00000000-0000-4000-8000-000000000000';
+// 中枢が表示先を決めていないときの display_device_id（全て 0 の ID。Core と同じ domain の定数）。
+const UNDECIDED = STREAM_UNDECIDED_ID;
 
 export type DisplayTarget = 'this_device' | 'other_device';
 

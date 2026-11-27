@@ -27,11 +27,15 @@ const NIL = '00000000-0000-4000-8000-000000000000';
 const LEASE_A = uuid(0x2a);
 const LEASE_B = uuid(0x2b);
 
+// 呼び出しごとに 1 ずつ増える決まった要求 ID（0x9101 から）。
+let requestCounter = 0x9100;
+const nextRequestId = () => uuid(++requestCounter);
+
 const handoffBody = (
   scope: string,
   target: string,
   expected: string,
-  requestId = uuid(0x9100 + Math.floor(Math.random() * 0xff)),
+  requestId = nextRequestId(),
 ): JsonObject => ({
   request_id: requestId,
   command_scope_id: scope,
@@ -415,6 +419,181 @@ test(
         ],
         ['2', NIL],
       );
+    });
+  },
+);
+
+test(
+  '表示先の端末が入出力を止めた・ロックした・眠った後も、他の端末は拒否され続ける（U523 の根拠）。本人が別の端末で押せば戻る',
+  TIMEOUT,
+  async () => {
+    await withRig(async (rig) => {
+      await rig.voice.handoffDisplay(B, handoffBody(SCOPE_B, DEV_B, '0'));
+      // 表示先の端末 B が自分の入出力を止める（ロック・スリープで更新が止まるのも、中枢から見ると同じく B が来なくなる）。
+      await rig.voice.stopIo(B, {
+        request_id: uuid(0x93),
+        command_scope_id: SCOPE_B,
+        scope: 'local',
+      });
+      await rig.clock.advance(60_000);
+      // 表示先は B のまま（失効していない）。A は取れず、取り直しも拒否される。
+      assert.deepEqual(reasonsOf(await takeDisplay(rig, A, LEASE_A, 70_000)), [
+        'display_owned_elsewhere',
+      ]);
+      assert.deepEqual(
+        reasonsOf(await takeDisplay(rig, A, uuid(0x2c), 90_000)),
+        ['display_owned_elsewhere'],
+      );
+      assert.equal(
+        bodyOf(rig.voice.displayRoute())['display_device_id'],
+        DEV_B,
+      );
+      // 本人が A で「このPCに出す」と押せば、版を合わせて通り、A が取れる。
+      const moved = await rig.voice.handoffDisplay(
+        A,
+        handoffBody(SCOPE_A, DEV_A, '1'),
+      );
+      assert.equal(moved.status, 202);
+      assert.equal(
+        bodyOf(await takeDisplay(rig, A, uuid(0x2d), 100_000))['result'],
+        'renewed',
+      );
+    });
+  },
+);
+
+test(
+  '同時に押された 2 つの移動: 同じ版を持つ 2 つの要求は 1 つだけ通り、もう 1 つは 409。移動は 1 回',
+  TIMEOUT,
+  async () => {
+    await withRig(async (rig) => {
+      const [first, second] = await Promise.all([
+        rig.voice.handoffDisplay(B, handoffBody(SCOPE_B, DEV_B, '0')),
+        rig.voice.handoffDisplay(A, handoffBody(SCOPE_A, DEV_A, '0')),
+      ]);
+      assert.deepEqual([first.status, second.status], [202, 409]);
+      assert.equal(bodyOf(second)['code'], 'conflict');
+      assert.deepEqual(
+        [
+          bodyOf(rig.voice.displayRoute())['route_revision'],
+          bodyOf(rig.voice.displayRoute())['display_device_id'],
+        ],
+        ['1', DEV_B],
+      );
+      // 同じ端末から版も同じ 2 つの別の要求でも、通るのは 1 つだけ。
+      const [third, fourth] = await Promise.all([
+        rig.voice.handoffDisplay(A, handoffBody(SCOPE_A, DEV_A, '1')),
+        rig.voice.handoffDisplay(A, handoffBody(SCOPE_A, DEV_A, '1')),
+      ]);
+      assert.deepEqual([third.status, fourth.status], [202, 409]);
+      assert.equal(bodyOf(rig.voice.displayRoute())['route_revision'], '2');
+    });
+  },
+);
+
+test(
+  '再送の控え: 256 件を超えると古い順に捨て、捨てた要求の再送は版が合わず 409（移動を二度行わない）。残っている要求は同じ応答',
+  TIMEOUT,
+  async () => {
+    await withRig(async (rig) => {
+      const responses: { status: number; body: object }[] = [];
+      const sent: JsonObject[] = [];
+      // 1 つ目は B、2 つ目は A …と交互に、版を 1 ずつ進めて 257 回移す。
+      for (let n = 1; n <= 257; n += 1) {
+        const [who, id, scope] =
+          n % 2 === 1
+            ? ([B, DEV_B, SCOPE_B] as const)
+            : ([A, DEV_A, SCOPE_A] as const);
+        const body = handoffBody(scope, id, String(n - 1), uuid(0x70000 + n));
+        sent.push(body);
+        const response = await rig.voice.handoffDisplay(who, body);
+        assert.equal(response.status, 202, String(n));
+        responses.push(response);
+      }
+      assert.equal(bodyOf(rig.voice.displayRoute())['route_revision'], '257');
+      // 1 つ目（B・版 0）は 257 件目の登録で捨てられた。再送は新しい要求として照合され、版 0 は今と違うので 409。
+      const first = await rig.voice.handoffDisplay(B, sent[0] as JsonObject);
+      assert.equal(first.status, 409);
+      // 2 つ目（A）は残っているので、同じ応答（版 2）を返し、版を進めない。
+      const second = await rig.voice.handoffDisplay(A, sent[1] as JsonObject);
+      assert.equal(second.status, 202);
+      assert.deepEqual(
+        bodyOf(second),
+        bodyOf(responses[1] as { body: object }),
+      );
+      assert.equal(bodyOf(second)['route_revision'], '2');
+      assert.equal(bodyOf(rig.voice.displayRoute())['route_revision'], '257');
+    });
+  },
+);
+
+test(
+  '再送の控え: 1 時間（3,600,000 ms）で期限が切れる。期限の 1 ms 前までは同じ応答、期限の後は新しい要求として照合して 409',
+  TIMEOUT,
+  async () => {
+    await withRig(async (rig) => {
+      const body = handoffBody(SCOPE_B, DEV_B, '0', uuid(0x9301));
+      const first = await rig.voice.handoffDisplay(B, body);
+      await rig.clock.advance(3_599_999);
+      const replay = await rig.voice.handoffDisplay(B, body);
+      assert.deepEqual([replay.status, bodyOf(replay)], [202, bodyOf(first)]);
+      await rig.clock.advance(1);
+      const expired = await rig.voice.handoffDisplay(B, body);
+      assert.equal(expired.status, 409);
+      assert.equal(bodyOf(rig.voice.displayRoute())['route_revision'], '1');
+    });
+  },
+);
+
+test(
+  '端末の状態を DB から読めないとき: 移す要求は 503 で何も変えず、表示先の端末の状態を読めない間は他の端末へ渡さない（失効していても未決定へ戻さない）',
+  TIMEOUT,
+  async () => {
+    // 読めない端末の ID（試験が決める）。
+    const failing = new Set<string>();
+    await withRig(async (rig) => {
+      // 中枢が持つ DB の口の voice だけを差し替え、読めない端末の読み取りを失敗にする。
+      const store = rig.harness.store as unknown as {
+        voice: (command: { device_id?: string }) => Promise<unknown>;
+      };
+      const original = store.voice.bind(store);
+      store.voice = (command) =>
+        command.device_id !== undefined && failing.has(command.device_id)
+          ? Promise.resolve({ ok: false as const })
+          : original(command);
+      // 呼び出した端末の状態を読めない: 503 で、表示先は変わらない。
+      failing.add(DEV_B);
+      const refused = await rig.voice.handoffDisplay(
+        B,
+        handoffBody(SCOPE_B, DEV_B, '0'),
+      );
+      assert.equal(refused.status, 503);
+      assert.equal(bodyOf(rig.voice.displayRoute())['route_revision'], '0');
+      // 読めるようになれば通る。B が表示先。
+      failing.clear();
+      const moved = await rig.voice.handoffDisplay(
+        B,
+        handoffBody(SCOPE_B, DEV_B, '0'),
+      );
+      assert.equal(moved.status, 202);
+      // B を失効させ、さらに B の状態を読めない。A は渡されない（表示先は決まったまま）。
+      rig.harness.sql((db) => {
+        db.prepare(
+          'UPDATE devices SET revoked_at = 2000 WHERE device_id = ?',
+        ).run(DEV_B);
+      });
+      failing.add(DEV_B);
+      assert.deepEqual(reasonsOf(await takeDisplay(rig, A, LEASE_A)), [
+        'display_owned_elsewhere',
+      ]);
+      assert.equal(bodyOf(rig.voice.displayRoute())['route_revision'], '1');
+      // 読めるようになると、失効を見て未決定へ戻し、A が取れる。
+      failing.clear();
+      assert.equal(
+        bodyOf(await takeDisplay(rig, A, uuid(0x2f), 5000))['result'],
+        'renewed',
+      );
+      assert.equal(bodyOf(rig.voice.displayRoute())['route_revision'], '2');
     });
   },
 );

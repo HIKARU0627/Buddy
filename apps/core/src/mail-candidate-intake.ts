@@ -46,6 +46,7 @@ export type MailCandidateIntakeResult =
       readonly status: 'persisted';
       // 候補にしなかった依頼と理由（ID・理由だけ）。
       readonly skipped: readonly DraftSkip[];
+      // 下書きごとの結果。途中で区切りが変わったら、残りは held（送っていない）。
       readonly results: readonly PersistedCandidate[];
     };
 
@@ -64,17 +65,25 @@ export async function intakeMailExtraction(
     return { status: 'skipped', reason: 'not_extracted' };
   if (ports.storage.privateConversation())
     return { status: 'skipped', reason: 'private_conversation' };
-  const present = ports.storage.origin();
-  if (
-    present.segment_id !== input.started.segment_id ||
-    present.segment_generation !== input.started.segment_generation
-  )
+  // 今の区切りが抽出を始めたときと同じで、記録しない会話でないか。保存の前と、下書きを 1 件送る前ごとに照合する
+  // （api-turns.ts の precommit と同じ形）。
+  const current = (): boolean => {
+    const present = ports.storage.origin();
+    return (
+      !ports.storage.privateConversation() &&
+      present.segment_id === input.started.segment_id &&
+      present.segment_generation === input.started.segment_generation
+    );
+  };
+  if (!current())
     return { status: 'skipped', reason: 'storage_boundary_changed' };
   const { drafts, skipped } = mailCandidateDrafts(
     input.outcome.extraction.result,
     input.context,
   );
   const results =
-    drafts.length === 0 ? [] : await persistCandidateDrafts(ports, drafts);
+    drafts.length === 0
+      ? []
+      : await persistCandidateDrafts({ ...ports, precommit: current }, drafts);
   return { status: 'persisted', skipped, results };
 }

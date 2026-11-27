@@ -6,7 +6,10 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import type { GoogleCalendarEvent, GooglePage } from '@buddy/connectors';
+import type {
+  GoogleCalendarEvent,
+  GoogleCalendarEventsPage,
+} from '@buddy/connectors';
 import {
   applyMigrations,
   executeCandidateOp,
@@ -28,6 +31,13 @@ import type { CalendarCandidateIntakeOptions } from './calendar-candidate-intake
 const KEY: DataKeyMaterial = { keyId: 'k-test', key: randomBytes(32) };
 const NOW = '2030-10-09T03:00:00Z';
 const SCOPE = 'sc-cal';
+// 同期が最後に全量を照合した窓の終わり（既定は取得の窓の終わり 10/23 12:00 JST より先）。
+const SYNCED_END = '2030-11-30T00:00:00.000Z';
+const inc = (diff: number) => ({
+  diff_count: diff,
+  kind: 'incremental' as const,
+  window_end: '2030-10-23T03:00:00.000Z',
+});
 
 const CONNECTION: ConnectionRecord = {
   connection_id: 'c-1',
@@ -116,6 +126,12 @@ interface Harness {
   segment: { segment_id: string; segment_generation: string };
   connection: ConnectionRecord | null;
   readFails: boolean;
+  // カレンダーごとの本人の権限（events.list の accessRole）。無ければ owner。
+  accessRole: Record<string, string | undefined>;
+  // 予定を読むたびに呼ぶ（試験で途中の変化を起こす）。
+  onRead: (() => void) | null;
+  // 候補の作成のたびに、保存の後で呼ぶ。
+  onCreate: (() => void) | null;
 }
 
 async function withIntake(
@@ -154,14 +170,20 @@ async function withIntake(
       segment: { segment_id: 'seg-1', segment_generation: '3' },
       connection: CONNECTION,
       readFails: false,
+      accessRole: {},
+      onRead: null,
+      onCreate: null,
     };
     const intake = createCalendarCandidateIntake({
       store: {
-        candidate: ((op: CandidateOp) =>
-          Promise.resolve(
-            executeCandidateOp(db, op, { platform: 'macos', halted: false })
-              .result,
-          )) as never,
+        candidate: ((op: CandidateOp) => {
+          const out = executeCandidateOp(db, op, {
+            platform: 'macos',
+            halted: false,
+          }).result;
+          if (op.kind === 'candidate.create') h.onCreate?.();
+          return Promise.resolve(out);
+        }) as never,
         connectionTargets: (() =>
           Promise.resolve({ ok: true, value: h.connection })) as never,
       },
@@ -173,14 +195,19 @@ async function withIntake(
             timeMax: request.timeMax,
             pageToken: request.pageToken,
           });
+          h.onRead?.();
           if (h.readFails) return Promise.reject(new Error('network'));
           const index =
             request.pageToken === undefined ? 0 : Number(request.pageToken);
-          const page: GooglePage<GoogleCalendarEvent> = {
+          const role = Object.hasOwn(h.accessRole, request.calendarId)
+            ? h.accessRole[request.calendarId]
+            : 'owner';
+          const page: GoogleCalendarEventsPage = {
             items: h.pages[index] ?? [],
             ...(index + 1 < h.pages.length
               ? { nextPageToken: String(index + 1) }
               : {}),
+            ...(role === undefined ? {} : { accessRole: role }),
           };
           return Promise.resolve(page);
         },
@@ -194,6 +221,12 @@ async function withIntake(
       now: () => new Date(h.clock),
       newId: randomUUID,
       ...over,
+    });
+    // 同期の全量の照合の窓（取得の窓より先まで保存済み）を知らせておく。
+    intake.notePublished(SCOPE, {
+      diff_count: 0,
+      kind: 'full',
+      window_end: SYNCED_END,
     });
     await body(h, intake);
   } finally {
@@ -221,6 +254,7 @@ const rows = (db: SqliteDatabase) =>
 
 const target = (generation = '2') => ({
   connection_id: 'c-1',
+  account_id: 'acct-1',
   scope_id: SCOPE,
   published_generation: generation,
 });
@@ -320,13 +354,22 @@ test('an overlap of two busy events becomes one candidate whose title holds only
 
 test('a second sync does not create the same candidate twice, and a first publish marks the candidate as an initial import', async () => {
   await withIntake(async (h, intake) => {
-    assert.equal(intake.shouldRun(SCOPE, 0), true);
+    assert.equal(intake.notePublished(SCOPE, inc(0)), true);
     const first = await intake.run(target('1'));
     assert.equal(first.created, 1);
     // 終わった取得集合は、差分が無い公開では読み直さない。差分があれば読み直す。
-    assert.equal(intake.shouldRun(SCOPE, 0), false);
-    assert.equal(intake.shouldRun(SCOPE, 3), true);
-    assert.equal(intake.shouldRun('sc-other', 0), true);
+    assert.equal(intake.notePublished(SCOPE, inc(0)), false);
+    assert.equal(intake.notePublished(SCOPE, inc(3)), true);
+    // 全量の照合の窓をまだ知らない取得集合は回さない。知った後は回す。
+    assert.equal(intake.notePublished('sc-other', inc(2)), false);
+    assert.equal(
+      intake.notePublished('sc-other', {
+        diff_count: 0,
+        kind: 'full',
+        window_end: SYNCED_END,
+      }),
+      true,
+    );
     const second = await intake.run(target('2'));
     assert.equal(second.created, 0);
     assert.equal(second.duplicate, 1);
@@ -433,7 +476,7 @@ test('nothing is read or created during a private conversation, and nothing is s
     assert.equal(h.calls.length, 0);
     assert.equal(rows(h.db).length, 0);
     // 作らずに終わったので、次の公開では差分が無くても回す。
-    assert.equal(intake.shouldRun(SCOPE, 0), true);
+    assert.equal(intake.notePublished(SCOPE, inc(0)), true);
     // 記録しない会話を出た後の公開で作る。
     h.privateNow = false;
     assert.equal((await intake.run(target())).created, 1);
@@ -453,7 +496,7 @@ test('nothing is read or created during a private conversation, and nothing is s
         listEventsPage: () => {
           if (harness !== null)
             harness.segment = { segment_id: 'seg-2', segment_generation: '4' };
-          return Promise.resolve({ items: [E1, E2] });
+          return Promise.resolve({ items: [E1, E2], accessRole: 'owner' });
         },
       }),
     },
@@ -521,7 +564,7 @@ test('the intake refuses without a zone, an active complete Google connection, a
       assert.equal(result.rejected, 1);
       assert.equal(result.retry, true);
       assert.equal(rows(h.db).length, 0);
-      assert.equal(intake.shouldRun(SCOPE, 0), true);
+      assert.equal(intake.notePublished(SCOPE, inc(0)), true);
     },
     {},
     ['e1'],
@@ -599,4 +642,214 @@ test('Google events map to occurrences with UTC times, the own response and busy
     calendarOccurrenceOf('cal-a', { ...E1, end: { date: '2030-10-11' } }),
     null,
   );
+});
+
+test('a candidate is not resolved from events that only dropped out of the judgment, nor from another account or scope', async () => {
+  // 時刻が読めない・状態が読めない・写しが食い違う予定は、一時的に外れただけかもしれないので解消の根拠にしない。
+  for (const broken of [
+    { ...E2, end: { dateTime: '2030-10-10T10:00:00+09:00' } },
+    { ...E2, start: { dateTime: 'not a time' } },
+    { ...E2, status: 'unknown' },
+  ] satisfies GoogleCalendarEvent[]) {
+    await withIntake(async (h, intake) => {
+      await intake.run(target());
+      h.pages = [[E1, broken]];
+      const result = await intake.run(target());
+      assert.deepEqual(result.resolved, []);
+      assert.equal(rows(h.db)[0]?.state, 'new');
+    });
+  }
+  // 同じ iCalUID の写しの時刻が食い違う（別のカレンダーの古い写し）。
+  await withIntake(async (h, intake) => {
+    await intake.run(target());
+    h.connection = {
+      ...CONNECTION,
+      targets: { ...CONNECTION.targets, calendar_ids: ['cal-a', 'cal-b'] },
+    };
+    h.pages = [
+      [E1, E2, { ...E2, start: { dateTime: '2030-10-10T10:40:00+09:00' } }],
+    ];
+    const result = await intake.run(target());
+    assert.deepEqual(result.resolved, []);
+    assert.equal(rows(h.db)[0]?.state, 'new');
+  });
+  // 別の口座・別の取得集合の取り込みは、この候補の解消を判断しない（同じ予定 ID を別の口座で辞退していても）。
+  await withIntake(async (h, intake) => {
+    await intake.run(target());
+    h.pages = [[E1, { ...E2, selfResponseStatus: 'declined' }]];
+    intake.notePublished('sc-other', {
+      diff_count: 1,
+      kind: 'full',
+      window_end: SYNCED_END,
+    });
+    const other = await intake.run({
+      ...target(),
+      account_id: 'acct-2',
+      scope_id: 'sc-other',
+    });
+    assert.deepEqual(other.resolved, []);
+    const otherScope = await intake.run({ ...target(), scope_id: 'sc-other' });
+    assert.deepEqual(otherScope.resolved, []);
+    const otherAccount = await intake.run({
+      ...target(),
+      account_id: 'acct-2',
+    });
+    assert.deepEqual(otherAccount.resolved, []);
+    assert.equal(rows(h.db)[0]?.state, 'new');
+    // 作った口座・取得集合の取り込みは解消する。
+    const own = await intake.run(target());
+    assert.equal(own.resolved.length, 1);
+    assert.equal(rows(h.db)[0]?.state, 'resolved');
+  });
+});
+
+test('drafts and transitions stop as soon as the conversation turns private or the segment changes', async () => {
+  // 1 件目を保存した後に区切りが変わると、2 件目を送らない。
+  await withIntake(
+    async (h, intake) => {
+      const e8 = event('e8', '2030-10-11T10:00:00', '2030-10-11T11:00:00');
+      const e9 = event('e9', '2030-10-11T10:30:00', '2030-10-11T11:30:00');
+      h.pages = [[E1, E2, e8, e9]];
+      h.onCreate = () => {
+        h.segment = { segment_id: 'seg-2', segment_generation: '4' };
+      };
+      const result = await intake.run(target());
+      assert.equal(result.outcome, 'skipped');
+      assert.equal(result.reason, 'storage_boundary_changed');
+      assert.equal(result.created, 1);
+      assert.equal(rows(h.db).length, 1);
+      // やり直す（差分が無くても次の公開で回す）。
+      assert.equal(intake.notePublished(SCOPE, inc(0)), true);
+    },
+    {},
+    ['e1', 'e2', 'e8', 'e9'],
+  );
+  // 記録しない会話に入った後は、解消の遷移も書かない。
+  await withIntake(async (h, intake) => {
+    await intake.run(target());
+    h.pages = [[E1, { ...E2, selfResponseStatus: 'declined' }]];
+    h.onRead = () => {
+      h.privateNow = true;
+    };
+    const result = await intake.run(target());
+    assert.equal(result.reason, 'storage_boundary_changed');
+    assert.deepEqual(result.resolved, []);
+    assert.equal(rows(h.db)[0]?.state, 'new');
+  });
+});
+
+test('lasting reasons settle the scope until the next change, passing ones retry, and the key and zone are checked before reading', async () => {
+  // 頁の上限: 次の差分のある公開まで回さない（毎分の読み直しにしない）。
+  await withIntake(
+    async (_h, intake) => {
+      assert.equal((await intake.run(target())).reason, 'too_many_events');
+      assert.equal(intake.notePublished(SCOPE, inc(0)), false);
+      assert.equal(intake.notePublished(SCOPE, inc(1)), true);
+    },
+    { maxPagesPerCalendar: 1 },
+  );
+  // 接続が Google でない: 同じ。
+  await withIntake(async (h, intake) => {
+    h.connection = { ...CONNECTION, provider: 'microsoft' };
+    assert.equal((await intake.run(target())).reason, 'connection_unavailable');
+    assert.equal(intake.notePublished(SCOPE, inc(0)), false);
+  });
+  // 鍵・タイムゾーンが無い: 予定を読まずに止まり、次の公開でやり直す。
+  for (const over of [
+    { dataKey: () => Promise.resolve(null) },
+    { zone: () => null },
+  ] satisfies Partial<CalendarCandidateIntakeOptions>[])
+    await withIntake(async (h, intake) => {
+      const result = await intake.run(target());
+      assert.equal(result.outcome, 'skipped');
+      assert.equal(h.calls.length, 0);
+      assert.equal(intake.notePublished(SCOPE, inc(0)), true);
+    }, over);
+  // 読み取りの失敗: 次の公開でやり直す。
+  await withIntake(async (h, intake) => {
+    h.readFails = true;
+    assert.equal((await intake.run(target())).reason, 'read_failed');
+    assert.equal(intake.notePublished(SCOPE, inc(0)), true);
+  });
+});
+
+test('a publish that arrives while a run is going is not lost', async () => {
+  const gate: { open: (() => void) | null; waiting: Promise<void> | null } = {
+    open: null,
+    waiting: null,
+  };
+  gate.waiting = new Promise<void>((resolve) => {
+    gate.open = resolve;
+  });
+  await withIntake(
+    async (_h, intake) => {
+      const first = intake.run(target());
+      // 走っている間の公開: 回さないが、終わった後に回す印を立てる。走っている間の run は already_running。
+      assert.equal(intake.notePublished(SCOPE, inc(1)), false);
+      assert.equal((await intake.run(target())).reason, 'already_running');
+      gate.open?.();
+      assert.equal((await first).outcome, 'done');
+      // 走っていた回の後でも、差分の無い公開で回す。
+      assert.equal(intake.notePublished(SCOPE, inc(0)), true);
+      assert.equal((await intake.run(target())).outcome, 'done');
+      assert.equal(intake.notePublished(SCOPE, inc(0)), false);
+    },
+    {
+      calendarFor: () => ({
+        listEventsPage: async () => {
+          await gate.waiting;
+          return { items: [E1, E2], accessRole: 'owner' };
+        },
+      }),
+    },
+  );
+});
+
+test('reading stops at the end of the window the sync last reconciled, and only owned calendars are used', async () => {
+  await withIntake(async (h, intake) => {
+    intake.notePublished(SCOPE, {
+      diff_count: 0,
+      kind: 'full',
+      window_end: '2030-10-12T00:00:00.000Z',
+    });
+    // 差分の走査の窓は控えない（全量の照合の窓だけ）。
+    intake.notePublished(SCOPE, {
+      diff_count: 0,
+      kind: 'incremental',
+      window_end: '2030-10-23T03:00:00.000Z',
+    });
+    await intake.run(target());
+    assert.equal(h.calls[0]?.timeMax, '2030-10-12T00:00:00.000Z');
+  });
+  // 本人の持ち物でない（reader・権限が分からない）カレンダーの予定どうしは候補にしない。読むのは最初の頁だけ。
+  for (const role of ['reader', undefined])
+    await withIntake(async (h, intake) => {
+      h.accessRole = { 'cal-a': role };
+      const result = await intake.run(target());
+      assert.equal(result.outcome, 'done');
+      assert.equal(result.created, 0);
+      assert.equal(h.calls.length, 1);
+      assert.equal(rows(h.db).length, 0);
+    });
+  // 全量の照合の窓を知らない取り込みは読まない。
+  await withIntake(async (h) => {
+    const fresh = createCalendarCandidateIntake({
+      store: {
+        candidate: (() => Promise.reject(new Error('unused'))) as never,
+        connectionTargets: (() =>
+          Promise.resolve({ ok: true, value: CONNECTION })) as never,
+      },
+      calendarFor: () => ({
+        listEventsPage: () => Promise.reject(new Error('unused')),
+      }),
+      dataKey: () => Promise.resolve(KEY),
+      zone: () => 'Asia/Tokyo',
+      storage: {
+        privateConversation: () => false,
+        origin: () => h.segment,
+      },
+      now: () => new Date(NOW),
+    });
+    assert.equal((await fresh.run(target())).reason, 'window_empty');
+  });
 });

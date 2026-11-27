@@ -38,6 +38,7 @@ export {
 export {
   createGoogleCalendarReader,
   type GoogleCalendarEvent,
+  type GoogleCalendarEventsPage,
   type GoogleCalendarEventTime,
   type GoogleCalendarListEntry,
   type GoogleCalendarReader,

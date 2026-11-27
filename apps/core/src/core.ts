@@ -1210,16 +1210,19 @@ export async function startCore(
           : {
               onPublished: async (connection, target, published) => {
                 if (target.resource === 'calendar') {
+                  // 予定を読み直すのは Google の接続だけ（Outlook の予定は同期していない）。
                   if (
                     calendarCandidateIntake === null ||
-                    !calendarCandidateIntake.shouldRun(
+                    connection.provider !== 'google' ||
+                    !calendarCandidateIntake.notePublished(
                       target.scope_id,
-                      published.diff_count,
+                      published,
                     )
                   )
                     return;
                   const result = await calendarCandidateIntake.run({
                     connection_id: connection.connection_id,
+                    account_id: target.account_id,
                     scope_id: target.scope_id,
                     published_generation: published.scope.active_generation,
                   });

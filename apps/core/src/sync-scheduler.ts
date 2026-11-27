@@ -32,6 +32,9 @@ export interface SyncSchedulerTarget {
 export interface SyncPublishedNotice {
   readonly diff_count: number;
   readonly scope: SyncScopeRecord;
+  // 公開した走査の種類と取得の窓の終わり。
+  readonly kind: SyncScanKind;
+  readonly window_end: string;
 }
 
 export interface SyncSchedulerOptions {
@@ -59,7 +62,7 @@ export interface SyncSchedulerOptions {
   readonly backoffMaxMs?: number;
   readonly log?: (message: string) => void;
   // 走査を公開した後の知らせ（家計簿の利用通知の取り込み ADR 0160、予定の重複の候補 ADR 0194）。待たずに呼び、例外は
-  // 記録して捨てる（同期の周期を止めない）。3 つ目の引数は公開の結果（差分の数と公開後の取得集合）。
+  // 記録して捨てる（同期の周期を止めない）。3 つ目の引数は公開の結果（差分の数・公開後の取得集合・走査の種類・窓の終わり）。
   readonly onPublished?: (
     connection: ConnectionRecord,
     target: SyncSchedulerTarget,
@@ -194,6 +197,8 @@ export function createSyncScheduler(
               notify(connection, target, {
                 diff_count: outcome.diff_count,
                 scope: outcome.scope,
+                kind: outcome.kind,
+                window_end: outcome.window_end,
               }),
             )
             .catch(() => {

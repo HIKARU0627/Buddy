@@ -79,6 +79,9 @@ export type SyncScanOutcome =
       readonly diff_count: number;
       readonly resumed: boolean;
       readonly scope: SyncScopeRecord;
+      // 公開した走査の種類と、取得の窓の終わり（予定の重複の取り込みが、同期が保存した範囲の外を読まないために使う。ADR 0194）。
+      readonly kind: SyncScanKind;
+      readonly window_end: string;
     }
   | { readonly status: 'queued'; readonly scope: SyncScopeRecord }
   | {
@@ -678,6 +681,8 @@ export function createSyncExecutor(options: SyncExecutorOptions): SyncExecutor {
       diff_count: published.value.diff_count,
       resumed,
       scope: published.value.scope,
+      kind: published.value.batch.kind,
+      window_end: published.value.batch.window_end,
     };
   }
 

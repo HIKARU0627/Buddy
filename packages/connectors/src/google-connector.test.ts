@@ -697,12 +697,34 @@ test('Calendar listEventsPage: 空き時間・種類・本人の出欠だけを�
   });
 });
 
-test('Calendar listEventsPage: 参加者の一覧が配列でなければ不正な応答として拒む', async () => {
+test('Calendar listEventsPage: 足した項目の形が想定外なら無しとして読み、頁を拒まない', async () => {
   const { connector } = setup([
-    json({ items: [{ id: 'ev-1', status: 'confirmed', attendees: 'x' }] }),
+    json({
+      accessRole: 7,
+      items: [
+        { id: 'ev-1', status: 'confirmed', attendees: 'x', transparency: 1 },
+        {
+          id: 'ev-2',
+          status: 'confirmed',
+          eventType: { kind: 'default' },
+          attendees: [null, 'x', { self: true, responseStatus: 3 }],
+        },
+      ],
+    }),
+    json({ accessRole: 'owner', items: [] }),
   ]);
 
-  await assert.rejects(connector.calendar.listEventsPage(WINDOW));
+  assert.deepEqual(await connector.calendar.listEventsPage(WINDOW), {
+    items: [
+      { id: 'ev-1', status: 'confirmed' },
+      { id: 'ev-2', status: 'confirmed' },
+    ],
+  });
+  // 本人のカレンダーへの権限は頁に添える。
+  assert.deepEqual(await connector.calendar.listEventsPage(WINDOW), {
+    items: [],
+    accessRole: 'owner',
+  });
 });
 
 test('Gmail listMessageIdsPage: pageToken を伝え、1 ページだけ読んで nextPageToken を返す', async () => {

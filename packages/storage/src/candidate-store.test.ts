@@ -218,6 +218,34 @@ test('create writes the row, the sealed title and excerpt and one lineage edge p
         { source_kind: 'turn', source_id: TURN },
       ],
     );
+    // 由来の元情報が今ある口座・取得集合（ADR 0194）。発言の由来は空、元情報の行が消えたら空。
+    const scopesOf = () =>
+      (
+        run(db, { kind: 'candidate.origin_scopes', candidate_id: C1 })
+          .value as CandidateOpValues['candidate.origin_scopes']
+      ).origins.map((origin) => ({
+        ...origin,
+        scopes: origin.scopes.map((scope) => ({ ...scope })),
+      }));
+    assert.deepEqual(scopesOf(), [
+      {
+        source_kind: 'source_item',
+        source_id: 'msg-1',
+        scopes: [{ account_id: 'acct-1', scope_id: 'sc-1' }],
+      },
+      { source_kind: 'turn', source_id: TURN, scopes: [] },
+    ]);
+    db.prepare("DELETE FROM source_items WHERE remote_id = 'msg-1'").run();
+    assert.deepEqual(scopesOf()[0], {
+      source_kind: 'source_item',
+      source_id: 'msg-1',
+      scopes: [],
+    });
+    insertSourceItem(db, 'msg-1');
+    assert.deepEqual(
+      run(db, { kind: 'candidate.origin_scopes', candidate_id: 'x' }).reasons,
+      ['candidate_id_invalid'],
+    );
     // 題と抄録は封筒のまま戻る（復号は Core）。
     assert.equal(
       Buffer.from(row.title?.ciphertext ?? []).toString('hex'),

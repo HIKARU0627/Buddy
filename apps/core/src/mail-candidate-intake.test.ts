@@ -264,3 +264,43 @@ test('nothing is created from a filtered or failed extraction, during a private 
     assert.equal(count(db), 0);
   });
 });
+
+test('drafts stop as soon as the segment changes between two requests of the same mail', async () => {
+  await withPorts(async (db, ports, state) => {
+    const second = 'b1000000-0000-4000-8000-000000000002';
+    db.prepare(
+      "INSERT INTO request_entities (request_entity_id, source_account_id, thread_id, origin_message_id, request_revision, state, recreation_suppressed, summary_blob_id, created_at, delete_at) VALUES (?, ?, 'thread-1', 'msg-1', 1, 'active', 0, NULL, 1000, NULL)",
+    ).run(second, ACCOUNT);
+    // 1 件目を保存した後に記録しない会話に入る。
+    const send = ports.client.candidate as (
+      op: CandidateOp,
+    ) => Promise<unknown>;
+    const result = await intakeMailExtraction(
+      {
+        ...ports,
+        client: {
+          candidate: (async (op: CandidateOp) => {
+            const out = await send(op);
+            state.private = true;
+            return out;
+          }) as never,
+        },
+      },
+      {
+        outcome: extracted([
+          request(),
+          request({ request_index: 1, request_entity_id: second }),
+        ]),
+        context: CONTEXT,
+        started: SEGMENT,
+      },
+    );
+    assert.equal(result.status, 'persisted');
+    if (result.status !== 'persisted') return;
+    assert.deepEqual(
+      result.results.map((r) => r.outcome),
+      ['created', 'held'],
+    );
+    assert.equal(count(db), 1);
+  });
+});

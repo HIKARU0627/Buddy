@@ -1,15 +1,19 @@
 // 予定の重複からの気づき（候補）の取り込み（B11-04、ADR 0194、設計 04 気づきの作成／予定重複、設計 11 §4・§5B）。
 //
 // 同期が予定の取得集合を公開した後に呼ぶ（sync-scheduler の onPublished）。手順:
-// 1. 保存境界・タイムゾーン・接続の今の取得対象を確かめる。記録しない会話の間は何も読まず、何も作らない（次の公開でやり直す）。
-// 2. 接続の今の取得対象（選んだカレンダー）を、いまから取得の窓の終わりまで Google Calendar から読み直す（許可範囲から取り直す）。
-//    読んだ予定の題・参加者・本文は保存しない。使うのは時刻・状態・本人の出欠・空き時間の別・識別子だけ。
+// 1. 保存境界・タイムゾーン・データ鍵・接続の今の取得対象を、予定を読む前に確かめる。記録しない会話の間は何も読まず、何も
+//    作らない（次の公開でやり直す）。
+// 2. 接続の今の取得対象（選んだカレンダー）を、いまから「同期が最後に全量を照合した窓の終わり」と取得の窓の終わりの早い方まで
+//    Google Calendar から読み直す（許可範囲から取り直す。同期が保存していない範囲を読まない）。本人の持ち物（accessRole が
+//    owner）のカレンダーだけを使う（U550）。読んだ予定の題・参加者・本文は保存しない。使うのは時刻・状態・本人の出欠・
+//    空き時間の別・識別子だけ。
 // 3. domain の findScheduleOverlaps で重複を求め、まだ始まっていない重複だけを候補の下書きにして保存する（識別子が同じ候補は
 //    状態によらず作らない。再同期・再接続で二重に作らない）。公開の世代が 1（初めての公開）のときは初回取り込みの印を付ける。
-// 4. 活動中の予定の重複の候補のうち、由来の予定をすべて今回読み、もう重複していないものを resolved にする（予定が取り消され
-//    たら source_out_of_scope、時刻の変更・辞退・空き時間への変更などは overlap_resolved）。由来の予定を読めなかった候補
-//    （窓の外へ移った・別の接続のカレンダー・取得対象から外したカレンダー）には触らない（U545）。
-// 承認・実行・effect_kind はここで決めない。外部へは読み取りだけで、変更を送らない。本文・題・時刻はログに出さない。
+// 4. 活動中の予定の重複の候補のうち、由来の元情報がこの接続の口座・取得集合にあり、由来の予定をすべて重複の判定に使えたもので、
+//    もう重複していないものを resolved にする（予定が取り消されたら source_out_of_scope、時刻の変更・辞退・空き時間への変更
+//    などは overlap_resolved）。それ以外の候補には触らない（U545）。
+// 下書きを送る前ごとと、遷移を書く前ごとに保存境界を照合し（api-turns.ts の precommit と同じ形）、区切りが変わったら残りを
+// 書かない。承認・実行・effect_kind はここで決めない。外部へは読み取りだけで、変更を送らない。本文・題・時刻はログに出さない。
 
 import { createHash, randomUUID } from 'node:crypto';
 import {
@@ -31,6 +35,7 @@ import type {
 } from '@buddy/connectors';
 import type {
   CandidateListCursor,
+  CandidateOpValues,
   CandidateRow,
   ConnectionRecord,
   DataKeyMaterial,
@@ -45,9 +50,18 @@ import { toFetchScope } from './sync-executor.js';
 
 export interface CalendarCandidateIntakeTarget {
   readonly connection_id: string;
+  // 取得集合の口座（source_items の account_id）と取得集合。解消を判断してよい候補を、この 2 つの元情報から作られたものに限る。
+  readonly account_id: string;
   readonly scope_id: string;
   // 公開の後の取得集合の世代（10 進の文字列）。'1' は初めての公開で、そのときの候補を初回取り込みにする（U543）。
   readonly published_generation: string;
+}
+
+// 公開の知らせのうち、取り込みが使うもの（sync-scheduler の SyncPublishedNotice と同じ項目）。
+export interface CalendarPublishedNotice {
+  readonly diff_count: number;
+  readonly kind: 'incremental' | 'full';
+  readonly window_end: string;
 }
 
 export type CalendarCandidateIntakeReason =
@@ -55,14 +69,25 @@ export type CalendarCandidateIntakeReason =
   | 'retention_closed'
   | 'private_conversation'
   | 'zone_unavailable'
+  | 'key_unavailable'
   | 'connection_unavailable'
   | 'reader_unavailable'
   | 'window_empty'
   | 'read_failed'
   | 'too_many_events'
   | 'overlap_invalid'
-  | 'key_unavailable'
   | 'storage_boundary_changed';
+
+// 続く理由（取得集合か設定が変わるまで、作り直しても同じ）。この理由で終わった取得集合は、次の差分のある公開まで回さない
+// （毎分の読み直しにしない。U547）。ほかの理由（記録しない会話・鍵・タイムゾーン・読み取りの失敗・区切りの変化・掃除）は
+// 次の公開でやり直す。
+const LASTING_REASONS: ReadonlySet<CalendarCandidateIntakeReason> = new Set([
+  'connection_unavailable',
+  'reader_unavailable',
+  'window_empty',
+  'too_many_events',
+  'overlap_invalid',
+]);
 
 export interface CalendarCandidateIntakeSummary {
   readonly outcome: 'done' | 'skipped';
@@ -113,9 +138,10 @@ export interface CalendarCandidateIntake {
   run(
     target: CalendarCandidateIntakeTarget,
   ): Promise<CalendarCandidateIntakeSummary>;
-  // 公開の後に回すか。差分があったとき、またはこの取得集合でまだ 1 度も終わっていない（起動の後・前の回が作らずに
-  // 終わった）ときだけ回す（毎分の公開ごとに予定を読み直さない）。
-  shouldRun(scopeId: string, diffCount: number): boolean;
+  // 公開を知らせる。全量の照合の窓の終わりを控え、回すかを返す。差分があったとき、またはこの取得集合でまだ終わっていない
+  // （起動の後・前の回がやり直しで終わった・走っている間に公開が来た）ときだけ回す。全量の照合の窓をまだ知らない取得集合は
+  // 回さない（同期が保存した範囲が分からない）。
+  notePublished(scopeId: string, published: CalendarPublishedNotice): boolean;
 }
 
 const DEFAULT_MAX_PAGES = 40;
@@ -233,8 +259,12 @@ export function createCalendarCandidateIntake(
   const newId = options.newId ?? (() => randomUUID());
   const maxPages = options.maxPagesPerCalendar ?? DEFAULT_MAX_PAGES;
   const running = new Set<string>();
-  // 最後の回が終わった（done）取得集合。作らずに終わった回の後は外し、次の公開で差分が無くても回す。
+  // 終わった取得集合（作り終えた、または続く理由で止まった）。次の差分のある公開まで回さない。
   const settled = new Set<string>();
+  // 走っている間に公開が来た取得集合。走っている回の終わりで settled にせず、次の公開でもう 1 回回す。
+  const rerun = new Set<string>();
+  // 取得集合ごとの、最後の全量の照合の窓の終わり（同期が保存した範囲の終わり）。
+  const fullWindowEnd = new Map<string, string>();
 
   const empty = {
     created: 0,
@@ -258,8 +288,8 @@ export function createCalendarCandidateIntake(
     | {
         readonly ok: true;
         readonly occurrences: CalendarOccurrence[];
-        // 今回読んだ予定（取り消しを含む）の ID と、取り消されているか。
-        readonly seen: Map<string, boolean>;
+        // 取り消された予定（時刻が無くても状態で分かる）。
+        readonly cancelled: Set<string>;
       }
     | {
         readonly ok: false;
@@ -273,8 +303,11 @@ export function createCalendarCandidateIntake(
     timeMax: string,
   ): Promise<Read> {
     const occurrences: CalendarOccurrence[] = [];
-    const seen = new Map<string, boolean>();
+    const cancelled = new Set<string>();
     for (const calendarId of calendarIds) {
+      const own: CalendarOccurrence[] = [];
+      const ownCancelled: string[] = [];
+      let owner = true;
       let pageToken: string | undefined;
       for (let page = 0; ; page += 1) {
         if (page >= maxPages) return { ok: false, reason: 'too_many_events' };
@@ -289,26 +322,69 @@ export function createCalendarCandidateIntake(
         } catch {
           return { ok: false, reason: 'read_failed' };
         }
+        // 本人の持ち物でないカレンダー（共有・同僚のカレンダー）の予定は使わない（U550）。
+        if (result.accessRole !== 'owner') {
+          owner = false;
+          break;
+        }
         for (const event of result.items) {
-          const cancelled = event.status === 'cancelled';
-          seen.set(event.id, (seen.get(event.id) ?? false) || cancelled);
+          if (event.status === 'cancelled') ownCancelled.push(event.id);
           const occurrence = calendarOccurrenceOf(calendarId, event);
-          if (occurrence !== null) occurrences.push(occurrence);
+          if (occurrence !== null) own.push(occurrence);
         }
         if (result.nextPageToken === undefined) break;
         pageToken = result.nextPageToken;
       }
+      if (!owner) continue;
+      occurrences.push(...own);
+      for (const id of ownCancelled) cancelled.add(id);
     }
-    return { ok: true, occurrences, seen };
+    return { ok: true, occurrences, cancelled };
   }
 
-  // 活動中の予定の重複の候補のうち、由来の予定をすべて今回読み、識別子が今の重複に無いものを resolved にする。
+  // 解消を判断してよい候補か: 由来がすべて元情報で、その行がこの接続の口座・取得集合にあり、どれも今回の重複の判定に使えた
+  // 予定であること。返すのは遷移（取り消された予定があれば source_out_of_scope、ほかは overlap_resolved）か null。
+  async function staleEvent(
+    row: CandidateRow,
+    target: CalendarCandidateIntakeTarget,
+    seen: ReadonlyMap<string, boolean>,
+  ): Promise<CandidateEvent | null> {
+    const scoped = await options.store.candidate({
+      kind: 'candidate.origin_scopes',
+      candidate_id: row.candidate_id,
+    });
+    if (!scoped.ok) return null;
+    const { origins } =
+      scoped.value as CandidateOpValues['candidate.origin_scopes'];
+    if (
+      origins.length === 0 ||
+      !origins.every(
+        (origin) =>
+          origin.source_kind === 'source_item' &&
+          seen.has(origin.source_id) &&
+          origin.scopes.some(
+            (scope) =>
+              scope.account_id === target.account_id &&
+              scope.scope_id === target.scope_id,
+          ),
+      )
+    )
+      return null;
+    return origins.some((origin) => seen.get(origin.source_id) === true)
+      ? 'source_out_of_scope'
+      : 'overlap_resolved';
+  }
+
+  // 活動中の予定の重複の候補のうち、識別子が今の重複に無く、解消を判断してよいものを resolved にする。遷移を書く前ごとに
+  // 保存境界を照合し、変わっていたら残りを書かない（held を真にして返す）。
   async function resolveStale(
+    target: CalendarCandidateIntakeTarget,
     currentKeys: ReadonlySet<string>,
     seen: ReadonlyMap<string, boolean>,
     zone: string,
     at: string,
-  ): Promise<string[]> {
+    precommit: () => boolean,
+  ): Promise<{ readonly resolved: string[]; readonly held: boolean }> {
     const resolved: string[] = [];
     let after: CandidateListCursor | undefined;
     for (let page = 0; page < 100; page += 1) {
@@ -325,32 +401,15 @@ export function createCalendarCandidateIntake(
           !currentKeys.has(row.notification_key),
       );
       for (const row of stale) {
-        const got = await options.store.candidate({
-          kind: 'candidate.get',
-          candidate_id: row.candidate_id,
-        });
-        if (!got.ok || got.value.candidate === null) continue;
-        const origins = got.value.origins;
-        if (
-          origins.length === 0 ||
-          !origins.every(
-            (origin) =>
-              origin.source_kind === 'source_item' &&
-              seen.has(origin.source_id),
-          )
-        )
-          continue;
-        const event: CandidateEvent = origins.some(
-          (origin) => seen.get(origin.source_id) === true,
-        )
-          ? 'source_out_of_scope'
-          : 'overlap_resolved';
+        const event = await staleEvent(row, target, seen);
+        if (event === null) continue;
+        if (!precommit()) return { resolved, held: true };
         const moved = await options.store.candidate({
           kind: 'candidate.transition',
           input: {
             candidate_id: row.candidate_id,
             event,
-            expected_state: got.value.candidate.state,
+            expected_state: row.state,
             zone,
             snooze_until: null,
             now: at,
@@ -361,7 +420,7 @@ export function createCalendarCandidateIntake(
       if (!listed.value.truncated || listed.value.next_after === null) break;
       after = listed.value.next_after;
     }
-    return resolved;
+    return { resolved, held: false };
   }
 
   async function runOnce(
@@ -371,8 +430,20 @@ export function createCalendarCandidateIntake(
     if (options.storage.privateConversation())
       return skipped('private_conversation');
     const origin = options.storage.origin();
+    // 今の区切りが読み始めたときと同じで、記録しない会話でないか（下書き・遷移を書く前ごとに照合する）。
+    const current = (): boolean => {
+      const present = options.storage.origin();
+      return (
+        !options.storage.privateConversation() &&
+        present.segment_id === origin.segment_id &&
+        present.segment_generation === origin.segment_generation
+      );
+    };
+    // 読む前に、タイムゾーンとデータ鍵を確かめる（読んだ後で止まらない）。
     const zone = options.zone();
     if (zone === null) return skipped('zone_unavailable');
+    const dataKey = await options.dataKey().catch(() => null);
+    if (dataKey === null) return skipped('key_unavailable');
     const got = await options.store.connectionTargets({
       kind: 'connections.get',
       connection_id: target.connection_id,
@@ -392,22 +463,49 @@ export function createCalendarCandidateIntake(
     const nowMs = at.getTime();
     const nowIso = at.toISOString();
     const window = calendarWindow(toFetchScope(connection), nowIso);
-    if (window === null || !(Date.parse(window.end) > nowMs))
+    const synced = fullWindowEnd.get(target.scope_id);
+    // 窓の終わりは、取得の窓と、同期が最後に全量を照合した窓の早い方（同期が保存していない予定を読まない。U547）。
+    const end =
+      window === null || synced === undefined
+        ? null
+        : Date.parse(window.end) <= Date.parse(synced)
+          ? window.end
+          : synced;
+    if (end === null || !(Date.parse(end) > nowMs))
       return skipped('window_empty');
     // いまから窓の終わりまで（選んだカレンダーだけ。窓・カレンダーを広げない）。
     const read = await readEvents(
       reader,
       connection.targets.calendar_ids,
       nowIso,
-      window.end,
+      end,
     );
     if (!read.ok) return skipped(read.reason);
     const found = findScheduleOverlaps(
       read.occurrences,
-      { start: nowIso, end: window.end },
+      { start: nowIso, end },
       zone,
     );
     if (!found.ok) return skipped('overlap_invalid');
+    // 重複の判定に使えた予定（取り消し・辞退・空き時間を含む）。時刻が読めない・写しが食い違う・状態が読めない予定は
+    // 一時的に外れただけかもしれないので、解消の根拠にしない（U545）。値は取り消されているか。
+    const unusable = new Set(
+      found.excluded
+        .filter(
+          (item) =>
+            item.reason === 'time_invalid' || item.reason === 'copies_disagree',
+        )
+        .map((item) => item.event_id),
+    );
+    const seen = new Map<string, boolean>();
+    for (const occurrence of read.occurrences)
+      if (!unusable.has(occurrence.event_id))
+        seen.set(
+          occurrence.event_id,
+          (seen.get(occurrence.event_id) ?? false) ||
+            occurrence.status === 'cancelled',
+        );
+    for (const id of read.cancelled) seen.set(id, true);
     // 今も続く重複（始まったものを含む）の識別子。これに無い活動中の候補だけを解決の対象にする。
     const currentKeys = new Set<string>();
     for (const overlap of found.overlaps) {
@@ -432,16 +530,7 @@ export function createCalendarCandidateIntake(
         originOf: (event) => event.event_id,
       },
     );
-    const dataKey = await options.dataKey().catch(() => null);
-    if (dataKey === null) return skipped('key_unavailable');
-    // 読み取りの間に記録しない会話に入った・区切りが変わったら、作らない（api-turns.ts の originCurrent と同じ照合）。
-    const present = options.storage.origin();
-    if (
-      options.storage.privateConversation() ||
-      present.segment_id !== origin.segment_id ||
-      present.segment_generation !== origin.segment_generation
-    )
-      return skipped('storage_boundary_changed');
+    // 下書きを送る前ごとに、記録しない会話に入っていないか・区切りが変わっていないかを照合する。
     const results = await persistCandidateDrafts(
       {
         client: options.store,
@@ -449,21 +538,38 @@ export function createCalendarCandidateIntake(
         sha256Hex: SHA256,
         newId,
         now: () => now().toISOString(),
+        precommit: current,
       },
       drafts,
     );
     const count = (outcome: string): number =>
       results.filter((result) => result.outcome === outcome).length;
-    const resolved = await resolveStale(currentKeys, read.seen, zone, nowIso);
-    const summary: CalendarCandidateIntakeSummary = {
-      outcome: 'done',
-      reason: null,
+    const counts = {
       created: count('created'),
       duplicate: count('duplicate'),
       rejected: count('rejected'),
       unknown: count('unknown'),
-      resolved,
-      // 由来の予定がまだ同期に無い（窓の端・公開の前に足された予定）ときは次の公開で作れる。ほかの拒否は作り直しても同じ。
+    };
+    if (count('held') > 0) return skipped('storage_boundary_changed', counts);
+    const resolution = await resolveStale(
+      target,
+      currentKeys,
+      seen,
+      zone,
+      nowIso,
+      current,
+    );
+    if (resolution.held)
+      return skipped('storage_boundary_changed', {
+        ...counts,
+        resolved: resolution.resolved,
+      });
+    return {
+      outcome: 'done',
+      reason: null,
+      ...counts,
+      resolved: resolution.resolved,
+      // 由来の予定がまだ同期に無い（公開の前に足された予定）ときは次の公開で作れる。ほかの拒否は作り直しても同じ。
       retry: results.some(
         (result) =>
           result.outcome === 'unknown' ||
@@ -471,16 +577,27 @@ export function createCalendarCandidateIntake(
             result.reasons.includes('origin_not_found')),
       ),
     };
-    return summary;
   }
 
   return {
-    shouldRun(scopeId, diffCount) {
-      return diffCount > 0 || !settled.has(scopeId);
+    notePublished(scopeId, published) {
+      if (published.kind === 'full')
+        fullWindowEnd.set(scopeId, published.window_end);
+      if (!fullWindowEnd.has(scopeId)) return false;
+      if (running.has(scopeId)) {
+        // 走っている回は、この公開より前の予定を読んでいるかもしれない。終わった後にもう 1 回回す。
+        rerun.add(scopeId);
+        return false;
+      }
+      return published.diff_count > 0 || !settled.has(scopeId);
     },
     async run(target) {
-      if (running.has(target.scope_id)) return skipped('already_running');
+      if (running.has(target.scope_id)) {
+        rerun.add(target.scope_id);
+        return skipped('already_running');
+      }
       running.add(target.scope_id);
+      rerun.delete(target.scope_id);
       settled.delete(target.scope_id);
       let release: (() => void) | null = null;
       try {
@@ -495,8 +612,12 @@ export function createCalendarCandidateIntake(
           if (release === null) return skipped('retention_closed');
         }
         const summary = await runOnce(target);
-        // 作らずに終わった・やり直す下書きがあれば、次の公開で差分が無くても回す（同じ識別子は duplicate になる）。
-        if (summary.outcome === 'done' && !summary.retry)
+        // 作り終えた回と続く理由で止まった回は、次の差分のある公開まで回さない。走っている間に公開が来たら回す。
+        const finished =
+          summary.outcome === 'done'
+            ? !summary.retry
+            : summary.reason !== null && LASTING_REASONS.has(summary.reason);
+        if (finished && !rerun.has(target.scope_id))
           settled.add(target.scope_id);
         return summary;
       } finally {

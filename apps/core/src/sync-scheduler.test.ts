@@ -130,6 +130,8 @@ class FakeExecutor implements SyncExecutor {
     scan_id: `scan-${this.calls.length}`,
     diff_count: 0,
     resumed: false,
+    kind: 'full',
+    window_end: '2026-01-20T00:00:00.000Z',
     scope: scopeRecord({ scope_id: request.scope_id }),
   });
 
@@ -246,8 +248,8 @@ test('startup recovers every scope once, then runs a full scan for each target',
   scheduler.stop();
 });
 
-test('after a publish the hook receives the target, the diff count and the published scope (ADR 0194)', async () => {
-  const notified: [string, string, number, string][] = [];
+test('after a publish the hook receives the target, the diff count, the published scope, the scan kind and the window end (ADR 0194)', async () => {
+  const notified: [string, string, number, string, string, string][] = [];
   const { h, scheduler } = harness(recentScopes(), TARGETS, {
     onPublished: (conn, target, published) => {
       notified.push([
@@ -255,6 +257,8 @@ test('after a publish the hook receives the target, the diff count and the publi
         target.scope_id,
         published.diff_count,
         published.scope.active_generation,
+        published.kind,
+        published.window_end,
       ]);
     },
   });
@@ -263,6 +267,8 @@ test('after a publish the hook receives the target, the diff count and the publi
     scan_id: 'scan-x',
     diff_count: request.resource === 'calendar' ? 2 : 0,
     resumed: false,
+    kind: 'full',
+    window_end: '2026-01-20T00:00:00.000Z',
     scope: scopeRecord({
       scope_id: request.scope_id,
       active_generation: request.resource === 'calendar' ? '7' : '3',
@@ -273,8 +279,8 @@ test('after a publish the hook receives the target, the diff count and the publi
   // 知らせは待たずに呼ばれるので、次の順番まで待つ。
   await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual(notified, [
-    ['conn-1', 'scope-mail', 0, '3'],
-    ['conn-1', 'scope-cal', 2, '7'],
+    ['conn-1', 'scope-mail', 0, '3', 'full', '2026-01-20T00:00:00.000Z'],
+    ['conn-1', 'scope-cal', 2, '7', 'full', '2026-01-20T00:00:00.000Z'],
   ]);
   scheduler.stop();
 });
@@ -433,6 +439,8 @@ test('failed scans back the connection off exponentially up to the cap, and succ
     scan_id: 'scan-ok',
     diff_count: 0,
     resumed: false,
+    kind: 'full',
+    window_end: '2026-01-20T00:00:00.000Z',
     scope: scopeRecord({ scope_id: request.scope_id }),
   });
   h.now = T0 + 13_000;
@@ -475,6 +483,8 @@ test('stop prevents further ticks, and a tick during a pass does not overlap', a
             scan_id: 'scan-late',
             diff_count: 0,
             resumed: false,
+            kind: 'full',
+            window_end: '2026-01-20T00:00:00.000Z',
             scope: scopeRecord({ scope_id: request.scope_id }),
           });
       });
@@ -484,6 +494,8 @@ test('stop prevents further ticks, and a tick during a pass does not overlap', a
       scan_id: 'scan-late',
       diff_count: 0,
       resumed: false,
+      kind: 'full',
+      window_end: '2026-01-20T00:00:00.000Z',
       scope: scopeRecord({ scope_id: request.scope_id }),
     });
   };

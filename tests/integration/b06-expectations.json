@@ -1,0 +1,315 @@
+{
+  "description": "B06-09（Issue #145）の模擬の統合試験の手書きの期待値。設計 03・ADR 0043・0044・0047・0053・0054・0058・0059・0060・0180 の規則から手で導いた値で、実装の関数から作らない。ラベル（M・L1・T_SRC など）は試験の中の呼び名で、目印は試験ごとに作る合成の文字列。ciphertext_* は封筒の暗号文のバイト列が見つかったラベル、plaintext_found は平文の目印が見つかった『ファイル > 目印』の組。時刻は UTC。",
+  "seeds": [7, 1006, 2026],
+  "db_version": "23",
+  "cases": [
+    {
+      "id": "X16-retention-deadline-and-resummary",
+      "condition": "deadline",
+      "faults": ["deadline_boundary", "resummary"],
+      "expected": {
+        "steps": [
+          {
+            "step": "one_ms_before_deadline",
+            "status": "completed",
+            "turns": ["T_DUE", "T_LIVE", "T_S2"],
+            "summaries": ["S", "S2"],
+            "live_turn_expires_at": ["2031-01-08T00:00:00.001Z"],
+            "ciphertext_in_db_files": [
+              "SUM_S",
+              "SUM_S2",
+              "T_DUE",
+              "T_LIVE",
+              "T_S2"
+            ]
+          },
+          {
+            "step": "at_deadline",
+            "status": "completed",
+            "turns": ["T_LIVE", "T_S2"],
+            "summaries": [],
+            "live_turn_expires_at": ["2031-01-08T00:00:00.001Z"],
+            "ciphertext_in_db_files": ["T_LIVE", "T_S2"]
+          },
+          {
+            "step": "one_ms_after_deadline",
+            "status": "completed",
+            "turns": ["T_S2"],
+            "summaries": [],
+            "live_turn_expires_at": [],
+            "ciphertext_in_db_files": ["T_S2"]
+          }
+        ],
+        "turn_notices": [
+          { "reason": "retention_due", "items": ["turn:T_DUE"] },
+          { "reason": "retention_due", "items": ["turn:T_LIVE"] }
+        ],
+        "plaintext_found": []
+      }
+    },
+    {
+      "id": "X16-clock-rollback-no-extension",
+      "condition": "deadline",
+      "faults": ["clock_rolled_back_after_restart"],
+      "expected": {
+        "rolled_back": {
+          "gate_reasons": ["clock_regression"],
+          "turns": ["T_LIVE"],
+          "expires_at": ["2031-01-09T00:00:00.000Z"],
+          "last_checked_at": "2031-01-08T12:00:00Z",
+          "ciphertext_in_db_files": ["T_LIVE"]
+        },
+        "reached_deadline": {
+          "turns": [],
+          "expires_at": [],
+          "ciphertext_in_db_files": []
+        },
+        "plaintext_found": []
+      }
+    },
+    {
+      "id": "X44-memory-review-deadline",
+      "condition": "deadline",
+      "faults": ["review_boundary", "explicit_continue"],
+      "expected": {
+        "steps": [
+          {
+            "step": "review_one_ms_before",
+            "memories": [
+              {
+                "memory": "M_REVIEW",
+                "status": "active",
+                "review_at": "2031-04-01T00:00:00.000Z",
+                "delete_at": null
+              },
+              {
+                "memory": "M_CONTINUE",
+                "status": "active",
+                "review_at": "2031-04-01T00:00:00.000Z",
+                "delete_at": null
+              }
+            ],
+            "ciphertext_in_db_files": ["M_CONTINUE", "M_REVIEW"]
+          },
+          {
+            "step": "review_at",
+            "memories": [
+              {
+                "memory": "M_REVIEW",
+                "status": "review_pending",
+                "review_at": "2031-04-01T00:00:00.000Z",
+                "delete_at": "2031-05-01T00:00:00.000Z"
+              },
+              {
+                "memory": "M_CONTINUE",
+                "status": "review_pending",
+                "review_at": "2031-04-01T00:00:00.000Z",
+                "delete_at": "2031-05-01T00:00:00.000Z"
+              }
+            ],
+            "ciphertext_in_db_files": ["M_CONTINUE", "M_REVIEW"]
+          },
+          {
+            "step": "delete_one_ms_before",
+            "memories": [
+              {
+                "memory": "M_REVIEW",
+                "status": "review_pending",
+                "review_at": "2031-04-01T00:00:00.000Z",
+                "delete_at": "2031-05-01T00:00:00.000Z"
+              },
+              {
+                "memory": "M_CONTINUE",
+                "status": "active",
+                "review_at": "2031-07-10T00:00:00.000Z",
+                "delete_at": null
+              }
+            ],
+            "ciphertext_in_db_files": ["M_CONTINUE", "M_REVIEW"]
+          },
+          {
+            "step": "delete_at",
+            "memories": [
+              {
+                "memory": "M_CONTINUE",
+                "status": "active",
+                "review_at": "2031-07-10T00:00:00.000Z",
+                "delete_at": null
+              }
+            ],
+            "ciphertext_in_db_files": ["M_CONTINUE"]
+          }
+        ],
+        "memory_notices": [
+          { "reason": "review_unanswered", "items": ["memory:M_REVIEW"] }
+        ],
+        "plaintext_found": []
+      }
+    },
+    {
+      "id": "X15-forget-and-late-result-order",
+      "condition": "forget",
+      "faults": [
+        "late_result_before_forget",
+        "late_result_after_forget",
+        "unrelated_late_result"
+      ],
+      "expected": {
+        "variants": {
+          "late_source_before_execute": {
+            "variant": "late_source_before_execute",
+            "events": {
+              "late_from_forgotten_source": {
+                "saved": true,
+                "status": "active"
+              },
+              "late_from_unrelated_source": {
+                "saved": true,
+                "status": "active"
+              },
+              "execute": {
+                "attempts": [
+                  {
+                    "ok": false,
+                    "reason": "replan_required",
+                    "reasons": ["forget_plan_stale"]
+                  },
+                  { "ok": true, "generation": "1" }
+                ],
+                "plans": [["M"], ["L1", "M"]]
+              }
+            },
+            "final": {
+              "memories": ["L2", "M_OTHER"],
+              "turns": ["T_OTHER", "T_SRC"],
+              "ledger_generation": "1",
+              "ledger_file_generation": "1",
+              "visible_memory_markers": ["L2", "M_OTHER"],
+              "notices": [
+                { "reason": "forgotten", "items": ["memory:M"] },
+                { "reason": "derived_from_forgotten", "items": ["memory:L1"] }
+              ],
+              "ledger_notices": 1
+            },
+            "late_after_restart": {
+              "forgotten_source": {
+                "saved": false,
+                "reasons": ["source_forgotten"]
+              }
+            },
+            "ciphertext_in_db_files": {
+              "before_forget": ["M", "M_OTHER", "T_OTHER", "T_SRC"],
+              "after_forget": ["L1", "L2", "M", "M_OTHER", "T_OTHER", "T_SRC"],
+              "after_restart": ["L2", "M_OTHER", "T_OTHER", "T_SRC"]
+            },
+            "plaintext_found": []
+          },
+          "late_source_after_execute": {
+            "variant": "late_source_after_execute",
+            "events": {
+              "late_from_forgotten_source": {
+                "saved": false,
+                "reasons": ["source_forgotten"]
+              },
+              "late_from_unrelated_source": {
+                "saved": true,
+                "status": "active"
+              },
+              "execute": {
+                "attempts": [{ "ok": true, "generation": "1" }],
+                "plans": [["M"]]
+              }
+            },
+            "final": {
+              "memories": ["L2", "M_OTHER"],
+              "turns": ["T_OTHER", "T_SRC"],
+              "ledger_generation": "1",
+              "ledger_file_generation": "1",
+              "visible_memory_markers": ["L2", "M_OTHER"],
+              "notices": [{ "reason": "forgotten", "items": ["memory:M"] }],
+              "ledger_notices": 1
+            },
+            "late_after_restart": {
+              "forgotten_source": {
+                "saved": false,
+                "reasons": ["source_forgotten"]
+              }
+            },
+            "ciphertext_in_db_files": {
+              "before_forget": ["M", "M_OTHER", "T_OTHER", "T_SRC"],
+              "after_forget": ["L2", "M", "M_OTHER", "T_OTHER", "T_SRC"],
+              "after_restart": ["L2", "M_OTHER", "T_OTHER", "T_SRC"]
+            },
+            "plaintext_found": []
+          }
+        }
+      }
+    },
+    {
+      "id": "X16-old-backup-restore-applies-ledger",
+      "condition": "forget",
+      "faults": ["restore_backup_older_than_ledger"],
+      "expected": {
+        "first_backup_generation": "0",
+        "old_backup_ciphertext": ["M", "M_OTHER", "T_OTHER", "T_SRC"],
+        "forget": { "plan": ["M"], "generation": "1" },
+        "sweep_before_new_backup": { "deleted": 0, "needs_new_backup": true },
+        "second_backup": {
+          "generation": "1",
+          "deleted_first": true,
+          "files_in_backup_dir": ["second"],
+          "ciphertext": ["M_OTHER", "T_OTHER", "T_SRC"]
+        },
+        "restore": {
+          "outcome": "restored",
+          "forgotten_applied_count": 1,
+          "approvals_revoked_count": 0,
+          "ciphertext_in_db_files": ["M_OTHER", "T_OTHER", "T_SRC"]
+        },
+        "after_restart": {
+          "visible_memory_markers": ["M_OTHER"],
+          "ledger_generation": "1",
+          "late_from_forgotten_source": {
+            "saved": false,
+            "reasons": ["source_forgotten"]
+          },
+          "late_from_unrelated_source": { "saved": true, "status": "active" }
+        },
+        "plaintext_found": []
+      }
+    },
+    {
+      "id": "X17-private-conversation-not-saved",
+      "condition": "private",
+      "faults": ["private_turn", "live_while_private"],
+      "expected": {
+        "steps": [
+          { "step": "normal_turn", "status": 200, "turns": 1 },
+          {
+            "step": "enter_private",
+            "status": 200,
+            "boundary": { "segment_generation": "2", "private_open": true },
+            "private_conversation": true
+          },
+          { "step": "private_turn", "status": 503, "turns": 1 },
+          {
+            "step": "live_while_private",
+            "status": 409,
+            "code": "private_conversation",
+            "provider_created": 0,
+            "budget_calls": 0
+          },
+          {
+            "step": "exit_private",
+            "status": 200,
+            "boundary": { "segment_generation": "3", "private_open": false },
+            "private_conversation": false
+          },
+          { "step": "normal_turn_after", "status": 200, "turns": 2 }
+        ],
+        "visible_turn_markers": ["NORMAL_1", "NORMAL_2"],
+        "plaintext_found": []
+      }
+    }
+  ]
+}

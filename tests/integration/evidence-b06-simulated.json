@@ -1,0 +1,2532 @@
+{
+  "status": "recorded",
+  "description": "B06-09 の模擬結果。commit は実行時の基点、source_sha256 は未コミット差分を含む検査対象の正確な内容。保存期限の掃除・記憶と忘却の命令・忘却の Core の経路・バックアップと復元・記録しない会話をつなぎ、行・知らせ・台帳と、合成の目印の平文・暗号文を DB・WAL・台帳の別ファイル・バックアップ・ログから探した結果を手書きの期待値と突き合わせた。忘却と遅着の順序は seed ごとに入れ替えた。実機の Mac mini での実際のバックアップと鍵の復元・実 API・実請求は未実施（B15）。memory_save・memory_correct の Core の経路・発言からの忘却・知らせを端末へ運ぶ経路は未実装で観測していない。",
+  "command": "node --test tests/integration/b06.test.mjs",
+  "source_sha256": [
+    {
+      "path": "apps/core/src/api-auth.ts",
+      "sha256": "b1a025ca398e6e1eaa82c66fa47437d31aff32f439dfe9cc89185c79f7325d1f"
+    },
+    {
+      "path": "apps/core/src/api-auto-actions.ts",
+      "sha256": "373ad7a5f512ee59e07d0354d45309850b7d90054f8d01af2b25bbcdc7bd144b"
+    },
+    {
+      "path": "apps/core/src/api-budget.ts",
+      "sha256": "445fcc075da776d52dd091526cd318620464aa310faadbc82caf4fb907a69876"
+    },
+    {
+      "path": "apps/core/src/api-candidates.ts",
+      "sha256": "6094b1038277b9c144d1e301fc64e799dd342d2d954028c4c3c2074348acaddc"
+    },
+    {
+      "path": "apps/core/src/api-connections.ts",
+      "sha256": "cb11624deabbe6647c0115ee7377d891ad31ba06bab0df469d2da0e55e20a08f"
+    },
+    {
+      "path": "apps/core/src/api-contract.ts",
+      "sha256": "046688206cad9267c905a0c2f292be5ff92ebab1fea94ad13caea20af4992c16"
+    },
+    {
+      "path": "apps/core/src/api-environment.ts",
+      "sha256": "87d3834173609b51efbd6d0e4d1a9a10de99e040c2fd006d41d501938924bc0f"
+    },
+    {
+      "path": "apps/core/src/api-forget.ts",
+      "sha256": "875d9f4720e3a2d83c8f8158ef0be7db41f7c65e1396a122b3dbfcc77a294c12"
+    },
+    {
+      "path": "apps/core/src/api-home-network.ts",
+      "sha256": "daf27374655e62baf6aa77dddd26c9be5cd88afe2eb3dbec48c5375faf464e7f"
+    },
+    {
+      "path": "apps/core/src/api-household.ts",
+      "sha256": "4308804597e64625dd638d2a67831afbd46107f0377fe4f52ecf0938637f661b"
+    },
+    {
+      "path": "apps/core/src/api-memory.ts",
+      "sha256": "eb1286c69130ec1c07ecf12adaed3d21379274dd9ea5f374a676da6ca10456b4"
+    },
+    {
+      "path": "apps/core/src/api-operations.ts",
+      "sha256": "2f2efbe0c785f6e5ea8025212e5106fa1df76100852888bb18d76412cc1fb82d"
+    },
+    {
+      "path": "apps/core/src/api-pairing.ts",
+      "sha256": "a108e0df965c2a3f67a7de32bbc258272a783349387632cd8524a666e36d4e05"
+    },
+    {
+      "path": "apps/core/src/api-routes.ts",
+      "sha256": "544fb337c0c945aa1ce00a899b77869b1c2c293ccac2258bfd431cec52edb286"
+    },
+    {
+      "path": "apps/core/src/api-server.ts",
+      "sha256": "31524b54f5d3bc5e6837b928954ee09f5e09a091b7eb9c3ae7dc416c257ecaf7"
+    },
+    {
+      "path": "apps/core/src/api-test-support.ts",
+      "sha256": "4f5aa16961d9d8b4f6e76be9bbef533514b911c087296539cbc291273cc5fad8"
+    },
+    {
+      "path": "apps/core/src/api-turns.ts",
+      "sha256": "ed5b973c463c209b29936093420a090979279e1fd98279d21ad2d66c2ab63b7b"
+    },
+    {
+      "path": "apps/core/src/api-voice.ts",
+      "sha256": "ec7dea2a99bc843aff410d7be2fd1fe9e13a8c7bd279ce78d40d600372d08d53"
+    },
+    {
+      "path": "apps/core/src/backup-config.ts",
+      "sha256": "7b5482d39cc5856413f9d0651c2842bd95ae6d4c2077aaa51f66b8a554e39c76"
+    },
+    {
+      "path": "apps/core/src/backup-control.ts",
+      "sha256": "a53cf9d549acb61c0e7209cbcfa72e099293424c252cae89cdedb468ea043bf7"
+    },
+    {
+      "path": "apps/core/src/backup-files.ts",
+      "sha256": "b12420afd3ccd2d3d9426e3638953a6a20c61a50aed63edc86bf8fb0afd1d002"
+    },
+    {
+      "path": "apps/core/src/backup-service.ts",
+      "sha256": "df6735c26c4452413ea2bbe9220e77c8f3529b6b268bd21f33b36f4f4bccfc04"
+    },
+    {
+      "path": "apps/core/src/backup-setup.ts",
+      "sha256": "8caa208e1858ab7b0df01ff7ae6acfd363e5d88e99b71c7f954b6bddbbb65172"
+    },
+    {
+      "path": "apps/core/src/budget-config.ts",
+      "sha256": "fdf56cfb61666697e11f7c92e8461ce9ac51e67de6aa2ab2509914617e8a211c"
+    },
+    {
+      "path": "apps/core/src/budget-credit.ts",
+      "sha256": "503dcd9b069b8e224d842cf6401ccceb656c7447f6f642c6f62cc66e85046e25"
+    },
+    {
+      "path": "apps/core/src/budget-gate.ts",
+      "sha256": "93b93fbabb799c3a66d61d330647c7017e1afdc8acde2de2bfbd20d7c04b994d"
+    },
+    {
+      "path": "apps/core/src/budget-test-support.ts",
+      "sha256": "2ce8dc105d8bbe1145abc974fc53a0e1b64c5f7d1bb69beac6452b8c69ef0fa2"
+    },
+    {
+      "path": "apps/core/src/candidate-intake.ts",
+      "sha256": "f0a2b157e7bc824035c75066ea51547fbaaf36026abe87bdb5b93843d8076dfc"
+    },
+    {
+      "path": "apps/core/src/candidate-list-refresh.ts",
+      "sha256": "b0bc35ca4bdf96fb2c3f9bf5ae35da90a046e713e4c96923ed134c70192c4f06"
+    },
+    {
+      "path": "apps/core/src/candidate-maintenance.ts",
+      "sha256": "c44d43a4bed30c598fae81cd307d2557421923c1603ee2584b4b4d9b0ab655d2"
+    },
+    {
+      "path": "apps/core/src/canvas-content.ts",
+      "sha256": "45d43bf6486c63b11db3ecf1228f64be3663b9d93cc091afb25270cb24581fed"
+    },
+    {
+      "path": "apps/core/src/canvas-stream.ts",
+      "sha256": "ae834e2b6eb0fa26a18e3fd47d775bd362a0da1ebebbc88855b1e9c02febfee8"
+    },
+    {
+      "path": "apps/core/src/clock-state.ts",
+      "sha256": "d97d73168688fc7121073e0818f05f4c48d80940af7489a2f6f141abca9b718a"
+    },
+    {
+      "path": "apps/core/src/connection-discovery.ts",
+      "sha256": "fd839eba4e8ac439647af9d81fcc338a85dca2fcdb78c765a4c186606e49002c"
+    },
+    {
+      "path": "apps/core/src/control-channel.ts",
+      "sha256": "0f6aae85281b7b755b5c02f21cb7ac6f6663ad9762b413a647d6513f2216d2b3"
+    },
+    {
+      "path": "apps/core/src/control-protocol.ts",
+      "sha256": "dc24d3586e8e6d8187eb681d4f1d23a9bef749e1908fd58e0878b06c2876a2f8"
+    },
+    {
+      "path": "apps/core/src/core.ts",
+      "sha256": "c995a6d39d6499e590c7d577e5a282d6ed026d476e50d74803a39df8104936ed"
+    },
+    {
+      "path": "apps/core/src/data-dir.ts",
+      "sha256": "c20d6d7153290730b1cbc4ccdfb1a6e78e9fbf28170ecc1c90acbac795bcb1f9"
+    },
+    {
+      "path": "apps/core/src/der.ts",
+      "sha256": "43d74199f7bed8a1226ba421bd4c0f5a806af2d0bf05fc387baefe726df389c6"
+    },
+    {
+      "path": "apps/core/src/device-connections.ts",
+      "sha256": "4b5f8fc7fce7ff5dc8574f8437fb6af73666751496a5f12a7fdcc6a14b2da6e2"
+    },
+    {
+      "path": "apps/core/src/device-time-zone.ts",
+      "sha256": "e17c360a19338dff19fb7f724a37744ed253c012e93d7f49ab6b114405ab5ccf"
+    },
+    {
+      "path": "apps/core/src/event-cursor.ts",
+      "sha256": "8ba5c2e6963dca8ea3c7b5d173f5f245f8ecb04ceec1d48b2281903e8fabe4fc"
+    },
+    {
+      "path": "apps/core/src/event-feed.ts",
+      "sha256": "ebff8d8591e8252946eea73edbe28b21e780644232fde095b7bacd353c3b1c93"
+    },
+    {
+      "path": "apps/core/src/event-stream.ts",
+      "sha256": "8d12ba33644944a3f144bee47c77ef87980cf67d865cf1fc0db77322ea5fd8d1"
+    },
+    {
+      "path": "apps/core/src/forget-ledger.ts",
+      "sha256": "2a8bb62c41b1940eca126b80cb92d15a0fbcc1bea9e052ddc8c7585d532c333d"
+    },
+    {
+      "path": "apps/core/src/forget-service.ts",
+      "sha256": "ffd786cf45d0aac9553b16b1de8ea9a03aed073df20ae86e5a1d12cd81f2dd9b"
+    },
+    {
+      "path": "apps/core/src/graph-sync-executor.ts",
+      "sha256": "dd0805793f0150be40e516c9e1f03727d3cfda9faa447fc909c4911ebf56e6c0"
+    },
+    {
+      "path": "apps/core/src/household-bills.ts",
+      "sha256": "cc297b783154005ccdc740b6486870d39f0d1f97c37a1ff16b5bfa0d163ed795"
+    },
+    {
+      "path": "apps/core/src/household-ledger.ts",
+      "sha256": "e342998b586e4374618ffed8a594008fbb6b41c1ff2e97d15304b9eac57e7832"
+    },
+    {
+      "path": "apps/core/src/household-mail-intake.ts",
+      "sha256": "8b58adc5d6002d0d4c9dc284fd6cb82a8780435cce4bda34e790b3a1abab4265"
+    },
+    {
+      "path": "apps/core/src/household-receipt-reader.ts",
+      "sha256": "6da4ca7f908526315ee8bf35236cd5af5430b8c2d9b9c1512ae6e3885e6e815e"
+    },
+    {
+      "path": "apps/core/src/household-receipt-setting.ts",
+      "sha256": "7697821c79b8e01d7d3fffdc2346bc117cc1f3df1048f20751056b700bea8078"
+    },
+    {
+      "path": "apps/core/src/household-receipt.ts",
+      "sha256": "863f8f5d0204def5b220268d207340a0f8d6371ecaa78889be840ae5a67c843a"
+    },
+    {
+      "path": "apps/core/src/lifecycle.ts",
+      "sha256": "2f91ab3dc3d35859f93c66de0011c16c482b0405d0344e8a26f082ecd61ac3f6"
+    },
+    {
+      "path": "apps/core/src/live-budget.ts",
+      "sha256": "46a9e364cd1cc3b755be3151a75d4962b360483a559ecee843c9d77d1aa269fb"
+    },
+    {
+      "path": "apps/core/src/live-conversation.ts",
+      "sha256": "e021be17c805d2ee052f104e063fa6ae10336fd3e62a169f1a34117231d65817"
+    },
+    {
+      "path": "apps/core/src/live-reconcile.ts",
+      "sha256": "0c1dca6d4fc85d0ce4f6e41e938939d35ff7fea415ef1b2814834e1a1e2ace6b"
+    },
+    {
+      "path": "apps/core/src/lock.ts",
+      "sha256": "897e47eeea4fb93ae7d12dffb95bd93d259733a27d58b5c1f44f42b0ebc0696f"
+    },
+    {
+      "path": "apps/core/src/model-https.ts",
+      "sha256": "34e145bf8ec703c301a651ddf5adc7cbcea2c5c61bd71600cd351e41f9747685"
+    },
+    {
+      "path": "apps/core/src/model-interpreter.ts",
+      "sha256": "05bff5086ebcb4ff6890a15ea86be8962b08b83f1d977802cbad3ecae581fa1b"
+    },
+    {
+      "path": "apps/core/src/notice-sink.ts",
+      "sha256": "83ef5ed748fc7211fa0737b06abcdfb71a99aa56324e88b7bb72b256767852eb"
+    },
+    {
+      "path": "apps/core/src/oauth-callback-server.ts",
+      "sha256": "ec0177a7003725f3490c7822e6b894e8032069e707406d27426dd16ae36d0339"
+    },
+    {
+      "path": "apps/core/src/oauth-provider.ts",
+      "sha256": "19e47c6f71848c09dca327c7386ab688c0c3f02a446acfec38c0bebaf25c364b"
+    },
+    {
+      "path": "apps/core/src/oauth.ts",
+      "sha256": "8f8b56a22153a8187b8f267824f0209cffc53e6f493c3285af42cf19409166d7"
+    },
+    {
+      "path": "apps/core/src/operation-runner.ts",
+      "sha256": "921067c22153f13ce6f58ff96c48d4425ed15c2230c626ffdd01197130fc37fb"
+    },
+    {
+      "path": "apps/core/src/paths.ts",
+      "sha256": "39dc5c3db0ff15761cc4a9480d2ee2deaca6fa7fc74f674e9c9d4beb04080c04"
+    },
+    {
+      "path": "apps/core/src/preflight.ts",
+      "sha256": "9b1578ed2b120a97b8ae6f1a14c45b3941b4c0e9108965af03b6a22a155fa8aa"
+    },
+    {
+      "path": "apps/core/src/previews.ts",
+      "sha256": "c426f2d232d7fb72d217b5d599fa0c4369136c66dccf343ea78d81184d1c026b"
+    },
+    {
+      "path": "apps/core/src/provider-sync-executor.ts",
+      "sha256": "067bae33742dea0e9767ad27940fcb117c03b8bb0a99961261d0fa0f19d44b6c"
+    },
+    {
+      "path": "apps/core/src/recovery.ts",
+      "sha256": "b670c324ca04f699c404b34ae4fd0a6bc1872e6eabebc0ce40e6c960160fb78d"
+    },
+    {
+      "path": "apps/core/src/research-executor.ts",
+      "sha256": "af609c60c3c0cf25dec205be8ec4e7ded132ab61c427710f914bb83b7c68e7f7"
+    },
+    {
+      "path": "apps/core/src/restore-check.ts",
+      "sha256": "885a879b486ccdeb598ee1d8149a885c00253540414fd8b1278dddf89773df9a"
+    },
+    {
+      "path": "apps/core/src/restore-install.ts",
+      "sha256": "405787ade05612bd6b131b79cbf92c0f5615e8d2f1e5252586248da2755c8ba6"
+    },
+    {
+      "path": "apps/core/src/restore-run.ts",
+      "sha256": "0828ef64e7b5652b10994029bd1a88a4ef7703b51b513252eb4247c90cd31acb"
+    },
+    {
+      "path": "apps/core/src/retention-sweeper.ts",
+      "sha256": "673e5da744a2456ff2fc9cea5e54203dab3aae4b8c63d004b11fc1353cb7a71a"
+    },
+    {
+      "path": "apps/core/src/shadow-mode.ts",
+      "sha256": "9f2d2c09fbd40fe1eae5876fd468efe897fa94845316007fe5c2def758a8ad91"
+    },
+    {
+      "path": "apps/core/src/shadow-store.ts",
+      "sha256": "4d21c7cbc080d2be409d7e26ca396ba19f347dfa15340d4c9cdc09275053dcfa"
+    },
+    {
+      "path": "apps/core/src/storage-gate.ts",
+      "sha256": "63b3e9a501886dd1f155fe094c809c7985084685b0fa72476b5dc4720ad1aeb4"
+    },
+    {
+      "path": "apps/core/src/strict-json.ts",
+      "sha256": "ab2c3e93d58bb1cfc2bdeed018da16406f87f8046757679b864dfcb399de9514"
+    },
+    {
+      "path": "apps/core/src/sync-executor.ts",
+      "sha256": "3e015dd73dde2f03ffde67543a6ecfce05627ea4a5e8be968a780a4ec2148015"
+    },
+    {
+      "path": "apps/core/src/sync-scheduler.ts",
+      "sha256": "14d1c418963ca84986dc1d645abc6df22ea47cce3e778d9747168debe8a85b47"
+    },
+    {
+      "path": "apps/core/src/task-content-migration.ts",
+      "sha256": "0d33737253361df0f9665ea7daa1defbf5868e6b063c1e72fae1b23acb46c8b3"
+    },
+    {
+      "path": "apps/core/src/tls-certificate.ts",
+      "sha256": "467c8416cfd85a73f848a981828672961937c0be924f189707483848a55848fc"
+    },
+    {
+      "path": "apps/core/src/tls-identity.ts",
+      "sha256": "8b665a6f6b7fc2ac14b333c436bb4e299c1992e32aeb9cb429e72fbb8c4f90a1"
+    },
+    {
+      "path": "apps/core/src/turn-ports.ts",
+      "sha256": "a6d49aa97c7aaa8af394a599a13c87a138f72e82836e47fed20e8f6fad66d9a1"
+    },
+    {
+      "path": "apps/core/src/voice-control.ts",
+      "sha256": "05de411c6d833c87decf3051019fb361b029f10bd8550592ec72594d2121c802"
+    },
+    {
+      "path": "apps/core/src/voice-rig-test-support.ts",
+      "sha256": "9a6aa38c604993e4e118d926ee35211417685df866c2fbf32d209117f52ebc58"
+    },
+    {
+      "path": "apps/core/src/voice-test-support.ts",
+      "sha256": "baee67a04ca97c9c2da5a79db7e78ae351cad1700083caa267e0e6b47144367a"
+    },
+    {
+      "path": "packages/ai/package.json",
+      "sha256": "c21fcdca685aa7ef87f5fb2181ca113b33e9b0bf2616ccf4775020e45383213f"
+    },
+    {
+      "path": "packages/ai/src/adapter.ts",
+      "sha256": "07eddb599d5d63d6200dbe1aada8968f24c57f4947a90aa8d0665eaca27a5420"
+    },
+    {
+      "path": "packages/ai/src/cost.ts",
+      "sha256": "690c2fd342dfa46ae3e70a40a4572a79c99acd4be04763859e721a6ffe08c027"
+    },
+    {
+      "path": "packages/ai/src/extraction-evidence.ts",
+      "sha256": "30c764b9156e03f4ac23540f0deeea1c8483e80eb75cdee1555f43b0399fe773"
+    },
+    {
+      "path": "packages/ai/src/extraction-input.ts",
+      "sha256": "b54036eb002399edbfd8dcf95e26f8965a9157b03e3692126de15143d8f19b6e"
+    },
+    {
+      "path": "packages/ai/src/extraction.ts",
+      "sha256": "ea81fe07c61a19e2ec90a0c5604f22d95ef04e567e5589e223c8942ea6e7f94b"
+    },
+    {
+      "path": "packages/ai/src/gemini-codec.ts",
+      "sha256": "961e3a4857b28170bd7fc0a1a644cbfe414334c9c6c894c62d0c2ec13df61b50"
+    },
+    {
+      "path": "packages/ai/src/index.ts",
+      "sha256": "13639481c217bda895f5bb1cefda9d554b419397a4886bc74f0e7e5046c1ed2d"
+    },
+    {
+      "path": "packages/ai/src/intent-judgment.ts",
+      "sha256": "f5e14932f57412c244451a477dfa9f896237b0acfd949591ffd1b5957cf0d17d"
+    },
+    {
+      "path": "packages/ai/src/local.ts",
+      "sha256": "16f318abfa2814d555ed93f069ee288b615267e624605124d0c305b6b1b94db5"
+    },
+    {
+      "path": "packages/ai/src/reservation.ts",
+      "sha256": "9aab0257dfb1a14ce14345c35e2e1c44809f615a51fd9da25eebce5c9cb695f7"
+    },
+    {
+      "path": "packages/ai/src/routing.ts",
+      "sha256": "9e8196b59af93dc32f2f89bb2d7ea40c1b9d85bcdeccfe5d81d075da4dbe6540"
+    },
+    {
+      "path": "packages/ai/src/scheduler.ts",
+      "sha256": "399182cd580fb242818422d25c938a5698ecf1268ae8a0c1335b92ce00fc9cd3"
+    },
+    {
+      "path": "packages/ai/src/settlement.ts",
+      "sha256": "fb8462d812f0ff1647853981a0b07d35353a91da0a598264ea76a0e678e57c95"
+    },
+    {
+      "path": "packages/ai/src/validation.ts",
+      "sha256": "cf6c0203cb2b6cc25ddb8790fea45b85925d6ad915e2159e650bf4d7754a613d"
+    },
+    {
+      "path": "packages/connectors/package.json",
+      "sha256": "f02689d223bbc6be11b747d73ad85259a54d65527c2f42387f7dd63cf229170c"
+    },
+    {
+      "path": "packages/connectors/src/adapter/capability.ts",
+      "sha256": "2f7cbd414d19d0f31769973220b76855f4374e44f649d56574cca40e3ea26c97"
+    },
+    {
+      "path": "packages/connectors/src/adapter/google-calendar.ts",
+      "sha256": "effbcb1414fce3a32664663500ac22abfbb0c70c77f3eb11c53c133d2cbc3739"
+    },
+    {
+      "path": "packages/connectors/src/adapter/google-connector.ts",
+      "sha256": "aaf4d05b4f2565ff8fb08a5342f7064f49342aa856eecf92fe97e82efb063a23"
+    },
+    {
+      "path": "packages/connectors/src/adapter/google-gmail.ts",
+      "sha256": "b8328bc8172ccc93a0eba04c5bae51b7d0654d9d4c8184c1fff9e8429fa3e37d"
+    },
+    {
+      "path": "packages/connectors/src/adapter/google-http.ts",
+      "sha256": "2db8aa8c06d9e170d7c1ec3914d68a81524e937309c09c39a902a754fc62ec00"
+    },
+    {
+      "path": "packages/connectors/src/adapter/graph-mail-connector.ts",
+      "sha256": "d6693dc98f751cda0647c50a942fa7d5bd0f1c77aa1bbe2e6603931115f4cc94"
+    },
+    {
+      "path": "packages/connectors/src/adapter/graph-transport.ts",
+      "sha256": "1af8f89c67706f56521634279903e98c8010a44145b2bb34945edbe46a8c4e34"
+    },
+    {
+      "path": "packages/connectors/src/adapter/http.ts",
+      "sha256": "033e50d3bffe4a681d2d1f7c57020cda52277387e72363cd037fca1d9c01df4d"
+    },
+    {
+      "path": "packages/connectors/src/adapter/mock-mail-connector.ts",
+      "sha256": "964c174c733d11a25ec3358feeaec6d849e81193322714e9c45494c51e4e9722"
+    },
+    {
+      "path": "packages/connectors/src/fault-injector.ts",
+      "sha256": "762249cb004922cb4617362d4edb560c21c6fa4d6c0c9f12db7141c0d19872cf"
+    },
+    {
+      "path": "packages/connectors/src/index.ts",
+      "sha256": "2ab9bd2449f51b2f0bedbc3eb72a3a5c186b05ef4a97e286e78907db0d3bb167"
+    },
+    {
+      "path": "packages/contracts/package.json",
+      "sha256": "6cd27a9ea0611df4311f9b8ad4cda55b5506260e06fcef0849f57829e004ad0f"
+    },
+    {
+      "path": "packages/contracts/schemas/buddy.schema.json",
+      "sha256": "0b7eaf722adf798eb33702c5d42380dfc9a05290f187e6e9f39259fbb9fc7945"
+    },
+    {
+      "path": "packages/domain/package.json",
+      "sha256": "f7fbd22f2e3805de1a05abd8e85a748a1443ae55fea009442660aac5418dc135"
+    },
+    {
+      "path": "packages/domain/src/analysis.ts",
+      "sha256": "2a784a9338efe01b3053fc8fc69996def2e79e876bf4076caa335dd706071bd2"
+    },
+    {
+      "path": "packages/domain/src/api.ts",
+      "sha256": "9d1cf82a1b9ee8a479551b79cc8460df878e787c1c6f69d5cf63b163e882ecba"
+    },
+    {
+      "path": "packages/domain/src/approval.ts",
+      "sha256": "6cde59af789c82674eb7fdbce8da7628a5a468bdcbfc16780c60a7725a53fcd8"
+    },
+    {
+      "path": "packages/domain/src/audio.ts",
+      "sha256": "a801ed9ae08f25dd013524afe407758e82c9b6a552615f91f55afd1245be0292"
+    },
+    {
+      "path": "packages/domain/src/auto-execution.ts",
+      "sha256": "124369250c37fc977929e5f881a995d0192cd64d9d942814116722e68a95d58e"
+    },
+    {
+      "path": "packages/domain/src/backup-keys.ts",
+      "sha256": "b13e38257d064384c8ddae07b57794d8a4a7bdd3f40d8af74c9e78c47d8b04a9"
+    },
+    {
+      "path": "packages/domain/src/backup-plan.ts",
+      "sha256": "f0dbd19a1805d1947fb91ee518cbf63d5f1c9cfd8eb1580ae0872ae9a8e3ca47"
+    },
+    {
+      "path": "packages/domain/src/budget-credit.ts",
+      "sha256": "a0b695683125b668f6fd353c9a8861523861b36d195ebfdea4158b531f7376a0"
+    },
+    {
+      "path": "packages/domain/src/budget-gate.ts",
+      "sha256": "fcc724aa3eb3e4e803887af99a127ca6ff885e1d468d609367c95de80f38f863"
+    },
+    {
+      "path": "packages/domain/src/budget-money.ts",
+      "sha256": "905b9100ee097e43f237b6625d8bbfa3b6b055a101931c58198be5b2c4717106"
+    },
+    {
+      "path": "packages/domain/src/budget-rules.ts",
+      "sha256": "caed1d4969c8c88a655091f34d1f972755cccd514ac1c76e5fd89ac699197e5e"
+    },
+    {
+      "path": "packages/domain/src/budget.ts",
+      "sha256": "65d5b7def7c5a8479f724c39311d448ee34f8bea2fd261d8fe1a21e5aa9263c7"
+    },
+    {
+      "path": "packages/domain/src/candidate-lifecycle.ts",
+      "sha256": "655437cb856fcda50351ea6384cd376b09c93f3224817acd4f83a04b5ed1dce6"
+    },
+    {
+      "path": "packages/domain/src/candidate-notification.ts",
+      "sha256": "8d955c2b59943cf481bfa187cb82e760af03061ce8a95c739aa7f974e592c449"
+    },
+    {
+      "path": "packages/domain/src/candidate-order.ts",
+      "sha256": "c59fd2e6c167cbc6e4513c5ee503256e47562c3712995b599243440e8ec431cf"
+    },
+    {
+      "path": "packages/domain/src/candidate-text.ts",
+      "sha256": "cf57fb44ff7e98ce78dfe596789374c4994ed8b6027b561f29d8786ed3760524"
+    },
+    {
+      "path": "packages/domain/src/candidate-time.ts",
+      "sha256": "5158e387a9fbc0f41353baec2b2645918409425abb91da61e781c474d5af1626"
+    },
+    {
+      "path": "packages/domain/src/candidate.ts",
+      "sha256": "44b09b5125f8b30a973cfa341e1ecf331243f07886299a6fe46852a39818b33b"
+    },
+    {
+      "path": "packages/domain/src/canvas-content.ts",
+      "sha256": "6c4e0cea651e841fe04b8867f2974abd23d2b3e1ad62898b636271f534ea27ef"
+    },
+    {
+      "path": "packages/domain/src/canvas-layout.ts",
+      "sha256": "e35d8f642c786dbedc64e80304e58eed195cda71e8dd524110fdd9400aaea7c9"
+    },
+    {
+      "path": "packages/domain/src/canvas.ts",
+      "sha256": "c0d88c3370a2b48fc2025295a377658a424b7e441519cded7564031d161a43be"
+    },
+    {
+      "path": "packages/domain/src/connectors.ts",
+      "sha256": "ac4a33691465e9fb64f484edfe337e813eabbc2d455616b26b83dab90d2baba0"
+    },
+    {
+      "path": "packages/domain/src/conversation.ts",
+      "sha256": "9f4b45e0f35f325ef8fdcd9fe09d998c8459dd6e8324887bc63f80ec88e94444"
+    },
+    {
+      "path": "packages/domain/src/desktop.ts",
+      "sha256": "be9a524570c44854567692088ea6c3715355b8ea9e4b8289f8606a5bef89e63f"
+    },
+    {
+      "path": "packages/domain/src/dispatch-guard.ts",
+      "sha256": "d356f905084b719a3fef4b5a4154a17ce6f26fd9ee4e72346f86ce80fd73b39d"
+    },
+    {
+      "path": "packages/domain/src/evaluation.ts",
+      "sha256": "acaf00285dfe320483a122950009531df69a52395f16d4e373719c8ef4be1077"
+    },
+    {
+      "path": "packages/domain/src/extraction-filter.ts",
+      "sha256": "7de1c0f2d6744eb501d968459cb176fd897b6da6846a6bbd8e828375339b1326"
+    },
+    {
+      "path": "packages/domain/src/extraction-source.ts",
+      "sha256": "668bdc25643381ee51f088ce271a0140794f4b57bd506fb7b6c6394faa8bd50c"
+    },
+    {
+      "path": "packages/domain/src/extraction.ts",
+      "sha256": "ab7d8dd153c04c3ca3eccd92553c1f924e897e22a779d4f1831256b4edc57121"
+    },
+    {
+      "path": "packages/domain/src/fetch-scope.ts",
+      "sha256": "447b30d80211dd2e561665790d8bcd95db38088d41473a5f2ec4f482b46400b3"
+    },
+    {
+      "path": "packages/domain/src/forget-plan.ts",
+      "sha256": "b93ab87d43f60ddce06eb302ca096935f12090564f40db5a877679cdfc219043"
+    },
+    {
+      "path": "packages/domain/src/forget-review.ts",
+      "sha256": "c0d68bfbf03efea312f92b4b37730f653121534c007d796600d0eed2e0c38508"
+    },
+    {
+      "path": "packages/domain/src/graph.ts",
+      "sha256": "359126c52c112f33c582ee8a7f597172f78bb608ef672462f686020720477789"
+    },
+    {
+      "path": "packages/domain/src/home-network.ts",
+      "sha256": "9e430879d139690a007c721207f3f07e1bfdb029ab66ce21e399d2baeb3633c7"
+    },
+    {
+      "path": "packages/domain/src/household-bill.ts",
+      "sha256": "5fefc584b2d84eb63cfbfcc04f4d7ef7418f028d424392c425f1172a7ce9bb1d"
+    },
+    {
+      "path": "packages/domain/src/household-budget.ts",
+      "sha256": "c7763ea77e14e98c911edaf7cfcbe4bbf104f46637de4410026daa17d6f85bf0"
+    },
+    {
+      "path": "packages/domain/src/household-duplicates.ts",
+      "sha256": "a053e04a77a9a8927af485284bd723d5a7930b15dc5dd9a86cdae672ca8d87e1"
+    },
+    {
+      "path": "packages/domain/src/household-export.ts",
+      "sha256": "2bd5f8519657957d0acf1aaca628c0200fbb81048d508afb74d021883ea7df5c"
+    },
+    {
+      "path": "packages/domain/src/household-import.ts",
+      "sha256": "d78c8225a650901b1764cbe23d0df949f0ce2c28e547631a5028f6b5c4d6ed0f"
+    },
+    {
+      "path": "packages/domain/src/household-notice.ts",
+      "sha256": "abae5ef4944d550205919f4b249344ab0860af6f33437f0eb9b0740596b26eb3"
+    },
+    {
+      "path": "packages/domain/src/household-receipt.ts",
+      "sha256": "9cc626d934857f08070fd59c69d43cb901b78e2e464b9efe8a3ea34fa623e46d"
+    },
+    {
+      "path": "packages/domain/src/household-recurring.ts",
+      "sha256": "16171f3dfd0c9a7c4316c4f9180dcd06f68070338de50baadad0df2c09f42e8e"
+    },
+    {
+      "path": "packages/domain/src/household-utterance.ts",
+      "sha256": "7c735af86f5082993dee66175b90bc942e19bbbb9933fea690bf82e8702c567c"
+    },
+    {
+      "path": "packages/domain/src/household.ts",
+      "sha256": "b48b420b2c63c39637d70fa8410d50af0e5491ae28b438008a397ab170bafad8"
+    },
+    {
+      "path": "packages/domain/src/hub-host.ts",
+      "sha256": "5aa40a1ccdaf90e7d90dc914be62076cea36a1b2c1e4f7bd21f826e7c5dbec61"
+    },
+    {
+      "path": "packages/domain/src/index.ts",
+      "sha256": "fad30e1b0979b73d8563ca87fc105c1de4362f118ce3aee010da5b79a2c5d06c"
+    },
+    {
+      "path": "packages/domain/src/intents.ts",
+      "sha256": "c863aff91af74c0caf76a348e583b7df8eb298a1fa0654909d97056ddafc65a2"
+    },
+    {
+      "path": "packages/domain/src/late-result.ts",
+      "sha256": "2b5033b3a1b17c380f729de6a30b9afbfe2bf55acd9ba183b64a6d7374585f11"
+    },
+    {
+      "path": "packages/domain/src/listen-address.ts",
+      "sha256": "b952327462a660a2afba81b4fa2e45e75eb45ea85267a9657ed7d2c434515ebe"
+    },
+    {
+      "path": "packages/domain/src/local-time.ts",
+      "sha256": "99d729c3374a6a94470f1a6822f2fc4037f49195f95fba895884917dc13a4285"
+    },
+    {
+      "path": "packages/domain/src/memory.ts",
+      "sha256": "e4d33cf3efbb7ea1a58b18b8dac1b18d6ae6496267d5749dd1a6779fefc51a90"
+    },
+    {
+      "path": "packages/domain/src/notification.ts",
+      "sha256": "4ac8e2f9803a860c417aa3c605631b32ad77f0487cc2cb6bc734fbe9106b39c0"
+    },
+    {
+      "path": "packages/domain/src/operation-steps.ts",
+      "sha256": "48492f5666047ad736fc2dc2f5cd86b6799eb267401a4d73da9e8c11bf6953e0"
+    },
+    {
+      "path": "packages/domain/src/operations.ts",
+      "sha256": "21f93fb3098cceb239c4fd4732908a4fbc5f4480b8b4e6646e3234fa3a48e659"
+    },
+    {
+      "path": "packages/domain/src/readiness.ts",
+      "sha256": "f61ff1b9737ab29db8197efebd047cbdecce1bde88794d523a0071f0285e844c"
+    },
+    {
+      "path": "packages/domain/src/reply-text.ts",
+      "sha256": "bd4f88e53d2d0376ef8c34bcb81b821d90bfa8365788192cedb97d0ead05c0f7"
+    },
+    {
+      "path": "packages/domain/src/response-plan.ts",
+      "sha256": "3a89fb2ecf371736d9c7ab83f916ca15670fe64b039cf94e27312fb91c364900"
+    },
+    {
+      "path": "packages/domain/src/restore-aftermath.ts",
+      "sha256": "e63eaf93f2898cdb8b27f41cb1500e1a2060e14c6c985bc7e97e5357982180bb"
+    },
+    {
+      "path": "packages/domain/src/restore-plan.ts",
+      "sha256": "6fb6c2ad7c7c634baca7b09a1c9495614fd3a65660dcf2436cce27c9e8e0e759"
+    },
+    {
+      "path": "packages/domain/src/retention-sweep.ts",
+      "sha256": "70f52cba3896e0208fd7be9d68da344f9d6611a96818abedc014ba4ff5d75b3e"
+    },
+    {
+      "path": "packages/domain/src/retention.ts",
+      "sha256": "c51e08a6d92f0ab39a6332a26f099ada175c333b8e105b760273c7da35e1d74f"
+    },
+    {
+      "path": "packages/domain/src/schedule-overlap.ts",
+      "sha256": "102e465ac854c66b837c5f6aa4c5b5c066df828fe51f0a112a1056ba63595e7f"
+    },
+    {
+      "path": "packages/domain/src/storage-mode.ts",
+      "sha256": "d6c69b1d8a48e3c449f3f9384462489d17cec4ff1733563e42c772a13966499e"
+    },
+    {
+      "path": "packages/domain/src/sync.ts",
+      "sha256": "c5509b9d99b979d8cf4658c807e155cc2203e0096536157bc88205f25ec9aee6"
+    },
+    {
+      "path": "packages/domain/src/target-discovery.ts",
+      "sha256": "0f07382c5424b0cf34a1d88115b25320344bf36d65b2a4c76b59330277d344bc"
+    },
+    {
+      "path": "packages/domain/src/voice-commentary.ts",
+      "sha256": "0f5bdde1fceba7afcb9ad1bba12aa914265f569d4d56c992e765ddf315c03aec"
+    },
+    {
+      "path": "packages/domain/src/voice-input.ts",
+      "sha256": "15450031b90a693b707f018056dd4ebdcba2294d4dff34b661256016fe92e8e2"
+    },
+    {
+      "path": "packages/domain/src/voice-interaction.ts",
+      "sha256": "a0f552730fbbf9fd28390fc6242173d75bc08320e24881575ea3df1ccf5edab5"
+    },
+    {
+      "path": "packages/domain/src/voice-lease.ts",
+      "sha256": "4e883fa59a69bf12547d9eae0782e4f45f9e973f0066e4fb967bd3db7c4ea96e"
+    },
+    {
+      "path": "packages/domain/src/voice-live-input.ts",
+      "sha256": "dab6041c035d5ac5588ffb994071b2c39181d933e004615723c674b341a2363c"
+    },
+    {
+      "path": "packages/domain/src/voice-notification.ts",
+      "sha256": "48b49a55d6713763b208ce04338b79eae17d77c3ef7146cb549644a0bfc79b69"
+    },
+    {
+      "path": "packages/domain/src/voice-ownership.ts",
+      "sha256": "50280cf059c4903e231d4678b777c74fe32e18fc7d46847d6d377e5254a54165"
+    },
+    {
+      "path": "packages/domain/src/voice-reservation.ts",
+      "sha256": "26a1a5a018cbcc9edb8c94e97e0b9dac53de6c232d621fed0df341b5596db778"
+    },
+    {
+      "path": "packages/domain/src/voice-silence.ts",
+      "sha256": "b439f41c068ba84f4c26b4847c61eefe6944ebff91f256ef043027165ef07903"
+    },
+    {
+      "path": "packages/domain/src/voice-start.ts",
+      "sha256": "5ac223bbf27e61576b559f938fa15e86d161876468e33f31d0d1ab76302ed699"
+    },
+    {
+      "path": "packages/domain/src/voice-stop.ts",
+      "sha256": "59b86938c4e204938391404ec04c797d53d8e1d083d11b0df834ce083b7af7b3"
+    },
+    {
+      "path": "packages/domain/src/voice.ts",
+      "sha256": "6a28c15f32854dccde8a325fcabf1731106d673c108db8c2ffce8545095859d1"
+    },
+    {
+      "path": "packages/domain/src/web-query-screening.ts",
+      "sha256": "494319bc71d61a6e5139acda334537388058714dd29a5730f4f9080602484237"
+    },
+    {
+      "path": "packages/domain/src/web-research-limits.ts",
+      "sha256": "d623bb2916409abec8f48bdb8661c4f4ab4096a1f00c07fbb2d057a5ba2ccbbe"
+    },
+    {
+      "path": "packages/domain/src/web-research-status.ts",
+      "sha256": "3c6cf92bdbaa461a5f22c21bd31b757e8e51a46e8ea4a7c9d4d214ab3c7bc2bc"
+    },
+    {
+      "path": "packages/domain/src/web-research.ts",
+      "sha256": "e7fc1eb59df69eb5168ce5b9ef1db752150896e42f0578e0a735b50684b0e003"
+    },
+    {
+      "path": "packages/platform/package.json",
+      "sha256": "77b287eb4a67d4b1d06cb9e650c5abd2bdbf925ea74fa26da82ad7ad28e567ae"
+    },
+    {
+      "path": "packages/platform/src/backup-key-store.ts",
+      "sha256": "f7679d3e74a563363a07e62fd55ed554f8a2144b8c52376015c6a5bf4e889e41"
+    },
+    {
+      "path": "packages/platform/src/home-fingerprint.ts",
+      "sha256": "17cbcaf730471f830a687e8466901cee98897b3139b8b41a6db6b222b58e8a87"
+    },
+    {
+      "path": "packages/platform/src/index.ts",
+      "sha256": "87308ef4b619b76f1f64653ab2dd5c420040d883f3ee591f15b76e35388fcfe2"
+    },
+    {
+      "path": "packages/platform/src/key-protection.ts",
+      "sha256": "18a6abe9fe83a85c9e9acd8bec940f592f42c2b55c1119b2cd6b61753a3c8b81"
+    },
+    {
+      "path": "packages/platform/src/key-store.ts",
+      "sha256": "7fb0c2cec955cbf21ffc4dc42299101fc7a7cd1780da6e3575ff1dd790410114"
+    },
+    {
+      "path": "packages/platform/src/macos-diagnostics.ts",
+      "sha256": "8e512ae6786f6c54cae8ce0580f4886f812d06d6382a6fd525c96f0ef87a0018"
+    },
+    {
+      "path": "packages/platform/src/macos-launch-agent.ts",
+      "sha256": "befe69f4c09a30dc685eefb6795473eeb4dba08a4dbdf6020872a1e6e28f8734"
+    },
+    {
+      "path": "packages/platform/src/oauth-token-store.ts",
+      "sha256": "a94c6dbeed6ce8aa8aa8f8574e11f9149a78adc6af4b2a325ed3fe30ea5ecae3"
+    },
+    {
+      "path": "packages/platform/src/runner.ts",
+      "sha256": "8b4d03b373310a4d7f0ff6db21f0d1353cd2f859831d41209193c0dffc249f7a"
+    },
+    {
+      "path": "packages/platform/src/startup.ts",
+      "sha256": "50a31b95809d78e08765a91e19ad3f9a449d1002ab729f02c688e7e758e51d14"
+    },
+    {
+      "path": "packages/platform/src/supervisor.ts",
+      "sha256": "f49b530c5d50ac95f04d3bcaa3c383f05ab579649c7d38a577fcf2dbfc305b9a"
+    },
+    {
+      "path": "packages/platform/src/tailscale-status.ts",
+      "sha256": "5d19929f8a2d7dc79388bc4ccadaecf12f51d37eebbf863a0340484f9a76ab18"
+    },
+    {
+      "path": "packages/platform/src/tls-key-store.ts",
+      "sha256": "700dd8157306b56f63a9a111dc3063d22abc48ca145bcb32b1d7d865914bb3a2"
+    },
+    {
+      "path": "packages/storage/migrations/0001_initial.sql",
+      "sha256": "377e182bc1f449d1b8a4a3e027ffce7f56e534d74c8e590a7fdcd68a6f1b38e9"
+    },
+    {
+      "path": "packages/storage/migrations/0002_data_key_check.sql",
+      "sha256": "5a202b968cf07127b1990daefdf2fe6a70a8697705d61d3da212d9c6dcbbaeaf"
+    },
+    {
+      "path": "packages/storage/migrations/0003_home_network.sql",
+      "sha256": "e4eba2e6add83f2239b4322691a25d2733efe2fbacb6d4da122c84007d7d5878"
+    },
+    {
+      "path": "packages/storage/migrations/0004_turn_responses.sql",
+      "sha256": "1e15f26b0e151c45d1bf7be9131a600fac9385677adca293a4012bed45173bc1"
+    },
+    {
+      "path": "packages/storage/migrations/0005_runner.sql",
+      "sha256": "870de21e43ba91dd701c8cc28d3b87fa4478b9c2932afab70c4a73f514576ad2"
+    },
+    {
+      "path": "packages/storage/migrations/0006_budget.sql",
+      "sha256": "03eb667164b2a6e9cf76c9e6fee21e71dfc6ad46efa63ecc0942865cfa0ac18e"
+    },
+    {
+      "path": "packages/storage/migrations/0007_budget_gate.sql",
+      "sha256": "6a418ceb86f3c894ee7040eab11c71acbac6f4a28cb2c4314eabc829ca908f6b"
+    },
+    {
+      "path": "packages/storage/migrations/0008_budget_credit.sql",
+      "sha256": "0208fdf1f7e330b7dd07e72e76118f6464347bf94112d999c462eaea0f8df37a"
+    },
+    {
+      "path": "packages/storage/migrations/0009_voice_epochs.sql",
+      "sha256": "9a8d8ce9c10e0f78942d6b2eb7c8818d2f29c882244ef36965d822a1c84adafe"
+    },
+    {
+      "path": "packages/storage/migrations/0010_retention.sql",
+      "sha256": "e3e3ca289c93bfeb3949909949ec0e2e7dbb55330aeee213b8889586ec7570e1"
+    },
+    {
+      "path": "packages/storage/migrations/0011_operation_body_retention.sql",
+      "sha256": "4160a8d05a8a7d433af11fba7569960c9d83b1f9d561d5132db7d277730ad87e"
+    },
+    {
+      "path": "packages/storage/migrations/0012_forget_and_restore.sql",
+      "sha256": "e9d14a997c0c5f6989e66ae399af375d3e0bd24237d55871a5dfd36887e997fe"
+    },
+    {
+      "path": "packages/storage/migrations/0013_candidates.sql",
+      "sha256": "a5fde060cba878b90a8d6e9f96a46bbb8e0ac0e2371790ad14424a39eb62c78d"
+    },
+    {
+      "path": "packages/storage/migrations/0014_research.sql",
+      "sha256": "3664a3d714dbf141ca9b82ec5b7bf5a8b1b994954f5b3761d18ba33553883bbb"
+    },
+    {
+      "path": "packages/storage/migrations/0015_auto_candidate_guard.sql",
+      "sha256": "843cb142e572f510d5969890b53de8a2a31aef021dd24dd7ade9f103def888a3"
+    },
+    {
+      "path": "packages/storage/migrations/0016_household.sql",
+      "sha256": "cf98d7ae30737b0f3dd0e34da39e7b33f6b418d6ee96a32cc3f01741625c7841"
+    },
+    {
+      "path": "packages/storage/migrations/0017_household_mail_checks.sql",
+      "sha256": "a2ded5117f77a46be9bebacca6224f4fa5c60d37bfd6828174571584e7f64ddc"
+    },
+    {
+      "path": "packages/storage/migrations/0018_household_settings.sql",
+      "sha256": "bba53e91a0d229c2e22770e803101c026d0188501518b798e79d727a530ea363"
+    },
+    {
+      "path": "packages/storage/migrations/0019_household_budgets.sql",
+      "sha256": "a833d7ad24a07bacbaadd1b92d0296d0bc373dd2fa9d6162fa4623ffcd295756"
+    },
+    {
+      "path": "packages/storage/migrations/0020_household_mail_baselines_scope.sql",
+      "sha256": "a1b0b8337268fe178c1c6642709413195ceef2237e9b6cb54283424060ecaba3"
+    },
+    {
+      "path": "packages/storage/migrations/0021_household_bills.sql",
+      "sha256": "a235e0208e53e6c2c55f5a2d2c97066bc3104d8bf201ab3bb31784169f442179"
+    },
+    {
+      "path": "packages/storage/migrations/0022_household_bills_settings.sql",
+      "sha256": "df85fc438413a5ef9be9cb91ebccf985a72685d429374a492507dfdf82a79d14"
+    },
+    {
+      "path": "packages/storage/migrations/0023_household_entries_no_replace.sql",
+      "sha256": "bf78952bba1d691be1e50f698f7f3d2278593cec940ea18fc8d54ae354abceba"
+    },
+    {
+      "path": "packages/storage/migrations/connection.sql",
+      "sha256": "43dab403fa9aac2dbc4aa82fd13aef3522fae16438cf9b5edf11d95997e930a7"
+    },
+    {
+      "path": "packages/storage/package.json",
+      "sha256": "85384dc0e32f99879f16ccf9860f5eadac3739dd04486d53d4fc8e31f447e049"
+    },
+    {
+      "path": "packages/storage/src/aes-gcm.ts",
+      "sha256": "33f22b0984334e25d8fedcc400db20c7a3b196ce11c3a3ba18781cde2bf39b1f"
+    },
+    {
+      "path": "packages/storage/src/auto-execution-state.ts",
+      "sha256": "66a6b8f5d971245b3c01f00439d104660619923c51d5137076865dcb2b8b60d2"
+    },
+    {
+      "path": "packages/storage/src/backup-crypto.ts",
+      "sha256": "951ad3a406284244ebb71f5ba5408829a3360082fc31c5dd6993dab33973ddfb"
+    },
+    {
+      "path": "packages/storage/src/backup-envelope.ts",
+      "sha256": "7902be3de0b70962ff242bff546d59434b44a5f1f9bbd914fc0852d1cbd55f33"
+    },
+    {
+      "path": "packages/storage/src/backup-facts.ts",
+      "sha256": "1dafe833865ae5fd0a112e7966fab0e5d68cce4aa4c178c67bfdab4aab10cb0b"
+    },
+    {
+      "path": "packages/storage/src/backup-snapshot.ts",
+      "sha256": "07d9fc7b1b38dc52c70319165e2885ab05fb7fbd8c138ed568578a8538536743"
+    },
+    {
+      "path": "packages/storage/src/budget-store.ts",
+      "sha256": "bfe1b6ba5232806dd1d8102d7f25e8503652d45481bc2495a909bb87c246f500"
+    },
+    {
+      "path": "packages/storage/src/candidate-store.ts",
+      "sha256": "09f5145bf4f18b8b48482b67b71c6e788624d0c49d5f855e1e8fac03824f00c8"
+    },
+    {
+      "path": "packages/storage/src/connection-targets-store.ts",
+      "sha256": "a93c82ddfb31e059a5e12a948af3f68993366d654ebcc608d9403127350e8654"
+    },
+    {
+      "path": "packages/storage/src/connection.ts",
+      "sha256": "fcda1584ea03a8f43210a427a17b1827d16008751b1e1a158c88df49d3a79e6f"
+    },
+    {
+      "path": "packages/storage/src/content-hash.ts",
+      "sha256": "97a2972d0f7b8d32782e5e088ca9098e84ce406d5a61fb0b8fb40a1c1177e021"
+    },
+    {
+      "path": "packages/storage/src/conversation-store.ts",
+      "sha256": "16b1e9ebf7450684e0e6e8532d5f7312d79791b1bf8ba90a103b8b118917a520"
+    },
+    {
+      "path": "packages/storage/src/db-client.ts",
+      "sha256": "9267b84374c1d19d501310571cbfb80f08435c5ebcc2e7b9f3cbc7c60e39a401"
+    },
+    {
+      "path": "packages/storage/src/db-protocol.ts",
+      "sha256": "429453a40d39d8dc3d42a0c6e8189fcb1859c60e5bbc2092e2802332460812b9"
+    },
+    {
+      "path": "packages/storage/src/db-worker.ts",
+      "sha256": "8f8c5921a40b1bb33e636f23c6f5f9f79a8cf28a1529d362dba9a7dacb2fe15d"
+    },
+    {
+      "path": "packages/storage/src/derivation-store.ts",
+      "sha256": "1e744d2b7bb222c6b2d8e7ee3735f429cf11b66085e10bb81f19468ef17fcc7d"
+    },
+    {
+      "path": "packages/storage/src/device-store.ts",
+      "sha256": "50944f534f04b9523a5c8eab4ffce4d67ae70b4611216c3519374a304343563a"
+    },
+    {
+      "path": "packages/storage/src/errors.ts",
+      "sha256": "91845cc4966033e16d3cfda70fa0d056758b43b3df4d8ca9b911d01c1ccad2fd"
+    },
+    {
+      "path": "packages/storage/src/event-store.ts",
+      "sha256": "d6ca856c819c41eadd55626ff65bf09323182b744a34dd42594af13a118d01c9"
+    },
+    {
+      "path": "packages/storage/src/expiry-store.ts",
+      "sha256": "98f231fbaf451ef30933205a8544c4173c09cd87ab6ee71c9243af6b330694b6"
+    },
+    {
+      "path": "packages/storage/src/forget-ledger-file.ts",
+      "sha256": "69b07ef4bf7df61f7dd5c14b30954bc53605529b7499494de6eefdfc55930a84"
+    },
+    {
+      "path": "packages/storage/src/forget-store.ts",
+      "sha256": "53a305e1be6c39686abf17f5eb8fe388097835cb994116dac7ac83dd08922998"
+    },
+    {
+      "path": "packages/storage/src/home-network-store.ts",
+      "sha256": "7a382e90e5ef3951af0335e15572f3fd693fa3eacdc87c120950e2d0aa217134"
+    },
+    {
+      "path": "packages/storage/src/household-content.ts",
+      "sha256": "63abe8401ddaa500b056e8641f0c1cf7c032488bf997c9bbff33220e20085381"
+    },
+    {
+      "path": "packages/storage/src/household-store.ts",
+      "sha256": "3c1664c92b7a3ec212d613c5d37206028575ed7492a375fd0692c2b2568b12b8"
+    },
+    {
+      "path": "packages/storage/src/index.ts",
+      "sha256": "e9c2082a7f5fa5e0e307c46289cb2ed774c81e12ba8ec7d3379018bd19890a00"
+    },
+    {
+      "path": "packages/storage/src/intent-shadow-store.ts",
+      "sha256": "158d89d763dbb5674310cd02c524647d70f5595704b5a81ef32bb90f104c6144"
+    },
+    {
+      "path": "packages/storage/src/memory-store.ts",
+      "sha256": "17f2aefea624d1981610009c13696039a83fc2168c697c2cbffd9c1e93df6859"
+    },
+    {
+      "path": "packages/storage/src/migrations.ts",
+      "sha256": "c3aa4e9a6fe3ffc53224c0fcb2f12ed2dbe07c57ca1e777627eb44600c7d1106"
+    },
+    {
+      "path": "packages/storage/src/operation-commands.ts",
+      "sha256": "a534313ac9c619b87c28003ca855e4ef6914ddd6ed59b97c364a5f44b470691e"
+    },
+    {
+      "path": "packages/storage/src/operation-store.ts",
+      "sha256": "704f26692d51df351bbe4239ffae63bf8330e8998e7e88d4c66f751ee19db4a0"
+    },
+    {
+      "path": "packages/storage/src/pairing-store.ts",
+      "sha256": "7aa36dc5f84be01cdbf73f800a27caed40662553251908a2bccdd5ebb8b7748e"
+    },
+    {
+      "path": "packages/storage/src/policy.ts",
+      "sha256": "20e2439c198af8dc8338f7a54e8393311893c66adf9aa1e8ddd7bfb639451ab1"
+    },
+    {
+      "path": "packages/storage/src/research-store.ts",
+      "sha256": "61c39393b61d83eebb206f8a5ed43737d9f72118916da0a35f366ff3f0ae01c7"
+    },
+    {
+      "path": "packages/storage/src/restore-aftermath-store.ts",
+      "sha256": "412a98f9656c8c0f68361b3816ad25b7036c6ee607691b3bb95462edd13ca6c3"
+    },
+    {
+      "path": "packages/storage/src/restore-facts.ts",
+      "sha256": "38487c83597424485f6f5a444b61d6fb79cd12a6bb3625af1433b9c9776816f5"
+    },
+    {
+      "path": "packages/storage/src/retention-store.ts",
+      "sha256": "7d5630915562454de6b9c232d06579d4ffd477c60eabea39f92ec998edc5841a"
+    },
+    {
+      "path": "packages/storage/src/safety-store.ts",
+      "sha256": "bfb70e266aa3b4f68158c97b129385a9d55c20fb2ce09f12d3cabfbecf9dbecb"
+    },
+    {
+      "path": "packages/storage/src/sealed-blob.ts",
+      "sha256": "6db6a225e5d7a3bb73f1ed34d2a946f7d2db3cedb87be317e4ad22dda1d0cfd7"
+    },
+    {
+      "path": "packages/storage/src/snapshot-store.ts",
+      "sha256": "634b39170c4db1da10daae8e89136f7d982e2b321aca17abcdee8052b87184b8"
+    },
+    {
+      "path": "packages/storage/src/store-binding.ts",
+      "sha256": "d3b442c704a90cafa5a598a080b9caa8671df38c78dde09f1133b5f3944779e9"
+    },
+    {
+      "path": "packages/storage/src/sync-store.ts",
+      "sha256": "ee46500ee4a7060ed25589fc5840a41809a4084dddf8d31fc802e082173db02c"
+    },
+    {
+      "path": "packages/storage/src/task-content.ts",
+      "sha256": "70fb2b8b61116eb250729d63faf441bc123fac4a4cfe50548a1abf109c3d5f59"
+    },
+    {
+      "path": "packages/storage/src/voice-store.ts",
+      "sha256": "9f1c858b54818dadf76f2e483bec155630aa63d02cdc2169b21a4fd83acbd0e4"
+    },
+    {
+      "path": "scripts/b06-evidence-sources.mjs",
+      "sha256": "cdaa3d2549f11080cf9386f8a224504c1fdeae2e26de8d63f4f917e5efeb8080"
+    },
+    {
+      "path": "scripts/evidence-sources.mjs",
+      "sha256": "62251f8fd72e084b8e00104e4488ecec893ce5cb249de6200e17ac22f3f188fc"
+    },
+    {
+      "path": "tests/integration/b06-cases.mjs",
+      "sha256": "0c4bac9ce7f8fc6a392fb2276b94459a08ab95080039a64487d6ba6d99ffefaf"
+    },
+    {
+      "path": "tests/integration/b06-expectations.json",
+      "sha256": "04c5d6d1b71ca447e7f39a4a43da673e96c38bbcbd3e4745a5191601c3a2b549"
+    },
+    {
+      "path": "tests/integration/b06-support.mjs",
+      "sha256": "fdaffc90dfb497da3bc594e925cd25c18adbcf3d94c3c3c1cdae9d7b0d05e6bf"
+    },
+    {
+      "path": "tests/integration/b06.test.mjs",
+      "sha256": "91f9cb7b3285ca02839b0962454df2ddf7d0e254067f53ffa4d4a0eb7bd3ea89"
+    },
+    {
+      "path": "tests/integration/evidence-run.mjs",
+      "sha256": "28fcffa2ab7401bc3fc043f87b3050d551adae241be939064b9497b33c6f2ede"
+    }
+  ],
+  "records": [
+    {
+      "case_id": "X16-retention-deadline-and-resummary",
+      "kind": "simulated",
+      "commit": "2cd330662f4358528508b977d4319abdc600aa1a",
+      "contract_version": "1.0.0",
+      "db_version": "23",
+      "environment": {
+        "os": "linux 6.18.44-fc-v880 / v24.22.3",
+        "hub": "同一プロセスの保存期限の掃除・忘却の Core の経路・バックアップと復元・保存境界の保持者（一時ディレクトリの DB と DB worker、HTTPS は 127.0.0.1）と模擬の Live の provider",
+        "devices": []
+      },
+      "seed": "7,1006,2026",
+      "fault_point": "deadline_boundary,resummary",
+      "provider_requests": 0,
+      "provider_state_changes": 0,
+      "approvals": 0,
+      "final_state": "turns=T_S2;summaries=",
+      "observed_at": "2026-11-27T10:26:34.154Z",
+      "deviation": "模擬の試験。合成のデータ鍵・台帳の鍵・バックアップの鍵（模擬の KeyStore）、一時ディレクトリの DB と DB worker、同じプロセスの Core（HTTPS は 127.0.0.1）、模擬の Live の provider を使った。忘却の公開ゲートは製品では閉じたままで、試験の組み立てで開いた関数を渡した。実機の Mac mini での実際のバックアップと鍵の復元・同期フォルダー・SSD の痕跡・実 API・実請求は未実施（B15）。",
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation"
+    },
+    {
+      "case_id": "X16-clock-rollback-no-extension",
+      "kind": "simulated",
+      "commit": "2cd330662f4358528508b977d4319abdc600aa1a",
+      "contract_version": "1.0.0",
+      "db_version": "23",
+      "environment": {
+        "os": "linux 6.18.44-fc-v880 / v24.22.3",
+        "hub": "同一プロセスの保存期限の掃除・忘却の Core の経路・バックアップと復元・保存境界の保持者（一時ディレクトリの DB と DB worker、HTTPS は 127.0.0.1）と模擬の Live の provider",
+        "devices": []
+      },
+      "seed": "7,1006,2026",
+      "fault_point": "clock_rolled_back_after_restart",
+      "provider_requests": 0,
+      "provider_state_changes": 0,
+      "approvals": 0,
+      "final_state": "turns=none",
+      "observed_at": "2026-11-27T10:26:34.154Z",
+      "deviation": "模擬の試験。合成のデータ鍵・台帳の鍵・バックアップの鍵（模擬の KeyStore）、一時ディレクトリの DB と DB worker、同じプロセスの Core（HTTPS は 127.0.0.1）、模擬の Live の provider を使った。忘却の公開ゲートは製品では閉じたままで、試験の組み立てで開いた関数を渡した。実機の Mac mini での実際のバックアップと鍵の復元・同期フォルダー・SSD の痕跡・実 API・実請求は未実施（B15）。",
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation"
+    },
+    {
+      "case_id": "X44-memory-review-deadline",
+      "kind": "simulated",
+      "commit": "2cd330662f4358528508b977d4319abdc600aa1a",
+      "contract_version": "1.0.0",
+      "db_version": "23",
+      "environment": {
+        "os": "linux 6.18.44-fc-v880 / v24.22.3",
+        "hub": "同一プロセスの保存期限の掃除・忘却の Core の経路・バックアップと復元・保存境界の保持者（一時ディレクトリの DB と DB worker、HTTPS は 127.0.0.1）と模擬の Live の provider",
+        "devices": []
+      },
+      "seed": "7,1006,2026",
+      "fault_point": "review_boundary,explicit_continue",
+      "provider_requests": 0,
+      "provider_state_changes": 0,
+      "approvals": 0,
+      "final_state": "memories=M_CONTINUE:active",
+      "observed_at": "2026-11-27T10:26:34.154Z",
+      "deviation": "模擬の試験。合成のデータ鍵・台帳の鍵・バックアップの鍵（模擬の KeyStore）、一時ディレクトリの DB と DB worker、同じプロセスの Core（HTTPS は 127.0.0.1）、模擬の Live の provider を使った。忘却の公開ゲートは製品では閉じたままで、試験の組み立てで開いた関数を渡した。実機の Mac mini での実際のバックアップと鍵の復元・同期フォルダー・SSD の痕跡・実 API・実請求は未実施（B15）。",
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation"
+    },
+    {
+      "case_id": "X15-forget-and-late-result-order",
+      "kind": "simulated",
+      "commit": "2cd330662f4358528508b977d4319abdc600aa1a",
+      "contract_version": "1.0.0",
+      "db_version": "23",
+      "environment": {
+        "os": "linux 6.18.44-fc-v880 / v24.22.3",
+        "hub": "同一プロセスの保存期限の掃除・忘却の Core の経路・バックアップと復元・保存境界の保持者（一時ディレクトリの DB と DB worker、HTTPS は 127.0.0.1）と模擬の Live の provider",
+        "devices": []
+      },
+      "seed": "7,1006,2026",
+      "fault_point": "late_result_before_forget,late_result_after_forget,unrelated_late_result",
+      "provider_requests": 0,
+      "provider_state_changes": 0,
+      "approvals": 0,
+      "final_state": "memories=L2,M_OTHER;generation=1",
+      "observed_at": "2026-11-27T10:26:34.154Z",
+      "deviation": "模擬の試験。合成のデータ鍵・台帳の鍵・バックアップの鍵（模擬の KeyStore）、一時ディレクトリの DB と DB worker、同じプロセスの Core（HTTPS は 127.0.0.1）、模擬の Live の provider を使った。忘却の公開ゲートは製品では閉じたままで、試験の組み立てで開いた関数を渡した。実機の Mac mini での実際のバックアップと鍵の復元・同期フォルダー・SSD の痕跡・実 API・実請求は未実施（B15）。",
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation"
+    },
+    {
+      "case_id": "X16-old-backup-restore-applies-ledger",
+      "kind": "simulated",
+      "commit": "2cd330662f4358528508b977d4319abdc600aa1a",
+      "contract_version": "1.0.0",
+      "db_version": "23",
+      "environment": {
+        "os": "linux 6.18.44-fc-v880 / v24.22.3",
+        "hub": "同一プロセスの保存期限の掃除・忘却の Core の経路・バックアップと復元・保存境界の保持者（一時ディレクトリの DB と DB worker、HTTPS は 127.0.0.1）と模擬の Live の provider",
+        "devices": []
+      },
+      "seed": "7,1006,2026",
+      "fault_point": "restore_backup_older_than_ledger",
+      "provider_requests": 0,
+      "provider_state_changes": 0,
+      "approvals": 0,
+      "final_state": "restored;memories=M_OTHER;generation=1",
+      "observed_at": "2026-11-27T10:26:34.154Z",
+      "deviation": "模擬の試験。合成のデータ鍵・台帳の鍵・バックアップの鍵（模擬の KeyStore）、一時ディレクトリの DB と DB worker、同じプロセスの Core（HTTPS は 127.0.0.1）、模擬の Live の provider を使った。忘却の公開ゲートは製品では閉じたままで、試験の組み立てで開いた関数を渡した。実機の Mac mini での実際のバックアップと鍵の復元・同期フォルダー・SSD の痕跡・実 API・実請求は未実施（B15）。",
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation"
+    },
+    {
+      "case_id": "X17-private-conversation-not-saved",
+      "kind": "simulated",
+      "commit": "2cd330662f4358528508b977d4319abdc600aa1a",
+      "contract_version": "1.0.0",
+      "db_version": "23",
+      "environment": {
+        "os": "linux 6.18.44-fc-v880 / v24.22.3",
+        "hub": "同一プロセスの保存期限の掃除・忘却の Core の経路・バックアップと復元・保存境界の保持者（一時ディレクトリの DB と DB worker、HTTPS は 127.0.0.1）と模擬の Live の provider",
+        "devices": []
+      },
+      "seed": "7,1006,2026",
+      "fault_point": "private_turn,live_while_private",
+      "provider_requests": 0,
+      "provider_state_changes": 0,
+      "approvals": 0,
+      "final_state": "turns=2;private_turn=503;live=409",
+      "observed_at": "2026-11-27T10:26:34.154Z",
+      "deviation": "模擬の試験。合成のデータ鍵・台帳の鍵・バックアップの鍵（模擬の KeyStore）、一時ディレクトリの DB と DB worker、同じプロセスの Core（HTTPS は 127.0.0.1）、模擬の Live の provider を使った。忘却の公開ゲートは製品では閉じたままで、試験の組み立てで開いた関数を渡した。実機の Mac mini での実際のバックアップと鍵の復元・同期フォルダー・SSD の痕跡・実 API・実請求は未実施（B15）。",
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation"
+    }
+  ],
+  "runs": [
+    {
+      "case_id": "X16-old-backup-restore-applies-ledger",
+      "seed": "7",
+      "order": [
+        "X16-old-backup-restore-applies-ledger",
+        "X15-forget-and-late-result-order",
+        "X16-clock-rollback-no-extension",
+        "X17-private-conversation-not-saved",
+        "X44-memory-review-deadline",
+        "X16-retention-deadline-and-resummary"
+      ],
+      "faults": ["restore_backup_older_than_ledger"],
+      "observed": {
+        "checked": {
+          "first_backup_generation": "0",
+          "old_backup_ciphertext": ["M", "M_OTHER", "T_OTHER", "T_SRC"],
+          "forget": {
+            "plan": ["M"],
+            "generation": "1"
+          },
+          "sweep_before_new_backup": {
+            "deleted": 0,
+            "needs_new_backup": true
+          },
+          "second_backup": {
+            "generation": "1",
+            "deleted_first": true,
+            "files_in_backup_dir": ["second"],
+            "ciphertext": ["M_OTHER", "T_OTHER", "T_SRC"]
+          },
+          "restore": {
+            "outcome": "restored",
+            "forgotten_applied_count": 1,
+            "approvals_revoked_count": 0,
+            "ciphertext_in_db_files": ["M_OTHER", "T_OTHER", "T_SRC"]
+          },
+          "after_restart": {
+            "visible_memory_markers": ["M_OTHER"],
+            "ledger_generation": "1",
+            "late_from_forgotten_source": {
+              "saved": false,
+              "reasons": ["source_forgotten"]
+            },
+            "late_from_unrelated_source": {
+              "saved": true,
+              "status": "active"
+            }
+          },
+          "plaintext_found": []
+        },
+        "variant": null,
+        "event_order": null,
+        "db_version": "23",
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approvals": 0,
+        "final_state": "restored;memories=M_OTHER;generation=1"
+      }
+    },
+    {
+      "case_id": "X15-forget-and-late-result-order",
+      "seed": "7",
+      "order": [
+        "X16-old-backup-restore-applies-ledger",
+        "X15-forget-and-late-result-order",
+        "X16-clock-rollback-no-extension",
+        "X17-private-conversation-not-saved",
+        "X44-memory-review-deadline",
+        "X16-retention-deadline-and-resummary"
+      ],
+      "faults": [
+        "late_result_before_forget",
+        "late_result_after_forget",
+        "unrelated_late_result"
+      ],
+      "observed": {
+        "checked": {
+          "variant": "late_source_after_execute",
+          "events": {
+            "execute": {
+              "attempts": [
+                {
+                  "ok": true,
+                  "generation": "1"
+                }
+              ],
+              "plans": [["M"]]
+            },
+            "late_from_unrelated_source": {
+              "saved": true,
+              "status": "active"
+            },
+            "late_from_forgotten_source": {
+              "saved": false,
+              "reasons": ["source_forgotten"]
+            }
+          },
+          "final": {
+            "memories": ["L2", "M_OTHER"],
+            "turns": ["T_OTHER", "T_SRC"],
+            "ledger_generation": "1",
+            "ledger_file_generation": "1",
+            "visible_memory_markers": ["L2", "M_OTHER"],
+            "notices": [
+              {
+                "reason": "forgotten",
+                "items": ["memory:M"]
+              }
+            ],
+            "ledger_notices": 1
+          },
+          "late_after_restart": {
+            "forgotten_source": {
+              "saved": false,
+              "reasons": ["source_forgotten"]
+            }
+          },
+          "ciphertext_in_db_files": {
+            "before_forget": ["M", "M_OTHER", "T_OTHER", "T_SRC"],
+            "after_forget": ["L2", "M", "M_OTHER", "T_OTHER", "T_SRC"],
+            "after_restart": ["L2", "M_OTHER", "T_OTHER", "T_SRC"]
+          },
+          "plaintext_found": []
+        },
+        "variant": "late_source_after_execute",
+        "event_order": [
+          "execute",
+          "late_from_unrelated_source",
+          "late_from_forgotten_source"
+        ],
+        "db_version": "23",
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approvals": 0,
+        "final_state": "memories=L2,M_OTHER;generation=1"
+      }
+    },
+    {
+      "case_id": "X16-clock-rollback-no-extension",
+      "seed": "7",
+      "order": [
+        "X16-old-backup-restore-applies-ledger",
+        "X15-forget-and-late-result-order",
+        "X16-clock-rollback-no-extension",
+        "X17-private-conversation-not-saved",
+        "X44-memory-review-deadline",
+        "X16-retention-deadline-and-resummary"
+      ],
+      "faults": ["clock_rolled_back_after_restart"],
+      "observed": {
+        "checked": {
+          "rolled_back": {
+            "gate_reasons": ["clock_regression"],
+            "turns": ["T_LIVE"],
+            "expires_at": ["2031-01-09T00:00:00.000Z"],
+            "last_checked_at": "2031-01-08T12:00:00Z",
+            "ciphertext_in_db_files": ["T_LIVE"]
+          },
+          "reached_deadline": {
+            "turns": [],
+            "expires_at": [],
+            "ciphertext_in_db_files": []
+          },
+          "plaintext_found": []
+        },
+        "variant": null,
+        "event_order": null,
+        "db_version": "23",
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approvals": 0,
+        "final_state": "turns=none"
+      }
+    },
+    {
+      "case_id": "X17-private-conversation-not-saved",
+      "seed": "7",
+      "order": [
+        "X16-old-backup-restore-applies-ledger",
+        "X15-forget-and-late-result-order",
+        "X16-clock-rollback-no-extension",
+        "X17-private-conversation-not-saved",
+        "X44-memory-review-deadline",
+        "X16-retention-deadline-and-resummary"
+      ],
+      "faults": ["private_turn", "live_while_private"],
+      "observed": {
+        "checked": {
+          "steps": [
+            {
+              "step": "normal_turn",
+              "status": 200,
+              "turns": 1
+            },
+            {
+              "step": "enter_private",
+              "status": 200,
+              "boundary": {
+                "segment_generation": "2",
+                "private_open": true
+              },
+              "private_conversation": true
+            },
+            {
+              "step": "private_turn",
+              "status": 503,
+              "turns": 1
+            },
+            {
+              "step": "live_while_private",
+              "status": 409,
+              "code": "private_conversation",
+              "provider_created": 0,
+              "budget_calls": 0
+            },
+            {
+              "step": "exit_private",
+              "status": 200,
+              "boundary": {
+                "segment_generation": "3",
+                "private_open": false
+              },
+              "private_conversation": false
+            },
+            {
+              "step": "normal_turn_after",
+              "status": 200,
+              "turns": 2
+            }
+          ],
+          "visible_turn_markers": ["NORMAL_1", "NORMAL_2"],
+          "plaintext_found": []
+        },
+        "variant": null,
+        "event_order": null,
+        "db_version": "23",
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approvals": 0,
+        "final_state": "turns=2;private_turn=503;live=409"
+      }
+    },
+    {
+      "case_id": "X44-memory-review-deadline",
+      "seed": "7",
+      "order": [
+        "X16-old-backup-restore-applies-ledger",
+        "X15-forget-and-late-result-order",
+        "X16-clock-rollback-no-extension",
+        "X17-private-conversation-not-saved",
+        "X44-memory-review-deadline",
+        "X16-retention-deadline-and-resummary"
+      ],
+      "faults": ["review_boundary", "explicit_continue"],
+      "observed": {
+        "checked": {
+          "steps": [
+            {
+              "step": "review_one_ms_before",
+              "memories": [
+                {
+                  "memory": "M_REVIEW",
+                  "status": "active",
+                  "review_at": "2031-04-01T00:00:00.000Z",
+                  "delete_at": null
+                },
+                {
+                  "memory": "M_CONTINUE",
+                  "status": "active",
+                  "review_at": "2031-04-01T00:00:00.000Z",
+                  "delete_at": null
+                }
+              ],
+              "ciphertext_in_db_files": ["M_CONTINUE", "M_REVIEW"]
+            },
+            {
+              "step": "review_at",
+              "memories": [
+                {
+                  "memory": "M_REVIEW",
+                  "status": "review_pending",
+                  "review_at": "2031-04-01T00:00:00.000Z",
+                  "delete_at": "2031-05-01T00:00:00.000Z"
+                },
+                {
+                  "memory": "M_CONTINUE",
+                  "status": "review_pending",
+                  "review_at": "2031-04-01T00:00:00.000Z",
+                  "delete_at": "2031-05-01T00:00:00.000Z"
+                }
+              ],
+              "ciphertext_in_db_files": ["M_CONTINUE", "M_REVIEW"]
+            },
+            {
+              "step": "delete_one_ms_before",
+              "memories": [
+                {
+                  "memory": "M_REVIEW",
+                  "status": "review_pending",
+                  "review_at": "2031-04-01T00:00:00.000Z",
+                  "delete_at": "2031-05-01T00:00:00.000Z"
+                },
+                {
+                  "memory": "M_CONTINUE",
+                  "status": "active",
+                  "review_at": "2031-07-10T00:00:00.000Z",
+                  "delete_at": null
+                }
+              ],
+              "ciphertext_in_db_files": ["M_CONTINUE", "M_REVIEW"]
+            },
+            {
+              "step": "delete_at",
+              "memories": [
+                {
+                  "memory": "M_CONTINUE",
+                  "status": "active",
+                  "review_at": "2031-07-10T00:00:00.000Z",
+                  "delete_at": null
+                }
+              ],
+              "ciphertext_in_db_files": ["M_CONTINUE"]
+            }
+          ],
+          "memory_notices": [
+            {
+              "reason": "review_unanswered",
+              "items": ["memory:M_REVIEW"]
+            }
+          ],
+          "plaintext_found": []
+        },
+        "variant": null,
+        "event_order": null,
+        "db_version": "23",
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approvals": 0,
+        "final_state": "memories=M_CONTINUE:active"
+      }
+    },
+    {
+      "case_id": "X16-retention-deadline-and-resummary",
+      "seed": "7",
+      "order": [
+        "X16-old-backup-restore-applies-ledger",
+        "X15-forget-and-late-result-order",
+        "X16-clock-rollback-no-extension",
+        "X17-private-conversation-not-saved",
+        "X44-memory-review-deadline",
+        "X16-retention-deadline-and-resummary"
+      ],
+      "faults": ["deadline_boundary", "resummary"],
+      "observed": {
+        "checked": {
+          "steps": [
+            {
+              "step": "one_ms_before_deadline",
+              "status": "completed",
+              "turns": ["T_DUE", "T_LIVE", "T_S2"],
+              "summaries": ["S", "S2"],
+              "live_turn_expires_at": ["2031-01-08T00:00:00.001Z"],
+              "ciphertext_in_db_files": [
+                "SUM_S",
+                "SUM_S2",
+                "T_DUE",
+                "T_LIVE",
+                "T_S2"
+              ]
+            },
+            {
+              "step": "at_deadline",
+              "status": "completed",
+              "turns": ["T_LIVE", "T_S2"],
+              "summaries": [],
+              "live_turn_expires_at": ["2031-01-08T00:00:00.001Z"],
+              "ciphertext_in_db_files": ["T_LIVE", "T_S2"]
+            },
+            {
+              "step": "one_ms_after_deadline",
+              "status": "completed",
+              "turns": ["T_S2"],
+              "summaries": [],
+              "live_turn_expires_at": [],
+              "ciphertext_in_db_files": ["T_S2"]
+            }
+          ],
+          "turn_notices": [
+            {
+              "reason": "retention_due",
+              "items": ["turn:T_DUE"]
+            },
+            {
+              "reason": "retention_due",
+              "items": ["turn:T_LIVE"]
+            }
+          ],
+          "plaintext_found": []
+        },
+        "variant": null,
+        "event_order": null,
+        "db_version": "23",
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approvals": 0,
+        "final_state": "turns=T_S2;summaries="
+      }
+    },
+    {
+      "case_id": "X44-memory-review-deadline",
+      "seed": "1006",
+      "order": [
+        "X44-memory-review-deadline",
+        "X16-old-backup-restore-applies-ledger",
+        "X16-retention-deadline-and-resummary",
+        "X17-private-conversation-not-saved",
+        "X16-clock-rollback-no-extension",
+        "X15-forget-and-late-result-order"
+      ],
+      "faults": ["review_boundary", "explicit_continue"],
+      "observed": {
+        "checked": {
+          "steps": [
+            {
+              "step": "review_one_ms_before",
+              "memories": [
+                {
+                  "memory": "M_REVIEW",
+                  "status": "active",
+                  "review_at": "2031-04-01T00:00:00.000Z",
+                  "delete_at": null
+                },
+                {
+                  "memory": "M_CONTINUE",
+                  "status": "active",
+                  "review_at": "2031-04-01T00:00:00.000Z",
+                  "delete_at": null
+                }
+              ],
+              "ciphertext_in_db_files": ["M_CONTINUE", "M_REVIEW"]
+            },
+            {
+              "step": "review_at",
+              "memories": [
+                {
+                  "memory": "M_REVIEW",
+                  "status": "review_pending",
+                  "review_at": "2031-04-01T00:00:00.000Z",
+                  "delete_at": "2031-05-01T00:00:00.000Z"
+                },
+                {
+                  "memory": "M_CONTINUE",
+                  "status": "review_pending",
+                  "review_at": "2031-04-01T00:00:00.000Z",
+                  "delete_at": "2031-05-01T00:00:00.000Z"
+                }
+              ],
+              "ciphertext_in_db_files": ["M_CONTINUE", "M_REVIEW"]
+            },
+            {
+              "step": "delete_one_ms_before",
+              "memories": [
+                {
+                  "memory": "M_REVIEW",
+                  "status": "review_pending",
+                  "review_at": "2031-04-01T00:00:00.000Z",
+                  "delete_at": "2031-05-01T00:00:00.000Z"
+                },
+                {
+                  "memory": "M_CONTINUE",
+                  "status": "active",
+                  "review_at": "2031-07-10T00:00:00.000Z",
+                  "delete_at": null
+                }
+              ],
+              "ciphertext_in_db_files": ["M_CONTINUE", "M_REVIEW"]
+            },
+            {
+              "step": "delete_at",
+              "memories": [
+                {
+                  "memory": "M_CONTINUE",
+                  "status": "active",
+                  "review_at": "2031-07-10T00:00:00.000Z",
+                  "delete_at": null
+                }
+              ],
+              "ciphertext_in_db_files": ["M_CONTINUE"]
+            }
+          ],
+          "memory_notices": [
+            {
+              "reason": "review_unanswered",
+              "items": ["memory:M_REVIEW"]
+            }
+          ],
+          "plaintext_found": []
+        },
+        "variant": null,
+        "event_order": null,
+        "db_version": "23",
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approvals": 0,
+        "final_state": "memories=M_CONTINUE:active"
+      }
+    },
+    {
+      "case_id": "X16-old-backup-restore-applies-ledger",
+      "seed": "1006",
+      "order": [
+        "X44-memory-review-deadline",
+        "X16-old-backup-restore-applies-ledger",
+        "X16-retention-deadline-and-resummary",
+        "X17-private-conversation-not-saved",
+        "X16-clock-rollback-no-extension",
+        "X15-forget-and-late-result-order"
+      ],
+      "faults": ["restore_backup_older_than_ledger"],
+      "observed": {
+        "checked": {
+          "first_backup_generation": "0",
+          "old_backup_ciphertext": ["M", "M_OTHER", "T_OTHER", "T_SRC"],
+          "forget": {
+            "plan": ["M"],
+            "generation": "1"
+          },
+          "sweep_before_new_backup": {
+            "deleted": 0,
+            "needs_new_backup": true
+          },
+          "second_backup": {
+            "generation": "1",
+            "deleted_first": true,
+            "files_in_backup_dir": ["second"],
+            "ciphertext": ["M_OTHER", "T_OTHER", "T_SRC"]
+          },
+          "restore": {
+            "outcome": "restored",
+            "forgotten_applied_count": 1,
+            "approvals_revoked_count": 0,
+            "ciphertext_in_db_files": ["M_OTHER", "T_OTHER", "T_SRC"]
+          },
+          "after_restart": {
+            "visible_memory_markers": ["M_OTHER"],
+            "ledger_generation": "1",
+            "late_from_forgotten_source": {
+              "saved": false,
+              "reasons": ["source_forgotten"]
+            },
+            "late_from_unrelated_source": {
+              "saved": true,
+              "status": "active"
+            }
+          },
+          "plaintext_found": []
+        },
+        "variant": null,
+        "event_order": null,
+        "db_version": "23",
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approvals": 0,
+        "final_state": "restored;memories=M_OTHER;generation=1"
+      }
+    },
+    {
+      "case_id": "X16-retention-deadline-and-resummary",
+      "seed": "1006",
+      "order": [
+        "X44-memory-review-deadline",
+        "X16-old-backup-restore-applies-ledger",
+        "X16-retention-deadline-and-resummary",
+        "X17-private-conversation-not-saved",
+        "X16-clock-rollback-no-extension",
+        "X15-forget-and-late-result-order"
+      ],
+      "faults": ["deadline_boundary", "resummary"],
+      "observed": {
+        "checked": {
+          "steps": [
+            {
+              "step": "one_ms_before_deadline",
+              "status": "completed",
+              "turns": ["T_DUE", "T_LIVE", "T_S2"],
+              "summaries": ["S", "S2"],
+              "live_turn_expires_at": ["2031-01-08T00:00:00.001Z"],
+              "ciphertext_in_db_files": [
+                "SUM_S",
+                "SUM_S2",
+                "T_DUE",
+                "T_LIVE",
+                "T_S2"
+              ]
+            },
+            {
+              "step": "at_deadline",
+              "status": "completed",
+              "turns": ["T_LIVE", "T_S2"],
+              "summaries": [],
+              "live_turn_expires_at": ["2031-01-08T00:00:00.001Z"],
+              "ciphertext_in_db_files": ["T_LIVE", "T_S2"]
+            },
+            {
+              "step": "one_ms_after_deadline",
+              "status": "completed",
+              "turns": ["T_S2"],
+              "summaries": [],
+              "live_turn_expires_at": [],
+              "ciphertext_in_db_files": ["T_S2"]
+            }
+          ],
+          "turn_notices": [
+            {
+              "reason": "retention_due",
+              "items": ["turn:T_DUE"]
+            },
+            {
+              "reason": "retention_due",
+              "items": ["turn:T_LIVE"]
+            }
+          ],
+          "plaintext_found": []
+        },
+        "variant": null,
+        "event_order": null,
+        "db_version": "23",
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approvals": 0,
+        "final_state": "turns=T_S2;summaries="
+      }
+    },
+    {
+      "case_id": "X17-private-conversation-not-saved",
+      "seed": "1006",
+      "order": [
+        "X44-memory-review-deadline",
+        "X16-old-backup-restore-applies-ledger",
+        "X16-retention-deadline-and-resummary",
+        "X17-private-conversation-not-saved",
+        "X16-clock-rollback-no-extension",
+        "X15-forget-and-late-result-order"
+      ],
+      "faults": ["private_turn", "live_while_private"],
+      "observed": {
+        "checked": {
+          "steps": [
+            {
+              "step": "normal_turn",
+              "status": 200,
+              "turns": 1
+            },
+            {
+              "step": "enter_private",
+              "status": 200,
+              "boundary": {
+                "segment_generation": "2",
+                "private_open": true
+              },
+              "private_conversation": true
+            },
+            {
+              "step": "private_turn",
+              "status": 503,
+              "turns": 1
+            },
+            {
+              "step": "live_while_private",
+              "status": 409,
+              "code": "private_conversation",
+              "provider_created": 0,
+              "budget_calls": 0
+            },
+            {
+              "step": "exit_private",
+              "status": 200,
+              "boundary": {
+                "segment_generation": "3",
+                "private_open": false
+              },
+              "private_conversation": false
+            },
+            {
+              "step": "normal_turn_after",
+              "status": 200,
+              "turns": 2
+            }
+          ],
+          "visible_turn_markers": ["NORMAL_1", "NORMAL_2"],
+          "plaintext_found": []
+        },
+        "variant": null,
+        "event_order": null,
+        "db_version": "23",
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approvals": 0,
+        "final_state": "turns=2;private_turn=503;live=409"
+      }
+    },
+    {
+      "case_id": "X16-clock-rollback-no-extension",
+      "seed": "1006",
+      "order": [
+        "X44-memory-review-deadline",
+        "X16-old-backup-restore-applies-ledger",
+        "X16-retention-deadline-and-resummary",
+        "X17-private-conversation-not-saved",
+        "X16-clock-rollback-no-extension",
+        "X15-forget-and-late-result-order"
+      ],
+      "faults": ["clock_rolled_back_after_restart"],
+      "observed": {
+        "checked": {
+          "rolled_back": {
+            "gate_reasons": ["clock_regression"],
+            "turns": ["T_LIVE"],
+            "expires_at": ["2031-01-09T00:00:00.000Z"],
+            "last_checked_at": "2031-01-08T12:00:00Z",
+            "ciphertext_in_db_files": ["T_LIVE"]
+          },
+          "reached_deadline": {
+            "turns": [],
+            "expires_at": [],
+            "ciphertext_in_db_files": []
+          },
+          "plaintext_found": []
+        },
+        "variant": null,
+        "event_order": null,
+        "db_version": "23",
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approvals": 0,
+        "final_state": "turns=none"
+      }
+    },
+    {
+      "case_id": "X15-forget-and-late-result-order",
+      "seed": "1006",
+      "order": [
+        "X44-memory-review-deadline",
+        "X16-old-backup-restore-applies-ledger",
+        "X16-retention-deadline-and-resummary",
+        "X17-private-conversation-not-saved",
+        "X16-clock-rollback-no-extension",
+        "X15-forget-and-late-result-order"
+      ],
+      "faults": [
+        "late_result_before_forget",
+        "late_result_after_forget",
+        "unrelated_late_result"
+      ],
+      "observed": {
+        "checked": {
+          "variant": "late_source_before_execute",
+          "events": {
+            "late_from_forgotten_source": {
+              "saved": true,
+              "status": "active"
+            },
+            "execute": {
+              "attempts": [
+                {
+                  "ok": false,
+                  "reason": "replan_required",
+                  "reasons": ["forget_plan_stale"]
+                },
+                {
+                  "ok": true,
+                  "generation": "1"
+                }
+              ],
+              "plans": [["M"], ["L1", "M"]]
+            },
+            "late_from_unrelated_source": {
+              "saved": true,
+              "status": "active"
+            }
+          },
+          "final": {
+            "memories": ["L2", "M_OTHER"],
+            "turns": ["T_OTHER", "T_SRC"],
+            "ledger_generation": "1",
+            "ledger_file_generation": "1",
+            "visible_memory_markers": ["L2", "M_OTHER"],
+            "notices": [
+              {
+                "reason": "forgotten",
+                "items": ["memory:M"]
+              },
+              {
+                "reason": "derived_from_forgotten",
+                "items": ["memory:L1"]
+              }
+            ],
+            "ledger_notices": 1
+          },
+          "late_after_restart": {
+            "forgotten_source": {
+              "saved": false,
+              "reasons": ["source_forgotten"]
+            }
+          },
+          "ciphertext_in_db_files": {
+            "before_forget": ["M", "M_OTHER", "T_OTHER", "T_SRC"],
+            "after_forget": ["L1", "L2", "M", "M_OTHER", "T_OTHER", "T_SRC"],
+            "after_restart": ["L2", "M_OTHER", "T_OTHER", "T_SRC"]
+          },
+          "plaintext_found": []
+        },
+        "variant": "late_source_before_execute",
+        "event_order": [
+          "late_from_forgotten_source",
+          "execute",
+          "late_from_unrelated_source"
+        ],
+        "db_version": "23",
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approvals": 0,
+        "final_state": "memories=L2,M_OTHER;generation=1"
+      }
+    },
+    {
+      "case_id": "X16-retention-deadline-and-resummary",
+      "seed": "2026",
+      "order": [
+        "X16-retention-deadline-and-resummary",
+        "X44-memory-review-deadline",
+        "X16-clock-rollback-no-extension",
+        "X16-old-backup-restore-applies-ledger",
+        "X15-forget-and-late-result-order",
+        "X17-private-conversation-not-saved"
+      ],
+      "faults": ["deadline_boundary", "resummary"],
+      "observed": {
+        "checked": {
+          "steps": [
+            {
+              "step": "one_ms_before_deadline",
+              "status": "completed",
+              "turns": ["T_DUE", "T_LIVE", "T_S2"],
+              "summaries": ["S", "S2"],
+              "live_turn_expires_at": ["2031-01-08T00:00:00.001Z"],
+              "ciphertext_in_db_files": [
+                "SUM_S",
+                "SUM_S2",
+                "T_DUE",
+                "T_LIVE",
+                "T_S2"
+              ]
+            },
+            {
+              "step": "at_deadline",
+              "status": "completed",
+              "turns": ["T_LIVE", "T_S2"],
+              "summaries": [],
+              "live_turn_expires_at": ["2031-01-08T00:00:00.001Z"],
+              "ciphertext_in_db_files": ["T_LIVE", "T_S2"]
+            },
+            {
+              "step": "one_ms_after_deadline",
+              "status": "completed",
+              "turns": ["T_S2"],
+              "summaries": [],
+              "live_turn_expires_at": [],
+              "ciphertext_in_db_files": ["T_S2"]
+            }
+          ],
+          "turn_notices": [
+            {
+              "reason": "retention_due",
+              "items": ["turn:T_DUE"]
+            },
+            {
+              "reason": "retention_due",
+              "items": ["turn:T_LIVE"]
+            }
+          ],
+          "plaintext_found": []
+        },
+        "variant": null,
+        "event_order": null,
+        "db_version": "23",
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approvals": 0,
+        "final_state": "turns=T_S2;summaries="
+      }
+    },
+    {
+      "case_id": "X44-memory-review-deadline",
+      "seed": "2026",
+      "order": [
+        "X16-retention-deadline-and-resummary",
+        "X44-memory-review-deadline",
+        "X16-clock-rollback-no-extension",
+        "X16-old-backup-restore-applies-ledger",
+        "X15-forget-and-late-result-order",
+        "X17-private-conversation-not-saved"
+      ],
+      "faults": ["review_boundary", "explicit_continue"],
+      "observed": {
+        "checked": {
+          "steps": [
+            {
+              "step": "review_one_ms_before",
+              "memories": [
+                {
+                  "memory": "M_REVIEW",
+                  "status": "active",
+                  "review_at": "2031-04-01T00:00:00.000Z",
+                  "delete_at": null
+                },
+                {
+                  "memory": "M_CONTINUE",
+                  "status": "active",
+                  "review_at": "2031-04-01T00:00:00.000Z",
+                  "delete_at": null
+                }
+              ],
+              "ciphertext_in_db_files": ["M_CONTINUE", "M_REVIEW"]
+            },
+            {
+              "step": "review_at",
+              "memories": [
+                {
+                  "memory": "M_REVIEW",
+                  "status": "review_pending",
+                  "review_at": "2031-04-01T00:00:00.000Z",
+                  "delete_at": "2031-05-01T00:00:00.000Z"
+                },
+                {
+                  "memory": "M_CONTINUE",
+                  "status": "review_pending",
+                  "review_at": "2031-04-01T00:00:00.000Z",
+                  "delete_at": "2031-05-01T00:00:00.000Z"
+                }
+              ],
+              "ciphertext_in_db_files": ["M_CONTINUE", "M_REVIEW"]
+            },
+            {
+              "step": "delete_one_ms_before",
+              "memories": [
+                {
+                  "memory": "M_REVIEW",
+                  "status": "review_pending",
+                  "review_at": "2031-04-01T00:00:00.000Z",
+                  "delete_at": "2031-05-01T00:00:00.000Z"
+                },
+                {
+                  "memory": "M_CONTINUE",
+                  "status": "active",
+                  "review_at": "2031-07-10T00:00:00.000Z",
+                  "delete_at": null
+                }
+              ],
+              "ciphertext_in_db_files": ["M_CONTINUE", "M_REVIEW"]
+            },
+            {
+              "step": "delete_at",
+              "memories": [
+                {
+                  "memory": "M_CONTINUE",
+                  "status": "active",
+                  "review_at": "2031-07-10T00:00:00.000Z",
+                  "delete_at": null
+                }
+              ],
+              "ciphertext_in_db_files": ["M_CONTINUE"]
+            }
+          ],
+          "memory_notices": [
+            {
+              "reason": "review_unanswered",
+              "items": ["memory:M_REVIEW"]
+            }
+          ],
+          "plaintext_found": []
+        },
+        "variant": null,
+        "event_order": null,
+        "db_version": "23",
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approvals": 0,
+        "final_state": "memories=M_CONTINUE:active"
+      }
+    },
+    {
+      "case_id": "X16-clock-rollback-no-extension",
+      "seed": "2026",
+      "order": [
+        "X16-retention-deadline-and-resummary",
+        "X44-memory-review-deadline",
+        "X16-clock-rollback-no-extension",
+        "X16-old-backup-restore-applies-ledger",
+        "X15-forget-and-late-result-order",
+        "X17-private-conversation-not-saved"
+      ],
+      "faults": ["clock_rolled_back_after_restart"],
+      "observed": {
+        "checked": {
+          "rolled_back": {
+            "gate_reasons": ["clock_regression"],
+            "turns": ["T_LIVE"],
+            "expires_at": ["2031-01-09T00:00:00.000Z"],
+            "last_checked_at": "2031-01-08T12:00:00Z",
+            "ciphertext_in_db_files": ["T_LIVE"]
+          },
+          "reached_deadline": {
+            "turns": [],
+            "expires_at": [],
+            "ciphertext_in_db_files": []
+          },
+          "plaintext_found": []
+        },
+        "variant": null,
+        "event_order": null,
+        "db_version": "23",
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approvals": 0,
+        "final_state": "turns=none"
+      }
+    },
+    {
+      "case_id": "X16-old-backup-restore-applies-ledger",
+      "seed": "2026",
+      "order": [
+        "X16-retention-deadline-and-resummary",
+        "X44-memory-review-deadline",
+        "X16-clock-rollback-no-extension",
+        "X16-old-backup-restore-applies-ledger",
+        "X15-forget-and-late-result-order",
+        "X17-private-conversation-not-saved"
+      ],
+      "faults": ["restore_backup_older_than_ledger"],
+      "observed": {
+        "checked": {
+          "first_backup_generation": "0",
+          "old_backup_ciphertext": ["M", "M_OTHER", "T_OTHER", "T_SRC"],
+          "forget": {
+            "plan": ["M"],
+            "generation": "1"
+          },
+          "sweep_before_new_backup": {
+            "deleted": 0,
+            "needs_new_backup": true
+          },
+          "second_backup": {
+            "generation": "1",
+            "deleted_first": true,
+            "files_in_backup_dir": ["second"],
+            "ciphertext": ["M_OTHER", "T_OTHER", "T_SRC"]
+          },
+          "restore": {
+            "outcome": "restored",
+            "forgotten_applied_count": 1,
+            "approvals_revoked_count": 0,
+            "ciphertext_in_db_files": ["M_OTHER", "T_OTHER", "T_SRC"]
+          },
+          "after_restart": {
+            "visible_memory_markers": ["M_OTHER"],
+            "ledger_generation": "1",
+            "late_from_forgotten_source": {
+              "saved": false,
+              "reasons": ["source_forgotten"]
+            },
+            "late_from_unrelated_source": {
+              "saved": true,
+              "status": "active"
+            }
+          },
+          "plaintext_found": []
+        },
+        "variant": null,
+        "event_order": null,
+        "db_version": "23",
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approvals": 0,
+        "final_state": "restored;memories=M_OTHER;generation=1"
+      }
+    },
+    {
+      "case_id": "X15-forget-and-late-result-order",
+      "seed": "2026",
+      "order": [
+        "X16-retention-deadline-and-resummary",
+        "X44-memory-review-deadline",
+        "X16-clock-rollback-no-extension",
+        "X16-old-backup-restore-applies-ledger",
+        "X15-forget-and-late-result-order",
+        "X17-private-conversation-not-saved"
+      ],
+      "faults": [
+        "late_result_before_forget",
+        "late_result_after_forget",
+        "unrelated_late_result"
+      ],
+      "observed": {
+        "checked": {
+          "variant": "late_source_after_execute",
+          "events": {
+            "execute": {
+              "attempts": [
+                {
+                  "ok": true,
+                  "generation": "1"
+                }
+              ],
+              "plans": [["M"]]
+            },
+            "late_from_forgotten_source": {
+              "saved": false,
+              "reasons": ["source_forgotten"]
+            },
+            "late_from_unrelated_source": {
+              "saved": true,
+              "status": "active"
+            }
+          },
+          "final": {
+            "memories": ["L2", "M_OTHER"],
+            "turns": ["T_OTHER", "T_SRC"],
+            "ledger_generation": "1",
+            "ledger_file_generation": "1",
+            "visible_memory_markers": ["L2", "M_OTHER"],
+            "notices": [
+              {
+                "reason": "forgotten",
+                "items": ["memory:M"]
+              }
+            ],
+            "ledger_notices": 1
+          },
+          "late_after_restart": {
+            "forgotten_source": {
+              "saved": false,
+              "reasons": ["source_forgotten"]
+            }
+          },
+          "ciphertext_in_db_files": {
+            "before_forget": ["M", "M_OTHER", "T_OTHER", "T_SRC"],
+            "after_forget": ["L2", "M", "M_OTHER", "T_OTHER", "T_SRC"],
+            "after_restart": ["L2", "M_OTHER", "T_OTHER", "T_SRC"]
+          },
+          "plaintext_found": []
+        },
+        "variant": "late_source_after_execute",
+        "event_order": [
+          "execute",
+          "late_from_forgotten_source",
+          "late_from_unrelated_source"
+        ],
+        "db_version": "23",
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approvals": 0,
+        "final_state": "memories=L2,M_OTHER;generation=1"
+      }
+    },
+    {
+      "case_id": "X17-private-conversation-not-saved",
+      "seed": "2026",
+      "order": [
+        "X16-retention-deadline-and-resummary",
+        "X44-memory-review-deadline",
+        "X16-clock-rollback-no-extension",
+        "X16-old-backup-restore-applies-ledger",
+        "X15-forget-and-late-result-order",
+        "X17-private-conversation-not-saved"
+      ],
+      "faults": ["private_turn", "live_while_private"],
+      "observed": {
+        "checked": {
+          "steps": [
+            {
+              "step": "normal_turn",
+              "status": 200,
+              "turns": 1
+            },
+            {
+              "step": "enter_private",
+              "status": 200,
+              "boundary": {
+                "segment_generation": "2",
+                "private_open": true
+              },
+              "private_conversation": true
+            },
+            {
+              "step": "private_turn",
+              "status": 503,
+              "turns": 1
+            },
+            {
+              "step": "live_while_private",
+              "status": 409,
+              "code": "private_conversation",
+              "provider_created": 0,
+              "budget_calls": 0
+            },
+            {
+              "step": "exit_private",
+              "status": 200,
+              "boundary": {
+                "segment_generation": "3",
+                "private_open": false
+              },
+              "private_conversation": false
+            },
+            {
+              "step": "normal_turn_after",
+              "status": 200,
+              "turns": 2
+            }
+          ],
+          "visible_turn_markers": ["NORMAL_1", "NORMAL_2"],
+          "plaintext_found": []
+        },
+        "variant": null,
+        "event_order": null,
+        "db_version": "23",
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approvals": 0,
+        "final_state": "turns=2;private_turn=503;live=409"
+      }
+    }
+  ]
+}

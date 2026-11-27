@@ -72,6 +72,16 @@ test('B04 と B07 の統合試験は同じ shard に入らず、全体の総数 
   const b04 = where('tests/integration/b04.test.mjs');
   assert.ok(b07 >= 0 && b04 >= 0);
   assert.notEqual(b07, b04);
+  // 模擬証拠を作る shard は workflow の条件（verify-os.yml）と同じ: B06 は 1、B07 は 2、B04 は 3、B05 は 4。
+  assert.deepEqual(
+    [
+      where('tests/integration/b06.test.mjs'),
+      b07,
+      b04,
+      where('tests/integration/b05.test.mjs'),
+    ],
+    [0, 1, 2, 3],
+  );
 });
 
 test('--shard の指定を検査する', () => {
@@ -98,6 +108,7 @@ const verifyOs = parse(
 // 模擬証拠の生成・artifact は macOS の既存 shard 2（B07）・shard 3（B04）だけで行う（ADR 0085）。
 // 静的検査の条件（matrix.shard == 1）とは別に、模擬証拠の生成・artifact のステップだけを許す。
 const EVIDENCE_STEP_CONDITIONS = new Set([
+  "runner.os == 'macOS' && matrix.shard == 1",
   "runner.os == 'macOS' && matrix.shard == 2",
   "runner.os == 'macOS' && matrix.shard == 3",
   "runner.os == 'macOS' && matrix.shard == 4",
@@ -179,12 +190,13 @@ test('従来の pnpm run check の検査はすべて OS ごとの shard 1 かす
   assert.ok(covered('pnpm run security:staged'));
 });
 
-test('模擬証拠は macOS の既存 shard 2/3/4 だけで生成し、追加の macOS job を作らない', () => {
+test('模擬証拠は macOS の既存 shard 1/2/3/4 だけで生成し、追加の macOS job を作らない', () => {
   const job = verifyOs.jobs.shard;
   assert.deepEqual(Object.keys(verifyOs.jobs), ['shard']);
   const testStep = job.steps.find((step) => /run-tests\.mjs/u.test(step.run));
   assert.match(testStep.env.BUDDY_B04_EVIDENCE_PATH, /runner\.os == 'macOS'/u);
   assert.match(testStep.env.BUDDY_B05_EVIDENCE_PATH, /runner\.os == 'macOS'/u);
+  assert.match(testStep.env.BUDDY_B06_EVIDENCE_PATH, /runner\.os == 'macOS'/u);
   assert.match(testStep.env.BUDDY_B07_EVIDENCE_PATH, /runner\.os == 'macOS'/u);
   const steps = job.steps.filter((step) =>
     EVIDENCE_STEP_CONDITIONS.has(step.if),
@@ -195,16 +207,19 @@ test('模擬証拠は macOS の既存 shard 2/3/4 だけで生成し、追加の
       'Format B04 evidence',
       'Format B07 evidence',
       'Format B05 evidence',
+      'Format B06 evidence',
       'Check generated B04 evidence',
       'Check generated B07 evidence',
       'Check generated B05 evidence',
+      'Check generated B06 evidence',
       'Upload B04 evidence artifact',
       'Upload B07 evidence artifact',
       'Upload B05 evidence artifact',
+      'Upload B06 evidence artifact',
     ],
   );
   for (const step of steps) {
-    assert.match(step.if, /matrix\.shard == [234]/u);
+    assert.match(step.if, /matrix\.shard == [1234]/u);
     if (step.uses !== undefined)
       assert.equal(
         step.uses,

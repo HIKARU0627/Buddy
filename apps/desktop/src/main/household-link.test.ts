@@ -11,6 +11,11 @@ import { mkdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
 import { createDeviceToken, deviceTokenHash } from '@buddy/core';
+import type {
+  ClientAbortSignal,
+  ClientApiOutcome,
+  ClientApiRequest,
+} from '@buddy/client';
 import type { DesktopIpcResponse } from '@buddy/contracts';
 import type { DesktopIoState } from '@buddy/domain';
 import { createDesktopContract, loadContractSchema } from './contract.js';
@@ -24,6 +29,7 @@ import {
   tempDir,
   waitUntil,
 } from './hub-test-support.js';
+import type { ReceiptImageCodec } from './household-bridge.js';
 import { createHubTransport } from './hub-transport.js';
 import type { PinnedHub } from './hub-transport.js';
 import { systemClock } from './system-clock.js';
@@ -49,7 +55,18 @@ interface Rig {
   ): Promise<DesktopIpcResponse>;
 }
 
-async function start(t: test.TestContext): Promise<Rig> {
+// 追加の口（レシートの写真の読み取りの試験）。intercept が null 以外を返した要求は中枢へ送らず、その結果にする。
+interface RigExtra {
+  readonly intercept?: (
+    request: ClientApiRequest,
+    forward: () => Promise<ClientApiOutcome>,
+  ) => Promise<ClientApiOutcome> | null;
+  readonly ioState?: () => DesktopIoState;
+  readonly pickReceiptImage?: () => Promise<Uint8Array | null>;
+  readonly receiptImageCodec?: ReceiptImageCodec;
+}
+
+async function start(t: test.TestContext, extra: RigExtra = {}): Promise<Rig> {
   const dir = await tempDir(t, 'bhl-');
   const dataDir = join(dir, 'data');
   await mkdir(dataDir, { recursive: true, mode: 0o700 });
@@ -98,12 +115,22 @@ async function start(t: test.TestContext): Promise<Rig> {
     budgetAuto: false,
     backoff: { baseMs: 50, maxMs: 200, jitterRatio: 0 },
     confirmAdmin: () => Promise.resolve(false),
+    ...(extra.ioState === undefined ? {} : { ioState: extra.ioState }),
+    ...(extra.pickReceiptImage === undefined
+      ? {}
+      : { pickReceiptImage: extra.pickReceiptImage }),
+    ...(extra.receiptImageCodec === undefined
+      ? {}
+      : { receiptImageCodec: extra.receiptImageCodec }),
     transportFor: (target, bearer) => {
       const transport = createHubTransport({ hub: target, token: bearer });
       return {
         request: (request) => {
           requests.push(`${request.method} ${request.path}`);
-          return transport.request(request);
+          const intercepted = extra.intercept?.(request, () =>
+            transport.request(request),
+          );
+          return intercepted ?? transport.request(request);
         },
         openStream: (cursor, lockState, listener) =>
           transport.openStream(cursor, lockState, listener),
@@ -273,4 +300,106 @@ test('admission: locked, unfocused, malformed and unknown refs send nothing to t
     assert.equal(reason(outOfRange), 'invalid_request');
   }
   assert.deepEqual(householdRequests(r), []);
+});
+
+// 合成の JPEG（SOI・SOF0・SOS・EOI だけ。本物の写真ではない）。
+const be16 = (value: number) => [(value >> 8) & 0xff, value & 0xff];
+const syntheticJpeg = (width: number, height: number): Uint8Array =>
+  new Uint8Array([
+    0xff,
+    0xd8,
+    0xff,
+    0xc0,
+    ...be16(17),
+    8,
+    ...be16(height),
+    ...be16(width),
+    3,
+    1,
+    0x22,
+    0,
+    2,
+    0x11,
+    1,
+    3,
+    0x11,
+    1,
+    0xff,
+    0xda,
+    ...be16(8),
+    1,
+    1,
+    0,
+    0,
+    0x3f,
+    0,
+    0xff,
+    0xd9,
+  ]);
+
+test('stopping input while a receipt reading is being sent cuts the request through ioStateChanged', async (t) => {
+  let io: DesktopIoState = UNLOCKED;
+  const signals: ClientAbortSignal[] = [];
+  let reached: () => void = () => undefined;
+  const sending = new Promise<void>((resolve) => {
+    reached = resolve;
+  });
+  const r = await start(t, {
+    ioState: () => io,
+    pickReceiptImage: () => Promise.resolve(syntheticJpeg(3024, 4032)),
+    receiptImageCodec: {
+      open: () => ({
+        width: 3024,
+        height: 4032,
+        jpeg: () => syntheticJpeg(960, 1280),
+      }),
+    },
+    intercept: (request, forward) => {
+      // 中枢は読み取りの口を持たない（unavailable）ので、月ごとの合計の設定だけ入として渡す。
+      if (request.method === 'GET' && request.path === '/v1/household/months')
+        return forward().then((outcome) =>
+          outcome.kind === 'response' &&
+          outcome.body !== null &&
+          typeof outcome.body === 'object'
+            ? { ...outcome, body: { ...outcome.body, receipt_reading: 'on' } }
+            : outcome,
+        );
+      // 読み取りの要求は中枢へ送らず、中断されるまで応答しない（送っている途中の状態を作る）。
+      if (request.path === '/v1/household/receipt-readings') {
+        const signal = request.signal;
+        assert.ok(signal !== undefined);
+        signals.push(signal);
+        reached();
+        return new Promise<ClientApiOutcome>((resolve) => {
+          signal.addEventListener(
+            'abort',
+            () => resolve({ kind: 'unreachable', reason: 'request_aborted' }),
+            { once: true },
+          );
+        });
+      }
+      return null;
+    },
+  });
+  const view = await r.ipc('desktop.household_view', { month: null });
+  assert(view.outcome === 'ok' && 'household' in view);
+  assert.equal(view.household.receipt_reading, 'on');
+  const pending = r.ipc('desktop.household_receipt_read', null);
+  await sending;
+  // 入出力が許されている間の通知では切らない。
+  r.link.ioStateChanged();
+  assert.equal(signals[0]?.aborted, false);
+  // 入出力を止めた通知で、送っている途中の読み取りの接続を切る。
+  io = { ...UNLOCKED, stopScope: 'local' };
+  r.link.ioStateChanged();
+  assert.equal(signals[0]?.aborted, true);
+  // 中枢が送ったかどうか分からないので結果不明にし、送り直さない。
+  assert.equal(reason(await pending), 'outcome_unknown');
+  assert.equal(signals.length, 1);
+  assert.equal(
+    householdRequests(r).filter((request) =>
+      request.includes('receipt-readings'),
+    ).length,
+    1,
+  );
 });

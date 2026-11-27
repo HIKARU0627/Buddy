@@ -58,6 +58,8 @@ const REQUEST_CHANNELS: readonly string[] = [
   'desktop.household_add',
   'desktop.household_edit',
   'desktop.household_export',
+  'desktop.household_receipt_setting',
+  'desktop.household_receipt_read',
 ];
 const NOTIFICATION_CHANNELS: readonly string[] = [
   'desktop.state_changed',

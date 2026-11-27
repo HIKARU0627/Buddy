@@ -10,6 +10,7 @@
 //   同じ request_id の再送は、成功済みなら内容版が進んでいる・削除済みなので 409 になり、二重に効かない。
 // - 中身の変更（POST /v1/household/entries/{entry_id}/content、ADR 0169）も内容版で照合する。向きの違い・検査に合わない中身は 422。
 // - 設定の変更（POST /v1/household/settings）は利用通知の取り込みの入・切（ADR 0163）。版の違いは 409。
+// - レシートの写真の読み取りの入・切と読み取り（ADR 0177）は household-receipt.ts。月ごとの合計に今の入・切を返す。
 // - データ鍵が読めない・保存の失敗・成否不明は 503 dependency_unavailable にし、成功にも競合にも見せない。
 // 承認・実行経路・effect_kind は関わらない（家計の記録は Buddy 自身の記録で、外部を変えない。ADR 0158）。
 
@@ -49,6 +50,16 @@ import type {
   HouseholdEntryView,
   HouseholdMonthView,
 } from './household-ledger.js';
+import { createHouseholdReceiptRoutes } from './household-receipt.js';
+import type { HouseholdReceiptRoutes } from './household-receipt.js';
+
+// 読み取りの口がないときのレシートの写真の経路（設定は unavailable、読み取りも設定の入も 503）。
+const NO_RECEIPT = createHouseholdReceiptRoutes({
+  setup: null,
+  budget: null,
+  zone: () => null,
+  now: () => 0,
+});
 
 // 月ごとの合計で返す月の数（今月を含む）。
 export const HOUSEHOLD_OVERVIEW_MONTHS = 12;
@@ -63,6 +74,8 @@ export interface HouseholdRoutesOptions {
   readonly now: () => number;
   // 新しい ID（封筒）。省略時は randomUUID。
   readonly newId?: () => string;
+  // レシートの写真の読み取りの経路（ADR 0177）。省略すると読み取りは使えない（設定は unavailable、経路は 503）。
+  readonly receipt?: HouseholdReceiptRoutes;
 }
 
 export interface HouseholdRoutes {
@@ -76,6 +89,8 @@ export interface HouseholdRoutes {
     readonly changeHouseholdBudget: ApiRouteHandler;
     readonly createHouseholdEntry: ApiRouteHandler;
     readonly changeHouseholdEntry: ApiRouteHandler;
+    readonly changeHouseholdReceiptSetting: ApiRouteHandler;
+    readonly readHouseholdReceipt: ApiRouteHandler;
   };
 }
 
@@ -290,6 +305,8 @@ export function createHouseholdRoutes(
           current,
         ),
         budget: budgetBody(budget.revision, budget.items),
+        // レシートの写真の読み取りの入・切（ADR 0177）。読み取りの口がなければ unavailable。
+        receipt_reading: options.receipt?.state() ?? 'unavailable',
       },
     };
   };
@@ -769,6 +786,7 @@ export function createHouseholdRoutes(
       changeHouseholdBudget: changeBudget,
       createHouseholdEntry: createEntry,
       changeHouseholdEntry: changeEntry,
+      ...(options.receipt ?? NO_RECEIPT).handlers,
     },
   };
 }

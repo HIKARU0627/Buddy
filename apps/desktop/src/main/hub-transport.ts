@@ -18,6 +18,7 @@ import { isIPv6 } from 'node:net';
 import { connect } from 'node:tls';
 import type { TLSSocket } from 'node:tls';
 import type {
+  ClientAbortSignal,
   ClientApiOutcome,
   ClientApiRequest,
   ClientLockState,
@@ -204,6 +205,8 @@ export interface HubHttpRequest {
   readonly path: string;
   readonly headers?: Readonly<Record<string, string>>;
   readonly body?: Readonly<Record<string, unknown>>;
+  // 中断されたら接続を切って unreachable（request_aborted）で終える。
+  readonly signal?: ClientAbortSignal;
 }
 
 function parseJson(bytes: Buffer): unknown {
@@ -215,12 +218,16 @@ function parseJson(bytes: Buffer): unknown {
 }
 
 // ピン留めの照合を終えた TLS の接続の上で HTTP の要求を 1 件送る（接続は閉じる）。
-// 応答・失敗・時間切れのどれかで必ず終える。例外は投げない。
+// 応答・失敗・時間切れ・中断のどれかで必ず終える。例外は投げない。本文のバイト列（Buffer）は終えた後に 0 で埋める
+// （元の値と JSON の文字列は JavaScript では埋められない）。
 export async function hubRequest(
   hub: PinnedHub,
   request: HubHttpRequest,
   timeoutMs = HUB_REQUEST_TIMEOUT_MS,
 ): Promise<ClientApiOutcome> {
+  // 中断の印は await をまたいで読み直す（関数で読む）。
+  const aborted = (): boolean => request.signal?.aborted === true;
+  if (aborted()) return { kind: 'unreachable', reason: 'request_aborted' };
   let socket: TLSSocket;
   try {
     socket = await pinnedConnect(hub, timeoutMs);
@@ -228,6 +235,10 @@ export async function hubRequest(
     if (error instanceof CertificateMismatchError)
       return { kind: 'certificate_mismatch' };
     return { kind: 'unreachable', reason: reasonOf(error) };
+  }
+  if (aborted()) {
+    socket.destroy();
+    return { kind: 'unreachable', reason: 'request_aborted' };
   }
   const body =
     request.body === undefined
@@ -239,8 +250,14 @@ export async function hubRequest(
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      request.signal?.removeEventListener('abort', onAbort);
       socket.destroy();
+      body?.fill(0);
       resolve(outcome);
+    };
+    const onAbort = () => {
+      req.destroy();
+      finish({ kind: 'unreachable', reason: 'request_aborted' });
     };
     const req = httpsRequest({
       createConnection: () => socket,
@@ -295,6 +312,7 @@ export async function hubRequest(
     req.on('close', () =>
       finish({ kind: 'unreachable', reason: 'request_closed' }),
     );
+    request.signal?.addEventListener('abort', onAbort, { once: true });
     req.end(body);
   });
 }
@@ -338,8 +356,9 @@ export function createHubTransport(
               : {}),
           },
           ...(request.body === undefined ? {} : { body: request.body }),
+          ...(request.signal === undefined ? {} : { signal: request.signal }),
         },
-        timeoutMs,
+        request.timeoutMs ?? timeoutMs,
       );
     },
 

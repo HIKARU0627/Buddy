@@ -110,7 +110,9 @@ export type ApiErrorCode =
   | 'budget_held'
   // 自動実行の取り消し（07 §2、J12、ADR 0153）。
   | 'target_changed'
-  | 'undo_expired';
+  | 'undo_expired'
+  // 外部へ送る前に止めた（費用はかかっていない）。結果の分からない dependency_unavailable と分ける（ADR 0177）。
+  | 'not_sent';
 
 const MESSAGES: Readonly<Record<ApiErrorCode, string>> = {
   unauthenticated: '端末トークンがない、無効、または失効しています。',
@@ -136,6 +138,7 @@ const MESSAGES: Readonly<Record<ApiErrorCode, string>> = {
   budget_held: '会話の予算を予約できません。',
   target_changed: '対象がその後に変わったため、自動では戻しません。',
   undo_expired: '取り消しの期限を過ぎました。',
+  not_sent: '外部へ送る前に止めました。費用はかかっていません。',
 };
 
 // 経路の処理（handlers）が返す拒否の応答。本文は ApiError（code・message・request_id）だけ。
@@ -164,7 +167,11 @@ export interface ApiLimits {
   readonly handshakeTimeoutMs: number;
   // ヘッダーの期限。TLS の確立から最初の要求のヘッダーがそろうまでの期限（接続ごと、B03-07 M1）にも使う。
   readonly headersTimeoutMs: number;
+  // 要求（ヘッダーと本文）を受け取り終えるまでの期限（Node の requestTimeout。0 は期限なし）。
   readonly requestTimeoutMs: number;
+  // Node が requestTimeout・headersTimeout を確かめる間隔（connectionsCheckingInterval）。期限を過ぎてから最大でこの
+  // 間隔だけ遅れて切る。レシートの写真の読み取り（ADR 0177）の端末の時間切れとの関係に使うので明示する。
+  readonly connectionsCheckingIntervalMs: number;
   readonly keepAliveTimeoutMs: number;
   readonly maxHeaderBytes: number;
 }
@@ -181,6 +188,8 @@ export const DEFAULT_API_LIMITS: ApiLimits = {
   handshakeTimeoutMs: 10_000,
   headersTimeoutMs: 10_000,
   requestTimeoutMs: 15_000,
+  // Node の既定（30 秒）と同じ値。既定の動きは変えない。
+  connectionsCheckingIntervalMs: 30_000,
   keepAliveTimeoutMs: 5_000,
   maxHeaderBytes: 8_192,
 };
@@ -197,6 +206,11 @@ export interface ApiHandlerRequest {
   readonly query: Readonly<Record<string, string>>;
   // Buddy-Lock-State の申告（なければ null。B03-05、ADR 0025）。
   readonly declaredLockState: DeclaredLockState | null;
+  // 端末が応答を受け取る前に接続を切ったら中断する（abortOnCloseRoutes に挙げた経路だけに付く。ほかの経路は undefined）。
+  readonly signal?: AbortSignal;
+  // 要求が届いた時刻（api-server の monotonicNow のミリ秒。本文を読む前）。経路の処理の期限を、経路の処理を始めた
+  // 時刻ではなく要求が届いた時刻から数えるために使う（abortOnCloseRoutes に挙げた経路だけに付く）。
+  readonly receivedAt?: number;
 }
 
 export type ApiRouteHandler = (
@@ -232,6 +246,12 @@ export interface ApiServerOptions {
   readonly handlers?: Readonly<Partial<Record<string, ApiRouteHandler>>>;
   // WSS の配信。渡さなければ切り替えた後に 1013 で閉じる。
   readonly eventStream?: ApiEventStream;
+  // 端末が応答を受け取る前に接続を切ったことを、経路の処理へ request.signal で伝える経路（operationId）。
+  // レシートの写真の読み取り（ADR 0177）だけが使う。挙げていない経路の要求には signal を付けない。
+  readonly abortOnCloseRoutes?: readonly string[];
+  // 受け取った本文のバイト列（Buffer）を、形式の検査で JSON として読んだ直後に 0 で埋める経路（operationId）。
+  // 読んだ JSON の文字列・値（JavaScript の文字列）は埋められない。挙げていない経路の本文は埋めない。
+  readonly wipeBodyRoutes?: readonly string[];
   // getBootstrap の入出力の状態（B05-03、ADR 0046）。渡さなければ安全側の値（ロック状態は不明・入力不可・世代 0）。
   readonly ioState?: (
     device: DeviceRecord,
@@ -359,8 +379,26 @@ type BodyRead =
   | { readonly kind: 'too_large' }
   | { readonly kind: 'aborted' };
 
-// 本文を上限まで読む。超えたら読むのをやめる（切り詰めた本文を処理しない）。
-function readBody(request: IncomingMessage, limit: number): Promise<BodyRead> {
+// 本文を上限まで読む。超えたら読むのをやめる（切り詰めた本文を処理しない）。wipe なら、受け取った断片の Buffer を
+// 一つにまとめた後（読むのをやめたときも）0 で埋める（まとめた本文は呼び出し側が読んだ後に埋める）。
+// 試験のため export する（index.ts からは出さない）。
+interface BodySource {
+  on(
+    event: 'data' | 'end' | 'close' | 'error',
+    listener: (chunk: Buffer) => void,
+  ): unknown;
+  off(
+    event: 'data' | 'end' | 'close' | 'error',
+    listener: (chunk: Buffer) => void,
+  ): unknown;
+  pause(): unknown;
+}
+
+export function readRequestBody(
+  request: BodySource,
+  limit: number,
+  wipe = false,
+): Promise<BodyRead> {
   return new Promise((resolve) => {
     const chunks: Buffer[] = [];
     let size = 0;
@@ -372,11 +410,13 @@ function readBody(request: IncomingMessage, limit: number): Promise<BodyRead> {
       request.off('end', onEnd);
       request.off('close', onClose);
       request.off('error', onClose);
+      if (wipe) for (const chunk of chunks) chunk.fill(0);
       resolve(result);
     };
     const onData = (chunk: Buffer) => {
       size += chunk.length;
       if (size > limit) {
+        if (wipe) chunk.fill(0);
         request.pause();
         finish({ kind: 'too_large' });
         return;
@@ -445,6 +485,8 @@ export function createApiServer(options: ApiServerOptions): ApiServer {
     limits.deviceWindowMs,
     limits.deviceMaxRequests,
   );
+  const abortOnClose = new Set(options.abortOnCloseRoutes ?? []);
+  const wipeBody = new Set(options.wipeBodyRoutes ?? []);
   const sockets = new Set<TLSSocket>();
   // TLS の確立の前の接続も含めた TCP の接続（停止の時に切るため。closeAllConnections は HTTP の接続しか切らない）。
   const connections = new Set<Duplex>();
@@ -461,6 +503,7 @@ export function createApiServer(options: ApiServerOptions): ApiServer {
     handshakeTimeout: limits.handshakeTimeoutMs,
     requestTimeout: limits.requestTimeoutMs,
     headersTimeout: limits.headersTimeoutMs,
+    connectionsCheckingInterval: limits.connectionsCheckingIntervalMs,
     keepAliveTimeout: limits.keepAliveTimeoutMs,
     maxHeaderSize: limits.maxHeaderBytes,
     noDelay: true,
@@ -691,8 +734,9 @@ export function createApiServer(options: ApiServerOptions): ApiServer {
     }
 
     let raw: Buffer | null = null;
+    const wipe = wipeBody.has(route.operationId);
     if (mode === 'request') {
-      const read = await readBody(request, limit);
+      const read = await readRequestBody(request, limit, wipe);
       if (read.kind === 'aborted') return { kind: 'aborted' };
       if (read.kind === 'too_large')
         return reject(413, 'payload_too_large', close);
@@ -700,6 +744,7 @@ export function createApiServer(options: ApiServerOptions): ApiServer {
     } else if ((declared ?? 0) > 0 || chunked)
       return reject(422, 'invalid_input', close);
 
+    const rawLength = raw?.length ?? 0;
     const form = validateForm(
       route,
       match.params,
@@ -707,6 +752,8 @@ export function createApiServer(options: ApiServerOptions): ApiServer {
       request.headers,
       raw,
     );
+    // 本文のバイト列は JSON として読み終えたので、挙げた経路では 0 で埋める（以降は読まない）。
+    if (wipe) raw?.fill(0);
     if (form.kind === 'reject') return form;
     const declaredLock = lockHeader(request.headers);
     const input: EnvironmentInput = {
@@ -719,12 +766,7 @@ export function createApiServer(options: ApiServerOptions): ApiServer {
     };
     let context: RequestContext | null;
     try {
-      context = await buildContext(
-        checks,
-        input,
-        request.headers,
-        raw?.length ?? 0,
-      );
+      context = await buildContext(checks, input, request.headers, rawLength);
     } catch {
       context = null;
     }
@@ -870,6 +912,8 @@ export function createApiServer(options: ApiServerOptions): ApiServer {
   };
 
   server.on('request', (request: IncomingMessage, response: ServerResponse) => {
+    // 要求が届いた時刻（本文を読む前）。
+    const receivedAt = monotonicNow();
     requestsReceived += 1;
     const socket = request.socket as TLSSocket;
     clearFirstRequestTimer(socket);
@@ -893,9 +937,19 @@ export function createApiServer(options: ApiServerOptions): ApiServer {
         sendJson(response, 422, errorBody(reject(422, 'invalid_input')), false);
         return;
       }
+      let admitted: Admitted = outcome;
+      if (abortOnClose.has(outcome.route.operationId)) {
+        // 応答を書き終える前に接続が閉じた（端末が待つのをやめた・ロックした・切断した）ら、経路の処理を止める。
+        const controller = new AbortController();
+        response.on('close', () => {
+          if (!response.writableFinished) controller.abort();
+        });
+        if (socket.destroyed) controller.abort();
+        admitted = { ...outcome, signal: controller.signal, receivedAt };
+      }
       let result: { status: number; body: object };
       try {
-        result = await handle(outcome);
+        result = await handle(admitted);
       } catch {
         result = {
           status: 503,

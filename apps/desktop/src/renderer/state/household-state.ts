@@ -7,6 +7,7 @@
 // 理由のコード・API の名前・記録の ID は画面に出さない。
 import type {
   DesktopHouseholdEntry,
+  DesktopHouseholdReceiptView,
   DesktopHouseholdView,
   DesktopIpcRequest,
   DesktopIpcResponse,
@@ -500,6 +501,11 @@ export interface HouseholdViewState {
   readonly addPrefill: ManualEntryInput | null;
   // 中身の変更の欄を出している行の参照（ADR 0169）。
   readonly editing: string | null;
+  // レシートの写真の読み取りの最後の結果（ADR 0177）。候補か、送らなかった・候補にしなかった理由。画面のメモリーにだけ置き、
+  // 閉じる・入力欄で開く・ロック・切断で捨てる。
+  readonly receipt: DesktopHouseholdReceiptView | null;
+  // 手入力の欄をレシートの候補で開いたか（欄の頭の説明を変える）。
+  readonly addFromReceipt: boolean;
 }
 
 export const INITIAL_HOUSEHOLD_STATE: HouseholdViewState = {
@@ -513,7 +519,13 @@ export const INITIAL_HOUSEHOLD_STATE: HouseholdViewState = {
   adding: false,
   addPrefill: null,
   editing: null,
+  receipt: null,
+  addFromReceipt: false,
 };
+
+// レシートの写真の読み取りの入・切と、読み取りの知らせを出す場所（ADR 0177）。
+export const RECEIPT_SETTING_PLACE = 'receipt_setting';
+export const RECEIPT_PLACE = 'receipt';
 
 type Kind =
   | 'view'
@@ -524,9 +536,33 @@ type Kind =
   | 'export'
   | 'budget'
   | 'add'
-  | 'edit';
+  | 'edit'
+  | 'receipt'
+  | 'receipt_setting';
 
 export function householdFailureText(kind: Kind, reason: RejectReason): string {
+  if (kind === 'receipt')
+    switch (reason) {
+      case 'outcome_unknown':
+        return '写真を外部へ送ったかどうか、結果を確かめられませんでした。送っていれば費用がかかっています。自動では送り直しません。読み直すときは、もう一度写真を選んでください（もう一度費用がかかります）。';
+      case 'core_rejected':
+        return '中枢が読み取りを受け付けませんでした。少し待ってから、もう一度写真を選んでください。';
+      case 'input_stopped':
+        return '入出力を止めている間は、写真を外部へ送りません。再開してから、もう一度押してください。';
+      default:
+        break;
+    }
+  if (kind === 'receipt_setting')
+    switch (reason) {
+      case 'confirmation_declined':
+        return '送る設定にしませんでした。写真は外部へ送りません。';
+      case 'outcome_unknown':
+        return '設定の変更の結果を確かめられませんでした。自動では送り直しません。「読み直す」で今の設定を確かめてください。';
+      case 'core_rejected':
+        return '設定を変えられませんでした。読み直したので、今の設定を確かめてください。';
+      default:
+        break;
+    }
   switch (reason) {
     case 'preview_stale':
       return kind === 'intake'
@@ -613,13 +649,21 @@ export function applyViewResponse(
   return withView(reading, response.household);
 }
 
-type ChangeKind = 'category' | 'delete' | 'intake' | 'budget' | 'add' | 'edit';
+type ChangeKind =
+  | 'category'
+  | 'delete'
+  | 'intake'
+  | 'budget'
+  | 'add'
+  | 'edit'
+  | 'receipt_setting';
 
 const SUCCESS_TEXT: Readonly<Record<ChangeKind, string>> = {
   edit: '記録の中身を直しました。店名と分類のある記録は、同じ店の次の未分類の利用にもその分類を使います。',
   budget: '予算を保存しました。',
   add: '記録を足しました。',
   intake: '取り込みの設定を変えました。',
+  receipt_setting: 'レシートの写真を外部へ送る設定を変えました。',
   category:
     '分類を変えました。店名のある記録は、同じ店の次の未分類の利用にもこの分類を使います。',
   delete: '記録を削除しました。',
@@ -730,6 +774,12 @@ export interface HouseholdActions {
   readonly startEdit: (ref: string) => void;
   readonly cancelEdit: () => void;
   readonly editEntry: (ref: string, entry: ManualEntry) => void;
+  // レシートの写真の読み取り（ADR 0177）。入・切（入にするときは main が OS の確認ダイアログを出す）、写真を選んで読む
+  // （写真は main が OS のファイル選択で選ばせる）、候補を手入力の欄で開く（開けたら true。記録はまだ作らない）、閉じる。
+  readonly setReceiptReading: (value: 'on' | 'off') => void;
+  readonly readReceipt: () => void;
+  readonly openReceipt: (input: ManualEntryInput) => boolean;
+  readonly dismissReceipt: () => void;
 }
 
 export interface HouseholdApi {
@@ -784,6 +834,7 @@ export class HouseholdStore {
           ...this.#state,
           adding: true,
           addPrefill: null,
+          addFromReceipt: false,
           notice: null,
         });
       },
@@ -793,6 +844,7 @@ export class HouseholdStore {
           ...this.#state,
           adding: true,
           addPrefill: input,
+          addFromReceipt: false,
           confirming: null,
           editing: null,
           notice: null,
@@ -800,7 +852,12 @@ export class HouseholdStore {
         return true;
       },
       cancelAdd: () =>
-        this.#set({ ...this.#state, adding: false, addPrefill: null }),
+        this.#set({
+          ...this.#state,
+          adding: false,
+          addPrefill: null,
+          addFromReceipt: false,
+        }),
       addEntry: (entry) => this.#addEntry(entry),
       startEdit: (ref) => {
         const entry = this.#state.view?.entries.find(
@@ -819,6 +876,28 @@ export class HouseholdStore {
         this.#set({ ...this.#state, editing: null });
       },
       editEntry: (ref, entry) => this.#editEntry(ref, entry),
+      setReceiptReading: (value) => this.#receiptSetting(value),
+      readReceipt: () => this.#readReceipt(),
+      openReceipt: (input) => {
+        // 候補があり、手入力の欄を開ける（本人が入れている途中の値を書き換えない）ときだけ。開けたら候補はしまう。
+        if (
+          this.#state.receipt?.outcome !== 'candidate' ||
+          !canStartAddFrom(this.#state)
+        )
+          return false;
+        this.#set({
+          ...this.#state,
+          adding: true,
+          addPrefill: input,
+          addFromReceipt: true,
+          receipt: null,
+          confirming: null,
+          editing: null,
+          notice: null,
+        });
+        return true;
+      },
+      dismissReceipt: () => this.#set({ ...this.#state, receipt: null }),
     };
   }
 
@@ -901,6 +980,71 @@ export class HouseholdStore {
     );
   }
 
+  #receiptSetting(value: 'on' | 'off'): void {
+    const current = this.#state.view?.receipt_reading ?? null;
+    if (
+      this.#state.busy !== null ||
+      current === null ||
+      current === 'unavailable' ||
+      current === value
+    )
+      return;
+    this.#set({
+      ...this.#state,
+      busy: RECEIPT_SETTING_PLACE,
+      notice: null,
+      confirming: null,
+    });
+    this.#change(
+      'receipt_setting',
+      RECEIPT_SETTING_PLACE,
+      request('desktop.household_receipt_setting', { receipt_reading: value }),
+    );
+  }
+
+  // レシートの写真を 1 枚読む（ADR 0177）。結果（候補か理由）は画面のメモリーにだけ置く。記録は作らない。結果不明は送り直さない。
+  #readReceipt(): void {
+    if (this.#state.busy !== null || this.#state.view?.receipt_reading !== 'on')
+      return;
+    this.#set({
+      ...this.#state,
+      busy: RECEIPT_PLACE,
+      receipt: null,
+      notice: null,
+      confirming: null,
+    });
+    void this.#send(
+      request('desktop.household_receipt_read', null),
+      (state, response) => {
+        const idle = {
+          ...state,
+          busy: state.busy === RECEIPT_PLACE ? null : state.busy,
+        };
+        if (response.outcome === 'rejected')
+          return {
+            ...idle,
+            notice: {
+              tone: 'warning' as const,
+              text: householdFailureText('receipt', response.reason),
+              place: RECEIPT_PLACE,
+            },
+          };
+        if (
+          response.channel !== 'desktop.household_receipt_read' ||
+          !('receipt' in response)
+        )
+          return idle;
+        const receipt = response.receipt as DesktopHouseholdReceiptView;
+        // 本人が写真を選ばなかった: 何も出さない。
+        return receipt.outcome === 'cancelled' ? idle : { ...idle, receipt };
+      },
+      (state) => applyFailure(state, RECEIPT_PLACE),
+    ).then(() => {
+      // 中枢の設定が切だった: 今の設定を読み直して見せる（main も読み直している）。
+      if (this.#state.receipt?.outcome === 'setting_off') this.#reread();
+    });
+  }
+
   #saveBudget(
     items: readonly { category: HouseholdCategoryId; budget_yen: number }[],
   ): void {
@@ -944,7 +1088,7 @@ export class HouseholdStore {
         const next = applyChangeResponse(state, 'add', ADD_PLACE, response);
         // 足せたら欄をしまう。拒否なら残して直させる。
         return response.outcome === 'ok'
-          ? { ...next, adding: false, addPrefill: null }
+          ? { ...next, adding: false, addPrefill: null, addFromReceipt: false }
           : next;
       },
       (state) => applyFailure(state, ADD_PLACE),

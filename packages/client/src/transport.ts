@@ -14,6 +14,21 @@ export interface ClientApiRequest {
   // 本人の画面操作として送る（Buddy-Input-Origin: screen）。
   readonly screenOperation?: boolean;
   readonly lockState: ClientLockState;
+  // この要求だけ応答を待つ時間（ミリ秒）。省略すると通信の既定（10 秒）。中枢がそれより長く処理する経路だけが使う。
+  readonly timeoutMs?: number;
+  // 中断されたら接続を切り、応答を待たない（中枢は切断を見て、送出意図の前なら外部へ送らない）。結果は unreachable。
+  readonly signal?: ClientAbortSignal;
+}
+
+// 中断の印（AbortSignal の一部。このパッケージは DOM・Node の型に依存しない）。
+export interface ClientAbortSignal {
+  readonly aborted: boolean;
+  addEventListener(
+    type: 'abort',
+    listener: () => void,
+    options?: { readonly once?: boolean },
+  ): void;
+  removeEventListener(type: 'abort', listener: () => void): void;
 }
 
 export type ClientApiOutcome =

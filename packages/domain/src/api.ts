@@ -119,6 +119,10 @@ export const ROUTE_CHECKS: Readonly<Record<string, readonly CoreCheck[]>> = {
   createHouseholdEntry: SCREEN,
   // 家計の記録の中身の変更（ADR 0169）。本人の画面操作だけ。内容版の照合は経路の処理が行い、409 にする。
   changeHouseholdEntry: SCREEN,
+  // レシートの写真の読み取りの入・切と読み取り（ADR 0177）。どちらも本人の画面操作だけ。読み取りは外部へ送るので、設定・
+  // 予算・保存期限の掃除の門・同じ要求の二度目の拒否は経路の処理が行う。
+  changeHouseholdReceiptSetting: SCREEN,
+  readHouseholdReceipt: SCREEN,
 };
 
 export interface RequestContext {

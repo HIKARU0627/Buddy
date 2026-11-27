@@ -45,6 +45,7 @@ const VIEW: DesktopHouseholdView = {
   truncated: false,
   list_seq: 1,
   mail_intake: 'on',
+  receipt_reading: 'off',
   last_import: null,
   last_export: null,
   recurring: null,
@@ -73,6 +74,10 @@ const ACTIONS: HouseholdActions = {
   startEdit: noop,
   cancelEdit: noop,
   editEntry: noop,
+  setReceiptReading: noop,
+  readReceipt: noop,
+  openReceipt: () => false,
+  dismissReceipt: noop,
 };
 
 function choose(select: HTMLSelectElement, value: string): void {

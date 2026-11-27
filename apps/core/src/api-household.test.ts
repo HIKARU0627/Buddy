@@ -240,6 +240,8 @@ test('月ごとの合計: 今月は本人のタイムゾーンで決め、今月
     settings: { mail_intake: 'on', settings_revision: '0' },
     recurring: { items: [], monthly_total_yen: 0 },
     budget: { budget_revision: '0', items: [], total_budget_yen: 0 },
+    // レシートの写真の読み取りの口を渡していない（ADR 0177）。
+    receipt_reading: 'unavailable',
   });
 });
 

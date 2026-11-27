@@ -19,7 +19,7 @@ import {
   createHubTransport,
   isCertificateMismatch,
 } from './hub-transport.js';
-import { freePort, onCleanup, tempDir } from './hub-test-support.js';
+import { freePort, onCleanup, tempDir, waitUntil } from './hub-test-support.js';
 
 interface RawHub {
   readonly port: number;
@@ -239,3 +239,161 @@ test('only a failed pin check counts as a certificate mismatch', () => {
   assert.equal(isCertificateMismatch(null), false);
   assert.equal(isCertificateMismatch({ code: 'CERT_REVOKED' }), false);
 });
+
+// 見直しの指摘 1（ADR 0177 の追補）: レシートの写真の読み取りだけ応答を長く待ち、ロック・停止では接続を切る。
+test(
+  'a request can wait longer or shorter than the default, and an abort cuts the connection',
+  { timeout: 30_000 },
+  async (t) => {
+    // 応答しない中枢。
+    const hub = await rawHub(t);
+    const pinned = {
+      host: '127.0.0.1',
+      port: hub.port,
+      certificatePem: hub.certificatePem,
+      fingerprint: hub.fingerprint,
+    };
+    const transport = createHubTransport({
+      hub: pinned,
+      token: () => 'Q'.repeat(43),
+      timeoutMs: 5_000,
+    });
+    // この要求だけ 200 ms で時間切れにする（既定の 5 秒を待たない）。
+    const started = Date.now();
+    const short = await transport.request({
+      method: 'POST',
+      path: '/v1/household/receipt-readings',
+      lockState: 'unlocked',
+      body: { image: { data_base64: 'AAAA' } },
+      timeoutMs: 200,
+    });
+    assert.deepEqual(short, { kind: 'unreachable', reason: 'request_timeout' });
+    assert.ok(Date.now() - started < 4_000);
+    // 既定より長く待つ要求は、既定の時間を過ぎても切らない（中断したら切る）。
+    const longer = createHubTransport({
+      hub: pinned,
+      token: () => 'Q'.repeat(43),
+      timeoutMs: 200,
+    });
+    const abort = new AbortController();
+    const waiting = longer.request({
+      method: 'POST',
+      path: '/v1/household/receipt-readings',
+      lockState: 'unlocked',
+      body: { image: { data_base64: 'AAAA' } },
+      timeoutMs: 10_000,
+      signal: abort.signal,
+    });
+    let done = false;
+    void waiting.then(() => {
+      done = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    assert.equal(done, false);
+    abort.abort();
+    assert.deepEqual(await waiting, {
+      kind: 'unreachable',
+      reason: 'request_aborted',
+    });
+    // 送る前から中断されていれば、接続もしない。
+    const before = hub.secured();
+    const gone = new AbortController();
+    gone.abort();
+    assert.deepEqual(
+      await longer.request({
+        method: 'POST',
+        path: '/v1/household/receipt-readings',
+        lockState: 'unlocked',
+        signal: gone.signal,
+      }),
+      { kind: 'unreachable', reason: 'request_aborted' },
+    );
+    await settle();
+    assert.equal(hub.secured(), before);
+  },
+);
+
+test(
+  'the request body bytes are cleared after a response, a timeout and an abort',
+  { timeout: 30_000 },
+  async (t) => {
+    // hubRequest が JSON の文字列から作る本文の Buffer を捕まえる（送った本文と同じ中身のものだけ）。
+    const made: Buffer[] = [];
+    const texts = new Set<string>();
+    const original = Buffer.from.bind(Buffer) as (...args: unknown[]) => Buffer;
+    t.mock.method(Buffer, 'from', (...args: unknown[]) => {
+      const buffer = original(...args);
+      if (typeof args[0] === 'string' && texts.has(args[0])) made.push(buffer);
+      return buffer;
+    });
+    const cleared = (label: string) => {
+      const last = made.at(-1);
+      assert.ok(last !== undefined && last.length > 0, label);
+      assert.ok(
+        last.every((byte) => byte === 0),
+        label,
+      );
+    };
+    const pinOf = (hub: RawHub) => ({
+      host: '127.0.0.1',
+      port: hub.port,
+      certificatePem: hub.certificatePem,
+      fingerprint: hub.fingerprint,
+    });
+    const bodyOf = (label: string) => {
+      const body = { image: { data_base64: `QUFB${label}` } };
+      texts.add(JSON.stringify(body));
+      return body;
+    };
+    // 応答が届いた。
+    const answering = await rawHub(
+      t,
+      'HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: 11\r\nconnection: close\r\n\r\n{"ok":true}',
+    );
+    const answered = await hubRequest(pinOf(answering), {
+      method: 'POST',
+      path: '/v1/household/receipt-readings',
+      body: bodyOf('A'),
+    });
+    assert.equal(answered.kind, 'response');
+    cleared('応答');
+    // 時間切れ（応答しない中枢）。
+    const silent = await rawHub(t);
+    const timedOut = await hubRequest(
+      pinOf(silent),
+      {
+        method: 'POST',
+        path: '/v1/household/receipt-readings',
+        body: bodyOf('B'),
+      },
+      200,
+    );
+    assert.deepEqual(timedOut, {
+      kind: 'unreachable',
+      reason: 'request_timeout',
+    });
+    cleared('時間切れ');
+    // 中断（本文を書いた後、応答を待つ間に中断する）。
+    const abort = new AbortController();
+    const received = silent.received.reduce((sum, bytes) => sum + bytes, 0);
+    const waiting = hubRequest(pinOf(silent), {
+      method: 'POST',
+      path: '/v1/household/receipt-readings',
+      body: bodyOf('C'),
+      signal: abort.signal,
+    });
+    await waitUntil(
+      () =>
+        made.length === 3 &&
+        silent.received.reduce((sum, bytes) => sum + bytes, 0) > received,
+      'body written',
+    );
+    abort.abort();
+    assert.deepEqual(await waiting, {
+      kind: 'unreachable',
+      reason: 'request_aborted',
+    });
+    cleared('中断');
+    assert.equal(made.length, 3);
+  },
+);

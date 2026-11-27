@@ -23,6 +23,8 @@
 // 結果の理由にはコードだけを入れ、金額・本文を記録へ出さない。
 
 import { randomUUID } from 'node:crypto';
+import type { ModelUsage } from '@buddy/contracts';
+import { planUsageSettlement } from '@buddy/ai';
 import {
   computeLiveSecondsAmount,
   computeReservation,
@@ -132,6 +134,8 @@ export type PaidOutcome = PaidUsage | { readonly kind: 'unknown' };
 export interface PaidSendContext {
   readonly request_id: string;
   readonly reservation_id: string;
+  // 受付で固定した単価の版。送った後の usage を、この版の単価で実費にする（modelUsageAmount）。
+  readonly price_version: string;
   // timeout・結果の破棄で中断する。中断した後に届いた usage は精算する。
   readonly signal: AbortSignal;
 }
@@ -986,6 +990,7 @@ export class BudgetGate {
         send({
           request_id: ticket.request_id,
           reservation_id: ticket.reservation_id,
+          price_version: ticket.price_version,
           signal: controller.signal,
         }),
       ).then(
@@ -1314,6 +1319,37 @@ export class BudgetGate {
     return result.ok
       ? { ok: true, amount: result.amount }
       : { ok: false, reasons: result.reasonCodes };
+  }
+
+  // LLM の usage（token）を、受付で固定した単価の版で実費にする（レシートの写真の読み取り。ADR 0177）。usage が欠けている・
+  // 不完全なら usage 不明として理由を返し、0 円にしない（ai の planUsageSettlement）。設定が使えない・版がない・通貨が
+  // 違うときも理由のコードを返す。
+  modelUsageAmount(
+    priceVersion: string,
+    usage: ModelUsage | null,
+  ):
+    | { readonly ok: true; readonly amount: string }
+    | { readonly ok: false; readonly reasons: readonly string[] } {
+    const config = this.#config;
+    if (!config.ok) return { ok: false, reasons: ['config_invalid'] };
+    const version = config.config.price_versions.find(
+      (item) => item.price_version === priceVersion,
+    );
+    if (version === undefined)
+      return { ok: false, reasons: ['price_version_unknown'] };
+    const planned = planUsageSettlement(usage, {
+      priceVersion: version,
+      budgetCurrency: config.settings.currency,
+    });
+    if (planned.kind === 'settle')
+      return { ok: true, amount: planned.actual_gross };
+    return {
+      ok: false,
+      reasons:
+        planned.kind === 'usage_unknown'
+          ? [planned.reason]
+          : planned.reasonCodes,
+    };
   }
 
   // live_seconds の単価がある単価の系列（price_key）。ちょうど 1 つあるときだけ返す（なければ・複数あれば、どれを使うか

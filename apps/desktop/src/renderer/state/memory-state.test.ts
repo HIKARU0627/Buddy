@@ -50,7 +50,13 @@ const PLAN = {
     ],
     memory_refs: [uuid(0x101)],
     unlisted_memory_count: 1,
-    directive_count: 1,
+    directives: [
+      {
+        ref: uuid(0x301),
+        scope: 'from_now_on',
+        text: '今後は返信を短めにして',
+      },
+    ],
   },
   kept: {
     operation_states: ['dispatching', 'awaiting_approval', 'dispatching'],
@@ -116,6 +122,25 @@ test('plan lines: directives are separate, kept operations are grouped by state,
     '送出中の操作 2 件',
   ]);
   assert.equal(bandSummary(PLAN), '消える物 合計 6 件（記憶 2 件・指示 1 件）');
+
+  // 指示の数は、本文を読めない指示も数える（U433、ADR 0185）。
+  assert.equal(
+    bandSummary({
+      ...PLAN,
+      removed: {
+        ...PLAN.removed,
+        counts: [
+          { kind: 'memory', count: 2 },
+          { kind: 'user_directive', count: 2 },
+        ],
+        directives: [
+          { ref: uuid(0x301), scope: 'from_now_on', text: '今後は短めに' },
+          { ref: uuid(0x302), scope: 'this_time', text: null },
+        ],
+      },
+    }),
+    '消える物 合計\u00a04\u00a0件（記憶\u00a02\u00a0件・指示\u00a02\u00a0件）',
+  );
 });
 
 test('forgetting is available only when the hub says open and nothing blocked it', () => {

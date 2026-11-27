@@ -13,7 +13,12 @@
 //   ゲートが閉じている間は計画も実行もしない（期限切れの削除・復元の忘却の適用は忘却の入口ではないので関わらない）。
 // - 台帳の鍵（ledger_hmac_key）がなければ計画を作らない（U384）。鍵をここで作ると、復旧キーで包まれず、復元した中枢が
 //   同じ HMAC を求められなくなる（ADR 0040・0055）。
-// 結果・知らせ・ログに本文・検索語・HMAC を入れない（ID・件数・世代だけ）。
+// - 消える指示の本文（U433、ADR 0185）: 計画で消える本人の指示は、系譜と同じ transaction で読んだ封筒をデータ鍵で開き、
+//   本文（200 文字まで）と範囲を計画に付けて返す。指示ごとの封筒がない・開けない・UTF-8 でない・空・200 文字を超えるときは、
+//   その指示を「読めない指示」（本文 null）として計画に残す（計画から外すと、本人が知らない指示が消える）。消える指示が
+//   あるのにデータ鍵を読めないときは計画を作らない（503）。全部を読めない指示として見せると、壊れていない指示まで
+//   見せずに消すことになる。
+// 結果・知らせ・ログに本文・検索語・HMAC を入れない（ID・件数・世代だけ）。計画の応答だけが消える指示の本文を持つ。
 
 import { randomUUID } from 'node:crypto';
 import type {
@@ -25,11 +30,17 @@ import type {
 } from '@buddy/contracts';
 import { chunkNoticeItems, forgetPlanView, planForget } from '@buddy/domain';
 import type { ForgetPlan, MemorySource, NoticeItemDraft } from '@buddy/domain';
-import type { ForgetApplyValue, SourceHmacValue } from '@buddy/storage';
+import type {
+  DataKeyMaterial,
+  ForgetApplyValue,
+  ForgetDirectiveRow,
+  SourceHmacValue,
+} from '@buddy/storage';
 import { applyForgetAndSyncLedger } from './forget-ledger.js';
 import type { ForgetLedgerStore } from './forget-ledger.js';
 import { isNoticeItemId } from './notice-sink.js';
 import type { NoticeSink } from './notice-sink.js';
+import { openSealedText } from './sealed-text.js';
 
 // 忘却の公開ゲート（U112・U382）。忘却の画面（UI-10、#180）の PR だけがこの値を変える。型は boolean にして、
 // 閉じた値に依存した分岐の省略（定数の畳み込み）を型の上で起こさない。
@@ -44,6 +55,9 @@ export const FORGET_RESULT_RETENTION_MS = 10 * 60_000;
 
 // 同時に持つ未実行の計画の数の上限（端末ごとに 1 件なので、端末の数の上限でもある）。超えたら新しい計画を断る。
 export const FORGET_MAX_PENDING_PLANS = 64;
+
+// 消える指示の本文の上限（契約の UserDirective.text と ForgetPlanView の指示の本文の maxLength。コードポイントで数える）。
+export const FORGET_DIRECTIVE_TEXT_MAX = 200;
 
 // DB worker の拒否のうち、計画が古くなったことを表すもの（計画を取り直せば進める）。
 const REPLAN_REASONS: ReadonlySet<string> = new Set([
@@ -63,6 +77,8 @@ export type ForgetPlanFailure =
   | 'plan_unavailable'
   // 計画の一覧が上限を超える（途中までを見せない）。
   | 'plan_too_large'
+  // 消える指示があるのに、本文を開くデータ鍵を読めない（指示を見せずに計画を出さない）。
+  | 'directive_text_unavailable'
   // 他の端末の未実行の計画が上限に達している（古い計画の期限切れを待つ）。
   | 'too_many_plans';
 
@@ -109,6 +125,8 @@ export interface ForgetServiceOptions {
   readonly gate: () => boolean;
   // 台帳用の HMAC（ADR 0040 の用途別の鍵）。鍵がない・読めなければ null。
   readonly sourceHmac: () => Promise<((source: MemorySource) => string) | null>;
+  // データ鍵（消える指示の本文を開く。要求ごとに読み、保持しない）。読めなければ null。
+  readonly dataKey: () => Promise<DataKeyMaterial | null>;
   readonly notices?: NoticeSink;
   // UTC の Unix ミリ秒。
   readonly now: () => number;
@@ -215,6 +233,11 @@ export class ForgetService {
       new Set(read.value.graph.operations.map((row) => row.operation_id)),
     );
     if (!view.ok) return fail('plan_too_large', view.reasons);
+    const directives = await this.#directives(
+      view.view.removed_directive_ids,
+      read.value.directives,
+    );
+    if (!directives.ok) return fail(directives.reason);
     const now = this.#options.now();
     this.#prune(now);
     // 端末ごとに有効な未実行の計画は 1 件。同じ端末の古い未実行の計画は捨てる（実行中・実行済みの計画は残す）。
@@ -256,7 +279,7 @@ export class ForgetService {
             ...item,
           })) as unknown as ForgetPlanView['removed']['counts'],
           memory_ids: [...parts.removed_memory_ids] as [string, ...string[]],
-          directive_ids: [...parts.removed_directive_ids],
+          directives: directives.items,
         },
         kept: {
           operations: parts.kept_operations.map((item) => ({
@@ -268,6 +291,57 @@ export class ForgetService {
         },
         blocked_source_count: parts.blocked_source_count,
       },
+    };
+  }
+
+  // 消える指示の本文と範囲（U433、ADR 0185）。ids は計画の消える指示（ID の順）、rows は系譜と同じ transaction で読んだ
+  // 指示の行。指示ごとに開けなければ本文 null（読めない指示）。消える指示がなければデータ鍵を読まない。
+  async #directives(
+    ids: readonly string[],
+    rows: readonly ForgetDirectiveRow[],
+  ): Promise<
+    | {
+        readonly ok: true;
+        readonly items: ForgetPlanView['removed']['directives'];
+      }
+    | { readonly ok: false; readonly reason: ForgetPlanFailure }
+  > {
+    if (ids.length === 0) return { ok: true, items: [] };
+    const byId = new Map(rows.map((row) => [row.directive_id, row]));
+    // 計画の指示は、同じ transaction で読んだ系譜の辺から出るので行がある。なければ計画の材料が食い違っている。
+    if (ids.some((id) => !byId.has(id)))
+      return { ok: false, reason: 'plan_unavailable' };
+    let dataKey: DataKeyMaterial | null;
+    try {
+      dataKey = await this.#options.dataKey();
+    } catch {
+      dataKey = null;
+    }
+    if (dataKey === null)
+      return { ok: false, reason: 'directive_text_unavailable' };
+    const key = dataKey;
+    return {
+      ok: true,
+      items: ids.map((id) => {
+        const row = byId.get(id) as ForgetDirectiveRow;
+        return {
+          directive_id: id,
+          scope: row.scope,
+          text:
+            row.text === null
+              ? null
+              : openSealedText(
+                  key,
+                  row.text,
+                  {
+                    ownerTable: 'user_directives',
+                    ownerId: id,
+                    purpose: 'directive_text',
+                  },
+                  FORGET_DIRECTIVE_TEXT_MAX,
+                ),
+        };
+      }),
     };
   }
 

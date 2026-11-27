@@ -146,6 +146,17 @@ export interface ForgetGraphValue {
   readonly forgetting_generation: string;
   readonly target_exists: boolean;
   readonly ledger_id: string | null;
+  // 系譜にある本人の指示の本文の封筒（U433、ADR 0185）。系譜と同じ transaction で読む（計画に出す「消える指示」の本文を、
+  // 計画と同じ時点の値にする）。ID の順。Core は計画で消える指示の封筒だけをデータ鍵で開く。
+  readonly directives: readonly ForgetDirectiveRow[];
+}
+
+// 系譜にある本人の指示の 1 行。text は封筒（owner = user_directives・directive_id・版 0・用途 directive_text）。
+// 封筒が見つからなければ null（Core は「読めない指示」として計画に出す）。
+export interface ForgetDirectiveRow {
+  readonly directive_id: string;
+  readonly scope: 'this_time' | 'from_now_on';
+  readonly text: MemoryBlobOutput | null;
 }
 
 export interface MemoryScheduleValue {
@@ -155,7 +166,8 @@ export interface MemoryScheduleValue {
   readonly delete_at: number | null;
 }
 
-// 記憶の本文の封筒（sealed_blobs の 1 行。Core が owner = memories・memory_id・版 0・用途 memory_text で開く）。
+// 本文の封筒（sealed_blobs の 1 行）。記憶の本文は Core が owner = memories・memory_id・版 0・用途 memory_text で、本人の指示の
+// 本文は owner = user_directives・directive_id・版 0・用途 directive_text で開く。
 export interface MemoryBlobOutput {
   readonly blob_id: string;
   readonly format_version: number;
@@ -847,18 +859,73 @@ function listMemories(
   return { rows: listed, truncated: shown.length > op.limit };
 }
 
+// 系譜の辺にある本人の指示（user_directive の節点）の本文の封筒を読む（U433、ADR 0185）。行がなければ出さない（同じ
+// transaction で読んだ系譜にある指示は行を持つ）。封筒は所有者（表・ID・用途）が合う行だけを返し、なければ null。
+function readGraphDirectives(
+  db: SqliteDatabase,
+  graph: ForgetGraph,
+): ForgetDirectiveRow[] {
+  const ids = new Set<string>();
+  for (const edge of graph.edges)
+    if (edge.artifact.kind === 'user_directive') ids.add(edge.artifact.id);
+  const read = db.prepare(
+    "SELECT d.directive_id, d.scope, b.blob_id, b.format_version, b.key_id, b.nonce, b.ciphertext, b.tag FROM user_directives d LEFT JOIN sealed_blobs b ON b.blob_id = d.text_blob_id AND b.purpose = 'directive_text' AND b.owner_table = 'user_directives' AND b.owner_id = d.directive_id WHERE d.directive_id = ?",
+  );
+  const rows: ForgetDirectiveRow[] = [];
+  for (const id of [...ids].sort()) {
+    const found = read.get(id) as
+      | {
+          directive_id: string;
+          scope: ForgetDirectiveRow['scope'];
+          blob_id: string | null;
+          format_version: number | null;
+          key_id: string | null;
+          nonce: Buffer | null;
+          ciphertext: Buffer | null;
+          tag: Buffer | null;
+        }
+      | undefined;
+    if (found === undefined) continue;
+    rows.push({
+      directive_id: found.directive_id,
+      scope: found.scope,
+      text:
+        found.blob_id === null ||
+        found.format_version === null ||
+        found.key_id === null ||
+        found.nonce === null ||
+        found.ciphertext === null ||
+        found.tag === null
+          ? null
+          : {
+              blob_id: found.blob_id,
+              format_version: found.format_version,
+              key_id: found.key_id,
+              nonce: new Uint8Array(found.nonce),
+              ciphertext: new Uint8Array(found.ciphertext),
+              tag: new Uint8Array(found.tag),
+            },
+    });
+  }
+  return rows;
+}
+
 function readOnly(db: SqliteDatabase, op: MemoryOp): MemoryOpValue {
   switch (op.kind) {
     case 'forget.graph':
-      return db.transaction(() => ({
-        graph: readForgetSubgraph(db, {
+      return db.transaction(() => {
+        const graph = readForgetSubgraph(db, {
           target: op.target,
           instruction_turn_id: op.instruction_turn_id ?? null,
-        }),
-        forgetting_generation: String(currentForgettingGeneration(db)),
-        target_exists: forgetTargetExists(db, op.target),
-        ledger_id: readLedgerId(db),
-      }))();
+        });
+        return {
+          graph,
+          forgetting_generation: String(currentForgettingGeneration(db)),
+          target_exists: forgetTargetExists(db, op.target),
+          ledger_id: readLedgerId(db),
+          directives: readGraphDirectives(db, graph),
+        };
+      })();
     case 'forget.ledger_export':
       return db.transaction(() => exportForgetLedger(db))();
     case 'backup.facts':

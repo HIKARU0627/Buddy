@@ -67,7 +67,13 @@ const planBody = (fields = {}) => ({
     ],
     // M2 は一覧にある派生の記憶。もう 1 件は一覧にない記憶（上限の外など）。
     memory_ids: [M1, M2, uuid(0xa09)],
-    directive_ids: [DIRECTIVE],
+    directives: [
+      {
+        directive_id: DIRECTIVE,
+        scope: 'from_now_on',
+        text: '今後は返信を短めにして',
+      },
+    ],
   },
   kept: {
     operations: [{ operation_id: OPERATION, state: 'awaiting_approval' }],
@@ -237,7 +243,14 @@ test('a plan shows what goes and what stays by refs and counts, and nothing is e
       ],
       memory_refs: [uuid(0x100), uuid(0x101)],
       unlisted_memory_count: 1,
-      directive_count: 1,
+      // 指示は main の参照と本文・範囲だけ（指示 ID は出さない）。
+      directives: [
+        {
+          ref: uuid(0x104),
+          scope: 'from_now_on',
+          text: '今後は返信を短めにして',
+        },
+      ],
     },
     kept: { operation_states: ['awaiting_approval'], lineage_only: 1 },
     blocked_source_count: 1,
@@ -294,6 +307,7 @@ test('execute confirms once with the hub values, then sends the plan generation 
       removedTotal: 5,
       memoryCount: 3,
       directiveCount: 1,
+      unreadableDirectiveCount: 0,
       keptOperations: 1,
     },
   ]);
@@ -538,4 +552,99 @@ test('a second execute of the same ref while the first is confirming or awaiting
     ok: false,
     reason: 'entry_not_found',
   });
+});
+
+// ---- 消える指示の本文（U433、ADR 0185） ----
+
+const DIRECTIVE_2 = uuid(0xc02);
+const DIRECTIVE_3 = uuid(0xc03);
+
+test('the plan passes each disappearing directive as a ref with its text and scope, unreadable ones as null, and the confirmation counts them', async () => {
+  const r = rig();
+  const long = '長'.repeat(200);
+  r.plan = () => ({
+    kind: 'response',
+    status: 200,
+    body: planBody({
+      removed: {
+        counts: [
+          { kind: 'memory', count: 1 },
+          { kind: 'user_directive', count: 3 },
+        ],
+        memory_ids: [M1],
+        directives: [
+          { directive_id: DIRECTIVE, scope: 'from_now_on', text: long },
+          { directive_id: DIRECTIVE_2, scope: 'this_time', text: null },
+          {
+            directive_id: DIRECTIVE_3,
+            scope: 'this_time',
+            text: 'この会話では敬語をやめて',
+          },
+        ],
+      },
+    }),
+  });
+  const listed = ok(await r.bridge.list());
+  const view = ok(await r.bridge.plan(listed.entries[0]?.ref as string));
+  assert(contract.valid('DesktopMemoryView', view));
+  assert.deepEqual(view.plan?.removed.directives, [
+    { ref: uuid(0x104), scope: 'from_now_on', text: long },
+    { ref: uuid(0x105), scope: 'this_time', text: null },
+    { ref: uuid(0x106), scope: 'this_time', text: 'この会話では敬語をやめて' },
+  ]);
+  const text = JSON.stringify(view);
+  for (const id of [DIRECTIVE, DIRECTIVE_2, DIRECTIVE_3, PLAN, M1])
+    assert(!text.includes(id), id);
+  // 同じ計画を見ている間は、指示の参照を変えない。
+  assert.deepEqual(
+    r.bridge.view().plan?.removed.directives.map((item) => item.ref),
+    [uuid(0x104), uuid(0x105), uuid(0x106)],
+  );
+  // 確認には、指示の数と本文を読めない指示の数を渡す（本文は画面で見せる）。
+  ok(await r.bridge.execute(view.plan?.ref as string));
+  assert.deepEqual(r.confirms, [
+    {
+      action: 'forget_memory',
+      memoryText: '返信は短めが好み',
+      removedTotal: 4,
+      memoryCount: 1,
+      directiveCount: 3,
+      unreadableDirectiveCount: 1,
+      keptOperations: 1,
+    },
+  ]);
+});
+
+test('a plan whose directive carries a raw id field or a too long text is not shown', async () => {
+  const r = rig();
+  const listed = ok(await r.bridge.list());
+  for (const directive of [
+    {
+      directive_id: DIRECTIVE,
+      scope: 'from_now_on',
+      text: '今後は返信を短めにして',
+      turn_id: uuid(0xe01),
+    },
+    { directive_id: DIRECTIVE, scope: 'from_now_on', text: '長'.repeat(201) },
+    { directive_id: DIRECTIVE, scope: 'from_now_on', text: '' },
+  ]) {
+    r.plan = () => ({
+      kind: 'response',
+      status: 200,
+      body: planBody({
+        removed: {
+          counts: [{ kind: 'memory', count: 1 }],
+          memory_ids: [M1],
+          directives: [directive],
+        },
+      }),
+    });
+    assert.deepEqual(
+      await r.bridge.plan(listed.entries[0]?.ref as string),
+      { ok: false, reason: 'core_rejected' },
+      JSON.stringify(directive).slice(0, 80),
+    );
+    assert.equal(r.bridge.view().plan, null);
+  }
+  assert.equal(r.executes().length, 0);
 });

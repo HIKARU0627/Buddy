@@ -2,6 +2,8 @@
 // 本体に置く。
 // - 左: 記憶の一覧。種類の見出しの下に行（本文・由来の件数・期限・見直し待ちの印）と「忘却の計画を作る」。
 // - 右: 選んだ記憶の忘却の計画。「消える物」「消える指示」「残る物」の順に件数と対象の行。計画は中枢が作り、画面は見せるだけ。
+//   「消える指示」は指示ごとの本文と範囲の行（U433、ADR 0185）。本文は省略せず折り返して全部出す（200 文字まで）。中枢が
+//   本文を読めなかった指示は ⚠ と「本文を読めない指示」の行にし、一緒に消えることを書く。
 // - 下: 確認の帯（件数・計画の時点の忘却の回数・期限・「忘れる（確認へ）」）。実行のボタンはこの帯の中だけに置く。押すと main が
 //   OS の確認ダイアログを 1 回出す。
 // 忘却の公開ゲートが閉じている・中枢が 503 を返した間は、計画・実行のボタンを無効にし、理由を欄の頭に出す（ADR 0183。
@@ -19,6 +21,7 @@ import { StatusMark, StatusText } from '../../components/StatusText.js';
 import { FRAME_CLASS, FRAME_DANGER_CLASS } from '../../shapes.js';
 import {
   BAND_PLACE,
+  DIRECTIVE_SCOPE_LABELS,
   HEAD_PLACE,
   MEMORY_KIND_LABELS,
   MEMORY_LABELS,
@@ -252,6 +255,54 @@ function PlanPart({
   );
 }
 
+function DirectiveList({ plan }: { readonly plan: DesktopForgetPlanView }) {
+  const directives = plan.removed.directives;
+  if (directives.length === 0)
+    return <p className="text-sm text-muted">{MEMORY_LABELS.noDirectives}</p>;
+  return (
+    <>
+      <p className="max-w-prose text-sm leading-6">
+        {MEMORY_LABELS.directivesLead}
+      </p>
+      <ul
+        aria-label={MEMORY_LABELS.directives}
+        className={`flex flex-col divide-y divide-separator ${FRAME_CLASS}`}
+      >
+        {directives.map((directive) => (
+          <li
+            key={directive.ref}
+            data-directive={directive.text === null ? 'unreadable' : 'text'}
+            className="flex min-w-0 flex-col gap-1 px-3 py-2"
+          >
+            {directive.text === null ? (
+              <>
+                <StatusText
+                  className="text-sm font-semibold"
+                  line={{
+                    tone: 'warning',
+                    mark: 'warning',
+                    text: MEMORY_LABELS.directiveUnreadable,
+                  }}
+                />
+                <p className="text-xs leading-5 text-muted">
+                  {MEMORY_LABELS.directiveUnreadableBody}
+                </p>
+              </>
+            ) : (
+              <p className="min-w-0 break-words text-sm leading-6">
+                {directive.text}
+              </p>
+            )}
+            <p className="text-xs text-muted">
+              {DIRECTIVE_SCOPE_LABELS[directive.scope]}
+            </p>
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+}
+
 function PlanView({
   plan,
   state,
@@ -293,18 +344,9 @@ function PlanView({
       </PlanPart>
       <PlanPart
         title={MEMORY_LABELS.directives}
-        total={plan.removed.directive_count}
+        total={plan.removed.directives.length}
       >
-        {plan.removed.directive_count === 0 ? (
-          <p className="text-sm text-muted">{MEMORY_LABELS.noDirectives}</p>
-        ) : (
-          <>
-            <p className="text-sm">{`本人の指示 ${plan.removed.directive_count}${NB}件（この記憶の元の発言から作った「今後は」などの指示）`}</p>
-            <p className="text-xs text-muted">
-              {MEMORY_LABELS.directivesHidden}
-            </p>
-          </>
-        )}
+        <DirectiveList plan={plan} />
       </PlanPart>
       <PlanPart title={MEMORY_LABELS.kept} total={keptCount}>
         {keptCount === 0 ? (

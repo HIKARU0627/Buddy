@@ -18136,17 +18136,39 @@
               "minimum": 0,
               "description": "消える記憶のうち、一覧にない（上限で切った・一覧の後に増えた）ものの数。"
             },
-            "directive_count": {
-              "type": "integer",
-              "minimum": 0,
-              "description": "消える本人の指示の数（U112）。指示の本文はこの画面に出さない（U433）。"
+            "directives": {
+              "type": "array",
+              "maxItems": 1000,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "ref": {
+                    "$ref": "#/$defs/Id",
+                    "description": "指示の行の参照（main が作る。指示 ID ではない）。"
+                  },
+                  "scope": {
+                    "type": "string",
+                    "enum": ["this_time", "from_now_on"]
+                  },
+                  "text": {
+                    "anyOf": [
+                      { "type": "string", "minLength": 1, "maxLength": 200 },
+                      { "type": "null" }
+                    ],
+                    "description": "指示の本文。null は中枢が本文を読めなかった指示（それでも一緒に消える）。"
+                  }
+                },
+                "required": ["ref", "scope", "text"],
+                "additionalProperties": false
+              },
+              "description": "消える本人の指示（U112）の本文と参照（U433、ADR 0185）。指示 ID は出さない。"
             }
           },
           "required": [
             "counts",
             "memory_refs",
             "unlisted_memory_count",
-            "directive_count"
+            "directives"
           ],
           "additionalProperties": false
         },
@@ -18188,7 +18210,7 @@
         "blocked_source_count"
       ],
       "additionalProperties": false,
-      "description": "忘却の計画の表示用の値（UI-10、ADR 0180・0183）。中枢の ForgetPlanView から、計画 ID・記憶 ID・指示 ID・操作 ID を main の参照・件数に置き換えた形。計画を作ったのは中枢で、画面は見せて確認を返すだけ。"
+      "description": "忘却の計画の表示用の値（UI-10、ADR 0180・0183）。中枢の ForgetPlanView から、計画 ID・記憶 ID・指示 ID・操作 ID を main の参照・件数に置き換えた形（指示は参照と本文と範囲。ADR 0185）。計画を作ったのは中枢で、画面は見せて確認を返すだけ。"
     },
     "DesktopForgetResultView": {
       "type": "object",
@@ -20274,14 +20296,34 @@
               "uniqueItems": true,
               "items": { "$ref": "#/$defs/Id" }
             },
-            "directive_ids": {
+            "directives": {
               "type": "array",
               "maxItems": 1000,
               "uniqueItems": true,
-              "items": { "$ref": "#/$defs/Id" }
+              "items": {
+                "type": "object",
+                "properties": {
+                  "directive_id": { "$ref": "#/$defs/Id" },
+                  "scope": {
+                    "type": "string",
+                    "enum": ["this_time", "from_now_on"],
+                    "description": "this_time は今回だけ（会話の間）、from_now_on は今後ずっと。"
+                  },
+                  "text": {
+                    "anyOf": [
+                      { "type": "string", "minLength": 1, "maxLength": 200 },
+                      { "type": "null" }
+                    ],
+                    "description": "指示の本文（データ鍵で封筒を開いた値。UserDirective.text と同じ 200 文字まで）。封筒がない・開けない・UTF-8 でない・空・200 文字を超える指示は null（読めない指示。計画からは外さず、一緒に消える）。"
+                  }
+                },
+                "required": ["directive_id", "scope", "text"],
+                "additionalProperties": false
+              },
+              "description": "消える本人の指示（U112）と、その本文（U433、ADR 0185）。ID の順。"
             }
           },
-          "required": ["counts", "memory_ids", "directive_ids"],
+          "required": ["counts", "memory_ids", "directives"],
           "additionalProperties": false
         },
         "kept": {
@@ -20330,7 +20372,7 @@
         "blocked_source_count"
       ],
       "additionalProperties": false,
-      "description": "忘却の計画を本人が確かめる形（B06-07b-2、UI-10 の画面の材料。ADR 0180）。消える物（種類ごとの件数・記憶の ID・本人の指示の ID）、残る物（送出禁止の印だけを付けて状態・承認・試行を変えない操作と、行がなく系譜だけに残る確定内容の数）、再登録を禁じる由来の数を持つ。本文・検索語・元サービスの ID・HMAC を持たない。forgetting_generation は計画を作ったときの台帳の世代で、実行の要求に同じ値を入れる。expires_at を過ぎた計画・台帳の世代が変わった計画は実行せず、作り直す。"
+      "description": "忘却の計画を本人が確かめる形（B06-07b-2、UI-10 の画面の材料。ADR 0180）。消える物（種類ごとの件数・記憶の ID・本人の指示の ID と本文）、残る物（送出禁止の印だけを付けて状態・承認・試行を変えない操作と、行がなく系譜だけに残る確定内容の数）、再登録を禁じる由来の数を持つ。本文は消える本人の指示の本文だけを持つ（指示を一覧する経路がないため。U433、ADR 0185）。記憶の本文（記憶の一覧の経路が返す）・検索語・元サービスの ID・HMAC・対象キーを持たない。forgetting_generation は計画を作ったときの台帳の世代で、実行の要求に同じ値を入れる。expires_at を過ぎた計画・台帳の世代が変わった計画は実行せず、作り直す。"
     },
     "ForgetExecuteRequest": {
       "type": "object",

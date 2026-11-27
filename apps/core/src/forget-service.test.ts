@@ -3,6 +3,7 @@
 // DB は一時ディレクトリに作り、記憶と忘却の命令は同じプロセスで実行する（worker の往復は保存層の試験で確かめている）。
 // HMAC は試験用に決めた 64 桁の値を返す関数で、鍵による計算ではない。期待値（計画の件数・消える物・台帳・知らせ）は、
 // 下の合成の世界から ADR 0044・0054 の閉包の規則で手で導いた値で、計画の関数から作らない。実機・実データは使わない。
+// 消える指示の本文（U433、ADR 0185）は、試験用のデータ鍵で本当に封じた封筒を DB に書き、計画が開いて返すことを確かめる。
 
 import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
@@ -17,8 +18,14 @@ import {
   executeMemoryOp,
   initStoreGeneration,
   openWriteConnection,
+  sealBlob,
 } from '@buddy/storage';
-import type { MemoryOp, MemoryOpResult, SqliteDatabase } from '@buddy/storage';
+import type {
+  DataKeyMaterial,
+  MemoryOp,
+  MemoryOpResult,
+  SqliteDatabase,
+} from '@buddy/storage';
 import { createForgetRoutes } from './api-forget.js';
 import type { ApiRouteHandler } from './api-server.js';
 import { sharedApiContract } from './api-test-support.js';
@@ -61,6 +68,67 @@ const HMAC: Readonly<Record<string, string>> = {
 };
 const NOW = Date.parse('2031-02-03T04:05:06.000Z');
 const contract = sharedApiContract();
+// 試験用のデータ鍵（合成の値。実データの鍵ではない）と、開けないことを確かめる別の鍵。
+const KEY: DataKeyMaterial = { keyId: 'data-key-v1', key: Buffer.alloc(32, 7) };
+const OTHER_KEY: DataKeyMaterial = {
+  keyId: 'data-key-v1',
+  key: Buffer.alloc(32, 8),
+};
+const DIRECTIVE_TEXT = '今後は返信を短めにして';
+
+// 本人の指示の本文の封筒を書く（owner = user_directives・sealedFor・版 0・用途 directive_text で封じ、行の所有者は owner）。
+// sealedFor と owner を変えると、別の指示の封筒の差し替えになる。
+function directiveBlob(
+  db: SqliteDatabase,
+  owner: string,
+  plaintext: string | Uint8Array,
+  options: { readonly key?: DataKeyMaterial; readonly sealedFor?: string } = {},
+): string {
+  const sealed = sealBlob(
+    options.key ?? KEY,
+    typeof plaintext === 'string'
+      ? new TextEncoder().encode(plaintext)
+      : plaintext,
+    {
+      ownerTable: 'user_directives',
+      ownerId: options.sealedFor ?? owner,
+      ownerVersion: 0,
+      purpose: 'directive_text',
+    },
+  );
+  assert(sealed.ok);
+  const id = randomUUID();
+  db.prepare(
+    "INSERT INTO sealed_blobs (blob_id, purpose, owner_table, owner_id, owner_version, format_version, key_id, nonce, ciphertext, tag, created_at, delete_at) VALUES (?, 'directive_text', 'user_directives', ?, 0, ?, ?, ?, ?, ?, 1000, NULL)",
+  ).run(
+    id,
+    owner,
+    sealed.envelope.formatVersion,
+    sealed.envelope.keyId,
+    Buffer.from(sealed.envelope.nonce),
+    Buffer.from(sealed.envelope.ciphertext),
+    Buffer.from(sealed.envelope.tag),
+  );
+  return id;
+}
+
+function insertDirective(
+  db: SqliteDatabase,
+  directiveId: string,
+  textBlobId: string,
+  scope: 'this_time' | 'from_now_on' = 'from_now_on',
+  turnId: string = T_SRC,
+): void {
+  db.prepare(
+    'INSERT INTO user_directives (directive_id, text_blob_id, scope, session_id, turn_id, active, created_at) VALUES (?, ?, ?, ?, ?, 1, 1000)',
+  ).run(
+    directiveId,
+    textBlobId,
+    scope,
+    scope === 'this_time' ? S : null,
+    turnId,
+  );
+}
 
 function blob(
   db: SqliteDatabase,
@@ -123,13 +191,7 @@ function seed(db: SqliteDatabase): void {
     source_kind: 'turn',
     source_id: T_OTHER,
   });
-  db.prepare(
-    "INSERT INTO user_directives (directive_id, text_blob_id, scope, session_id, turn_id, active, created_at) VALUES (?, ?, 'from_now_on', NULL, ?, 1, 1000)",
-  ).run(
-    DIRECTIVE,
-    blob(db, 'directive_text', 'user_directives', DIRECTIVE),
-    T_SRC,
-  );
+  insertDirective(db, DIRECTIVE, directiveBlob(db, DIRECTIVE, DIRECTIVE_TEXT));
   const created = executeCommand(db, createCommand(OP_WAIT), {
     now: 1_000_000,
     platform: 'macos',
@@ -152,6 +214,8 @@ interface World {
   readonly clock: { now: number };
   readonly sink: RecordingNoticeSink;
   readonly gate: { open: boolean };
+  // データ鍵を読んだ回数。
+  readonly keyReads: { count: number };
   readonly service: ForgetService;
 }
 
@@ -184,6 +248,7 @@ function world(
   const clock = { now: NOW };
   const sink = new RecordingNoticeSink();
   const gate = { open: true };
+  const keyReads = { count: 0 };
   let counter = 0;
   const ledgerPath = join(dir, 'forget-ledger.json');
   const service = createForgetService({
@@ -195,6 +260,10 @@ function world(
         (source: MemorySource) =>
           HMAC[`${source.source_kind}:${source.source_id}`] ?? '',
       ),
+    dataKey: () => {
+      keyReads.count += 1;
+      return Promise.resolve(KEY);
+    },
     notices: sink,
     now: () => clock.now,
     // 計画・台帳の 1 件・知らせの ID（UUID v4 の形の連番）。
@@ -204,7 +273,18 @@ function world(
     },
     ...overrides,
   });
-  return { db, dir, ledgerPath, store, applies, clock, sink, gate, service };
+  return {
+    db,
+    dir,
+    ledgerPath,
+    store,
+    applies,
+    clock,
+    sink,
+    gate,
+    keyReads,
+    service,
+  };
 }
 
 const count = (db: SqliteDatabase, sql: string, ...args: unknown[]): number =>
@@ -298,7 +378,10 @@ test('the plan shows what disappears before anything is deleted, then the confir
         { kind: 'user_directive', count: 1 },
       ],
       memory_ids: [M, M2],
-      directive_ids: [DIRECTIVE],
+      // 消える指示は本文と範囲を付けて返す（U433）。
+      directives: [
+        { directive_id: DIRECTIVE, scope: 'from_now_on', text: DIRECTIVE_TEXT },
+      ],
     },
     kept: {
       operations: [{ operation_id: OP_WAIT, state: 'awaiting_approval' }],
@@ -648,6 +731,7 @@ test('when the ledger file cannot be written the forget still stands and devices
         (source: MemorySource) =>
           HMAC[`${source.source_kind}:${source.source_id}`] ?? '',
       ),
+    dataKey: () => Promise.resolve(KEY),
     now: () => NOW,
   });
   const planned = await broken.plan({ device_id: DEVICE, memory_id: M });
@@ -1128,4 +1212,158 @@ test('uncertain outcomes, refusals and capacity map to distinct HTTP answers', a
     });
     assert.equal(closed.status, 503);
   }
+});
+
+// ---- 消える指示の本文（U433、ADR 0185） ----
+
+const D_200 = 'd0000000-0000-4000-8000-000000000002';
+const D_EMOJI = 'd0000000-0000-4000-8000-000000000003';
+const D_201 = 'd0000000-0000-4000-8000-000000000004';
+const D_WRONG_KEY = 'd0000000-0000-4000-8000-000000000005';
+const D_SWAPPED = 'd0000000-0000-4000-8000-000000000006';
+const D_EMPTY = 'd0000000-0000-4000-8000-000000000007';
+const D_BAD_UTF8 = 'd0000000-0000-4000-8000-000000000008';
+const D_NO_ENVELOPE = 'd0000000-0000-4000-8000-000000000009';
+const D_UNRELATED = 'd0000000-0000-4000-8000-00000000000a';
+
+test('the plan shows the text of each disappearing directive and keeps an unreadable one in the plan', async (t) => {
+  const w = world(t);
+  // 記憶 M の元の発言 T_SRC から作った指示を足す（どれも M と一緒に消える）。T_OTHER から作った指示は消えない。
+  insertDirective(
+    w.db,
+    D_200,
+    directiveBlob(w.db, D_200, 'い'.repeat(200)),
+    'this_time',
+  );
+  // 200 文字は UTF-16 では 400 単位（文字数はコードポイントで数える）。
+  insertDirective(
+    w.db,
+    D_EMOJI,
+    directiveBlob(w.db, D_EMOJI, '👍'.repeat(200)),
+  );
+  insertDirective(w.db, D_201, directiveBlob(w.db, D_201, 'う'.repeat(201)));
+  insertDirective(
+    w.db,
+    D_WRONG_KEY,
+    directiveBlob(w.db, D_WRONG_KEY, '別の鍵で封じた指示', { key: OTHER_KEY }),
+  );
+  // 別の指示（DIRECTIVE）のために封じた封筒を、この指示の行に差し替えた。
+  insertDirective(
+    w.db,
+    D_SWAPPED,
+    directiveBlob(w.db, D_SWAPPED, '差し替えた指示', { sealedFor: DIRECTIVE }),
+  );
+  insertDirective(w.db, D_EMPTY, directiveBlob(w.db, D_EMPTY, ''));
+  insertDirective(
+    w.db,
+    D_BAD_UTF8,
+    directiveBlob(w.db, D_BAD_UTF8, new Uint8Array([0xe3, 0x81])),
+  );
+  // 封筒の行はあるが、所有者が別の ID（この指示の封筒として読めない）。
+  insertDirective(
+    w.db,
+    D_NO_ENVELOPE,
+    directiveBlob(w.db, 'd0000000-0000-4000-8000-0000000000ff', '迷子の封筒'),
+  );
+  insertDirective(
+    w.db,
+    D_UNRELATED,
+    directiveBlob(w.db, D_UNRELATED, '関係のない指示'),
+    'from_now_on',
+    T_OTHER,
+  );
+  const view = await planOk(w);
+  assert.deepEqual(view.removed.counts, [
+    { kind: 'session_summary', count: 1 },
+    { kind: 'memory', count: 2 },
+    { kind: 'user_directive', count: 9 },
+  ]);
+  assert.deepEqual(view.removed.directives, [
+    { directive_id: DIRECTIVE, scope: 'from_now_on', text: DIRECTIVE_TEXT },
+    { directive_id: D_200, scope: 'this_time', text: 'い'.repeat(200) },
+    { directive_id: D_EMOJI, scope: 'from_now_on', text: '👍'.repeat(200) },
+    { directive_id: D_201, scope: 'from_now_on', text: null },
+    { directive_id: D_WRONG_KEY, scope: 'from_now_on', text: null },
+    { directive_id: D_SWAPPED, scope: 'from_now_on', text: null },
+    { directive_id: D_EMPTY, scope: 'from_now_on', text: null },
+    { directive_id: D_BAD_UTF8, scope: 'from_now_on', text: null },
+    { directive_id: D_NO_ENVELOPE, scope: 'from_now_on', text: null },
+  ]);
+  assert(contract.valid('ForgetPlanView', view));
+  // 消えない指示の本文・元の発言の ID・台帳の HMAC は計画に出ない。
+  const text = JSON.stringify(view);
+  for (const hidden of ['関係のない指示', T_SRC, T_OTHER, 'b1'.repeat(32)])
+    assert(!text.includes(hidden), hidden);
+  assert.equal(w.keyReads.count, 1);
+  // 読めない指示も、見せたとおりに一緒に消える（計画から外していない）。
+  const executed = await w.service.execute({
+    device_id: DEVICE,
+    plan_id: view.plan_id,
+    forgetting_generation: '0',
+  });
+  assert.equal(executed.ok, true, JSON.stringify(executed));
+  assert.deepEqual(
+    w.db
+      .prepare('SELECT directive_id FROM user_directives ORDER BY directive_id')
+      .pluck()
+      .all(),
+    [D_UNRELATED],
+  );
+});
+
+test('a plan with disappearing directives needs the data key; a plan without them does not read it', async (t) => {
+  const holder: { key: DataKeyMaterial | null | 'throw' } = { key: KEY };
+  let reads = 0;
+  const w = world(t, {
+    dataKey: () => {
+      reads += 1;
+      if (holder.key === 'throw')
+        return Promise.reject(new Error('key store failed'));
+      return Promise.resolve(holder.key);
+    },
+  });
+  // 消える指示のない記憶（M_OTHER）は、データ鍵を読まずに計画を作る。
+  const other = await w.service.plan({
+    device_id: OTHER_DEVICE,
+    memory_id: M_OTHER,
+  });
+  assert(other.ok);
+  assert.deepEqual(other.view.removed.directives, []);
+  assert.equal(reads, 0);
+  const first = await planOk(w);
+  assert.equal(reads, 1);
+  // 鍵がない・読めないときは計画を作らず、同じ端末の前の計画も捨てない。
+  for (const key of [null, 'throw'] as const) {
+    holder.key = key;
+    assert.deepEqual(
+      await w.service.plan({ device_id: DEVICE, memory_id: M }),
+      { ok: false, reason: 'directive_text_unavailable', reasons: [] },
+      String(key),
+    );
+  }
+  assert.equal(reads, 3);
+  assert.equal(w.service.pendingPlans(), 2);
+  const routes = createForgetRoutes({
+    service: w.service,
+    store: w.store as never,
+  });
+  const refused = await call(routes.handlers.createForgetPlan, {
+    request_id: '00000000-0000-4000-8000-0000000f0301',
+    command_scope_id: '00000000-0000-4000-8000-000000009002',
+    memory_id: M,
+  });
+  assert.equal(refused.status, 503);
+  assert.equal(
+    (refused.body as { code: string }).code,
+    'dependency_unavailable',
+  );
+  assert(contract.valid('ApiError', refused.body));
+  // 前の計画（本文を見せた計画）は、そのまま実行できる。
+  const executed = await w.service.execute({
+    device_id: DEVICE,
+    plan_id: first.plan_id,
+    forgetting_generation: '0',
+  });
+  assert.equal(executed.ok, true, JSON.stringify(executed));
+  assert.equal(w.applies.count, 1);
 });

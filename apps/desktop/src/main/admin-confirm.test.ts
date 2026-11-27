@@ -394,6 +394,7 @@ test('the forget confirmation shows the memory, what goes and what stays, that i
     removedTotal: 5,
     memoryCount: 3,
     directiveCount: 1,
+    unreadableDirectiveCount: 0,
     keptOperations: 1,
   });
   assert.equal(text.title, '記憶の忘却');
@@ -416,7 +417,29 @@ test('the forget confirmation shows the memory, what goes and what stays, that i
     removedTotal: 1,
     memoryCount: 1,
     directiveCount: 0,
+    unreadableDirectiveCount: 0,
     keptOperations: 0,
   });
   assert(!none.detail.includes('残る操作'));
+  assert(!none.detail.includes('読めない'));
+  // 本文を読めない指示があれば、その数を書く（U433、ADR 0185）。
+  const unreadable = adminConfirmText({
+    action: 'forget_memory',
+    memoryText: '返信は短めが好み',
+    removedTotal: 4,
+    memoryCount: 1,
+    directiveCount: 3,
+    unreadableDirectiveCount: 1,
+    keptOperations: 0,
+  });
+  assert.equal(
+    unreadable.detail,
+    [
+      '忘れる記憶: 返信は短めが好み',
+      '消える物: 合計\u00a04\u00a0件（記憶\u00a01\u00a0件・本人の指示\u00a03\u00a0件を含む）',
+      '本文を読めない指示: 1\u00a0件（これも一緒に消えます）',
+      '',
+      '忘れた物は元に戻せません。同じ内容は、これからも保存しません。',
+    ].join('\n'),
+  );
 });

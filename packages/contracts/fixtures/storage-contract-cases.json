@@ -4932,7 +4932,7 @@
             }
           ],
           "memory_ids": ["00000000-0000-4000-8000-0000000f0001"],
-          "directive_ids": []
+          "directives": []
         },
         "kept": {
           "operations": [],
@@ -4963,7 +4963,7 @@
             }
           ],
           "memory_ids": ["00000000-0000-4000-8000-0000000f0001"],
-          "directive_ids": [],
+          "directives": [],
           "memory_texts": ["合成の記憶の本文"]
         },
         "kept": {
@@ -4995,7 +4995,7 @@
             }
           ],
           "memory_ids": ["00000000-0000-4000-8000-0000000f0001"],
-          "directive_ids": []
+          "directives": []
         },
         "kept": {
           "operations": [],
@@ -5029,12 +5029,216 @@
             }
           ],
           "memory_ids": ["00000000-0000-4000-8000-0000000f0001"],
-          "directive_ids": []
+          "directives": []
         },
         "kept": {
           "operations": [],
           "lineage_only": 0
         },
+        "blocked_source_count": 1
+      }
+    },
+    {
+      "id": "x15-forget-plan-view-directive-texts",
+      "schema": "ForgetPlanView",
+      "valid": true,
+      "note": "消える本人の指示は本文と範囲を持つ。本文を読めない指示は text が null で、計画に残る（U433、ADR 0185）。",
+      "semantic_errors": [],
+      "value": {
+        "schema": "buddy.forget-plan-view.v1",
+        "plan_id": "00000000-0000-4000-8000-0000000f0002",
+        "target": {
+          "source_kind": "memory",
+          "source_id": "00000000-0000-4000-8000-0000000f0001"
+        },
+        "forgetting_generation": "0",
+        "expires_at": "2026-11-01T02:10:00Z",
+        "removed": {
+          "counts": [
+            { "kind": "memory", "count": 1 },
+            { "kind": "user_directive", "count": 2 }
+          ],
+          "memory_ids": ["00000000-0000-4000-8000-0000000f0001"],
+          "directives": [
+            {
+              "directive_id": "00000000-0000-4000-8000-0000000f0004",
+              "scope": "from_now_on",
+              "text": "今後は返信を短めにして"
+            },
+            {
+              "directive_id": "00000000-0000-4000-8000-0000000f0006",
+              "scope": "this_time",
+              "text": null
+            }
+          ]
+        },
+        "kept": { "operations": [], "lineage_only": 0 },
+        "blocked_source_count": 1
+      }
+    },
+    {
+      "id": "x15-forget-plan-view-directive-text-200",
+      "schema": "ForgetPlanView",
+      "valid": true,
+      "note": "指示の本文は 200 文字ちょうどまで（UserDirective.text と同じ）。",
+      "semantic_errors": [],
+      "value": {
+        "schema": "buddy.forget-plan-view.v1",
+        "plan_id": "00000000-0000-4000-8000-0000000f0002",
+        "target": {
+          "source_kind": "memory",
+          "source_id": "00000000-0000-4000-8000-0000000f0001"
+        },
+        "forgetting_generation": "0",
+        "expires_at": "2026-11-01T02:10:00Z",
+        "removed": {
+          "counts": [
+            { "kind": "memory", "count": 1 },
+            { "kind": "user_directive", "count": 2 }
+          ],
+          "memory_ids": ["00000000-0000-4000-8000-0000000f0001"],
+          "directives": [
+            {
+              "directive_id": "00000000-0000-4000-8000-0000000f0004",
+              "scope": "from_now_on",
+              "text": "ああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああ"
+            },
+            {
+              "directive_id": "00000000-0000-4000-8000-0000000f0006",
+              "scope": "this_time",
+              "text": null
+            }
+          ]
+        },
+        "kept": { "operations": [], "lineage_only": 0 },
+        "blocked_source_count": 1
+      }
+    },
+    {
+      "id": "x15-forget-plan-view-directive-text-201-rejected",
+      "schema": "ForgetPlanView",
+      "valid": false,
+      "note": "201 文字の指示の本文は返さない（中枢は読めない指示として null にする）。",
+      "value": {
+        "schema": "buddy.forget-plan-view.v1",
+        "plan_id": "00000000-0000-4000-8000-0000000f0002",
+        "target": {
+          "source_kind": "memory",
+          "source_id": "00000000-0000-4000-8000-0000000f0001"
+        },
+        "forgetting_generation": "0",
+        "expires_at": "2026-11-01T02:10:00Z",
+        "removed": {
+          "counts": [
+            { "kind": "memory", "count": 1 },
+            { "kind": "user_directive", "count": 2 }
+          ],
+          "memory_ids": ["00000000-0000-4000-8000-0000000f0001"],
+          "directives": [
+            {
+              "directive_id": "00000000-0000-4000-8000-0000000f0004",
+              "scope": "from_now_on",
+              "text": "あああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああああ"
+            }
+          ]
+        },
+        "kept": { "operations": [], "lineage_only": 0 },
+        "blocked_source_count": 1
+      }
+    },
+    {
+      "id": "x15-forget-plan-view-directive-text-empty-rejected",
+      "schema": "ForgetPlanView",
+      "valid": false,
+      "note": "空の本文は返さない（読めない指示は null）。",
+      "value": {
+        "schema": "buddy.forget-plan-view.v1",
+        "plan_id": "00000000-0000-4000-8000-0000000f0002",
+        "target": {
+          "source_kind": "memory",
+          "source_id": "00000000-0000-4000-8000-0000000f0001"
+        },
+        "forgetting_generation": "0",
+        "expires_at": "2026-11-01T02:10:00Z",
+        "removed": {
+          "counts": [
+            { "kind": "memory", "count": 1 },
+            { "kind": "user_directive", "count": 2 }
+          ],
+          "memory_ids": ["00000000-0000-4000-8000-0000000f0001"],
+          "directives": [
+            {
+              "directive_id": "00000000-0000-4000-8000-0000000f0004",
+              "scope": "from_now_on",
+              "text": ""
+            }
+          ]
+        },
+        "kept": { "operations": [], "lineage_only": 0 },
+        "blocked_source_count": 1
+      }
+    },
+    {
+      "id": "x15-forget-plan-view-directive-turn-rejected",
+      "schema": "ForgetPlanView",
+      "valid": false,
+      "note": "消える指示に元の発言の ID を入れる欄はない（本文・範囲・指示の ID だけ）。",
+      "value": {
+        "schema": "buddy.forget-plan-view.v1",
+        "plan_id": "00000000-0000-4000-8000-0000000f0002",
+        "target": {
+          "source_kind": "memory",
+          "source_id": "00000000-0000-4000-8000-0000000f0001"
+        },
+        "forgetting_generation": "0",
+        "expires_at": "2026-11-01T02:10:00Z",
+        "removed": {
+          "counts": [
+            { "kind": "memory", "count": 1 },
+            { "kind": "user_directive", "count": 2 }
+          ],
+          "memory_ids": ["00000000-0000-4000-8000-0000000f0001"],
+          "directives": [
+            {
+              "directive_id": "00000000-0000-4000-8000-0000000f0004",
+              "scope": "from_now_on",
+              "text": "今後は返信を短めにして",
+              "turn_id": "00000000-0000-4000-8000-000000003001"
+            }
+          ]
+        },
+        "kept": { "operations": [], "lineage_only": 0 },
+        "blocked_source_count": 1
+      }
+    },
+    {
+      "id": "x15-forget-plan-view-directive-without-scope-rejected",
+      "schema": "ForgetPlanView",
+      "valid": false,
+      "note": "消える指示は範囲（今回だけ・今後ずっと）を必ず持つ。",
+      "value": {
+        "schema": "buddy.forget-plan-view.v1",
+        "plan_id": "00000000-0000-4000-8000-0000000f0002",
+        "target": {
+          "source_kind": "memory",
+          "source_id": "00000000-0000-4000-8000-0000000f0001"
+        },
+        "forgetting_generation": "0",
+        "expires_at": "2026-11-01T02:10:00Z",
+        "removed": {
+          "counts": [
+            { "kind": "memory", "count": 1 },
+            { "kind": "user_directive", "count": 2 }
+          ],
+          "memory_ids": ["00000000-0000-4000-8000-0000000f0001"],
+          "directives": [
+            {
+              "directive_id": "00000000-0000-4000-8000-0000000f0004",
+              "text": "今後は返信を短めにして"
+            }
+          ]
+        },
+        "kept": { "operations": [], "lineage_only": 0 },
         "blocked_source_count": 1
       }
     },
@@ -5060,7 +5264,7 @@
             }
           ],
           "memory_ids": ["00000000-0000-4000-8000-0000000f0001"],
-          "directive_ids": []
+          "directives": []
         },
         "kept": {
           "operations": [],

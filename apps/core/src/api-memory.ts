@@ -9,7 +9,6 @@
 // 拒否の本文は ApiError だけ。
 
 import type { MemoryListItem, MemoryListResponse } from '@buddy/contracts';
-import { openBlob } from '@buddy/storage';
 import type {
   DataKeyMaterial,
   DbWorkerClient,
@@ -18,6 +17,7 @@ import type {
 import { MEMORY_LIST_MAX } from '@buddy/storage';
 import { apiErrorResponse } from './api-server.js';
 import type { ApiRouteHandler } from './api-server.js';
+import { openSealedText } from './sealed-text.js';
 
 // 契約の MemoryListItem.text の上限（記憶の要約は 80 文字まで。MemoryRecord と同じ）。
 const TEXT_MAX_CODE_POINTS = 80;
@@ -44,31 +44,13 @@ function itemOf(
   row: MemoryListRow,
 ): MemoryListItem | null {
   if (row.text === null) return null;
-  const opened = openBlob(
+  const text = openSealedText(
     dataKey,
-    {
-      formatVersion: row.text.format_version,
-      keyId: row.text.key_id,
-      nonce: row.text.nonce,
-      ciphertext: row.text.ciphertext,
-      tag: row.text.tag,
-    },
-    {
-      ownerTable: 'memories',
-      ownerId: row.memory_id,
-      ownerVersion: 0,
-      purpose: 'memory_text',
-    },
+    row.text,
+    { ownerTable: 'memories', ownerId: row.memory_id, purpose: 'memory_text' },
+    TEXT_MAX_CODE_POINTS,
   );
-  if (!opened.ok) return null;
-  let text: string;
-  try {
-    text = new TextDecoder('utf-8', { fatal: true }).decode(opened.plaintext);
-  } catch {
-    return null;
-  }
-  const length = [...text].length;
-  if (length === 0 || length > TEXT_MAX_CODE_POINTS) return null;
+  if (text === null) return null;
   return {
     memory_id: row.memory_id,
     origin: row.origin,

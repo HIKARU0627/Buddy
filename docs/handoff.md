@@ -44,11 +44,11 @@
 | #332 | 0179        | 請求予定を消す操作と、レシートの写真の読み取りの設定の保存（マイグレーション 0022）   |
 | #333 | なし        | 家計の記録の表の置き換えの穴を塞ぐ（マイグレーション 0023）、試験の契約の検証器の共有 |
 | #335 | なし        | Core の起動を固定の時間で待たない（Issue #108）                                       |
+| #336 | 0180        | 忘却の Core の経路・公開ゲート（閉じたまま）・忘却台帳の配信（Issue #143）            |
 
 ## 作業中の PR
 
-- B06-07b-2 忘却の Core の経路（ADR 0180、U382〜U389、Issue #143）。公開ゲートは閉じたまま。
-- Dynamic Island 風の UI（ADR 0181、U390〜）は別の作業で進行中。本人の決定: 画面の上の中央に新しく島を置く、全体の角の丸みを島に合わせて 4 段にそろえる、島の色は配色に合わせる、承認待ちと操作の結果だけ自動で広げる。
+- Dynamic Island 風の UI（ADR 0181、U390〜U400）の段階 1（角の丸みの 4 段・動きの時間・共通の枠）。段階 2（従来の窓の上の中央の島）は別の作業で進行中。本人の決定: 画面の上の中央に新しく島を置く、全体の角の丸みを島に合わせて 4 段にそろえる、島の色は配色に合わせる、承認待ちと操作の結果だけ自動で広げる。
 
 CI が通ればマージしてよいと本人から許可を受けている。マージの状態は GitHub の PR の画面で確かめる。
 
@@ -130,5 +130,5 @@ CI が通ればマージしてよいと本人から許可を受けている。�
 - コミットの前に `pnpm run security:staged`、push の前に `pnpm run security:scan`。
 - 公開物の検査は、`example.com`・`example.org`・`example.net`・`example.invalid` 以外のメールアドレスの形を拒む。試験の送り主は合成の一覧を引数で渡している（`checkHouseholdNoticeSender` の第 2 引数、`createHouseholdMailIntake` の `issuers`）。検査を避ける書き方はしない。
 - マイグレーションを足すときは、`packages/storage/src/migrations.test.ts` の一覧・hash・表の数、`packages/domain/src/backup-plan.ts` の表の分類、`packages/storage/src/policy.ts`、`tests/fixtures/backup-restore-cases.json`、`packages/storage/migrations/README.md` をそろえ、試験の中の DB の版（`store-binding`・`db-worker`・`backup-ops`・`backup-store`・`operation-retention`・`voice-store`・`restore-aftermath-store`・`apps/core` の `backup`・`restore`・`forget-ledger` の試験、`tests/integration/b05-expectations.json`・`b07-expectations.json`）を上げる。除外する表なら `backup-store.test.ts` と `apps/core/src/backup.test.ts` の除外の一覧も直す。
-- 次の ADR の番号は 0182、次の未決事項の番号は U390（ADR 0181 と U390 以降は Dynamic Island 風の UI の作業が使う）。
+- 次の ADR の番号は 0182、次の未決事項の番号は U401。
 - この環境の既定の Node.js が 22 のときは、24 系を PATH の先頭に置いてから pnpm を使う（`pnpm install` が版の違いで止まる）。clone の履歴が浅いと push の前の検査（`pnpm run security:scan`）が止まるので、`git fetch --unshallow` で全履歴を取ってから検査する。

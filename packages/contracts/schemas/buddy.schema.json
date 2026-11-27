@@ -530,6 +530,27 @@
       "$ref": "#/$defs/ForgetLedgerReplica"
     },
     {
+      "$ref": "#/$defs/ForgetPlanRequest"
+    },
+    {
+      "$ref": "#/$defs/ForgetPlanView"
+    },
+    {
+      "$ref": "#/$defs/ForgetExecuteRequest"
+    },
+    {
+      "$ref": "#/$defs/ForgetExecuteResult"
+    },
+    {
+      "$ref": "#/$defs/ForgetLedgerSyncRequest"
+    },
+    {
+      "$ref": "#/$defs/ForgetLedgerDelta"
+    },
+    {
+      "$ref": "#/$defs/ForgetLedgerNotice"
+    },
+    {
       "$ref": "#/$defs/BackupManifest"
     },
     {
@@ -9627,7 +9648,8 @@
             "undo_expired",
             "pairing_failed",
             "unsupported_api_version",
-            "not_sent"
+            "not_sent",
+            "outcome_unknown"
           ]
         },
         "message": {
@@ -9647,7 +9669,7 @@
       },
       "required": ["code", "message", "request_id"],
       "additionalProperties": false,
-      "description": "HTTP の拒否（設計 07 §3）。対象の本文を返さない。どのコードを返すかは domain の経路ごとの検査表（ADR 0009）が決め、形式の不正は invalid_input にする。io_suspended・audio_lease_invalid・output_mode_text・external_send_consent_required は Live の接続の受付（domain の admitLiveStart。ADR 0038・0046）。not_sent は送出意図の前に止めた（外部へ送っていない・費用はかかっていない）ことを、結果の分からない dependency_unavailable と分けて示す（レシートの写真の読み取り。ADR 0177）。"
+      "description": "HTTP の拒否（設計 07 §3）。対象の本文を返さない。どのコードを返すかは domain の経路ごとの検査表（ADR 0009）が決め、形式の不正は invalid_input にする。io_suspended・audio_lease_invalid・output_mode_text・external_send_consent_required は Live の接続の受付（domain の admitLiveStart。ADR 0038・0046）。not_sent は送出意図の前に止めた（外部へ送っていない・費用はかかっていない）ことを、結果の分からない dependency_unavailable と分けて示す（レシートの写真の読み取り。ADR 0177）。outcome_unknown は変更の確定（COMMIT）の成否が分からないことを示す（忘却の実行。ADR 0180）。計画は中枢に残っておらず、自動では送り直さない。消えた可能性がある。"
     },
     "BudgetReservation": {
       "type": "object",
@@ -19867,6 +19889,258 @@
       "required": ["schema", "device_id", "replicated_at", "ledger"],
       "additionalProperties": false,
       "description": "登録済み端末へ複製した忘却台帳（設計 03、ADR 0040）。部分の複製は作らず、世代 1 から head までの全体だけを持つ（完全でない複製は意味検査に通らない）。端末は複製を忘却の判定に使えるだけで、台帳の正本にはならない。"
+    },
+    "ForgetPlanRequest": {
+      "type": "object",
+      "properties": {
+        "request_id": { "$ref": "#/$defs/Id" },
+        "command_scope_id": { "$ref": "#/$defs/Id" },
+        "memory_id": { "$ref": "#/$defs/Id" }
+      },
+      "required": ["request_id", "command_scope_id", "memory_id"],
+      "additionalProperties": false,
+      "description": "記憶の忘却の計画を求める要求（B06-07b-2、ADR 0180）。端末は記憶の ID だけを送り、検索語・本文を送らない（U41）。計画は中枢が作り、承認・実行権限・閉包の判定の正本は中枢にある。"
+    },
+    "ForgetRemovedKind": {
+      "type": "string",
+      "enum": [
+        "intent_shadow",
+        "canvas_item",
+        "notification_candidate",
+        "related_analysis",
+        "request_entity",
+        "async_guard",
+        "carried_summary",
+        "session_summary",
+        "memory",
+        "user_directive",
+        "turn",
+        "source_item",
+        "operation_content"
+      ],
+      "description": "忘却で消える物の種類（domain の FORGET_DELETE_ORDER と、確定内容の暗号文を消す操作の operation_content。ADR 0180）。"
+    },
+    "ForgetPlanView": {
+      "type": "object",
+      "properties": {
+        "schema": { "const": "buddy.forget-plan-view.v1" },
+        "plan_id": { "$ref": "#/$defs/Id" },
+        "target": {
+          "type": "object",
+          "properties": {
+            "source_kind": { "const": "memory" },
+            "source_id": { "$ref": "#/$defs/Id" }
+          },
+          "required": ["source_kind", "source_id"],
+          "additionalProperties": false
+        },
+        "forgetting_generation": { "$ref": "#/$defs/ForgettingGeneration" },
+        "expires_at": { "$ref": "#/$defs/UtcTime" },
+        "removed": {
+          "type": "object",
+          "properties": {
+            "counts": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 13,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "kind": { "$ref": "#/$defs/ForgetRemovedKind" },
+                  "count": { "type": "integer", "minimum": 1 }
+                },
+                "required": ["kind", "count"],
+                "additionalProperties": false
+              }
+            },
+            "memory_ids": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 1000,
+              "uniqueItems": true,
+              "items": { "$ref": "#/$defs/Id" }
+            },
+            "directive_ids": {
+              "type": "array",
+              "maxItems": 1000,
+              "uniqueItems": true,
+              "items": { "$ref": "#/$defs/Id" }
+            }
+          },
+          "required": ["counts", "memory_ids", "directive_ids"],
+          "additionalProperties": false
+        },
+        "kept": {
+          "type": "object",
+          "properties": {
+            "operations": {
+              "type": "array",
+              "maxItems": 1000,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "operation_id": { "$ref": "#/$defs/Id" },
+                  "state": {
+                    "type": "string",
+                    "enum": [
+                      "awaiting_approval",
+                      "approved",
+                      "preparing",
+                      "dispatching",
+                      "reconciling",
+                      "unknown_held",
+                      "not_executed",
+                      "unknown"
+                    ]
+                  }
+                },
+                "required": ["operation_id", "state"],
+                "additionalProperties": false
+              }
+            },
+            "lineage_only": { "type": "integer", "minimum": 0 }
+          },
+          "required": ["operations", "lineage_only"],
+          "additionalProperties": false
+        },
+        "blocked_source_count": { "type": "integer", "minimum": 0 }
+      },
+      "required": [
+        "schema",
+        "plan_id",
+        "target",
+        "forgetting_generation",
+        "expires_at",
+        "removed",
+        "kept",
+        "blocked_source_count"
+      ],
+      "additionalProperties": false,
+      "description": "忘却の計画を本人が確かめる形（B06-07b-2、UI-10 の画面の材料。ADR 0180）。消える物（種類ごとの件数・記憶の ID・本人の指示の ID）、残る物（送出禁止の印だけを付けて状態・承認・試行を変えない操作と、行がなく系譜だけに残る確定内容の数）、再登録を禁じる由来の数を持つ。本文・検索語・元サービスの ID・HMAC を持たない。forgetting_generation は計画を作ったときの台帳の世代で、実行の要求に同じ値を入れる。expires_at を過ぎた計画・台帳の世代が変わった計画は実行せず、作り直す。"
+    },
+    "ForgetExecuteRequest": {
+      "type": "object",
+      "properties": {
+        "request_id": { "$ref": "#/$defs/Id" },
+        "command_scope_id": { "$ref": "#/$defs/Id" },
+        "forgetting_generation": { "$ref": "#/$defs/ForgettingGeneration" }
+      },
+      "required": ["request_id", "command_scope_id", "forgetting_generation"],
+      "additionalProperties": false,
+      "description": "本人が確かめた忘却の計画の実行（B06-07b-2、ADR 0180）。計画の ID は経路に置き、forgetting_generation は計画の表示に出した世代。中枢は計画を作り直さずに、同じ計画を DB の今の系譜と照合して適用する。食い違えば何も消さずに 409 を返し、端末は計画を取り直して本人に見せ直す。"
+    },
+    "ForgetExecuteResult": {
+      "type": "object",
+      "properties": {
+        "schema": { "const": "buddy.forget-execute-result.v1" },
+        "plan_id": { "$ref": "#/$defs/Id" },
+        "forgetting_generation": { "$ref": "#/$defs/ForgettingGeneration" }
+      },
+      "required": ["schema", "plan_id", "forgetting_generation"],
+      "additionalProperties": false,
+      "description": "忘却を適用した結果（B06-07b-2、ADR 0180）。forgetting_generation は適用で進んだ台帳の世代。同じ計画の実行の再送には、同じ結果を返す（二度は消さない）。"
+    },
+    "ForgetLedgerSyncRequest": {
+      "type": "object",
+      "properties": {
+        "ledger_id": {
+          "anyOf": [{ "$ref": "#/$defs/Id" }, { "type": "null" }]
+        },
+        "forgetting_generation": { "$ref": "#/$defs/ForgettingGeneration" },
+        "entry_hash": { "$ref": "#/$defs/Hash" }
+      },
+      "required": ["ledger_id", "forgetting_generation", "entry_hash"],
+      "additionalProperties": false,
+      "description": "端末が最後に保存できた忘却台帳の head（B06-07b-2・#179、ADR 0180）。何も持たない端末は系譜 null・世代 0・64 個の 0 を送る。"
+    },
+    "ForgetLedgerHead": {
+      "type": "object",
+      "properties": {
+        "forgetting_generation": { "$ref": "#/$defs/ForgettingGeneration" },
+        "entry_hash": { "$ref": "#/$defs/Hash" }
+      },
+      "required": ["forgetting_generation", "entry_hash"],
+      "additionalProperties": false,
+      "description": "中枢の忘却台帳の最新の世代とその entry_hash（空なら世代 0・64 個の 0。ADR 0180）。"
+    },
+    "ForgetLedgerDelta": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "schema": { "const": "buddy.forget-ledger-delta.v1" },
+            "outcome": { "const": "entries" },
+            "ledger_id": {
+              "anyOf": [{ "$ref": "#/$defs/Id" }, { "type": "null" }]
+            },
+            "head": { "$ref": "#/$defs/ForgetLedgerHead" },
+            "entries": {
+              "type": "array",
+              "maxItems": 256,
+              "items": { "$ref": "#/$defs/ForgetLedgerChainEntry" }
+            },
+            "has_more": { "type": "boolean" }
+          },
+          "required": [
+            "schema",
+            "outcome",
+            "ledger_id",
+            "head",
+            "entries",
+            "has_more"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "schema": { "const": "buddy.forget-ledger-delta.v1" },
+            "outcome": {
+              "type": "string",
+              "enum": ["diverged", "replica_ahead"]
+            },
+            "ledger_id": {
+              "anyOf": [{ "$ref": "#/$defs/Id" }, { "type": "null" }]
+            },
+            "head": { "$ref": "#/$defs/ForgetLedgerHead" },
+            "entries": { "type": "array", "maxItems": 0 },
+            "has_more": { "const": false }
+          },
+          "required": [
+            "schema",
+            "outcome",
+            "ledger_id",
+            "head",
+            "entries",
+            "has_more"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "description": "忘却台帳の端末への配信（B06-07b-2。端末側の保存は #179。ADR 0180）。entries は端末の世代の次から最大 256 件で、続きがあれば has_more。diverged は端末の複製が中枢の台帳の続きでない（系譜か hash が違う）ことで、端末は保存せずに世代 0 から取り直す。replica_ahead は端末が中枢より新しい世代を持つことで、端末は複製を巻き戻さない。本文・生の元サービス ID を持たない（台帳の 1 件は ForgetLedgerEntry のまま）。"
+    },
+    "ForgetLedgerNotice": {
+      "type": "object",
+      "properties": {
+        "schema": { "const": "buddy.forget-ledger-notice.v1" },
+        "notice_id": { "$ref": "#/$defs/Id" },
+        "occurred_at": { "$ref": "#/$defs/UtcTime" },
+        "kind": { "const": "ledger_advanced" },
+        "ledger_id": { "$ref": "#/$defs/Id" },
+        "forgetting_generation": { "$ref": "#/$defs/ForgettingGeneration" },
+        "entry_hash": { "$ref": "#/$defs/Hash" }
+      },
+      "required": [
+        "schema",
+        "notice_id",
+        "occurred_at",
+        "kind",
+        "ledger_id",
+        "forgetting_generation",
+        "entry_hash"
+      ],
+      "additionalProperties": false,
+      "description": "忘却台帳が進んだことの知らせ（B06-07b-2、ADR 0180）。台帳の系譜と新しい head だけで、項目・本文を持たない。端末は受け取ったら台帳の配信（ForgetLedgerDelta）から続きを取る。1 回だけ渡し、再送・永続しない（取りこぼしは次の接続の配信で追いつく）。運び方は UI-05（U40）。"
     },
     "BackupKeyWrap": {
       "type": "object",

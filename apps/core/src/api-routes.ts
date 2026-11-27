@@ -294,6 +294,21 @@ export const API_ROUTES: readonly ApiRoute[] = [
     body: 'HouseholdReceiptImageRequest',
     ...SCREEN,
   }),
+  // 記憶の忘却の計画と実行（B06-07b-2、ADR 0180）。処理は api-forget.ts。忘却の公開ゲートが閉じている間は 503。
+  route('createForgetPlan', 'POST', '/v1/memory/forget-plans', {
+    body: 'ForgetPlanRequest',
+    ...SCREEN,
+  }),
+  route(
+    'executeForgetPlan',
+    'POST',
+    '/v1/memory/forget-plans/{plan_id}/execute',
+    { body: 'ForgetExecuteRequest', ...SCREEN },
+  ),
+  // 忘却台帳の端末への配信（B06-07b-2、ADR 0180）。本文なしの読み取り。
+  route('getForgetLedgerEntries', 'POST', '/v1/forget-ledger/sync', {
+    body: 'ForgetLedgerSyncRequest',
+  }),
 ];
 
 export type RouteMatch =

@@ -20,6 +20,7 @@ import {
   DbWorkerClient,
   StorageError,
   dataKeyCheckValue,
+  restoreSourceHmac,
 } from '@buddy/storage';
 import type {
   ConnectionRecord,
@@ -43,6 +44,7 @@ import type {
   TlsKeyStore,
 } from '@buddy/platform';
 import { createCandidateRoutes } from './api-candidates.js';
+import { createForgetRoutes } from './api-forget.js';
 import { createHouseholdRoutes } from './api-household.js';
 import { createCandidateListRefresh } from './candidate-list-refresh.js';
 import {
@@ -106,6 +108,11 @@ import {
   migrateTaskContents,
 } from './task-content-migration.js';
 import { ForgetLedgerError, syncForgetLedger } from './forget-ledger.js';
+import {
+  FORGET_PUBLIC_GATE_OPEN,
+  createForgetService,
+} from './forget-service.js';
+import type { ForgetService } from './forget-service.js';
 import { createClockStateFile } from './clock-state.js';
 import type { NoticeSink } from './notice-sink.js';
 import { StorageModeGate } from './storage-gate.js';
@@ -789,6 +796,7 @@ export async function startCore(
   let backupScheduler: BackupScheduler | null = null;
   let retention: RetentionSweeper | null = null;
   let storageGate: StorageModeGate | null = null;
+  let forgetService: ForgetService;
   let syncRun: {
     executor: SyncExecutor;
     scheduler: SyncScheduler | null;
@@ -1230,6 +1238,29 @@ export async function startCore(
         store: opened.store,
         backupKeys,
       };
+      // 記憶の忘却の経路（B06-07b-2、ADR 0180）。忘却の公開ゲート（U112）は既定で閉じ、開けるのは忘却の画面（UI-10）の
+      // PR だけ。台帳用の HMAC は、バックアップの設定で記録した台帳の鍵から要求ごとに求める（鍵がなければ計画を作らない。U384）。
+      const forgetStore = opened.store;
+      forgetService = createForgetService({
+        store: forgetStore,
+        ledgerPath: join(dataDir, FORGET_LEDGER_FILE),
+        gate: () => FORGET_PUBLIC_GATE_OPEN,
+        sourceHmac: async () => {
+          const facts = await forgetStore.memory({ kind: 'backup.facts' });
+          if (!facts.ok || facts.value.recorded_ledger_key_id === null)
+            return null;
+          const key = await backupKeys.read(
+            'ledger_hmac_key',
+            facts.value.recorded_ledger_key_id,
+          );
+          return key.ok ? restoreSourceHmac(key.key.key) : null;
+        },
+        ...(options.retention?.notices === undefined
+          ? {}
+          : { notices: options.retention.notices }),
+        now: () => now().getTime(),
+        log,
+      });
       // 排他ロックを取った後（動いている写しはない）に、前の異常終了で残った作業用の写しを消す。
       await backup.recover();
       if (options.backup?.scheduler !== undefined)
@@ -1268,6 +1299,7 @@ export async function startCore(
         storageGate,
         researchRun?.acceptor,
         oauthRun === null ? undefined : oauthRun.service,
+        forgetService,
         // 選べる取得対象の読み取り（ADR 0145）。走査の実行器と同じ、解決済みのトークンの出所を使う
         // （sync の明示が無ければ OAuth サービスが既定、B03-04）。出所が両方とも無ければ口を作らない。
         googleTokenSourceFor === undefined && graphTokenSourceFor === undefined
@@ -1447,6 +1479,8 @@ async function startHttps(
   researchAcceptor?: BackgroundJobAcceptor,
   // 接続の作成・OAuth のサービス（B03-04、ADR 0144）。無ければ undefined で、認可の開始・解除の経路は無い。
   oauthService?: OAuthService,
+  // 記憶の忘却の経路（B06-07b-2、ADR 0180）。無ければ計画・実行の経路は 503（処理のない経路）。
+  forgetService?: ForgetService | null,
   // 選べる取得対象の読み取り口（ADR 0145）。無ければ undefined で、その経路は 503 で閉じる。
   discovery?: TargetDiscoveryPort,
 ): Promise<{
@@ -1935,6 +1969,11 @@ async function startHttps(
     }),
   );
   const voiceRoutes = createVoiceRoutes(voice);
+  // 忘却の計画・実行（公開ゲートは ForgetService が見る）と台帳の配信（B06-07b-2、ADR 0180）。
+  const forgetRoutes =
+    forgetService === undefined || forgetService === null
+      ? null
+      : createForgetRoutes({ service: forgetService, store });
   // 経路の処理の表は重ならない（同じ operationId を二つの処理が持たない）。重なれば起動しない。
   const handlerKeys = [
     pairing.handlers,
@@ -1949,6 +1988,7 @@ async function startHttps(
     householdRoutes.handlers,
     voiceRoutes.handlers,
     ...(oauthService === undefined ? [] : [oauthService.handlers]),
+    ...(forgetRoutes === null ? [] : [forgetRoutes.handlers]),
   ].flatMap((handlers) => Object.keys(handlers));
   if (new Set(handlerKeys).size !== handlerKeys.length)
     throw new Error('route_handlers_overlap');
@@ -1976,6 +2016,7 @@ async function startHttps(
         ...householdRoutes.handlers,
         ...voiceRoutes.handlers,
         ...(oauthService === undefined ? {} : oauthService.handlers),
+        ...(forgetRoutes === null ? {} : forgetRoutes.handlers),
       },
       eventStream: streams,
       ioState: (device, lock) => voice.ioState(device, lock),

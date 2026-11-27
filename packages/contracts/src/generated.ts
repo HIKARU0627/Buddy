@@ -179,6 +179,13 @@ export type BuddyContract =
   | ExternalSendConsentChange
   | ForgetLedgerFile
   | ForgetLedgerReplica
+  | ForgetPlanRequest
+  | ForgetPlanView
+  | ForgetExecuteRequest
+  | ForgetExecuteResult
+  | ForgetLedgerSyncRequest
+  | ForgetLedgerDelta
+  | ForgetLedgerNotice
   | BackupManifest
   | RestoreResult
   | RetentionNotice
@@ -2557,6 +2564,49 @@ export type ExternalSendConsentChange =
       } | null;
     };
 /**
+ * 忘却で消える物の種類（domain の FORGET_DELETE_ORDER と、確定内容の暗号文を消す操作の operation_content。ADR 0180）。
+ */
+export type ForgetRemovedKind =
+  | 'intent_shadow'
+  | 'canvas_item'
+  | 'notification_candidate'
+  | 'related_analysis'
+  | 'request_entity'
+  | 'async_guard'
+  | 'carried_summary'
+  | 'session_summary'
+  | 'memory'
+  | 'user_directive'
+  | 'turn'
+  | 'source_item'
+  | 'operation_content';
+/**
+ * 忘却台帳の端末への配信（B06-07b-2。端末側の保存は #179。ADR 0180）。entries は端末の世代の次から最大 256 件で、続きがあれば has_more。diverged は端末の複製が中枢の台帳の続きでない（系譜か hash が違う）ことで、端末は保存せずに世代 0 から取り直す。replica_ahead は端末が中枢より新しい世代を持つことで、端末は複製を巻き戻さない。本文・生の元サービス ID を持たない（台帳の 1 件は ForgetLedgerEntry のまま）。
+ */
+export type ForgetLedgerDelta =
+  | {
+      schema: 'buddy.forget-ledger-delta.v1';
+      outcome: 'entries';
+      ledger_id: Id | null;
+      head: ForgetLedgerHead;
+      /**
+       * @maxItems 256
+       */
+      entries: ForgetLedgerChainEntry[];
+      has_more: boolean;
+    }
+  | {
+      schema: 'buddy.forget-ledger-delta.v1';
+      outcome: 'diverged' | 'replica_ahead';
+      ledger_id: Id | null;
+      head: ForgetLedgerHead;
+      /**
+       * @maxItems 0
+       */
+      entries: [];
+      has_more: false;
+    };
+/**
  * 期限切れ・忘却の知らせ（キャンバス向け。UI-05、ADR 0040）。ID と理由だけで、本文・要約・検索語を入れない。受け取った側は該当の物を表示から消す。期限切れは forgetting_generation が null、忘却は台帳の世代を持つ。
  */
 export type RetentionNotice =
@@ -3239,7 +3289,7 @@ export interface EventPage {
   resnapshot_required: boolean;
 }
 /**
- * HTTP の拒否（設計 07 §3）。対象の本文を返さない。どのコードを返すかは domain の経路ごとの検査表（ADR 0009）が決め、形式の不正は invalid_input にする。io_suspended・audio_lease_invalid・output_mode_text・external_send_consent_required は Live の接続の受付（domain の admitLiveStart。ADR 0038・0046）。not_sent は送出意図の前に止めた（外部へ送っていない・費用はかかっていない）ことを、結果の分からない dependency_unavailable と分けて示す（レシートの写真の読み取り。ADR 0177）。
+ * HTTP の拒否（設計 07 §3）。対象の本文を返さない。どのコードを返すかは domain の経路ごとの検査表（ADR 0009）が決め、形式の不正は invalid_input にする。io_suspended・audio_lease_invalid・output_mode_text・external_send_consent_required は Live の接続の受付（domain の admitLiveStart。ADR 0038・0046）。not_sent は送出意図の前に止めた（外部へ送っていない・費用はかかっていない）ことを、結果の分からない dependency_unavailable と分けて示す（レシートの写真の読み取り。ADR 0177）。outcome_unknown は変更の確定（COMMIT）の成否が分からないことを示す（忘却の実行。ADR 0180）。計画は中枢に残っておらず、自動では送り直さない。消えた可能性がある。
  */
 export interface ApiError {
   code:
@@ -3267,7 +3317,8 @@ export interface ApiError {
     | 'undo_expired'
     | 'pairing_failed'
     | 'unsupported_api_version'
-    | 'not_sent';
+    | 'not_sent'
+    | 'outcome_unknown';
   message: string;
   request_id: Id | null;
 }
@@ -8753,6 +8804,495 @@ export interface ForgetLedgerReplica {
   device_id: Id;
   replicated_at: UtcTime;
   ledger: ForgetLedgerFile;
+}
+/**
+ * 記憶の忘却の計画を求める要求（B06-07b-2、ADR 0180）。端末は記憶の ID だけを送り、検索語・本文を送らない（U41）。計画は中枢が作り、承認・実行権限・閉包の判定の正本は中枢にある。
+ */
+export interface ForgetPlanRequest {
+  request_id: Id;
+  command_scope_id: Id;
+  memory_id: Id;
+}
+/**
+ * 忘却の計画を本人が確かめる形（B06-07b-2、UI-10 の画面の材料。ADR 0180）。消える物（種類ごとの件数・記憶の ID・本人の指示の ID）、残る物（送出禁止の印だけを付けて状態・承認・試行を変えない操作と、行がなく系譜だけに残る確定内容の数）、再登録を禁じる由来の数を持つ。本文・検索語・元サービスの ID・HMAC を持たない。forgetting_generation は計画を作ったときの台帳の世代で、実行の要求に同じ値を入れる。expires_at を過ぎた計画・台帳の世代が変わった計画は実行せず、作り直す。
+ */
+export interface ForgetPlanView {
+  schema: 'buddy.forget-plan-view.v1';
+  plan_id: Id;
+  target: {
+    source_kind: 'memory';
+    source_id: Id;
+  };
+  forgetting_generation: ForgettingGeneration;
+  expires_at: UtcTime;
+  removed: {
+    /**
+     * @minItems 1
+     * @maxItems 13
+     */
+    counts:
+      | [
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+        ]
+      | [
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+        ]
+      | [
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+        ]
+      | [
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+        ]
+      | [
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+        ]
+      | [
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+        ]
+      | [
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+        ]
+      | [
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+        ]
+      | [
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+        ]
+      | [
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+        ]
+      | [
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+        ]
+      | [
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+        ]
+      | [
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+        ];
+    /**
+     * @minItems 1
+     * @maxItems 1000
+     */
+    memory_ids: [Id, ...Id[]];
+    /**
+     * @maxItems 1000
+     */
+    directive_ids: Id[];
+  };
+  kept: {
+    /**
+     * @maxItems 1000
+     */
+    operations: {
+      operation_id: Id;
+      state:
+        | 'awaiting_approval'
+        | 'approved'
+        | 'preparing'
+        | 'dispatching'
+        | 'reconciling'
+        | 'unknown_held'
+        | 'not_executed'
+        | 'unknown';
+    }[];
+    lineage_only: number;
+  };
+  blocked_source_count: number;
+}
+/**
+ * 本人が確かめた忘却の計画の実行（B06-07b-2、ADR 0180）。計画の ID は経路に置き、forgetting_generation は計画の表示に出した世代。中枢は計画を作り直さずに、同じ計画を DB の今の系譜と照合して適用する。食い違えば何も消さずに 409 を返し、端末は計画を取り直して本人に見せ直す。
+ */
+export interface ForgetExecuteRequest {
+  request_id: Id;
+  command_scope_id: Id;
+  forgetting_generation: ForgettingGeneration;
+}
+/**
+ * 忘却を適用した結果（B06-07b-2、ADR 0180）。forgetting_generation は適用で進んだ台帳の世代。同じ計画の実行の再送には、同じ結果を返す（二度は消さない）。
+ */
+export interface ForgetExecuteResult {
+  schema: 'buddy.forget-execute-result.v1';
+  plan_id: Id;
+  forgetting_generation: ForgettingGeneration;
+}
+/**
+ * 端末が最後に保存できた忘却台帳の head（B06-07b-2・#179、ADR 0180）。何も持たない端末は系譜 null・世代 0・64 個の 0 を送る。
+ */
+export interface ForgetLedgerSyncRequest {
+  ledger_id: Id | null;
+  forgetting_generation: ForgettingGeneration;
+  entry_hash: Hash;
+}
+/**
+ * 中枢の忘却台帳の最新の世代とその entry_hash（空なら世代 0・64 個の 0。ADR 0180）。
+ */
+export interface ForgetLedgerHead {
+  forgetting_generation: ForgettingGeneration;
+  entry_hash: Hash;
+}
+/**
+ * 忘却台帳が進んだことの知らせ（B06-07b-2、ADR 0180）。台帳の系譜と新しい head だけで、項目・本文を持たない。端末は受け取ったら台帳の配信（ForgetLedgerDelta）から続きを取る。1 回だけ渡し、再送・永続しない（取りこぼしは次の接続の配信で追いつく）。運び方は UI-05（U40）。
+ */
+export interface ForgetLedgerNotice {
+  schema: 'buddy.forget-ledger-notice.v1';
+  notice_id: Id;
+  occurred_at: UtcTime;
+  kind: 'ledger_advanced';
+  ledger_id: Id;
+  forgetting_generation: ForgettingGeneration;
+  entry_hash: Hash;
 }
 /**
  * バックアップの封筒（manifest。設計 03 バックアップ・復元、ADR 0040）。本文を持たず、復元の最初の判定に要る値だけを平文で持つ。included_storage_modes に private を入れられない。excluded_data の 4 つ（生音声・記録しない会話・OAuth トークン・API キー）は必ず記録する。store_generation は取った時点の DB の世代で、復元では新しい値にする。forgetting_generation と ledger_head_hash は取った時点の台帳の最新（世代 0 なら 64 個の 0）。

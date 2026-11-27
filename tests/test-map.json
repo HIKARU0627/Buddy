@@ -1,6 +1,6 @@
 {
   "status": "tracking",
-  "description": "設計 09 の X01〜X66・QA01〜QA45 と 09 冒頭の補助ケース MA01〜MA06 の対応表（B00-10 #29）。phases は担当工程（docs/b00/contract-map.md の利用の列から）、contract_fixtures は期待値を手で書いた契約 fixture（ファイル#ケースの id）、t は 06 の必須試験、targets は修正案・再検証の対象。status の contract_fixture は契約 fixture で期待値を検査したことだけを表し、製品試験の合格ではない。product_test は模擬確認 simulated・部分確認 simulated_partial・未実施 not_run・後回し deferred を区別する。B04・B07 の確認は product_scope と product_evidence に限定し、実機・実 API・実請求の合格を意味しない。 B05 の実 API の試験は 2 段階（まず合成の音声で接続・停止・精算、その後で本人の声で日本語の品質。本人の判断 2026-10-23）で、模擬・実機・実 API・実請求の記録を分ける。B05-01（ADR 0038）の fixture は契約の期待値で、音声レンダラー・Live・リース・同意の製品試験は未実施。 B05-02（ADR 0041）の fixture は、時計と乱数を注入した domain の純粋な規則（リースの期限・世代・3 層の停止の時間・無音・追加予約と精算の秒数・通知の頻度・方式 A/C・ASR の比較・会話の操作・接続開始の門）の期待値で、製品の統合・実機・実 API の試験は未実施。 B05-03（ADR 0046）は、中枢の音声の制御（リース・音声所有権・停止の到達・サイドバンドの喪失・再起動の後の世代）を apps/core と packages/storage の模擬試験（DB worker・模擬の provider・手で進める時計）で確かめた。証拠の記録（product_evidence）はまだ作っていないので、X13・X14・X25・X28・X32・QA24・QA43 の product_test は not_run のまま。実機・実 API・実請求は未実施。 B05-04（ADR 0049）は、会話の予算（60 秒ごとの追加予約・予算に達したときの閉じ方・精算・終了後の照合・孤児のセッション・再起動の照合）を apps/core の模擬試験（DB worker・本番と同じ予算の門の境界・模擬の provider・手で進める時計）で確かめた。X18・X26・X28・X31・X34・QA02 の product_test は B05 の完了の確認まで変えない。provider の実装・実 API・実機・実請求は未実施。 B05-07（#131）は、端末の音声の制御・模擬の音声レンダラー・中枢の音声の制御・会話の処理を手で進める 1 本の時計でつないだ模擬の統合試験（tests/integration/b05*.mjs、証拠は evidence-b05-simulated.json）で、X13・X14・X25・X27・X30・X49・X51・X58・QA24・QA41・QA43 を simulated_partial にした。B05 の実機・実 API・実請求と T04 の実測は未実施（#132・#133）。",
+  "description": "設計 09 の X01〜X66・QA01〜QA45 と 09 冒頭の補助ケース MA01〜MA06 の対応表（B00-10 #29）。phases は担当工程（docs/b00/contract-map.md の利用の列から）、contract_fixtures は期待値を手で書いた契約 fixture（ファイル#ケースの id）、t は 06 の必須試験、targets は修正案・再検証の対象。status の contract_fixture は契約 fixture で期待値を検査したことだけを表し、製品試験の合格ではない。product_test は模擬確認 simulated・部分確認 simulated_partial・未実施 not_run・後回し deferred を区別する。B04・B07 の確認は product_scope と product_evidence に限定し、実機・実 API・実請求の合格を意味しない。 B05 の実 API の試験は 2 段階（まず合成の音声で接続・停止・精算、その後で本人の声で日本語の品質。本人の判断 2026-10-23）で、模擬・実機・実 API・実請求の記録を分ける。B05-01（ADR 0038）の fixture は契約の期待値で、音声レンダラー・Live・リース・同意の製品試験は未実施。 B05-02（ADR 0041）の fixture は、時計と乱数を注入した domain の純粋な規則（リースの期限・世代・3 層の停止の時間・無音・追加予約と精算の秒数・通知の頻度・方式 A/C・ASR の比較・会話の操作・接続開始の門）の期待値で、製品の統合・実機・実 API の試験は未実施。 B05-03（ADR 0046）は、中枢の音声の制御（リース・音声所有権・停止の到達・サイドバンドの喪失・再起動の後の世代）を apps/core と packages/storage の模擬試験（DB worker・模擬の provider・手で進める時計）で確かめた。証拠の記録（product_evidence）はまだ作っていないので、X13・X14・X25・X28・X32・QA24・QA43 の product_test は not_run のまま。実機・実 API・実請求は未実施。 B05-04（ADR 0049）は、会話の予算（60 秒ごとの追加予約・予算に達したときの閉じ方・精算・終了後の照合・孤児のセッション・再起動の照合）を apps/core の模擬試験（DB worker・本番と同じ予算の門の境界・模擬の provider・手で進める時計）で確かめた。X18・X26・X28・X31・X34・QA02 の product_test は B05 の完了の確認まで変えない。provider の実装・実 API・実機・実請求は未実施。 B05-07（#131）は、端末の音声の制御・模擬の音声レンダラー・中枢の音声の制御・会話の処理を手で進める 1 本の時計でつないだ模擬の統合試験（tests/integration/b05*.mjs、証拠は evidence-b05-simulated.json）で、X13・X14・X25・X27・X30・X49・X51・X58・QA24・QA41・QA43 を simulated_partial にした。B05 の実機・実 API・実請求と T04 の実測は未実施（#132・#133）。 B06-07b-2（ADR 0180）は、忘却の Core の経路（計画を作って本人が確かめてから実行する・忘却の公開ゲートは閉じたまま）と忘却台帳の端末への配信を、apps/core の模擬試験（一時ディレクトリの DB・同じプロセスの命令・製品の Core の HTTPS）と domain の手書きの期待値で確かめた。X15・X16 に契約 fixture を足したが、product_test は not_run のまま（B06-09 の完了判定まで変えない）。X17・X44・X59・QA34・QA38 はこの段階で扱った範囲がないので変えていない。端末側の保存（#179）・画面（UI-10）・実機・実 API は未実施。",
   "statuses": {
     "contract_fixture": "契約 fixture で期待値を検査済み。製品の統合・実機・実 API 試験は未実施",
     "specified": "試験仕様と担当工程だけ。契約 fixture なし"
@@ -250,7 +250,12 @@
         "packages/contracts/fixtures/forget-plan-cases.json#x15-forget-turn-removes-memories-made-from-it",
         "packages/contracts/fixtures/forget-plan-cases.json#x15-in-flight-operations-are-never-touched",
         "tests/fixtures/backup-restore-cases.json#x15-b0605-retention-forgetting-superseded",
-        "tests/fixtures/storage-cases.json#0012-forget-send-blocked-mark-and-ledger-lineage"
+        "tests/fixtures/storage-cases.json#0012-forget-send-blocked-mark-and-ledger-lineage",
+        "packages/contracts/fixtures/storage-contract-cases.json#x15-forget-plan-view-memory",
+        "packages/contracts/fixtures/storage-contract-cases.json#x15-forget-plan-view-with-text-rejected",
+        "packages/contracts/fixtures/storage-contract-cases.json#x15-forget-plan-view-with-hmac-rejected",
+        "packages/contracts/fixtures/storage-contract-cases.json#x15-forget-plan-view-source-target-rejected",
+        "packages/contracts/fixtures/storage-contract-cases.json#x15-forget-plan-view-zero-count-rejected"
       ],
       "status": "contract_fixture",
       "product_test": "not_run",
@@ -314,7 +319,14 @@
         "tests/fixtures/backup-restore-cases.json#x16-b0605-sequence-revise-then-late-marker-then-owner",
         "tests/fixtures/backup-restore-cases.json#x16-b0605-result-ledger-lost-settings-only",
         "packages/contracts/fixtures/storage-contract-cases.json#x16-restored-operation-local-command-approval-remains",
-        "tests/fixtures/storage-cases.json#forget-ledger-is-contiguous-and-append-only"
+        "tests/fixtures/storage-cases.json#forget-ledger-is-contiguous-and-append-only",
+        "packages/contracts/fixtures/storage-contract-cases.json#x16-ledger-delta-continues-after-replica-head",
+        "packages/contracts/fixtures/storage-contract-cases.json#x16-ledger-delta-diverged-returns-nothing",
+        "packages/contracts/fixtures/storage-contract-cases.json#x16-ledger-delta-replica-ahead-returns-nothing",
+        "packages/contracts/fixtures/storage-contract-cases.json#x16-ledger-delta-diverged-with-entries-rejected",
+        "packages/contracts/fixtures/storage-contract-cases.json#x16-ledger-delta-entry-with-body-rejected",
+        "packages/contracts/fixtures/storage-contract-cases.json#x16-ledger-notice-advanced",
+        "packages/contracts/fixtures/storage-contract-cases.json#x16-ledger-notice-with-items-rejected"
       ],
       "status": "contract_fixture",
       "product_test": "not_run",

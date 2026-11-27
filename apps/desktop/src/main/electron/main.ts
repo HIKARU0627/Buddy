@@ -54,6 +54,7 @@ import {
   CONNECTIONS_CHANNELS,
   OPERATION_CHANNELS,
   STORAGE_MODE_CHANNELS,
+  DISPLAY_HANDOFF_CHANNELS,
   DesktopCoreLink,
   type AdminConfirmRequest,
 } from '../core-link.js';
@@ -732,6 +733,11 @@ function registerIpc(): void {
         return link
           .handleMemoryIpc(channel, raw, sender, controller.state)
           .then((outcome) => outcome.response);
+      // 流れの表示先の移動「このPCに出す」（UI-05 の段階 5、ADR 0193）。本人の画面操作だけ。中枢へは画面操作として送る。
+      if (DISPLAY_HANDOFF_CHANNELS.includes(channel))
+        return link
+          .handleDisplayHandoffIpc(channel, raw, sender, controller.state)
+          .then((outcome) => outcome.response);
       // 保存モードの切り替え（UI-05 の段階 6、ADR 0189）。本人の画面操作だけ。中枢へは画面操作として送る。
       if (STORAGE_MODE_CHANNELS.includes(channel))
         return link
@@ -916,6 +922,8 @@ function createLink(
         stopScope: 'local',
         ioEpoch: '0',
       },
+    // 「このPCに出す」が、隠れているキャンバスの窓を canvas_summon と同じ処理で前に出す（UI-05 の段階 5、ADR 0193）。
+    summonCanvas: () => summonCanvas('status'),
     onChange: pushConnection,
     log,
     confirmAdmin: confirmAdminWithDialog,

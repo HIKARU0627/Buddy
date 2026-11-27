@@ -90,6 +90,7 @@ import { ConnectionsBridge } from './connections-bridge.js';
 import { CanvasBridge } from './canvas-bridge.js';
 import type { CanvasWithheldReason } from './canvas-bridge.js';
 import { DisplayLeaseKeeper } from './display-lease-keeper.js';
+import { DisplayRouteBridge } from './display-route-bridge.js';
 import type {
   DisplayLeaseContext,
   DisplayLeaseResponse,
@@ -207,6 +208,12 @@ export const STORAGE_MODE_CHANNELS: readonly DesktopIpcChannel[] = [
   'desktop.storage_mode_change',
 ];
 
+// 流れの表示先の移動のチャネル（UI-05 の段階 5、ADR 0193）。登録済みでロック解除済みの端末の本人の画面操作（前面）。
+// 状態の層のパネルから（役割の表）。キャンバス表示の組み立てでだけ受け付ける。
+export const DISPLAY_HANDOFF_CHANNELS: readonly DesktopIpcChannel[] = [
+  'desktop.display_handoff',
+];
+
 // 中枢の画面のこのマシンの指紋の読み取り（main だけが持つ。画面へは伏せた表示だけを出す）。
 interface HubHomeReading {
   readonly fingerprint: HomeFingerprint;
@@ -227,6 +234,8 @@ export interface HubStatus {
   readonly budgetHeld: boolean | null;
   // 中枢の流れの今の保存モード（GET /v1/stream/storage-mode。UI-05 の段階 6、ADR 0189）。不明は null。
   readonly storageMode: 'normal' | 'extended' | 'private' | null;
+  // 流れの表示先（GET /v1/stream/handoff。UI-05 の段階 5、ADR 0193）。不明・キャンバス表示でない組み立ては null。
+  readonly displayTarget: 'this_device' | 'other_device' | null;
 }
 
 export interface DesktopCoreLinkOptions {
@@ -300,6 +309,9 @@ export interface DesktopCoreLinkOptions {
   // clock を渡すと、その時計とタイマーで更新する（試験が実時間を待たないため）。false は取らない（リースと関係のない試験だけ。
   // 製品の起動では渡さない）。
   readonly displayLease?: false | { readonly clock?: LeaseClock };
+  // キャンバスを前に出す（「このPCに出す」が、隠れているキャンバスの窓を出してから移すため。UI-05 の段階 5、ADR 0193）。
+  // 省略すると出せないので、キャンバスの窓が隠れている間は移さない。Electron の層が canvas_summon と同じ処理を渡す。
+  readonly summonCanvas?: () => void;
   // 忘却台帳の複製の保存先（Electron の userData 配下の forget-ledger-replica.json。B06-07b-3、ADR 0182）。省略すると
   // 複製しない（中枢への要求の数を数える試験で、背景の同期を混ぜないため）。
   readonly forgetLedgerReplicaPath?: string;
@@ -482,9 +494,21 @@ export class DesktopCoreLink {
   readonly #display: DisplayLeaseKeeper | null;
   // 中枢の流れの今の保存モードと切り替え（UI-05 の段階 6、ADR 0189）。
   readonly #storage: StorageModeBridge;
+  // 中枢の流れの表示先と「このPCに出す」（UI-05 の段階 5、ADR 0193）。キャンバス表示の組み立てだけが読む・呼ぶ。
+  readonly #route: DisplayRouteBridge;
+  // 移動の途中の要求（続けて押されたとき、2 つ目を送らずに同じ結果を返す）。
+  #handoffInFlight: Promise<BridgeOutcome<'moving' | 'completed'>> | null =
+    null;
 
   constructor(options: DesktopCoreLinkOptions) {
     this.#options = options;
+    this.#route = new DisplayRouteBridge({
+      contract: options.contract,
+      connection: () => this.#connection,
+      leaseHeld: () => this.#display?.state === 'held',
+      changed: () => options.onChange(),
+      log: (code) => this.#log(code),
+    });
     this.#storage = new StorageModeBridge({
       contract: options.contract,
       connection: () => this.#connection,
@@ -702,6 +726,8 @@ export class DesktopCoreLink {
       if (this.#options.canvasMode === true) void this.#canvas.refresh();
       // ロック中に捨てた保存モードを読み直す（ADR 0189）。
       void this.#storage.refresh();
+      // ロック中に捨てた表示先を読み直す（キャンバス表示だけ。ADR 0193）。
+      if (this.#options.canvasMode === true) void this.#route.refresh();
     }
     // ロックした・不明になったら、自宅の登録の参照を捨てる（解除の後に読み取り直して確かめ直す。B03-08）。
     else this.#homeRef = null;
@@ -724,6 +750,7 @@ export class DesktopCoreLink {
         lastConfirmedAt: null,
         budgetHeld: null,
         storageMode: null,
+        displayTarget: null,
       };
     const connection = hubConnectionOf(state);
     return {
@@ -735,6 +762,8 @@ export class DesktopCoreLink {
       budgetHeld: connection === 'connected' ? this.#budget.hold : null,
       // 保存モードも中枢の値。接続している間だけ（読めていなければ不明。ADR 0189）。
       storageMode: connection === 'connected' ? this.#storage.mode : null,
+      // 表示先も中枢の値（接続している間だけ。読めていなければ不明。ADR 0193）。
+      displayTarget: connection === 'connected' ? this.#route.target : null,
     };
   }
 
@@ -1027,6 +1056,8 @@ export class DesktopCoreLink {
         if (this.#options.canvasMode === true) void this.#canvas.refresh();
         // 接続するたびに、流れの今の保存モードを読む（状態欄・島・パネルの記録しないモードの印。ADR 0189）。
         void this.#storage.refresh();
+        // 接続するたびに、流れの今の表示先を読む（状態欄の表示先。キャンバス表示だけ。ADR 0193）。
+        if (this.#options.canvasMode === true) void this.#route.refresh();
         // 接続するたびに、忘却台帳の複製の head を送って追いつく（B06-07b-3、ADR 0182）。ロック中でも送る（台帳は
         // 本文を持たない）。復元で DB の世代（store_generation）が変わったときも、bootstrap をやり直して live に
         // なるので、ここで中枢の台帳と照らし合わせ直す。
@@ -1576,6 +1607,73 @@ export class DesktopCoreLink {
         raw.channel,
         result,
         (storage_mode) => ({ storage_mode }),
+      ),
+    );
+  }
+
+  // 流れの表示先の移動「このPCに出す」（UI-05 の段階 5、ADR 0193）。ロック解除済みの本人の画面操作（前面）だけ。中枢の表示先の
+  // 記録を変えるだけで外部へは送らないので、この端末の入出力の停止中も受け付ける（停止中の端末へ移すことは中枢が断る）。
+  // キャンバス表示の組み立て（表示のリースを取る組み立て）だけ。従来の窓は表示のリースを取らないので、移すと他の端末の表示だけが
+  // 消える（U473）。中枢へは画面操作として 1 回だけ送り、結果が分からなければ送り直さずに読み直す。受け付けたら、失っていた表示の
+  // リースを待たずに取り直す。ロック・切断をまたいだ結果は渡さない。
+  async handleDisplayHandoffIpc(
+    ipcChannel: string,
+    raw: unknown,
+    sender: DesktopIpcSender,
+    ioState: DesktopIoState,
+  ): Promise<ConnectionIpcOutcome> {
+    const contract = this.#options.contract;
+    if (
+      !contract.isRequest(raw) ||
+      raw.channel !== ipcChannel ||
+      raw.channel !== 'desktop.display_handoff'
+    )
+      return this.#reject(
+        echoRequestId(raw),
+        echoChannel(raw, ipcChannel),
+        'invalid_request',
+      );
+    const admission = admitDesktopRequest(raw.channel, null, ioState, sender);
+    if (!admission.ok)
+      return this.#reject(raw.request_id, raw.channel, admission.reason);
+    const connection = this.#connection;
+    if (
+      connection === null ||
+      this.#registration !== 'registered' ||
+      connection.state.phase !== 'live'
+    )
+      return this.#reject(raw.request_id, raw.channel, 'not_connected');
+    // 表示のリースを取らない組み立てでは、移せない（表示先を移しても、この端末は表示のリースを取らず、他の端末の表示だけが消える）。
+    if (this.#display === null)
+      return this.#reject(raw.request_id, raw.channel, 'invalid_request');
+    const generation = this.#viewGeneration;
+    // 続けて押された（移動の途中）: 2 つ目は送らず、1 つ目と同じ結果を返す（「移せませんでした」を出さない）。
+    let pending = this.#handoffInFlight;
+    if (pending === null) {
+      // 表示のリースを取る条件が揃っていないとき。キャンバスの窓が隠れているだけなら、「ここに表示する」意図なので
+      // canvas_summon と同じ処理で前に出してから移す（出すと表示のリースを取る）。停止中など、ほかの理由で揃っていない
+      // ときは、移すと他の端末の表示だけが消えるので、中枢へ送らずに断る。
+      if (this.#displayLeaseContext() === null) {
+        const hiddenOnly = this.#displayLeaseBlockedOnlyByWindow();
+        if (!hiddenOnly || this.#options.summonCanvas === undefined)
+          return this.#reject(raw.request_id, raw.channel, 'core_rejected');
+        this.#options.summonCanvas();
+      }
+      pending = this.#route.handoff().finally(() => {
+        this.#handoffInFlight = null;
+      });
+      this.#handoffInFlight = pending;
+    }
+    const result = await pending;
+    // 移った: 失っていた表示のリースを待たずに取り直す。取れたら今の記述を読む（取り直しの経路は段階 4 のまま）。
+    if (result.ok) this.#display.retryNow();
+    return this.#withinGeneration(
+      generation,
+      this.#operationOutcome(
+        raw.request_id,
+        raw.channel,
+        result,
+        (handoff_state) => ({ handoff_state }),
       ),
     );
   }
@@ -2585,6 +2683,23 @@ export class DesktopCoreLink {
     };
   }
 
+  // 表示のリースを取る条件が揃っていないのが、キャンバスの窓が隠れているためだけか（ロック解除済み・入出力が止まって
+  // いない・中枢に接続中で事実が揃っている）。
+  #displayLeaseBlockedOnlyByWindow(): boolean {
+    if (!this.#canvas.hidden || this.#lockState !== 'unlocked') return false;
+    const io = this.#options.ioState?.() ?? null;
+    if (io !== null && !desktopInputPermitted(io)) return false;
+    const state = this.#connection?.state ?? null;
+    return (
+      state !== null &&
+      state.phase === 'live' &&
+      state.deviceId !== null &&
+      state.coreInstanceId !== null &&
+      state.commandScopeId !== null &&
+      state.ioEpoch !== null
+    );
+  }
+
   // 表示のリースの更新を送る。本文は要求 ID・接続範囲を自分で持つ（ClientConnection の scoped で置き換えない）。送った時点の
   // 接続範囲と違えば送らない。200 で契約（LeaseRenewalResponse）に合う応答だけを返し、それ以外は結果が分からない（null）。
   async #renewDisplayLease(
@@ -2613,6 +2728,9 @@ export class DesktopCoreLink {
   #displayLeaseChanged(state: DisplayLeaseState): void {
     this.#log(`display_lease:${state}`);
     this.#canvas.displayChanged(state);
+    // 取れた・失った: 中枢の表示先を読み直す（別の端末へ移されたか。未決定のときの表示先の値も変わる。ADR 0193）。
+    if (state === 'held' || state === 'lost') void this.#route.refresh();
+    this.#route.leaseChanged();
   }
 
   // 入出力の状態（停止・io_epoch）が変わった（Electron の層が呼ぶ）。停止・世代の変化ではキャンバスの記述を捨て、再開
@@ -2731,6 +2849,7 @@ export class DesktopCoreLink {
     this.#connections.reset();
     this.#canvas.reset();
     this.#storage.reset();
+    this.#route.reset();
     this.#confirmAbort?.abort();
     this.#confirmAbort = null;
   }

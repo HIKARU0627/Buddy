@@ -1,6 +1,6 @@
 // 3 つの窓（UI-02 の試作）の画面と限定 API をつなぐフック。窓の役割の表にあるチャネルだけを送る（ADR 0032）。
 // 画面の部品はこのフックが返す値と操作だけを使い、限定 API を直接呼ばない。
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type {
   CanvasUserOp,
   DesktopIpcRequest,
@@ -39,6 +39,11 @@ export interface RoleWindowHandle {
   ) => void;
   // 保存モードを切り替える（状態の層のパネルだけ。UI-05 の段階 6、ADR 0189）。表示は状態欄の通知で変わる。
   readonly changeStorageMode: (mode: StorageMode) => void;
+  // 流れの表示先をこの端末へ移す「このPCに出す」（状態の層のパネルだけ。UI-05 の段階 5、ADR 0193）。移す先・版・端末の ID は
+  // main が持ち、画面は何も送らない。表示は状態欄の通知で変わる。
+  readonly handoffDisplay: () => void;
+  // 移動の結果を待っている間（続けて押させない）。
+  readonly handoffPending: boolean;
   // キャンバスの物のユーザーの操作（キャンバスの窓だけ。UI-06）。受け付けたら中枢が当てた後の版、拒否・失敗は null
   // （記述は main が取り直す）。
   readonly canvasUserOp: (
@@ -131,6 +136,25 @@ export function useRoleWindowState(
       send(request('desktop.storage_mode_change', { storage_mode: mode })),
     [send],
   );
+  // 移動の結果を待っている間は、次の押下を受け付けない（押し直しの 2 つ目が拒否されて「移せませんでした」が出ないように）。
+  const [handoffPending, setHandoffPending] = useState(false);
+  const handoffBusy = useRef(false);
+  const handoffDisplay = useCallback(() => {
+    if (handoffBusy.current) return;
+    handoffBusy.current = true;
+    setHandoffPending(true);
+    const channel = 'desktop.display_handoff';
+    api
+      .invoke(request(channel, null))
+      .then((response) =>
+        setState((prev) => applyResponse(prev, response, channel)),
+      )
+      .catch(() => setState((prev) => applyIpcFailure(prev, channel)))
+      .finally(() => {
+        handoffBusy.current = false;
+        setHandoffPending(false);
+      });
+  }, [api]);
   const canvasUserOp = useCallback(
     (op: CanvasUserOp, expectedRevision: string) =>
       api
@@ -178,6 +202,8 @@ export function useRoleWindowState(
     revokeVoiceConsent,
     controlVoice,
     changeStorageMode,
+    handoffDisplay,
+    handoffPending,
     canvasUserOp,
     canvasContent,
   };

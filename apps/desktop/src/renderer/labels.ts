@@ -85,6 +85,13 @@ export function rejectMessage(
     if (reason === 'outcome_unknown')
       return '保存モードが切り替わったか確かめられませんでした。自動では送り直しません。上の島と「保存モード」の表示を確かめてから、必要ならもう一度押してください。';
   }
+  // 流れの表示先の移動「このPCに出す」（UI-05 の段階 5、ADR 0193）。何が起きたかと、表示の確かめ方。
+  if (channel === 'desktop.display_handoff') {
+    if (reason === 'core_rejected')
+      return '表示先を移せませんでした。他の端末が先に移したか、この端末の入出力が止まっているなど、中枢が受け付けませんでした。「表示先」の表示を確かめてから、もう一度押してください。';
+    if (reason === 'outcome_unknown')
+      return '表示先が移ったか確かめられませんでした。自動では送り直しません。「表示先」の表示を確かめてから、必要ならもう一度押してください。';
+  }
   return REJECT_MESSAGES[reason];
 }
 
@@ -131,6 +138,19 @@ export const STORAGE_MODE_CONTROL_LABELS = {
   // 記録しない間の島の印（記号と一緒に出す。色だけに頼らない）。
   privateMark: '記録しない',
   privateMarkName: '記録しないモード中',
+} as const;
+
+// 流れの表示先の移動「このPCに出す」の欄（UI-05 の段階 5、ADR 0193）。
+export const DISPLAY_HANDOFF_LABELS = {
+  // 欄の名前（読み上げの名前。今の表示先の値は状態の層の 8 項目の「表示先」に出る）。
+  title: '表示先',
+  // 押すボタン。
+  button: 'このPCに出す',
+  buttonName: 'キャンバスの表示先をこの端末に移す',
+  // 押している間（移動の結果を待っている間）のボタンの読み上げの補足。
+  pending: '移しています。',
+  // この端末の入出力が止まっている間は移せない（main が断り、中枢も断る）。
+  stopped: 'この端末の入出力を止めている間は、表示先を移せません。',
 } as const;
 
 // 記録しないと表示していたのに、発言が記録されたときの 1 文（UI-05 の段階 6、ADR 0189、U477。発言の結果の

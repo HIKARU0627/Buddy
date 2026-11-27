@@ -91,6 +91,8 @@ export const DESKTOP_IPC_CHANNELS = [
   'desktop.memory_settings_change',
   // UI-05 の段階 6（ADR 0189）: 保存モードの切り替え（記録しないモードに入る・出る、通常と継続相談）。従来の窓と状態の層から。
   'desktop.storage_mode_change',
+  // UI-05 の段階 5（ADR 0193）: 流れの表示先をこの端末へ移す「このPCに出す」。状態の層のパネルから。
+  'desktop.display_handoff',
 ] as const;
 
 export type DesktopIpcChannel = (typeof DESKTOP_IPC_CHANNELS)[number];
@@ -271,6 +273,10 @@ export const DESKTOP_PAIRING_SCREEN_CHANNELS: readonly DesktopIpcChannel[] = [
   // 中枢の保存の範囲を変えるだけで外部へは送らないので、この端末の入出力の停止中も受け付ける（記録しないモードに入るのを
   // 止めない）。
   'desktop.storage_mode_change',
+  // 流れの表示先の移動（UI-05 の段階 5、ADR 0193）も本人の画面操作。音声・チャット・発言・島・キャンバスからは移さない。
+  // 中枢の表示先の記録を変えるだけで外部へは送らないので、受付は止めない（停止中の端末へ移すことは、main が中枢へ送らずに断り、
+  // 中枢も io_suspended で断る）。
+  'desktop.display_handoff',
 ];
 
 // 外部へ送る画面操作（ADR 0177）。この端末の入出力の停止中は受け付けない（停止は外部への送信を止める操作なので）。
@@ -446,6 +452,10 @@ export const DESKTOP_ROLE_CHANNELS: Readonly<
     // 出入りに見せかけられないよう、キャンバス・入力バーには渡さない。島は記録しないモードの印を出すだけで、切り替えない
     // （U391 の島の最小のチャネルのまま）。
     'desktop.storage_mode_change',
+    // 流れの表示先の移動（UI-05 の段階 5、ADR 0193）。状態の層のパネルだけ。キャンバスの部品が表示先の移動に見せかけ
+    // られないよう、キャンバス・入力バー・島には渡さない。従来の窓（legacy）は全チャネルを持つが、表示のリースを取らない
+    // 組み立て（キャンバス表示でない）では main が断る（U473）。
+    'desktop.display_handoff',
   ],
   input: ['desktop.get_state', 'desktop.turn_submit', 'desktop.canvas_summon'],
   island: [

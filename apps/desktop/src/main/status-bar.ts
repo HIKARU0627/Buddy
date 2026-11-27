@@ -19,6 +19,9 @@ export interface StatusBarHub {
   readonly budgetHeld?: boolean | null;
   // 保存モード（中枢の流れの今の保存モード）。接続していない・まだ読んでいない・ロック中は null（不明）。省略は null。
   readonly storageMode?: 'normal' | 'extended' | 'private' | null;
+  // 表示先（中枢の流れの今の表示先。UI-05 の段階 5、ADR 0193）。接続していない・まだ読んでいない・ロック中・キャンバス表示でない
+  // 組み立ては null（不明）。省略は null。
+  readonly displayTarget?: 'this_device' | 'other_device' | null;
 }
 
 export const NOT_CONNECTED_HUB: StatusBarHub = {
@@ -64,7 +67,9 @@ export function buildStatusBar(
     hub_connection: hub.connection,
     hub_last_confirmed_at:
       hub.connection === 'not_connected' ? null : hub.lastConfirmedAt,
-    display_target: null,
+    // 接続していなければ必ず null（状態欄の意味検査）。
+    display_target:
+      hub.connection === 'connected' ? (hub.displayTarget ?? null) : null,
     // 接続していなければ必ず null（状態欄の意味検査）。
     storage_mode:
       hub.connection === 'connected' ? (hub.storageMode ?? null) : null,

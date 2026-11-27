@@ -34,6 +34,8 @@ import {
   storageModeOf,
 } from '../../state/storage-mode-state.js';
 import { StorageModeControl } from '../../components/StorageMode.js';
+import { DisplayHandoffControl } from '../../components/DisplayHandoff.js';
+import { displayHandoffView } from '../../state/display-handoff-state.js';
 import { useIslandSignals } from '../../state/use-island-signals.js';
 import type { Notice } from '../../state/work-state.js';
 import {
@@ -153,6 +155,8 @@ function StatusWindow({ api }: { readonly api: BuddyDesktopApi }) {
     revokeVoiceConsent,
     controlVoice,
     changeStorageMode,
+    handoffDisplay,
+    handoffPending,
   } = useRoleWindowState(api, 'status');
   const now = useNow();
   const visibility = usePageVisibility();
@@ -223,6 +227,14 @@ function StatusWindow({ api }: { readonly api: BuddyDesktopApi }) {
           }
           onStopPlayback={() => controlVoice('stop_playback')}
           onEndConversation={() => controlVoice('end_conversation')}
+        />
+      }
+      handoff={
+        <DisplayHandoffControl
+          view={displayHandoffView(state.status)}
+          message={messageFor(state, ['desktop.display_handoff'])}
+          onHandoff={handoffDisplay}
+          pending={handoffPending}
         />
       }
       storage={

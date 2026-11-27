@@ -30765,5 +30765,106 @@
         "storage_notice": "not_recorded"
       }
     }
+  },
+  {
+    "id": "desktop-ipc-display-handoff",
+    "schema": "DesktopIpcRequest",
+    "valid": true,
+    "value": {
+      "channel": "desktop.display_handoff",
+      "request_id": "00000000-0000-4000-8000-000000000f90",
+      "payload": null
+    }
+  },
+  {
+    "id": "desktop-ipc-display-handoff-with-device-id",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.display_handoff",
+      "request_id": "00000000-0000-4000-8000-000000000f90",
+      "payload": { "target_device_id": "00000000-0000-4000-8000-000000000007" }
+    }
+  },
+  {
+    "id": "desktop-ipc-display-handoff-with-revision",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.display_handoff",
+      "request_id": "00000000-0000-4000-8000-000000000f90",
+      "payload": { "expected_route_revision": "1" }
+    }
+  },
+  {
+    "id": "desktop-ipc-display-handoff-done",
+    "schema": "DesktopIpcResponse",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000f90",
+      "channel": "desktop.display_handoff",
+      "outcome": "ok",
+      "handoff_state": "moving"
+    }
+  },
+  {
+    "id": "desktop-ipc-display-handoff-done-with-device-id",
+    "schema": "DesktopIpcResponse",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000f90",
+      "channel": "desktop.display_handoff",
+      "outcome": "ok",
+      "handoff_state": "completed",
+      "display_device_id": "00000000-0000-4000-8000-000000000007"
+    }
+  },
+  {
+    "id": "desktop-ipc-display-handoff-done-unknown-state",
+    "schema": "DesktopIpcResponse",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000f90",
+      "channel": "desktop.display_handoff",
+      "outcome": "ok",
+      "handoff_state": "failed"
+    }
+  },
+  {
+    "id": "handoff-state-stream-placeholder-session",
+    "schema": "HandoffState",
+    "valid": true,
+    "value": {
+      "session_id": "00000000-0000-4000-8000-000000000000",
+      "route_revision": "0",
+      "display_device_id": "00000000-0000-4000-8000-000000000000",
+      "state": "completed"
+    }
+  },
+  {
+    "id": "lease-renewal-rejected-display-owned-elsewhere",
+    "schema": "LeaseRenewalResponse",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000f91",
+      "lease_id": "00000000-0000-4000-8000-000000000f92",
+      "nonce": "nonce-1",
+      "result": "rejected",
+      "reasons": ["display_owned_elsewhere"],
+      "ttl_ms": null
+    }
+  },
+  {
+    "id": "lease-renewal-rejected-unknown-reason",
+    "schema": "LeaseRenewalResponse",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000f91",
+      "lease_id": "00000000-0000-4000-8000-000000000f92",
+      "nonce": "nonce-1",
+      "result": "rejected",
+      "reasons": ["display_owned_by_other_window"],
+      "ttl_ms": null
+    }
   }
 ]

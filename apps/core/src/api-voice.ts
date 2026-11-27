@@ -39,6 +39,16 @@ export function createVoiceRoutes(voice: VoiceControl): {
           request.declaredLockState,
         ),
       ),
+      // 流れの表示先の移動と今の表示先（UI-05 の段階 5、ADR 0193）。
+      postStreamHandoff: authenticated((request) =>
+        voice.handoffDisplay(request.device, request.body),
+      ),
+      getStreamHandoff: (request) =>
+        Promise.resolve(
+          request.device === null
+            ? apiErrorResponse(401, 'unauthenticated')
+            : voice.displayRoute(),
+        ),
       stopIo: authenticated((request) =>
         voice.stopIo(request.device, request.body),
       ),

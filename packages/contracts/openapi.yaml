@@ -243,6 +243,76 @@ paths:
           $ref: '#/components/responses/RateLimited'
         '503':
           $ref: '#/components/responses/Unavailable'
+  /v1/stream/handoff:
+    get:
+      operationId: getStreamHandoff
+      summary: 流れの今の表示先
+      description: 流れの表示先の今の値（HandoffState を再利用。UI-05 の段階 5、ADR 0193）。端末が「このPCに出す」の前に今の route_revision と表示先を読み、表示先の欄（この端末・他の端末）を出すために使う。表示先がまだ決まっていないときは display_device_id が全て 0 の ID（誰にも決めていない印）、route_revision は 0。session_id は流れに会話の ID を見せないための固定の印（全て 0 の ID）で、端末は読まない（UI-01）。state は、前の端末の表示のリースを取り消して、その端末が止まったと中枢が確かめるまで moving。ロック中・不明は 403。読み取りだけで何も変えない。
+      x-buddy-core-checks:
+        - device_token
+        - home_network
+        - unlocked
+      parameters:
+        - $ref: '#/components/parameters/LockState'
+      responses:
+        '200':
+          description: 流れの今の表示先。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/HandoffState
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+    post:
+      operationId: postStreamHandoff
+      summary: 流れの表示先の移動
+      description: 呼び出した端末へ流れの表示先を移す（「このPCに出す」。UI-05 の段階 5、ADR 0193）。本文と応答は HandoffRequest・HandoffState を再利用し、端末は会話の ID を送らない（UI-01）。target_device_id は呼び出した端末と同じでなければ 403（他の端末へ押し付けない）。expected_route_revision が今の route_revision と違えば 409（他の端末が先に移した。自動では送り直さない）。成功したら、他の端末の表示のリースを取り消し、以後その端末の表示のリースの更新は display_owned_elsewhere で拒否する（端末は表示を失う）。この端末の入出力が止まっている（io_suspended）ときは 409（止まっている端末へ表示先を移して、他の端末の表示を消さない）。記録しない間も受け付ける（本文・会話の ID を持たず、保存もしない。RAM だけ）。Core の再起動で表示先は未決定に戻る。同じ request_id・同じ内容の再送は同じ応答を返し、内容が違えば 409（07 §3）。本人の画面操作だけ（Buddy-Input-Origin が screen。音声・チャット・システムの起点では 403）。
+      x-buddy-core-checks:
+        - device_token
+        - home_network
+        - command_scope
+        - unlocked
+        - screen_operation
+      parameters:
+        - $ref: '#/components/parameters/InputOrigin'
+        - $ref: '#/components/parameters/LockState'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas/buddy.schema.json#/$defs/HandoffRequest
+      responses:
+        '202':
+          description: 移動の状態。moving は、前の端末の表示のリースを取り消したが、その端末が止まったことを確かめていないこと。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/HandoffState
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/Gone'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
   /v1/canvas:
     get:
       operationId: getCanvas

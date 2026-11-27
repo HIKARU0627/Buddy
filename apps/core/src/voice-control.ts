@@ -26,6 +26,7 @@ import { randomUUID } from 'node:crypto';
 import {
   AUDIO_CONTROL_RULES,
   SESSION_CONTROL_EFFECTS,
+  STREAM_UNDECIDED_ID,
   LIVE_INITIAL_RESERVE_SECONDS,
   SIDEBAND_CONNECT_DEADLINE_MS,
   BUDGET_CLOSE_GRACE_MS,
@@ -438,6 +439,20 @@ const bump = (epoch: string): string => (BigInt(epoch) + 1n).toString();
 
 const TIMED_OUT: unique symbol = Symbol('timed_out');
 
+// 流れの表示先の移動（UI-05 の段階 5、ADR 0193）。流れには会話の ID を見せないので、応答の session_id と、表示先が
+// 決まっていないときの display_device_id は、domain の STREAM_UNDECIDED_ID（全て 0 の ID）にする。
+const STREAM_NIL_ID = STREAM_UNDECIDED_ID;
+// 同じ request_id の再送に同じ応答を返す控えの有効時間と件数の上限（RAM だけ。超えたら古い順に捨てる。捨てた後の
+// 再送は expected_route_revision が合わず 409 になるので、移動を二度行わない）。
+const HANDOFF_REPLAY_TTL_MS = 60 * 60 * 1000;
+const HANDOFF_REPLAY_MAX = 256;
+
+interface HandoffReplay {
+  readonly key: string;
+  readonly response: { status: number; body: object };
+  readonly expires_at: number;
+}
+
 export class VoiceControl {
   readonly #store: VoiceStore;
   readonly #coreInstanceId: string;
@@ -475,6 +490,17 @@ export class VoiceControl {
   // 応答を待たずに進めた予算の門の呼び出し（試験の idle が待つ）。
   readonly #inflight = new Set<Promise<void>>();
   #owner: OwnerRecord | null = null;
+  // 流れの表示先（UI-05 の段階 5、ADR 0193）。RAM だけ（中枢の再起動で未決定・版 0 に戻る。U169 と同じ）。表示先が決まって
+  // いるとき、その端末以外の表示のリースは取れず、更新も display_owned_elsewhere で拒否する。決まっていないとき（まだ誰も
+  // 移していない）は、今までどおり端末ごとに表示のリースを渡す（U473 の (a)）。
+  #displayRoute: { device_id: string | null; revision: bigint } = {
+    device_id: null,
+    revision: 0n,
+  };
+  // 表示先の移動で取り消した、前の端末の表示のリース（端末 ID → リース）。その端末の更新を拒否した（止まったと確かめた）か、
+  // 中枢の見積もりの期限が来るまで moving と答える。
+  readonly #displayMoving = new Map<string, LeaseEntry>();
+  readonly #handoffReplays = new Map<string, HandoffReplay>();
   #serial: Promise<unknown> = Promise.resolve();
   // 停止を受けるたびに進める。DB を読んだ後にこれが変わっていれば読み直す（停止の前の状態で判定しない）。
   #stopGen = 0;
@@ -828,6 +854,125 @@ export class VoiceControl {
     return this.#exclusive(() => this.#renew(device, body, lock));
   }
 
+  // ---- 流れの表示先（UI-05 の段階 5、ADR 0193） --------------------------------------------------------------
+
+  // 呼び出した端末へ流れの表示先を移す（POST /v1/stream/handoff）。本人の画面操作・接続範囲・ロック解除の検査は経路の検査が
+  // 済ませている。ここは中枢の判断（移す先は呼び出した端末だけ・版の照合・止まっている端末へは移さない・再送）を持つ。
+  handoffDisplay(device: DeviceRecord, body: JsonObject): Promise<Status> {
+    return this.#exclusive(() => this.#handoff(device, body));
+  }
+
+  // 流れの今の表示先（GET /v1/stream/handoff）。読み取りだけで何も変えない。
+  displayRoute(): Status {
+    return { status: 200, body: this.#handoffState() };
+  }
+
+  #handoffState(): {
+    session_id: string;
+    route_revision: string;
+    display_device_id: string;
+    state: 'moving' | 'completed';
+  } {
+    return {
+      session_id: STREAM_NIL_ID,
+      route_revision: this.#displayRoute.revision.toString(),
+      display_device_id: this.#displayRoute.device_id ?? STREAM_NIL_ID,
+      state: this.#displayMovingNow() ? 'moving' : 'completed',
+    };
+  }
+
+  // 取り消した前の端末の表示のリースが、まだ止まったと確かめられていないか。見積もりの期限が来たものは数えない。
+  #displayMovingNow(): boolean {
+    for (const [deviceId, entry] of this.#displayMoving)
+      if (this.#monoNow() >= this.#leaseExpiresAt(entry))
+        this.#displayMoving.delete(deviceId);
+    return this.#displayMoving.size > 0;
+  }
+
+  async #handoff(device: DeviceRecord, body: JsonObject): Promise<Status> {
+    const requestId = str(body, 'request_id');
+    const scopeId = str(body, 'command_scope_id');
+    const target = str(body, 'target_device_id');
+    const expected = str(body, 'expected_route_revision');
+    const key = JSON.stringify([device.device_id, scopeId, target, expected]);
+    const replayKey = JSON.stringify([scopeId, requestId]);
+    const now = this.#monoNow();
+    // 同じ request_id・同じ内容の再送は、移動を二度行わず同じ応答を返す。内容が違えば 409（07 §3）。
+    const seen = this.#handoffReplays.get(replayKey);
+    if (seen !== undefined && seen.expires_at > now)
+      return seen.key === key
+        ? seen.response
+        : error(409, 'conflict', requestId);
+    // 移す先は呼び出した端末だけ（他の端末へ表示を押し付けない）。
+    if (target !== device.device_id) return error(403, 'forbidden', requestId);
+    let state: DeviceVoiceState | null;
+    try {
+      state = await this.#freshState(device.device_id);
+    } catch {
+      return error(503, 'dependency_unavailable', requestId);
+    }
+    if (state === null || !state.active)
+      return error(401, 'unauthenticated', requestId);
+    // 止まっている端末（この端末の停止・来客モード・全体停止）へ移すと、他の端末の表示だけが消える。
+    if (this.#suspended(state)) return error(409, 'io_suspended', requestId);
+    // 表示先の版の照合。他の端末が先に移していれば 409（端末は読み直して、本人がもう一度決める。自動では送り直さない）。
+    if (expected !== this.#displayRoute.revision.toString())
+      return error(409, 'conflict', requestId);
+    this.#revokeDisplayLeasesExcept(device.device_id);
+    this.#displayMoving.delete(device.device_id);
+    this.#displayRoute = {
+      device_id: device.device_id,
+      revision: this.#displayRoute.revision + 1n,
+    };
+    this.#log('display_handoff');
+    // 取り消した端末がない（誰も表示していなかった）なら、確かめることがなく completed。
+    const response = { status: 202, body: this.#handoffState() };
+    this.#handoffReplays.set(replayKey, {
+      key,
+      response,
+      expires_at: now + HANDOFF_REPLAY_TTL_MS,
+    });
+    if (this.#handoffReplays.size > HANDOFF_REPLAY_MAX)
+      for (const [old, value] of this.#handoffReplays) {
+        if (this.#handoffReplays.size <= HANDOFF_REPLAY_MAX) break;
+        if (value.expires_at <= now || old !== replayKey)
+          this.#handoffReplays.delete(old);
+      }
+    return response;
+  }
+
+  // 他の端末の、まだ有効な表示のリースを取り消し、止まったと確かめるまで moving の対象にする。
+  #revokeDisplayLeasesExcept(keepDeviceId: string): void {
+    for (const [deviceId, byKind] of this.#leases) {
+      if (deviceId === keepDeviceId) continue;
+      const entry = byKind.get('display');
+      if (entry === undefined || !this.#leaseLive(entry)) continue;
+      entry.revoked = true;
+      this.#displayMoving.set(deviceId, entry);
+    }
+  }
+
+  // この端末が表示のリースを取れない（更新も拒否する）か。表示先が別の端末に決まっているときだけ。表示先の端末が失効して
+  // いれば、表示先を未決定に戻す（使えない端末のために、他の端末の表示を止め続けない）。表示先の端末の状態を読めなければ
+  // 決まったまま扱う（他の端末の表示を取らせない側）。
+  async #displayOwnedElsewhere(deviceId: string): Promise<boolean> {
+    const owner = this.#displayRoute.device_id;
+    if (owner === null || owner === deviceId) return false;
+    let state: DeviceVoiceState | null;
+    try {
+      state = await this.#deviceState(owner);
+    } catch {
+      return true;
+    }
+    if (state !== null && state.active) return true;
+    this.#displayRoute = {
+      device_id: null,
+      revision: this.#displayRoute.revision + 1n,
+    };
+    this.#log('display_route_cleared');
+    return false;
+  }
+
   // 音声リースの更新に使う制御接続の状態。端末単位で、閉じ終えていない Live を見る（取り直したリースでも同じ）。
   // 閉じる要求を出した後の Live は、喪失を経たものだけを数える（正常に閉じている途中の Live のために、次の呼びかけの
   // リースを止めない）。このリースで開いた Live が喪失を経て終わっていれば lost。
@@ -906,6 +1051,15 @@ export class VoiceControl {
     }
     if (read === null) return error(401, 'unauthenticated', requestId);
     const state = read;
+    // 流れの表示先が別の端末にあるとき、この端末は表示のリースを取れず、更新もできない（端末は表示を失う。UI-05 の段階 5、
+    // ADR 0193）。取り消した前の端末が止まったと確かめられた印にもなる。
+    if (
+      request.kind === 'display' &&
+      (await this.#displayOwnedElsewhere(device.device_id))
+    ) {
+      this.#displayMoving.delete(device.device_id);
+      return rejected(['display_owned_elsewhere']);
+    }
     // ロック中・ロック状態が分からない端末にはリースを渡さない（解除済みと扱わない。07 §2）。
     const ioSuspended = this.#suspended(state) || lock !== 'unlocked';
     const current = this.#leases.get(device.device_id)?.get(request.kind);

@@ -59,10 +59,11 @@
 | #349 | 0188        | 表示のリースを保ち、失ったらキャンバスを描かない（UI-05 の段階 4）                    |
 | #350 | なし        | Windows の shard 1 の時間切れを、DB の準備の共有と shard の重みで防ぐ（#348）         |
 | #351 | 0189        | 記録しないモードの UI と保存モードの切り替え（UI-05 の段階 6）                        |
+| #352 | 0190        | 記録しない会話の間の発言を RAM だけで受けて答える（B06-07a-2 の 2c）                  |
 
 ## 作業中の PR
 
-- B06-07a-2 の 2c: 記録しない会話の間の発言を、Core が RAM だけで受けて答える（ADR 0190、U480〜U487）。終える・停止・ロック・忘却で RAM を捨て、遅れて届いた結果は保存しない。外部へ送る解釈の入力には記録しないの目印（`private: true`）を付け、provider 側の保持の設定は実モデルの接続（B10）で目印を使って扱う（U487）。2d（独立した確認と最小の操作記録）は未着手で、それまで記録しない間の外部の変更は決まった文で断る。
+- 記憶の保存（memory_save）と訂正（memory_correct）の Core の経路と、保存してよい記憶の種類の設定（ADR 0191、U488〜U501、マイグレーション 0024。DB の版は 24、STRICT の表は 65）。既定は全部 off で何も保存しない。保存は本人の明示の依頼だけで、本文は本人の発言にそのまま含まれるときだけ。復元すると許可は全部 off に戻る（U494）。訂正は新しい記憶として保存し、古い記憶を忘れるのは忘却の画面へ導く（ゲートが閉じている間は使えないと返す）。自動の抽出からの保存は作っていない。
 - 本人の決定（2026-11-27、U431）: 忘却の公開ゲートは閉じたままにする。開くのは、記憶を保存する経路と保存してよい種類の設定ができ、U385・U383 を決め、実機（合成データ）で計画から実行まで確かめた後に、改めて本人が決める。
 - Windows の CI の shard 1 の時間切れ（Issue #348）は #350 で大きく縮めた。voice-budget の「再起動の照合」が 1 回だけ時間切れになったので Issue は開けたまま。
 - B04・B05・B07 の模擬証拠は、main の現行のソースと一致しない（`pnpm run evidence:check`。この期間より前からの食い違いを含む）。それぞれの工程か main の記録の更新のときに作り直す。
@@ -96,7 +97,7 @@ CI が通ればマージしてよいと本人から許可を受けている。�
 ## 未完了の作業と次の一手
 
 1. 実在のデータでの確かめ（本人の環境で。手順と記録の表は `docs/household/README.md`）: 実在の通知メールで項目名の一覧、楽天カードの送信元ドメイン（公式のページで確かめ直す）、外部の家計簿サービスの実在の書き出しで日付・金額の書き方と文字コード（U336）。Electron の画面の見た目と操作。
-2. 段階 2: 請求のメールは請求予定として、家計の記録とは別の表に置き、月の合計・予算・定期の支出に入れない（ADR 0176、マイグレーション 0021。STRICT の表は 64）。実在の請求メールで件名・本文・送信元を確かめる（手順書の項目 K、U356）。請求予定は本人が家計簿の欄から消せる（ADR 0179、マイグレーション 0022。DB の版は 23）。直す操作は作らない。定期の支出と固定費の目安は ADR 0165、分類ごとの予算は ADR 0166、利用通知の取り込みの不具合の修正は ADR 0170（マイグレーション 0020）。
+2. 段階 2: 請求のメールは請求予定として、家計の記録とは別の表に置き、月の合計・予算・定期の支出に入れない（ADR 0176、マイグレーション 0021。STRICT の表は 64）。実在の請求メールで件名・本文・送信元を確かめる（手順書の項目 K、U356）。請求予定は本人が家計簿の欄から消せる（ADR 0179、マイグレーション 0022）。直す操作は作らない。定期の支出と固定費の目安は ADR 0165、分類ごとの予算は ADR 0166、利用通知の取り込みの不具合の修正は ADR 0170（マイグレーション 0020）。
 3. 段階 3: レシートの写真からの候補は ADR 0177（既定は切。本人が入にしたときだけ、選んだ写真 1 枚をその都度の操作で送る。予算・保存期限の門・ロック・世代を通す）。外部のモデルを呼ぶ provider は Gemini の generateContent（ADR 0178。鍵は起動の環境変数 `BUDDY_GEMINI_API_KEY`、単価の版は `budget-runtime.json` で本人が確認済みにしたときだけ使える）。実 API で確かめるには実請求の承認が要る（手順書の L0）。残りは、入力バーと音声からの候補は、キャンバスの組み立てを配布版で使うと決めたときと、製品での音声の経路（U91）が決まったときに ADR 0173 の方針で作る。CSV への書き出しは ADR 0172。会話の一言からの候補は ADR 0171（LLM は使わず決まった規則で読み、手入力の欄に入れて開く）、収入の候補は ADR 0174。手入力の記録は ADR 0167、重なっていそうな記録の知らせは ADR 0168、記録の中身の変更は ADR 0169（U335・U339・U340・U341 の見直しはここで）。
 4. B13 の残り: 予定の取り消し（U310 は予定だけ暫定 b）、状態欄の安全停止の値（U315）、候補の取り込みの入口。
 5. 未分類へ直したときの規則の扱いは、分類の変更と中身の変更でそろえた（ADR 0175 の追補。中身の変更は店名を変えずに支出を未分類へ直したときだけ上書きする）。本人に確かめる（U341・U355）。
@@ -146,6 +147,6 @@ CI が通ればマージしてよいと本人から許可を受けている。�
 - 一部だけ: 対象の workspace で `pnpm run build` の後に `node --test dist/<名前>.test.js`。domain の規則の試験は `scripts/household-notice.test.mjs` などで、`packages/domain` のビルドの後に `node --test scripts/<名前>.test.mjs`。
 - コミットの前に `pnpm run security:staged`、push の前に `pnpm run security:scan`。
 - 公開物の検査は、`example.com`・`example.org`・`example.net`・`example.invalid` 以外のメールアドレスの形を拒む。試験の送り主は合成の一覧を引数で渡している（`checkHouseholdNoticeSender` の第 2 引数、`createHouseholdMailIntake` の `issuers`）。検査を避ける書き方はしない。
-- マイグレーションを足すときは、`packages/storage/src/migrations.test.ts` の一覧・hash・表の数、`packages/domain/src/backup-plan.ts` の表の分類、`packages/storage/src/policy.ts`、`tests/fixtures/backup-restore-cases.json`、`packages/storage/migrations/README.md` をそろえ、試験の中の DB の版（`store-binding`・`db-worker`・`backup-ops`・`backup-store`・`operation-retention`・`voice-store`・`restore-aftermath-store`・`apps/core` の `backup`・`restore`・`forget-ledger` の試験、`tests/integration/b05-expectations.json`・`b07-expectations.json`）を上げる。除外する表なら `backup-store.test.ts` と `apps/core/src/backup.test.ts` の除外の一覧も直す。
-- 次の ADR の番号は 0191、次の未決事項の番号は U488（U411〜U429・U441〜U459 は空き）。
+- マイグレーションを足すときは、`packages/storage/src/migrations.test.ts` の一覧・hash・表の数、`packages/domain/src/backup-plan.ts` の表の分類、`packages/storage/src/policy.ts`、`tests/fixtures/backup-restore-cases.json`、`packages/storage/migrations/README.md` をそろえ、試験の中の DB の版（`store-binding`・`db-worker`・`backup-ops`・`backup-store`・`operation-retention`・`voice-store`・`restore-aftermath-store`・`apps/core` の `backup`・`restore`・`forget-ledger` の試験、`tests/integration/b05-expectations.json`・`b07-expectations.json`、`packages/storage/src/household-store.test.ts` の版の試験）を上げる。除外する表なら `backup-store.test.ts` と `apps/core/src/backup.test.ts` の除外の一覧も直す。
+- 次の ADR の番号は 0192、次の未決事項の番号は U502（U411〜U429・U441〜U459 は空き）。
 - この環境の既定の Node.js が 22 のときは、24 系を PATH の先頭に置いてから pnpm を使う（`pnpm install` が版の違いで止まる）。clone の履歴が浅いと push の前の検査（`pnpm run security:scan`）が止まるので、`git fetch --unshallow` で全履歴を取ってから検査する。

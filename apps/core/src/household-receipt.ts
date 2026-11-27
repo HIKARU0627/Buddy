@@ -9,28 +9,38 @@
 //   保存期限の掃除の門（ADR 0053。待たずに、cloud_send が開いていて貸し出しを今取れるときだけ）→ 設定をもう一度 →
 //   予算の門（BudgetGate.run。予約・送出意図・期限・中断・精算・usage 不明の保持）。
 // - 端末が待つのをやめた後に送らない（見直しの指摘 1）: 端末が接続を切ったら（api-server の request.signal）、送出意図の
-//   前なら送らずにやめる。経路の処理を始めてから RECEIPT_HUB_PRE_DISPATCH_MS（10 秒）までに送り始めなければ送らない。
-//   読み取りの期限（profile.timeout_ms）は RECEIPT_READ_TIMEOUT_MAX_MS（60 秒）まで。端末はこの要求だけ
-//   RECEIPT_CLIENT_TIMEOUT_MS（150 秒）待つので、端末が結果不明にする前に中枢の読み取りは終わっている。
+//   前なら送らずにやめる。要求が届いてから（api-server の request.receivedAt。本文の受け取りを含む）
+//   RECEIPT_HUB_PRE_DISPATCH_MS（10 秒）までに送り始めなければ送らない。読み取りの期限（profile.timeout_ms）は
+//   RECEIPT_READ_TIMEOUT_MAX_MS（60 秒）まで。端末はこの要求だけ RECEIPT_CLIENT_TIMEOUT_MS（150 秒）待つので、端末が
+//   結果不明にする前に中枢の読み取りは終わっている。中枢の受付の期限（requestTimeout と確かめる間隔）を上書きして
+//   この関係が破れるなら、読み取りを使わない（unavailable。再見直しの指摘 4）。
 // - 送る前に止めたときは 503 not_sent（費用はかかっていない）、結果が分からない（送ったか・応答が届いたか分からない）
 //   ときは 503 dependency_unavailable にし、どちらも自動では送り直さない。usage が分からなければ予算の門が予約を保持する。
 // - 外部の応答は信用しない入力として扱い、厳格な JSON として読み、domain の readHouseholdReceiptReply で家計の記録の検査を
 //   し直す。読めない・矛盾する結果は候補にしない。
 // - 画像も応答も保存しない。ログ・診断へも出さない。受け取った画像のバイト列は、読み取りの口が終わってから（時間切れ・
 //   中断で予算の門が先に返っても、送っている途中の読み取りが終わるのを待って）0 で埋めて捨て、掃除の貸し出しを返す。
-//   base64 の文字列と JSON の文字列は JavaScript では 0 で埋められないので、参照を手放すだけ（ADR 0177 の追補）。
+//   読み取りの口が中断に応じず返らなくても、送り始めてから profile.timeout_ms + RECEIPT_READER_RETURN_GRACE_MS で
+//   待つのをやめ、時間切れとして扱い、口がまだ参照していても画像を 0 で埋め、貸し出しを返し、次の読み取りを受ける
+//   （再見直しの指摘 1）。base64 の文字列と JSON の文字列は JavaScript では 0 で埋められないので、参照を手放すだけ
+//   （ADR 0177 の追補）。
 // - 設定（入・切）は中枢のメモリーにだけ持つ。既定は切で、中枢を起動し直すと切に戻る（U364）。
 
 import type { ModelProfile, ModelUsage } from '@buddy/contracts';
 import type { AdapterResult, Cancellation } from '@buddy/ai';
 import {
   RECEIPT_HUB_PRE_DISPATCH_MS,
+  RECEIPT_READER_RETURN_GRACE_MS,
   RECEIPT_READ_TIMEOUT_MAX_MS,
   candidateLocalClock,
   readHouseholdReceiptReply,
   receiptSendImageErrors,
+  receiptTimingFits,
 } from '@buddy/domain';
-import type { HouseholdReceiptReading } from '@buddy/domain';
+import type {
+  HouseholdReceiptReading,
+  ReceiptHubRequestLimits,
+} from '@buddy/domain';
 import { apiErrorResponse } from './api-server.js';
 import type { ApiRouteHandler } from './api-server.js';
 import type { BudgetGate, PaidOutcome } from './budget-gate.js';
@@ -71,7 +81,9 @@ export interface ReceiptReadCommand {
 // 外部のモデルの画像の読み取りの口（provider ごとの実装は後で足す。試験は模擬で行う）。1 回の read で送るのは 1 回だけで、
 // timeout・利用不可・壊れた応答の後に自動で送り直さない（LlmAdapter と同じ。結果の形も AdapterResult と同じ）。
 // cancellation が中断されたら、すぐに送るのをやめて返すこと（返すまで画像のバイト列を 0 で埋めず、掃除の貸し出しも返さず、
-// 次の読み取りも受けない）。command.image.bytes は返すまで読んでよく、返した後は 0 で埋められる。
+// 次の読み取りも受けない）。command.image.bytes は返すまで読んでよく、返した後は 0 で埋められる。ただし、送り始めてから
+// profile.timeout_ms + RECEIPT_READER_RETURN_GRACE_MS を過ぎても返らなければ、中枢は返らない口を時間切れとして扱い、
+// 返る前でも command.image.bytes を 0 で埋める（その後に送った内容は壊れていてよい。結果は捨てる）。
 export interface ReceiptImageReader {
   read(
     command: ReceiptReadCommand,
@@ -190,8 +202,17 @@ export interface HouseholdReceiptOptions {
     readonly open: () => boolean;
     readonly lease: () => (() => void) | null;
   };
-  // 経路の処理を始めてから送り始めるまでの期限（ミリ秒）。省略すると RECEIPT_HUB_PRE_DISPATCH_MS（試験で短くする）。
+  // 要求が届いてから送り始めるまでの期限（ミリ秒）。省略すると RECEIPT_HUB_PRE_DISPATCH_MS（試験で短くする）。
   readonly preDispatchMs?: number;
+  // 返らない読み取りの口を待つ猶予（ミリ秒）。省略すると RECEIPT_READER_RETURN_GRACE_MS（試験で短くする）。
+  readonly returnGraceMs?: number;
+  // 単調時計のミリ秒（api-server の monotonicNow と同じ時計。request.receivedAt と比べる）。省略すると performance.now。
+  readonly monotonicNow?: () => number;
+  // 中枢の HTTPS の受付の期限（requestTimeout と確かめる間隔）。端末の時間切れとの関係が破れるなら読み取りを使わない
+  // （unavailable）。省略すると確かめない（試験）。
+  readonly requestLimits?: ReceiptHubRequestLimits;
+  // 中身を出さない記録（理由の名前だけ）。
+  readonly log?: (message: string) => void;
 }
 
 export interface HouseholdReceiptRoutes {
@@ -213,6 +234,45 @@ function decodeBase64(text: string): Uint8Array | null {
   return new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength);
 }
 
+// 読み取りの口を呼び、limitMs を過ぎても返らなければ、返らない口を時間切れ（usage 不明）として扱う（再見直しの指摘 1）。
+// 返らない口が後から返した結果は捨てる。同期の例外は失敗した Promise にする。
+function readWithin(
+  reader: ReceiptImageReader,
+  command: ReceiptReadCommand,
+  cancellation: Cancellation,
+  limitMs: number,
+  overdue: () => void,
+): Promise<AdapterResult> {
+  return new Promise<AdapterResult>((resolve, reject) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      overdue();
+      resolve({ kind: 'timeout', usage: null });
+    }, limitMs);
+    // 中枢の停止を待たせない（中枢が動いている間は HTTPS の待ち受けが事象の待ちを保つ）。
+    timer.unref?.();
+    const finish = (settle: () => void) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      settle();
+    };
+    let pending: Promise<AdapterResult>;
+    try {
+      pending = Promise.resolve(reader.read(command, cancellation));
+    } catch (error) {
+      finish(() => reject(error));
+      return;
+    }
+    pending.then(
+      (result) => finish(() => resolve(result)),
+      (error: unknown) => finish(() => reject(error)),
+    );
+  });
+}
+
 function resultBody(reading: HouseholdReceiptReading): object {
   return reading.kind === 'candidate'
     ? { result: 'candidate', candidate: { ...reading.draft }, reasons: [] }
@@ -226,8 +286,18 @@ function resultBody(reading: HouseholdReceiptReading): object {
 export function createHouseholdReceiptRoutes(
   options: HouseholdReceiptOptions,
 ): HouseholdReceiptRoutes {
+  const log = options.log ?? (() => undefined);
+  const monotonicNow = options.monotonicNow ?? (() => performance.now());
+  // 中枢の受付の期限で、端末が待つのをやめる前に読み取りが終わらないなら使わない（再見直しの指摘 4）。
+  const timingFits =
+    options.requestLimits === undefined ||
+    receiptTimingFits(options.requestLimits);
+  if (options.setup !== null && !timingFits)
+    log(
+      '家計簿のレシートの写真の読み取りを使えなくしました（receipt_timing_exceeds_client_timeout）。',
+    );
   const setup =
-    options.setup !== null && receiptSetupUsable(options.setup)
+    options.setup !== null && receiptSetupUsable(options.setup) && timingFits
       ? options.setup
       : null;
   const budget = options.budget;
@@ -299,17 +369,23 @@ export function createHouseholdReceiptRoutes(
     const controller = new AbortController();
     inFlight = controller;
     let release: (() => void) | null = null;
-    // 読み取りの口に渡した後、読み取りが終わる（成功・失敗・例外）までの待ち。予算の門が時間切れ・中断で先に返っても、
-    // これが終わるまで画像を 0 で埋めず、掃除の貸し出しを返さず、次の読み取りを受けない。
+    // 読み取りの口に渡した後、読み取りが終わる（成功・失敗・例外。返らない口は待つ上限を過ぎる）までの待ち。予算の門が
+    // 時間切れ・中断で先に返っても、これが終わるまで画像を 0 で埋めず、掃除の貸し出しを返さず、次の読み取りを受けない。
     const flight: { sending: Promise<unknown> | null } = { sending: null };
     // 端末が接続を切った: 送出意図の前なら送らない（後なら予算の門が結果を捨てる）。
     const clientGone = () => controller.abort();
     request.signal?.addEventListener('abort', clientGone, { once: true });
     if (request.signal?.aborted === true) controller.abort();
-    // 送り始めるまでの期限。過ぎたら送らない（予算の門の受付・送出意図の記録が遅れても、端末が待つ間に送り終える）。
+    // 送り始めるまでの期限。要求が届いた時刻（本文の受け取りと経路の検査の前）から数え、過ぎたら送らない（本文の
+    // 受け取り・経路の検査・予算の門の受付・送出意図の記録が遅れても、端末が待つ間に送り終える。再見直しの指摘 4）。
+    const receivedAt = request.receivedAt ?? monotonicNow();
+    const remaining =
+      (options.preDispatchMs ?? RECEIPT_HUB_PRE_DISPATCH_MS) -
+      (monotonicNow() - receivedAt);
+    if (remaining <= 0) controller.abort();
     const deadline = setTimeout(
       () => controller.abort(),
-      options.preDispatchMs ?? RECEIPT_HUB_PRE_DISPATCH_MS,
+      Math.max(0, remaining),
     );
     deadline.unref?.();
     try {
@@ -332,26 +408,31 @@ export function createHouseholdReceiptRoutes(
         (signal) => {
           // 送出意図を記録した後に予算の門が呼ぶ。ここから先は送り始めるまでの期限で止めない（予算の門の期限が効く）。
           clearTimeout(deadline);
-          const pendingRead = setup.reader
-            .read(
-              {
-                request_id: requestId,
-                profile: setup.profile,
-                instructions: HOUSEHOLD_RECEIPT_INSTRUCTIONS,
-                image: { media_type: RECEIPT_MEDIA_TYPE, bytes },
-              },
-              signal,
-            )
-            .then((result) => {
-              received.value = result;
-              return {
-                usage: result.usage,
-                provider_request_id:
-                  result.kind === 'response'
-                    ? result.provider_request_id
-                    : null,
-              };
-            });
+          // 読み取りの口が中断に応じず返らなくても、予算の門の期限（受付から profile.timeout_ms。受付は送り始める前
+          // なので、送り始めてから profile.timeout_ms までに来る）に猶予を足した時刻で待つのをやめる。
+          const pendingRead = readWithin(
+            setup.reader,
+            {
+              request_id: requestId,
+              profile: setup.profile,
+              instructions: HOUSEHOLD_RECEIPT_INSTRUCTIONS,
+              image: { media_type: RECEIPT_MEDIA_TYPE, bytes },
+            },
+            signal,
+            setup.profile.timeout_ms +
+              (options.returnGraceMs ?? RECEIPT_READER_RETURN_GRACE_MS),
+            () =>
+              log(
+                '家計簿のレシートの写真の読み取りの口が期限を過ぎても返らないため、待つのをやめました（reader_not_returned）。',
+              ),
+          ).then((result) => {
+            received.value = result;
+            return {
+              usage: result.usage,
+              provider_request_id:
+                result.kind === 'response' ? result.provider_request_id : null,
+            };
+          });
           flight.sending = pendingRead.catch(() => undefined);
           return pendingRead;
         },
@@ -416,7 +497,8 @@ export function createHouseholdReceiptRoutes(
     } finally {
       clearTimeout(deadline);
       request.signal?.removeEventListener('abort', clientGone);
-      // 画像は保存しない。読み取りの口が終わってから 0 で埋めて捨て、掃除の貸し出しを返し、次の読み取りを受ける。
+      // 画像は保存しない。読み取りの口が終わってから（返らない口は待つ上限を過ぎてから）0 で埋めて捨て、掃除の貸し出しを
+      // 返し、次の読み取りを受ける。
       const done = () => {
         bytes.fill(0);
         release?.();

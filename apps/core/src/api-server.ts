@@ -167,7 +167,11 @@ export interface ApiLimits {
   readonly handshakeTimeoutMs: number;
   // ヘッダーの期限。TLS の確立から最初の要求のヘッダーがそろうまでの期限（接続ごと、B03-07 M1）にも使う。
   readonly headersTimeoutMs: number;
+  // 要求（ヘッダーと本文）を受け取り終えるまでの期限（Node の requestTimeout。0 は期限なし）。
   readonly requestTimeoutMs: number;
+  // Node が requestTimeout・headersTimeout を確かめる間隔（connectionsCheckingInterval）。期限を過ぎてから最大でこの
+  // 間隔だけ遅れて切る。レシートの写真の読み取り（ADR 0177）の端末の時間切れとの関係に使うので明示する。
+  readonly connectionsCheckingIntervalMs: number;
   readonly keepAliveTimeoutMs: number;
   readonly maxHeaderBytes: number;
 }
@@ -184,6 +188,8 @@ export const DEFAULT_API_LIMITS: ApiLimits = {
   handshakeTimeoutMs: 10_000,
   headersTimeoutMs: 10_000,
   requestTimeoutMs: 15_000,
+  // Node の既定（30 秒）と同じ値。既定の動きは変えない。
+  connectionsCheckingIntervalMs: 30_000,
   keepAliveTimeoutMs: 5_000,
   maxHeaderBytes: 8_192,
 };
@@ -202,6 +208,9 @@ export interface ApiHandlerRequest {
   readonly declaredLockState: DeclaredLockState | null;
   // 端末が応答を受け取る前に接続を切ったら中断する（abortOnCloseRoutes に挙げた経路だけに付く。ほかの経路は undefined）。
   readonly signal?: AbortSignal;
+  // 要求が届いた時刻（api-server の monotonicNow のミリ秒。本文を読む前）。経路の処理の期限を、経路の処理を始めた
+  // 時刻ではなく要求が届いた時刻から数えるために使う（abortOnCloseRoutes に挙げた経路だけに付く）。
+  readonly receivedAt?: number;
 }
 
 export type ApiRouteHandler = (
@@ -494,6 +503,7 @@ export function createApiServer(options: ApiServerOptions): ApiServer {
     handshakeTimeout: limits.handshakeTimeoutMs,
     requestTimeout: limits.requestTimeoutMs,
     headersTimeout: limits.headersTimeoutMs,
+    connectionsCheckingInterval: limits.connectionsCheckingIntervalMs,
     keepAliveTimeout: limits.keepAliveTimeoutMs,
     maxHeaderSize: limits.maxHeaderBytes,
     noDelay: true,
@@ -902,6 +912,8 @@ export function createApiServer(options: ApiServerOptions): ApiServer {
   };
 
   server.on('request', (request: IncomingMessage, response: ServerResponse) => {
+    // 要求が届いた時刻（本文を読む前）。
+    const receivedAt = monotonicNow();
     requestsReceived += 1;
     const socket = request.socket as TLSSocket;
     clearFirstRequestTimer(socket);
@@ -933,7 +945,7 @@ export function createApiServer(options: ApiServerOptions): ApiServer {
           if (!response.writableFinished) controller.abort();
         });
         if (socket.destroyed) controller.abort();
-        admitted = { ...outcome, signal: controller.signal };
+        admitted = { ...outcome, signal: controller.signal, receivedAt };
       }
       let result: { status: number; body: object };
       try {

@@ -189,21 +189,35 @@ test(
     await routes.handlers.changeHouseholdReceiptSetting({
       body: { request_id: randomUUID(), receipt_reading: 'on' },
     } as unknown as ApiHandlerRequest);
-    // 挙げていない経路には signal が付かない。
-    const plain: (AbortSignal | undefined)[] = [];
+    // 挙げていない経路には signal も要求が届いた時刻も付かない。
+    const plain: (AbortSignal | number | undefined)[] = [];
+    // 読み取りの経路の処理が受け取った signal（中断が届いたことを、待つ時間ではなく abort の事象で確かめる）。
+    let handed: (signal: AbortSignal | undefined) => void = () => undefined;
+    const signalOf = new Promise<AbortSignal | undefined>((resolve) => {
+      handed = resolve;
+    });
     const hub = await startHub(t, {
-      readHouseholdReceipt: routes.handlers.readHouseholdReceipt,
+      readHouseholdReceipt: (request) => {
+        handed(request.signal);
+        return routes.handlers.readHouseholdReceipt(request);
+      },
       getSnapshot: async (request) => {
-        plain.push(request.signal);
+        plain.push(request.signal, request.receivedAt);
         return { status: 200, body: {} };
       },
     });
     const scope = await scopeOf(hub.target, hub.device.token);
     const sent = await sendReceipt(hub.target, hub.device.token, scope);
     await withTimeout(started, 10_000, 'budget entered');
+    const signal = await signalOf;
+    assert.ok(signal instanceof AbortSignal);
+    const abortedEvent = new Promise<void>((resolve) => {
+      if (signal.aborted) resolve();
+      signal.addEventListener('abort', () => resolve(), { once: true });
+    });
     sent.cut();
-    // 中断が経路の処理へ届くまで待ってから、受付を終わらせる。
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    // 中断が経路の処理へ届いて（abort の事象が起きて）から、受付を終わらせる。
+    await withTimeout(abortedEvent, 10_000, 'abort reached the route');
     admitted();
     assert.equal(await withTimeout(outcome, 10_000, 'outcome'), 'released');
     assert.equal(reads.length, 0);
@@ -213,7 +227,7 @@ test(
       headers: { authorization: `Bearer ${hub.device.token}` },
     });
     assert.equal(snapshot.status, 200);
-    assert.deepEqual(plain, [undefined]);
+    assert.deepEqual(plain, [undefined, undefined]);
   },
 );
 
@@ -222,9 +236,15 @@ test(
   { timeout: 30_000 },
   async (t) => {
     const signals: (AbortSignal | undefined)[] = [];
+    // 要求が届いた時刻（本文を読む前の単調時計）と、経路の処理を始めた時刻。
+    const times: { receivedAt: number | undefined; started: number }[] = [];
     const hub = await startHub(t, {
       readHouseholdReceipt: async (request) => {
         signals.push(request.signal);
+        times.push({
+          receivedAt: request.receivedAt,
+          started: performance.now(),
+        });
         await new Promise((resolve) => setTimeout(resolve, 100));
         return { status: 200, body: { aborted: request.signal?.aborted } };
       },
@@ -245,6 +265,85 @@ test(
     assert.deepEqual(response.json, { aborted: false });
     assert.equal(signals.length, 1);
     assert.ok(signals[0] instanceof AbortSignal);
+    // 挙げた経路には要求が届いた時刻が付き、経路の処理を始めた時刻より前（本文の受け取りと経路の検査の前）。
+    const time = times[0];
+    assert.equal(typeof time?.receivedAt, 'number');
+    assert.ok((time?.receivedAt ?? Infinity) <= (time?.started ?? 0));
+  },
+);
+
+test(
+  'まとめた本文（Buffer）は、挙げた経路でだけ JSON として読んだ後に 0 で埋める',
+  { timeout: 30_000 },
+  async (t) => {
+    // api-server が本文の断片をまとめた Buffer を捕まえる（送った本文と同じ中身のものだけ）。
+    const bodies = new Map<string, Buffer[]>();
+    const original = Buffer.concat.bind(Buffer);
+    t.mock.method(
+      Buffer,
+      'concat',
+      (...args: Parameters<typeof Buffer.concat>) => {
+        const made = original(...args);
+        const text = made.toString('utf8');
+        const list = bodies.get(text);
+        if (list !== undefined) list.push(made);
+        return made;
+      },
+    );
+    // 経路の処理を呼んだ時点で、まとめた本文が 0 で埋めてあるか。
+    const atHandler: Record<string, boolean> = {};
+    const zeroed = (text: string) =>
+      (bodies.get(text) ?? []).length > 0 &&
+      (bodies.get(text) ?? []).every((buffer) =>
+        buffer.every((byte) => byte === 0),
+      );
+    let receiptText = '';
+    let settingText = '';
+    const hub = await startHub(t, {
+      readHouseholdReceipt: async () => {
+        atHandler['receipt'] = zeroed(receiptText);
+        return { status: 200, body: {} };
+      },
+      changeHouseholdReceiptSetting: async () => {
+        atHandler['setting'] = zeroed(settingText);
+        return { status: 200, body: { receipt_reading: 'off' } };
+      },
+    });
+    const scope = await scopeOf(hub.target, hub.device.token);
+    receiptText = JSON.stringify({
+      request_id: randomUUID(),
+      command_scope_id: scope,
+      image: { media_type: 'image/jpeg', data_base64: IMAGE_BASE64 },
+    });
+    settingText = JSON.stringify({
+      request_id: randomUUID(),
+      command_scope_id: scope,
+      receipt_reading: 'off',
+    });
+    bodies.set(receiptText, []);
+    bodies.set(settingText, []);
+    const receipt = await pinnedRequest(hub.target, {
+      method: 'POST',
+      path: '/v1/household/receipt-readings',
+      headers: headersFor(hub.device.token, Buffer.from(receiptText)),
+      body: receiptText,
+    });
+    assert.equal(receipt.status, 200);
+    const setting = await pinnedRequest(hub.target, {
+      method: 'POST',
+      path: '/v1/household/receipt-setting',
+      headers: headersFor(hub.device.token, Buffer.from(settingText)),
+      body: settingText,
+    });
+    assert.equal(setting.status, 200);
+    // 挙げた経路（読み取り）は、経路の処理の前に 0 で埋めてある。
+    assert.equal(bodies.get(receiptText)?.length, 1);
+    assert.equal(atHandler['receipt'], true);
+    assert.equal(zeroed(receiptText), true);
+    // 挙げていない経路（設定の変更）は埋めない。
+    assert.equal(bodies.get(settingText)?.length, 1);
+    assert.equal(atHandler['setting'], false);
+    assert.equal(bodies.get(settingText)?.[0]?.toString('utf8'), settingText);
   },
 );
 

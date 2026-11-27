@@ -34,14 +34,59 @@ export const RECEIPT_SEND_MAX_SIDE = 1600;
 /** 画像の短い辺の下限（これより小さい画像は文字を読めない）。 */
 export const RECEIPT_MIN_SIDE = 64;
 
-// --- 端末の時間切れと中枢の期限（見直しの指摘 1）---
+// --- 端末の時間切れと中枢の期限（見直しの指摘 1、再見直しの指摘 4）---
 // 端末が待つのをやめた後に中枢が外部へ送ることがないよう、この経路だけ端末の時間切れを中枢の期限の和より長くする。
-/** 中枢が経路の処理を始めてから送出意図（予算の門の dispatch）を記録して送り始めるまでの期限。過ぎたら送らない。 */
+/**
+ * 中枢が要求を受け取ってから（api-server が要求を受けた時刻。本文の受け取りと経路の検査を含む）送出意図（予算の門の
+ * dispatch）を記録して送り始めるまでの期限。過ぎたら送らない。
+ */
 export const RECEIPT_HUB_PRE_DISPATCH_MS = 10_000;
 /** 読み取りの profile の期限（timeout_ms）の上限。これより長い profile は使わない。 */
 export const RECEIPT_READ_TIMEOUT_MAX_MS = 60_000;
+/**
+ * 読み取りの口が中断に応じず返らないときに、中枢が待つ猶予（送り始めてから profile の期限にこれを足した時刻まで待つ）。
+ * 過ぎたら返らない口を時間切れとして扱い、画像を 0 で埋め、保存期限の掃除の貸し出しを返す。
+ */
+export const RECEIPT_READER_RETURN_GRACE_MS = 5_000;
 /** 端末が読み取りの要求の応答を待つ時間（ほかの要求の 10 秒より長い）。 */
 export const RECEIPT_CLIENT_TIMEOUT_MS = 150_000;
+
+/** 中枢の HTTPS の受付の期限のうち、要求が届くまでの時間を決めるもの（apps/core の ApiLimits の一部）。 */
+export interface ReceiptHubRequestLimits {
+  // 要求（ヘッダーと本文）を受け取り終えるまでの期限（Node の requestTimeout）。
+  readonly requestTimeoutMs: number;
+  // Node が requestTimeout を確かめる間隔（connectionsCheckingInterval）。
+  readonly connectionsCheckingIntervalMs: number;
+}
+
+/**
+ * 端末が要求を書き始めてから、中枢が読み取りを終える（返らない読み取りの口を見切る）までの最長（ミリ秒）。
+ * 要求が届くまで（requestTimeout と確かめる間隔の和）+ 送り始めるまで + 読み取りの期限の上限 + 返らない口を待つ猶予。
+ * requestTimeout か確かめる間隔が正の整数でない（0 は期限なし）なら、上限がないので null。
+ */
+export function receiptHubWorstCaseMs(
+  limits: ReceiptHubRequestLimits,
+): number | null {
+  const positive = (value: number) => Number.isSafeInteger(value) && value > 0;
+  if (
+    !positive(limits.requestTimeoutMs) ||
+    !positive(limits.connectionsCheckingIntervalMs)
+  )
+    return null;
+  return (
+    limits.requestTimeoutMs +
+    limits.connectionsCheckingIntervalMs +
+    RECEIPT_HUB_PRE_DISPATCH_MS +
+    RECEIPT_READ_TIMEOUT_MAX_MS +
+    RECEIPT_READER_RETURN_GRACE_MS
+  );
+}
+
+/** 中枢の受付の期限で、端末が待つのをやめる前に中枢の読み取りが終わるか（終わらなければ読み取りを使わない）。 */
+export const receiptTimingFits = (limits: ReceiptHubRequestLimits): boolean => {
+  const worst = receiptHubWorstCaseMs(limits);
+  return worst !== null && worst < RECEIPT_CLIENT_TIMEOUT_MS;
+};
 /**
  * 本人が選ぶ画像の縦横の比の上限（長い辺 ÷ 短い辺）。端末の main は長い辺 1280、収まらなければ 1024 まで縮めるので、
  * 1024 ÷ 64（短い辺の下限）= 16 までなら、どの段で縮めても短い辺が下限より小さくならない。
@@ -69,7 +114,7 @@ export const RECEIPT_IMAGE_PROBLEMS = [
   'image_too_small',
   // 細長すぎる（長い辺が短い辺の RECEIPT_MAX_ASPECT_RATIO 倍を超える）。縮めると短い辺が下限より小さくなる。
   'image_aspect_ratio_too_large',
-  // 外部へ送る JPEG に付帯情報（APP1 の Exif・XMP、APP13）がある。
+  // 外部へ送る JPEG に付帯情報（APP1 の Exif・XMP、APP11、APP13、COM、EOI の後ろのバイト列）がある。
   'image_metadata_present',
 ] as const;
 
@@ -138,34 +183,74 @@ function jpegInfo(bytes: Uint8Array): ReceiptImageInfo | null {
   return null;
 }
 
+// 外部へ送らない区切り: APP1（Exif・XMP など。中身の識別子を問わない）、APP11（JUMBF など）、APP13（Photoshop の情報・
+// IPTC）、COM（コメント）。main の JPEG のし直しでは付かないはずのもので、撮影の位置・機器・編集の記録などを持ちうる。
+const METADATA_MARKERS: ReadonlySet<number> = new Set([0xe1, 0xeb, 0xed, 0xfe]);
+
 /**
- * JPEG の走査の始まり（SOS）までの区切りに、付帯情報の区切り（APP1: Exif・XMP など、APP13: Photoshop の情報・IPTC）が
- * あるか。あれば true、SOS まで確かめてなければ false、区切りの並びが壊れていて SOS まで確かめられなければ null。
- * APP1 は中身（Exif・XMP の識別子）を問わず付帯情報として扱う。SOS より後ろ（画像の終わりの後ろを含む）は見ない。
+ * 外部へ送る JPEG の全体に、付帯情報があるか。あれば true、なければ false、区切りの並びが壊れていて最後まで確かめられ
+ * なければ null（ADR 0177 の追補 2）。
+ * - SOI から EOI まで区切りをたどる。走査の始まり（SOS）の後の符号化されたデータは、詰めの 0x00（FF 00）と RST（FF D0〜
+ *   FF D7）を飛ばしながらたどり、次の区切りから続ける（プログレッシブの走査と走査の間の区切りも見る）。
+ * - APP1・APP11・APP13・COM が一つでもあれば true。
+ * - EOI の後ろにバイトがあれば true（APP1 を持つ 2 枚目の JPEG などを付けた形。main の JPEG のし直しでは付かない）。
+ * - 走査がない・EOI がない・区切りの長さが 2 未満か末尾を超える・SOI が二つ目に出るときは null。
  */
 export function receiptJpegHasMetadata(bytes: Uint8Array): boolean | null {
   if (!(bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff))
     return null;
   let at = 2;
-  while (at + 4 <= bytes.length) {
-    if (bytes[at] !== 0xff) return null;
+  let scanned = false;
+  for (;;) {
+    if (at >= bytes.length || bytes[at] !== 0xff) return null;
+    // 区切りの前の埋めの 0xFF を飛ばす。
     let markerAt = at + 1;
     while (markerAt < bytes.length && bytes[markerAt] === 0xff) markerAt += 1;
     if (markerAt >= bytes.length) return null;
     const marker = bytes[markerAt] as number;
-    if (marker === 0x01 || (marker >= 0xd0 && marker <= 0xd8)) {
+    if (marker === 0xd9) {
+      if (!scanned) return null;
+      return markerAt + 1 < bytes.length;
+    }
+    // 長さを持たない区切り（TEM・RST）。
+    if (marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) {
       at = markerAt + 1;
       continue;
     }
-    if (marker === 0xda) return false;
-    if (marker === 0xd9) return null;
-    if (marker === 0xe1 || marker === 0xed) return true;
+    if (marker === 0x00 || marker === 0xd8) return null;
+    if (METADATA_MARKERS.has(marker)) return true;
     if (markerAt + 3 > bytes.length) return null;
     const length = readUint16(bytes, markerAt + 1);
     if (length < 2) return null;
-    at = markerAt + 1 + length;
+    const end = markerAt + 1 + length;
+    if (end > bytes.length) return null;
+    if (marker !== 0xda) {
+      at = end;
+      continue;
+    }
+    // 走査のデータ: 次の区切り（0xFF の後が 0x00・RST・0xFF でない）までたどる。
+    scanned = true;
+    let cursor = end;
+    for (;;) {
+      if (cursor + 1 >= bytes.length) return null;
+      if (bytes[cursor] !== 0xff) {
+        cursor += 1;
+        continue;
+      }
+      const next = bytes[cursor + 1] as number;
+      if (next === 0x00 || (next >= 0xd0 && next <= 0xd7)) {
+        cursor += 2;
+        continue;
+      }
+      // 埋めの 0xFF は、次の 0xFF から区切りを読む。
+      if (next === 0xff) {
+        cursor += 1;
+        continue;
+      }
+      break;
+    }
+    at = cursor;
   }
-  return null;
 }
 
 /** 画像の形式（JPEG・PNG）と縦横の大きさを頭から読む。どちらの形式でもない・読めなければ null。 */
@@ -240,8 +325,9 @@ export function receiptSourceImageErrors(
 }
 
 /**
- * 外部へ送る画像の検査（端末の main が縮めた後と、中枢が受け取った後）。JPEG だけを受け、付帯情報の区切り（APP1・APP13）が
- * あれば送らない（main の JPEG にし直しで消えるはずのものを、main と中枢の両方で確かめる）。空なら送ってよい。
+ * 外部へ送る画像の検査（端末の main が縮めた後と、中枢が受け取った後）。JPEG だけを受け、付帯情報（APP1・APP11・APP13・
+ * COM・EOI の後ろのバイト列）があれば送らない（main の JPEG のし直しで消えるはずのものを、main と中枢の両方で確かめる）。
+ * 空なら送ってよい。
  */
 export function receiptSendImageErrors(
   bytes: Uint8Array,

@@ -782,7 +782,7 @@ export type HouseholdReceiptReason =
   | 'reply_invalid'
   | 'refused';
 /**
- * 端末の main が画像を送らなかった理由（ADR 0177）。形式が JPEG・PNG でない、壊れている・読めない、大きすぎる（20 MiB を超える、縮めても 180 KiB に収まらない）、縦横が大きすぎる（1 辺 12,000 または 5,000 万画素を超える）、小さすぎる（短い辺が 64 未満）、細長すぎる（長い辺が短い辺の 16 倍を超える）、JPEG にし直した後も付帯情報（APP1 の Exif・XMP、APP13）が残っている。
+ * 端末の main が画像を送らなかった理由（ADR 0177）。形式が JPEG・PNG でない、壊れている・読めない、大きすぎる（20 MiB を超える、縮めても 180 KiB に収まらない）、縦横が大きすぎる（1 辺 12,000 または 5,000 万画素を超える）、小さすぎる（短い辺が 64 未満）、細長すぎる（長い辺が短い辺の 16 倍を超える）、JPEG にし直した後も付帯情報（APP1 の Exif・XMP、APP11、APP13、コメント、画像の終わりの後ろのバイト列）が残っている。
  */
 export type HouseholdReceiptImageProblem =
   | 'image_format_unsupported'
@@ -3228,7 +3228,7 @@ export interface EventPage {
   resnapshot_required: boolean;
 }
 /**
- * HTTP の拒否（設計 07 §3）。対象の本文を返さない。どのコードを返すかは domain の経路ごとの検査表（ADR 0009）が決め、形式の不正は invalid_input にする。io_suspended・audio_lease_invalid・output_mode_text・external_send_consent_required は Live の接続の受付（domain の admitLiveStart。ADR 0038・0046）。not_sent は外部へ送る前に止めた（費用はかかっていない。予算の予約は解放した）ことを、結果の分からない dependency_unavailable と分けて示す（レシートの写真の読み取り。ADR 0177）。
+ * HTTP の拒否（設計 07 §3）。対象の本文を返さない。どのコードを返すかは domain の経路ごとの検査表（ADR 0009）が決め、形式の不正は invalid_input にする。io_suspended・audio_lease_invalid・output_mode_text・external_send_consent_required は Live の接続の受付（domain の admitLiveStart。ADR 0038・0046）。not_sent は送出意図の前に止めた（外部へ送っていない・費用はかかっていない）ことを、結果の分からない dependency_unavailable と分けて示す（レシートの写真の読み取り。ADR 0177）。
  */
 export interface ApiError {
   code:
@@ -5523,7 +5523,7 @@ export interface HouseholdReceiptCandidate {
  */
 export interface DesktopHouseholdReceiptView {
   /**
-   * candidate は候補を読めた、not_candidate は読めたが候補にしなかった、cancelled は本人がファイルを選ばなかった・選ぶ間にロック・切断した（何も送っていない）、image_rejected は画像の検査に合わず送らなかった、setting_off は中枢の設定が切で送らなかった、budget_held は予算を予約できず送らなかった、not_sent は中枢が外部へ送る前に止めた（予算の拒否・保存期限の掃除の途中・今日が決まらない・送出意図の前の中断。予算の予約は解放した）。送ったかどうか分からないときはこの値を返さず、IPC の拒否（outcome_unknown）にする。
+   * candidate は候補を読めた、not_candidate は読めたが候補にしなかった、cancelled は本人がファイルを選ばなかった・選ぶ間にロック・切断した（何も送っていない）、image_rejected は画像の検査に合わず送らなかった、setting_off は中枢の設定が切で送らなかった、budget_held は予算を予約できず送らなかった、not_sent は中枢が送出意図の前に止めた（予算の拒否・保存期限の掃除の途中・今日が決まらない・送出意図の前の中断。外部へ送っていない・費用はかかっていない）。送ったかどうか分からないときはこの値を返さず、IPC の拒否（outcome_unknown）にする。
    */
   outcome:
     | 'candidate'

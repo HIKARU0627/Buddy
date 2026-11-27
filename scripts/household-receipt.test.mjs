@@ -1,14 +1,18 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { DEFAULT_API_LIMITS } from '../apps/core/dist/api-server.js';
 import {
   RECEIPT_CLIENT_TIMEOUT_MS,
   RECEIPT_HUB_PRE_DISPATCH_MS,
+  RECEIPT_READER_RETURN_GRACE_MS,
   RECEIPT_READ_TIMEOUT_MAX_MS,
   householdHasLongDigits,
   readHouseholdReceiptReply,
+  receiptHubWorstCaseMs,
   receiptImageInfo,
   receiptSendImageErrors,
   receiptSourceImageErrors,
+  receiptTimingFits,
 } from '../packages/domain/dist/index.js';
 
 // レシートの写真からの家計の記録の候補（ADR 0177）。画像は合成のバイト列（形式の頭と大きさだけを持つ）で、本物の写真は
@@ -22,7 +26,8 @@ const be32 = (value) => [
   value & 0xff,
 ];
 
-// 合成の JPEG の頭: SOI、APP0（16 バイト）、SOF0（縦・横）、SOS、EOI。size を指定すれば 0 で埋めてその長さにする。
+// 合成の JPEG の頭: SOI、APP0（16 バイト）、SOF0（縦・横）、SOS、EOI。size を指定すれば、走査のデータ（SOS と EOI の間）を
+// 0 で埋めてその長さにする（EOI の後ろにバイトを付けない）。
 function jpeg(width, height, { size = 0, fill = false, marker = 0xc0 } = {}) {
   const bytes = [
     0xff,
@@ -69,11 +74,10 @@ function jpeg(width, height, { size = 0, fill = false, marker = 0xc0 } = {}) {
     0,
     0x3f,
     0,
-    0xff,
-    0xd9,
   ];
-  const out = new Uint8Array(Math.max(size, bytes.length));
+  const out = new Uint8Array(Math.max(size, bytes.length + 2));
   out.set(bytes);
+  out.set([0xff, 0xd9], out.length - 2);
   return out;
 }
 
@@ -285,16 +289,175 @@ test('外部へ送る画像に付帯情報（APP1 の Exif・XMP、APP13）が�
   assert.deepEqual(receiptSendImageErrors(cut), ['image_unreadable']);
 });
 
-test('端末の時間切れは中枢の送出意図の期限と読み取りの期限の和より長い', () => {
-  // 手で書いた値: 端末 150 秒、中枢の送出意図まで 10 秒、読み取りの期限の上限 60 秒。
+// 区切りを並べて合成の JPEG を作る（SOI と EOI は自動で付ける）。
+const segment = (marker, payload) => [
+  0xff,
+  marker,
+  ...be16(payload.length + 2),
+  ...payload,
+];
+const JFIF = segment(0xe0, [...ascii('JFIF'), 0, 1, 1, 0, 0, 1, 0, 1, 0, 0]);
+const frame = (marker = 0xc0) =>
+  segment(marker, [
+    8,
+    ...be16(1280),
+    ...be16(960),
+    3,
+    1,
+    0x22,
+    0,
+    2,
+    0x11,
+    1,
+    3,
+    0x11,
+    1,
+  ]);
+const DHT = segment(0xc4, [0x00, 1, ...new Array(15).fill(0), 0x00]);
+const SCAN_HEADER = segment(0xda, [1, 1, 0, 0, 0x3f, 0]);
+// 走査のデータ: 詰めの 0x00（FF 00）と RST（FF D0・FF D7）を含む。
+const SCAN_DATA = [
+  0x12, 0xff, 0x00, 0x34, 0xff, 0xd0, 0x56, 0xff, 0x00, 0xff, 0xd7, 0x78,
+];
+const scan = [...SCAN_HEADER, ...SCAN_DATA];
+const EXIF = segment(0xe1, [...ascii('Exif'), 0, 0, 0x4d, 0x4d, 0, 0x2a]);
+const built = (...parts) =>
+  new Uint8Array([0xff, 0xd8, ...parts.flat(), 0xff, 0xd9]);
+
+test('付帯情報は走査の間・画像の終わりの後ろも含めて全体で確かめる', () => {
+  // 正常なプログレッシブの形（SOF2、走査が三つ、走査の間の DHT、詰めの 0x00・RST、区切りの前の埋めの 0xFF）は送る。
+  const progressive = built(
+    JFIF,
+    frame(0xc2),
+    DHT,
+    scan,
+    DHT,
+    scan,
+    [0xff],
+    scan,
+  );
+  assert.deepEqual(receiptImageInfo(progressive), {
+    format: 'jpeg',
+    width: 960,
+    height: 1280,
+  });
+  assert.deepEqual(receiptSendImageErrors(progressive), []);
+  // ふつうの形（SOF0、走査が一つ、走査のデータが大きい）も送る。
+  assert.deepEqual(
+    receiptSendImageErrors(
+      built(JFIF, frame(), DHT, SCAN_HEADER, new Array(4096).fill(0x5a)),
+    ),
+    [],
+  );
+  const rejected = [
+    // 走査と走査の間にある APP1（プログレッシブ）・APP13。
+    ['走査の間の APP1', built(JFIF, frame(0xc2), scan, EXIF, scan)],
+    [
+      '走査の間の APP13',
+      built(
+        frame(0xc2),
+        scan,
+        segment(0xed, [...ascii('Photoshop 3.0'), 0]),
+        scan,
+      ),
+    ],
+    // 画像の終わり（EOI）の後ろに、APP1 を持つ 2 枚目の JPEG が付いた形（MPF など）。
+    [
+      'EOI の後ろの 2 枚目の JPEG',
+      new Uint8Array([
+        ...built(JFIF, frame(), scan),
+        0xff,
+        0xd8,
+        ...segment(0xe2, [...ascii('MPF'), 0]),
+        ...EXIF,
+        ...frame(),
+        ...scan,
+        0xff,
+        0xd9,
+      ]),
+    ],
+    // EOI の後ろの 0 の埋めも送らない（main の JPEG のし直しでは付かない）。
+    ['EOI の後ろの埋め', new Uint8Array([...built(frame(), scan), 0, 0, 0])],
+    // コメント（COM）と APP11（JUMBF）。
+    [
+      'COM',
+      built(JFIF, segment(0xfe, ascii('synthetic comment')), frame(), scan),
+    ],
+    [
+      'APP11',
+      built(JFIF, frame(), segment(0xeb, [...ascii('JP'), 0, 0, 1]), scan),
+    ],
+    // APP0 の後の APP1、APP1 が二つ。
+    ['APP0 の後の APP1', built(JFIF, EXIF, frame(), scan)],
+    ['APP1 が二つ', built(EXIF, EXIF, frame(), scan)],
+  ];
+  for (const [name, bytes] of rejected) {
+    assert.deepEqual(
+      receiptSendImageErrors(bytes),
+      ['image_metadata_present'],
+      name,
+    );
+  }
+  const unreadable = [
+    // 区切りの長さが 2 未満（長さの欄そのものより短い）。
+    ['長さが 2 未満', built(frame(), [0xff, 0xe2, 0x00, 0x01], scan)],
+    // 区切りの長さが末尾を超える。
+    [
+      '長さが末尾を超える',
+      built(frame(), scan, [0xff, 0xe2, 0x7f, 0xff, 0x00]),
+    ],
+    // 走査のデータの途中で終わる（EOI がない）。
+    ['EOI がない', new Uint8Array([0xff, 0xd8, ...frame(), ...scan])],
+    // 走査のない画像。
+    ['走査がない', built(JFIF, frame())],
+  ];
+  for (const [name, bytes] of unreadable) {
+    assert.deepEqual(receiptSendImageErrors(bytes), ['image_unreadable'], name);
+  }
+});
+
+test('端末の時間切れは、中枢の受付の期限・送り始めるまでの期限・読み取りの期限の和より長い', () => {
+  // 手で書いた値: 端末 150 秒、中枢の送り始めるまで 10 秒、読み取りの期限の上限 60 秒、返らない口を待つ猶予 5 秒。
   assert.equal(RECEIPT_CLIENT_TIMEOUT_MS, 150_000);
   assert.equal(RECEIPT_HUB_PRE_DISPATCH_MS, 10_000);
   assert.equal(RECEIPT_READ_TIMEOUT_MAX_MS, 60_000);
-  // 要求の本文を受け取るまでの上限（中枢の requestTimeout 15 秒。Node は 30 秒ごとに確かめるので最大 45 秒）を足しても、
-  // 端末が待つのをやめる前に中枢の読み取りが終わる。
+  assert.equal(RECEIPT_READER_RETURN_GRACE_MS, 5_000);
+  // 中枢の受付の既定（apps/core の DEFAULT_API_LIMITS）から関係を確かめる。要求が届くまでは requestTimeout 15 秒と、
+  // Node がそれを確かめる間隔 30 秒の和（45 秒）が上限。
+  const limits = {
+    requestTimeoutMs: DEFAULT_API_LIMITS.requestTimeoutMs,
+    connectionsCheckingIntervalMs:
+      DEFAULT_API_LIMITS.connectionsCheckingIntervalMs,
+  };
+  assert.deepEqual(limits, {
+    requestTimeoutMs: 15_000,
+    connectionsCheckingIntervalMs: 30_000,
+  });
+  // 15 + 30 + 10 + 60 + 5 = 120 秒 < 150 秒。
+  assert.equal(receiptHubWorstCaseMs(limits), 120_000);
   assert.ok(
-    RECEIPT_CLIENT_TIMEOUT_MS >
-      45_000 + RECEIPT_HUB_PRE_DISPATCH_MS + RECEIPT_READ_TIMEOUT_MAX_MS,
+    (receiptHubWorstCaseMs(limits) ?? Infinity) < RECEIPT_CLIENT_TIMEOUT_MS,
+  );
+  assert.equal(receiptTimingFits(limits), true);
+  // requestTimeout を上書きして関係が破れると使えない（44.999 秒までは収まり、45 秒で 150 秒に届く）。
+  assert.equal(
+    receiptTimingFits({ ...limits, requestTimeoutMs: 44_999 }),
+    true,
+  );
+  assert.equal(
+    receiptHubWorstCaseMs({ ...limits, requestTimeoutMs: 45_000 }),
+    150_000,
+  );
+  assert.equal(
+    receiptTimingFits({ ...limits, requestTimeoutMs: 45_000 }),
+    false,
+  );
+  // 期限なし（0）・確かめる間隔が 0 は上限がないので使えない。
+  assert.equal(receiptHubWorstCaseMs({ ...limits, requestTimeoutMs: 0 }), null);
+  assert.equal(receiptTimingFits({ ...limits, requestTimeoutMs: 0 }), false);
+  assert.equal(
+    receiptTimingFits({ ...limits, connectionsCheckingIntervalMs: 0 }),
+    false,
   );
 });
 

@@ -1413,11 +1413,11 @@ function syntheticJpeg(width: number, height: number, size = 0): Uint8Array {
     0,
     0x3f,
     0,
-    0xff,
-    0xd9,
   ];
-  const out = new Uint8Array(Math.max(size, head.length));
+  // size を指定すれば、走査のデータ（SOS と EOI の間）を 0 で埋めてその長さにする（EOI の後ろにバイトを付けない）。
+  const out = new Uint8Array(Math.max(size, head.length + 2));
   out.set(head);
+  out.set([0xff, 0xd9], out.length - 2);
   return out;
 }
 

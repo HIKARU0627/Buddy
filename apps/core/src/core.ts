@@ -57,7 +57,11 @@ import { createConnectionDiscovery } from './connection-discovery.js';
 import type { TargetDiscoveryPort } from './connection-discovery.js';
 import { HomeNetworkKey, createHomeNetworkGate } from './api-home-network.js';
 import type { HomeNetworkGate } from './api-home-network.js';
-import { ApiListenError, createApiServer } from './api-server.js';
+import {
+  ApiListenError,
+  DEFAULT_API_LIMITS,
+  createApiServer,
+} from './api-server.js';
 import type { ApiLimits, ApiRouteHandler, ApiServer } from './api-server.js';
 import {
   SAFE_REQUEST_ENVIRONMENT,
@@ -1651,14 +1655,22 @@ async function startHttps(
   // タイムゾーン（気づきの一覧と同じ出所）で決め、決まっていなければ月ごとの合計を 503 で閉じる。
   // レシートの写真の読み取り（ADR 0177）。読み取りの口（provider と profile）は起動の設定で渡し、なければ使えない。
   // 予算の門（本人の依頼の枠）と保存期限の掃除の門を通してから外部へ送る。設定は既定で切。掃除の門は待たない（掃除の
-  // 途中なら送らずに 503 not_sent。端末が待つのをやめた後に送らないため。ADR 0177 の追補）。
+  // 途中なら送らずに 503 not_sent。端末が待つのをやめた後に送らないため。ADR 0177 の追補）。https.limits で
+  // requestTimeout・確かめる間隔を上書きして、端末の時間切れ（150 秒）との関係が破れるなら、読み取りを使わない
+  // （unavailable。ADR 0177 の追補 2）。
   const receiptSetup = https.household?.receiptReading ?? null;
+  const apiLimits: ApiLimits = { ...DEFAULT_API_LIMITS, ...https.limits };
   const householdReceipt = createHouseholdReceiptRoutes({
     setup: receiptSetup,
     budget:
       receiptSetup === null ? null : receiptBudgetOf(budget, receiptSetup),
     zone: () => deviceTimeZone(),
     now: () => now().getTime(),
+    requestLimits: {
+      requestTimeoutMs: apiLimits.requestTimeoutMs,
+      connectionsCheckingIntervalMs: apiLimits.connectionsCheckingIntervalMs,
+    },
+    log,
     ...(retention === null
       ? {}
       : {

@@ -9,6 +9,8 @@ import type { SqliteDatabase } from '@buddy/storage';
 import { createHouseholdRoutes } from './api-household.js';
 import type { ApiRouteHandler } from './api-server.js';
 import { loadedConfig, uuid, withBudgetStore } from './budget-test-support.js';
+import { RetentionSweeper } from './retention-sweeper.js';
+import type { RetentionSweepPort } from './retention-sweeper.js';
 import {
   HOUSEHOLD_RECEIPT_INSTRUCTIONS,
   createHouseholdReceiptRoutes,
@@ -32,7 +34,8 @@ const ZONE = 'Asia/Tokyo';
 
 const be16 = (value: number) => [(value >> 8) & 0xff, value & 0xff];
 
-// 合成の JPEG の頭（SOI・SOF0・SOS・EOI）。size を指定すれば 0 で埋めてその長さにする。
+// 合成の JPEG の頭（SOI・SOF0・SOS・EOI）。size を指定すれば、走査のデータ（SOS と EOI の間）を 0 で埋めてその長さに
+// する（EOI の後ろにバイトを付けない）。
 function jpeg(width: number, height: number, size = 0): Uint8Array {
   const bytes = [
     0xff,
@@ -62,11 +65,10 @@ function jpeg(width: number, height: number, size = 0): Uint8Array {
     0,
     0x3f,
     0,
-    0xff,
-    0xd9,
   ];
-  const out = new Uint8Array(Math.max(size, bytes.length));
+  const out = new Uint8Array(Math.max(size, bytes.length + 2));
   out.set(bytes);
+  out.set([0xff, 0xd9], out.length - 2);
   return out;
 }
 
@@ -111,6 +113,7 @@ const call = async (
   handler: ApiRouteHandler,
   body: JsonObject,
   signal?: AbortSignal,
+  receivedAt?: number,
 ): Promise<{ status: number; body: Json }> => {
   const request = {
     route: undefined as never,
@@ -121,12 +124,25 @@ const call = async (
     query: {},
     declaredLockState: null,
     ...(signal === undefined ? {} : { signal }),
+    ...(receivedAt === undefined ? {} : { receivedAt }),
   } as Parameters<ApiRouteHandler>[0];
   const response = await handler(request);
   return { status: response.status, body: response.body as Json };
 };
 
 const tick = () => new Promise((resolve) => setImmediate(resolve));
+// 条件がそろうまで待つ（時間ではなく状態で待つ。そろわなければ上限で失敗させる）。
+async function waitFor(
+  condition: () => boolean,
+  label: string,
+  limitMs = 5_000,
+): Promise<void> {
+  const started = Date.now();
+  while (!condition()) {
+    if (Date.now() - started > limitMs) assert.fail(`待ちの上限: ${label}`);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+}
 const sleep = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -237,11 +253,14 @@ function setupOf(
   };
 }
 
-function harness(over: Partial<HouseholdReceiptOptions> = {}) {
+function harness(
+  over: Partial<HouseholdReceiptOptions> = {},
+  setupOver: Partial<ReceiptReadingSetup> = {},
+) {
   const reader = new MockReader();
   const budget = new MockBudget();
   const routes = createHouseholdReceiptRoutes({
-    setup: setupOf(reader),
+    setup: setupOf(reader, setupOver),
     budget,
     zone: () => ZONE,
     now: () => NOW,
@@ -251,11 +270,17 @@ function harness(over: Partial<HouseholdReceiptOptions> = {}) {
     call(routes.handlers.changeHouseholdReceiptSetting, settingBody('on'));
   const off = () =>
     call(routes.handlers.changeHouseholdReceiptSetting, settingBody('off'));
-  const read = (requestId: string, bytes?: Uint8Array, signal?: AbortSignal) =>
+  const read = (
+    requestId: string,
+    bytes?: Uint8Array,
+    signal?: AbortSignal,
+    receivedAt?: number,
+  ) =>
     call(
       routes.handlers.readHouseholdReceipt,
       readBody(requestId, bytes),
       signal,
+      receivedAt,
     );
   return { reader, budget, routes, on, off, read };
 }
@@ -500,6 +525,63 @@ test('送り始めるまでの期限を過ぎたら送らない', async () => {
   assert.deepEqual(slow.body, CANDIDATE);
 });
 
+test('送り始めるまでの期限は、経路の処理を始めた時刻ではなく要求が届いた時刻から数える', async () => {
+  // 単調時計は試験が決める（要求が届いた時刻と比べる時計）。期限は 100 ms。
+  let clock = 1_000;
+  const h = harness({ preDispatchMs: 100, monotonicNow: () => clock });
+  await h.on();
+  // 要求が届いてから 150 ms たって経路の処理を始めた（本文の受け取り・経路の検査が遅れた）: 予算の門にも入らない。
+  const late = await h.read(uuid(1), undefined, undefined, clock - 150);
+  assert.equal(late.status, 503);
+  assert.equal(late.body['code'], 'not_sent');
+  assert.equal(h.budget.runs.length, 0);
+  // 届いてから 80 ms たって始めた: 残りは 20 ms。予算の門の受付に 100 ms かかると送らない（経路の処理を始めた時刻から
+  // 数えると 100 ms の期限の内に見えるが、届いた時刻からは過ぎている）。
+  clock = 2_000;
+  h.budget.admission = sleep(100);
+  const slow = await h.read(uuid(2), undefined, undefined, clock - 80);
+  assert.equal(slow.status, 503);
+  assert.equal(slow.body['code'], 'not_sent');
+  assert.equal(h.reader.commands.length, 0);
+  // 届いた直後に始めたなら送る。
+  h.budget.admission = null;
+  const fresh = await h.read(uuid(3), undefined, undefined, clock);
+  assert.equal(fresh.status, 200);
+  assert.equal(h.reader.commands.length, 1);
+});
+
+test('中枢の受付の期限で端末の時間切れとの関係が破れるなら、読み取りは使えない', async () => {
+  const logs: string[] = [];
+  // 既定（requestTimeout 15 秒・確かめる間隔 30 秒）なら使える。
+  const fits = harness({
+    requestLimits: {
+      requestTimeoutMs: 15_000,
+      connectionsCheckingIntervalMs: 30_000,
+    },
+    log: (message) => logs.push(message),
+  });
+  assert.equal(fits.routes.state(), 'off');
+  assert.equal(logs.length, 0);
+  // requestTimeout を 45 秒に上書きすると 45 + 30 + 10 + 60 + 5 = 150 秒で、端末の 150 秒に収まらない。期限なし（0）も同じ。
+  for (const requestTimeoutMs of [45_000, 0]) {
+    const broken = harness({
+      requestLimits: {
+        requestTimeoutMs,
+        connectionsCheckingIntervalMs: 30_000,
+      },
+      log: (message) => logs.push(message),
+    });
+    assert.equal(broken.routes.state(), 'unavailable');
+    assert.equal((await broken.on()).status, 503);
+    assert.equal((await broken.read(uuid(1))).status, 503);
+    assert.equal(broken.budget.runs.length, 0);
+  }
+  assert.deepEqual(logs, [
+    '家計簿のレシートの写真の読み取りを使えなくしました（receipt_timing_exceeds_client_timeout）。',
+    '家計簿のレシートの写真の読み取りを使えなくしました（receipt_timing_exceeds_client_timeout）。',
+  ]);
+});
+
 test('読み取りの期限が 60 秒を超える profile は使わない', () => {
   const over = harness({
     setup: setupOf(new MockReader(), {
@@ -569,6 +651,128 @@ test('予算の門が先に返っても、読み取りが終わるまで画像�
   h.budget.plan = 'send';
   h.reader.next = () => Promise.resolve(response(replyText()));
   assert.equal((await h.read(uuid(3))).status, 200);
+});
+
+// 中断に応じず、いつまでも返らない読み取りの口（約束を守らない実装）。
+const neverReturns = (): Promise<AdapterResult> =>
+  new Promise<AdapterResult>(() => undefined);
+
+test('読み取りの口が中断に応じず返らなくても、待つ上限を過ぎたら画像を埋め、貸し出しを返し、次の読み取りを受ける', async () => {
+  let released = 0;
+  const logs: string[] = [];
+  const gate = {
+    open: () => true,
+    lease: () => () => {
+      released += 1;
+    },
+  };
+  // 読み取りの期限 30 ms、返らない口を待つ猶予 20 ms（送り始めてから 50 ms で待つのをやめる）。
+  const h = harness(
+    {
+      cloudGate: gate,
+      returnGraceMs: 20,
+      log: (message) => logs.push(message),
+    },
+    { profile: profile({ timeout_ms: 30 }) },
+  );
+  await h.on();
+  h.budget.plan = 'race';
+  let cancelled: { readonly aborted: boolean } | null = null;
+  h.reader.next = (cancellation) => {
+    cancelled = cancellation;
+    return neverReturns();
+  };
+  const result = await h.read(uuid(1));
+  assert.equal(result.status, 503);
+  assert.equal(result.body['code'], 'dependency_unavailable');
+  const command = h.reader.commands[0] as ReceiptReadCommand;
+  // 上限の前は、まだ口が画像を読んでいる扱い。
+  assert.deepEqual(command.image.bytes, IMAGE);
+  assert.equal(released, 0);
+  assert.equal((await h.read(uuid(2))).status, 409);
+  // 上限を過ぎると、口が返らないままでも、画像を 0 で埋め、貸し出しを返す。
+  await waitFor(() => released === 1, '貸し出しを返す');
+  assert.ok(command.image.bytes.every((byte) => byte === 0));
+  assert.notEqual(cancelled, null);
+  // 記録は理由の名前だけで、画像・応答の中身は出さない。
+  assert.deepEqual(logs, [
+    '家計簿のレシートの写真の読み取りの口が期限を過ぎても返らないため、待つのをやめました（reader_not_returned）。',
+  ]);
+  // 次の読み取りを受ける。
+  h.budget.plan = 'send';
+  h.reader.next = () => Promise.resolve(response(replyText()));
+  const next = await h.read(uuid(3));
+  assert.equal(next.status, 200);
+  assert.deepEqual(next.body, CANDIDATE);
+  assert.equal(released, 2);
+  // 返る口では記録を出さない。
+  assert.equal(logs.length, 1);
+});
+
+// 保存期限の掃除の模擬の口（消すものがない DB）。
+const emptySweepPort = (): RetentionSweepPort => ({
+  readRows: () => Promise.resolve([]),
+  eraseDueBodies: () =>
+    Promise.resolve({ processed: [], skipped: [], next: null }),
+  purgeDueOperations: () =>
+    Promise.resolve({ processed: [], skipped: [], next: null }),
+  purgeBudgetMonth: (month) =>
+    Promise.resolve({
+      budget_month: month,
+      deleted_live_sessions: 0,
+      deleted_approvals: 0,
+      deleted_reservations: 0,
+    }),
+  purgeUndoRecords: () => Promise.resolve({ purged: 0 }),
+  checkpoint: () =>
+    Promise.resolve({ busy: 0, log_frames: 0, checkpointed_frames: 0 }),
+  vacuum: () => Promise.resolve(),
+});
+
+test('返らない読み取りの口でも、保存期限の掃除の門が閉じたままにならない（実際の RetentionSweeper）', async () => {
+  const sweeper = new RetentionSweeper({
+    port: emptySweepPort(),
+    epoch: 'boot-1',
+    now: () => NOW,
+    vacuumIntervalMs: 0,
+  });
+  await sweeper.runOnce(true);
+  assert.equal(sweeper.gate().cloud_send, true);
+  const h = harness(
+    {
+      cloudGate: {
+        open: () => sweeper.gate().cloud_send,
+        lease: () => sweeper.lease(),
+      },
+      returnGraceMs: 20,
+    },
+    { profile: profile({ timeout_ms: 30 }) },
+  );
+  await h.on();
+  h.budget.plan = 'race';
+  h.reader.next = neverReturns;
+  assert.equal((await h.read(uuid(1))).status, 503);
+  // 貸し出し中に始まった定期の掃除は、貸し出しが返るまで本体に入らず、その間はゲートが閉じる。
+  const sweep = sweeper.runOnce(true);
+  assert.equal(sweeper.gate().cloud_send, false);
+  // 読み取りの口が返らなくても、待つ上限を過ぎれば貸し出しが返り、掃除が終わってゲートが開く。
+  let timer: NodeJS.Timeout | undefined;
+  const record = await Promise.race([
+    sweep,
+    new Promise<null>((resolve) => {
+      timer = setTimeout(() => resolve(null), 5_000);
+    }),
+  ]);
+  clearTimeout(timer);
+  assert.notEqual(record, null, '掃除が貸し出しを待ったまま終わらない');
+  assert.equal(record?.status, 'completed');
+  assert.equal(sweeper.gate().cloud_send, true);
+  // 次の読み取りも送れる。
+  h.budget.plan = 'send';
+  h.reader.next = () => Promise.resolve(response(replyText()));
+  assert.equal((await h.read(uuid(2))).status, 200);
+  sweeper.close();
+  await sweeper.drain();
 });
 
 test('画像は失敗・例外・時間切れ・送らなかった経路でも 0 で埋める', async (t) => {
@@ -844,6 +1048,124 @@ test('予算の門: 予約して 1 回送り、usage で精算し、分からな
     assert.equal(denied.status, 422);
     assert.equal(denied.body['code'], 'budget_held');
     assert.equal(reader.commands.length, 3);
+  });
+});
+
+test('予算の門: 送出意図の後に端末が接続を切ると、予約を usage 不明として残し、結果を捨てる', async () => {
+  await withBudgetStore(async (harness) => {
+    const gate = harness.gate();
+    await gate.start();
+    const reader = new MockReader();
+    const setup = setupOf(reader);
+    const routes = createHouseholdReceiptRoutes({
+      setup,
+      budget: receiptBudgetOf(gate, setup),
+      zone: () => ZONE,
+      now: () => harness.clock.now(),
+    });
+    await call(
+      routes.handlers.changeHouseholdReceiptSetting,
+      settingBody('on'),
+    );
+    // 読み取りの口は中断に応じて返る（約束どおりの口）。
+    let reading: () => void = () => undefined;
+    const started = new Promise<void>((resolve) => {
+      reading = resolve;
+    });
+    let seen: { readonly aborted: boolean } | null = null;
+    reader.next = (cancellation) => {
+      seen = cancellation;
+      reading();
+      return new Promise<AdapterResult>((resolve) => {
+        (cancellation as AbortSignal).addEventListener(
+          'abort',
+          () => resolve({ kind: 'cancelled', usage: null }),
+          { once: true },
+        );
+      });
+    };
+    const client = new AbortController();
+    const pending = call(
+      routes.handlers.readHouseholdReceipt,
+      readBody(uuid(11)),
+      client.signal,
+    );
+    // 送出意図を記録して読み取りの口を呼んだ後に、端末が接続を切る。
+    await started;
+    client.abort();
+    const result = await pending;
+    assert.equal(result.status, 503);
+    assert.equal(result.body['code'], 'dependency_unavailable');
+    assert.equal((seen as { readonly aborted: boolean } | null)?.aborted, true);
+    await gate.idle();
+    const rows = harness
+      .sql(rowsOf)
+      .filter((row) => row.request_id === uuid(11));
+    assert.deepEqual(
+      rows.map((row) => [
+        row.status,
+        row.max_liability,
+        row.actual_gross,
+        row.dispatch_intent_at !== null,
+      ]),
+      [['usage_unknown', 30, null, true]],
+    );
+  });
+});
+
+test('予算の門: 読み取りの口が返らなくても、待つ上限の後に予算の門の後ろの処理も終わる', async () => {
+  await withBudgetStore(async (harness) => {
+    const gate = harness.gate();
+    await gate.start();
+    const reader = new MockReader();
+    // 読み取りの期限 30 ms（予算の門の期限）、返らない口を待つ猶予 20 ms。
+    const setup = setupOf(reader, { profile: profile({ timeout_ms: 30 }) });
+    let released = 0;
+    const routes = createHouseholdReceiptRoutes({
+      setup,
+      budget: receiptBudgetOf(gate, setup),
+      zone: () => ZONE,
+      now: () => harness.clock.now(),
+      returnGraceMs: 20,
+      cloudGate: {
+        open: () => true,
+        lease: () => () => {
+          released += 1;
+        },
+      },
+    });
+    await call(
+      routes.handlers.changeHouseholdReceiptSetting,
+      settingBody('on'),
+    );
+    reader.next = neverReturns;
+    const result = await call(
+      routes.handlers.readHouseholdReceipt,
+      readBody(uuid(12)),
+    );
+    // 予算の門の期限で、結果不明として先に返る。
+    assert.equal(result.status, 503);
+    assert.equal(result.body['code'], 'dependency_unavailable');
+    // 予算の門が後ろで待つ送信（遅れた usage の精算）も、待つ上限で終わる。
+    let timer: NodeJS.Timeout | undefined;
+    const idle = await Promise.race([
+      gate.idle().then(() => 'idle' as const),
+      new Promise<'stuck'>((resolve) => {
+        timer = setTimeout(() => resolve('stuck'), 5_000);
+      }),
+    ]);
+    clearTimeout(timer);
+    assert.equal(idle, 'idle');
+    await waitFor(() => released === 1, '貸し出しを返す');
+    const command = reader.commands[0] as ReceiptReadCommand;
+    assert.ok(command.image.bytes.every((byte) => byte === 0));
+    const rows = harness
+      .sql(rowsOf)
+      .filter((row) => row.request_id === uuid(12));
+    assert.deepEqual(
+      rows.map((row) => [row.status, row.actual_gross]),
+      [['usage_unknown', null]],
+    );
   });
 });
 

@@ -6,6 +6,7 @@
 // 「根拠を見る」「相談する」は後の段階（ADR 0132 の残論点）。
 import {
   Button,
+  Chip,
   Disclosure,
   FieldError,
   Input,
@@ -34,7 +35,7 @@ import type {
   CandidateViewState,
 } from '../../state/candidate-state.js';
 import type { StatusLine } from '../../tones.js';
-import { BADGE_CLASS, FRAME_CLASS } from '../../shapes.js';
+import { FRAME_CLASS } from '../../shapes.js';
 
 const FETCH_LINES: Readonly<Record<string, StatusLine>> = {
   loaded: { tone: 'success', mark: 'dot', text: FETCH_LABELS.loaded },
@@ -157,7 +158,9 @@ function CandidateRow({
       className="flex flex-col gap-1.5 py-3"
     >
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <span className={BADGE_CLASS}>{KIND_LABELS[entry.kind]}</span>
+        <Chip size="sm" color="default" variant="secondary">
+          {KIND_LABELS[entry.kind]}
+        </Chip>
         <span
           className={`text-xs ${entry.state === 'new' ? 'font-semibold' : 'text-muted'}`}
         >

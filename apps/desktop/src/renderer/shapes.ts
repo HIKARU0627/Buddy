@@ -10,8 +10,9 @@
 // | 完全な丸   | rounded-full   | —      | ボタン・札・円の印・細い棒（高さの決まった物だけ）               |
 //
 // HeroUI の部品（Card・Alert・Button・Chip・Tabs・入力欄など）の丸みは styles.css の components 層で 4 段にそろえる。
-// 下の定数は、HeroUI の部品を使わずに Tailwind のクラスで描く枠・入力欄・札を、画面ごとにばらばらにしないためのもの
-// （独自のカード・ボタンの部品は作らない。ADR 0024 の約束）。
+// 下の定数は、HeroUI の部品を使わずに Tailwind のクラスで描く枠・入力欄・浮いた物の縁取りを、画面ごとにばらばらに
+// しないためのもの（独自のカード・ボタンの部品は作らない。ADR 0024 の約束）。札（種類・件数の印）は HeroUI の Chip を使う
+// （段階 3 で独自の札のクラスをやめた）。影は使わない（浮いていることは縁取りの線で示す）。
 
 // 一覧の行・編集の欄を囲む枠（地の上の区切り。面の色は敷かない）。
 export const FRAME_CLASS = 'rounded-box border border-separator';
@@ -25,6 +26,6 @@ export const FRAME_DANGER_CLASS =
 export const FIELD_CLASS =
   'rounded-box border border-field-border bg-transparent px-2 py-1 text-sm text-foreground';
 
-// 小さな札（件数・種類の印）。完全な丸なので高さを決める。
-export const BADGE_CLASS =
-  'inline-flex h-5 items-center rounded-full border border-separator px-2 text-xs font-semibold';
+// 浮いた物（キャンバスのフローティングウィンドウ）の縁取り（ADR 0181 の段階 3・U393）。影の代わりに、島と同じく線で示す。
+// カードの境界（--border の 1px）と形で分かるよう、3:1 を測った入力欄の境界の色（--field-border。ADR 0024）の 2px にする。
+export const FLOAT_OUTLINE_CLASS = 'border-2 border-field-border';

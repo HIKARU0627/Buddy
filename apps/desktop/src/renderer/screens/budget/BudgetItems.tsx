@@ -5,7 +5,14 @@
 // 承認・確認・精算は、ボタンを押すと main が OS の確認ダイアログを 1 回だけ出す（本人の判断 2026-10-23）。画面が持つのは
 // main が作った参照（ref）と表示用の値だけ。理由のコード・API の名前は出さない。
 // CSP（style-src 'self'）のため style 属性は使わない。帯の幅は 5% きざみのクラスの表から選ぶ。
-import { Button, FieldError, Input, Label, TextField } from '@heroui/react';
+import {
+  Button,
+  Chip,
+  FieldError,
+  Input,
+  Label,
+  TextField,
+} from '@heroui/react';
 import type { DesktopBudgetEntry } from '@buddy/contracts';
 import { InlineNotice } from '../../components/InlineNotice.js';
 import { Section } from '../../components/Section.js';
@@ -30,7 +37,6 @@ import type {
   BudgetBar,
   BudgetViewState,
 } from '../../state/budget-state.js';
-import { BADGE_CLASS } from '../../shapes.js';
 
 // 帯の幅（5% きざみ。literal の class だけが CSS に入る）。
 const WIDTH: Readonly<Record<number, string>> = {
@@ -189,7 +195,9 @@ function ItemRow({
   return (
     <li data-kind={entry.kind} className="flex flex-col gap-2.5 py-3">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <span className={BADGE_CLASS}>{KIND_LABELS[entry.kind]}</span>
+        <Chip size="sm" color="default" variant="secondary">
+          {KIND_LABELS[entry.kind]}
+        </Chip>
         <span className="text-xs font-semibold">{poolText(entry)}</span>
         <span className="text-xs tabular-nums text-muted">
           {entry.budget_month}

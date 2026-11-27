@@ -3,7 +3,7 @@
 // ビルドした CSS に同じ値が出ることは apps/desktop/src/main/renderer-build.test.ts が確かめる。
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
@@ -145,7 +145,7 @@ test('moving transitions use the motion durations and stop when motion is reduce
 });
 
 test('the shared shape classes use the radius steps', () => {
-  // 枠・入力欄・札の定数（shapes.ts）。手で書いた期待値。
+  // 枠・入力欄・浮いた物の縁取りの定数（shapes.ts）。手で書いた期待値。札は HeroUI の Chip にした（段階 3）。
   const text = readFileSync(join(rendererDir, 'shapes.ts'), 'utf8');
   const value = (name) =>
     new RegExp(`export const ${name} =\\s*'([^']*)'`, 'u').exec(text)?.[1];
@@ -158,10 +158,24 @@ test('the shared shape classes use the radius steps', () => {
     value('FIELD_CLASS'),
     'rounded-box border border-field-border bg-transparent px-2 py-1 text-sm text-foreground',
   );
-  assert.equal(
-    value('BADGE_CLASS'),
-    'inline-flex h-5 items-center rounded-full border border-separator px-2 text-xs font-semibold',
-  );
+  assert.equal(value('FLOAT_OUTLINE_CLASS'), 'border-2 border-field-border');
+  assert.equal(value('BADGE_CLASS'), undefined);
+});
+
+test('the renderer draws no shadows except the dragged canvas item left for stage 4', () => {
+  // 影の代わりに縁取りの線で示す（ADR 0181 の段階 3・U393）。キャンバスで掴んでいる物の影（CanvasBoard）は、
+  // キャンバス表示を作り直す段階 4 で扱うので、ここでは手で書いた 1 件だけを残す。
+  const found = [];
+  for (const path of sources(rendererDir)) {
+    const text = withoutComments(readFileSync(path, 'utf8'));
+    for (const match of text.matchAll(
+      /(?<![\w-])(?:[\w-]+:)*shadow(?:-[^\s'"`{}]+)?(?![\w])/gu,
+    ))
+      found.push(
+        `${path.slice(rendererDir.length).replaceAll(sep, '/')}: ${match[0]}`,
+      );
+  }
+  assert.deepEqual(found, ['screens/canvas/CanvasBoard.tsx: shadow-overlay']);
 });
 
 // --- styles.css の試験 ---

@@ -1,7 +1,8 @@
 // 状態帯（設計 01 いつも見える状態、ADR 0014・0024）を、上の中央の島（ADR 0181 の段階 2）と、その下の項目の行にした。
 // 従来の窓の全画面（端末の画面・登録の画面）で共通。
 //
-// - 島（StatusIsland）: 画面の上の中央に貼り付ける（スクロールしても上に残る）。小さい形は、この端末の入出力（ライブ領域）・
+// - 島（StatusIsland）: 画面の上の中央に貼り付ける（スクロールしても上に残る。島の上の隙間と左右は地の色で塗り、下を流れる
+//   本文の端を見せない。段階 3）。小さい形は、この端末の入出力（ライブ領域）・
 //   中枢との接続・停止（1 回で効く。確認を挟まない。U396）。確認が必要な操作が増えたときと、操作の結果が届いたときだけ、
 //   下へ広がって 1 行を出す（何を出すかは純粋な関数 islandView が決める）。島から確認・承認はしない（OS の確認ダイアログの
 //   入口は今までどおり「確認が必要な操作」の行）。
@@ -82,7 +83,7 @@ export function StatusIsland({
   const Icon =
     view.kind === 'hidden' && view.icon === 'warning' ? WarningIcon : InfoIcon;
   return (
-    <div className="sticky top-2 z-20 flex justify-center">
+    <div className="sticky top-0 z-20 -mt-2 flex justify-center bg-background pt-2">
       <section
         aria-label={ISLAND_LABELS.region}
         data-island={expanded === null ? 'compact' : 'expanded'}

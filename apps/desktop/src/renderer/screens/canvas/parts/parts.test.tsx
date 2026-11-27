@@ -595,16 +595,19 @@ test('a heading and every content string are drawn as plain text in every part',
   }
 });
 
-test('a float is drawn with a shadow, a card without one; emphasis keeps the accent bar', () => {
+test('a float is drawn with an outline line instead of a shadow, a card without one; emphasis keeps the accent bar', () => {
+  // 影をやめ、縁取りの線（入力欄の境界の色の 2px）で浮いた物を示す（ADR 0181 の段階 3・U393）。
   const float = card(
     ready(LIST(2)),
     item('list', 2, { kind: 'float' }),
     SIZES.wide,
   );
   assert.match(float, /data-kind="float"/u);
-  assert.match(float, /shadow-overlay/u);
+  assert.match(float, /border-2 border-field-border/u);
+  assert.doesNotMatch(float, /shadow-/u);
   const plain = card(ready(LIST(2)), item('list', 2), SIZES.wide);
-  assert.doesNotMatch(plain, /shadow-overlay/u);
+  assert.doesNotMatch(plain, /border-2 border-field-border/u);
+  assert.doesNotMatch(plain, /shadow-/u);
   const high = card(
     ready(LIST(2)),
     item('list', 2, { emphasis: 'high' }),

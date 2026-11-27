@@ -54,3 +54,10 @@
 - 供給と露出: シークレットの供給はハブの起動環境の環境変数 `BUDDY_GOOGLE_OAUTH_CLIENT_SECRET` だけとする（CLI がクライアント ID の隣で読み、core.ts の Google の設定 `clientSecret` を経て口へ渡す）。DB・KeyStore・ファイルには保存しない。口の中ではプライベートフィールドにだけ置き、ログ・例外・理由コード・JSON・inspect に出さない。Google はデスクトップ型のシークレットを機密として扱わない（配布物に含まれる前提）としているが、Buddy は値を最小限の経路（環境変数 → 口 → トークンエンドポイントへの TLS 送信）にだけ通す。
 - 試験: `oauth-provider.test.ts` に 4 件追加（Google: 設定時に交換・更新のフォームへ載り失効には載らないこと、未設定・空文字では載らないこと、口の JSON・inspect・文字列化に値が出ないこと。Microsoft: 交換・更新のフォームが従来の全項目どおりでシークレットを含まないこと）。期待値は手書きで、シークレットは合成値。実 API への接続試験は本追補の範囲外（実接続での再確認は本人の手順）。
 - 本人の手順の更新: 「残件」の (1) で Google Cloud のデスクトップアプリ型クライアントから、クライアント ID に加えてクライアントシークレットも得る。(3) でハブの起動環境に `BUDDY_GOOGLE_OAUTH_CLIENT_SECRET` も設定する。
+
+## 追補（子プロセスの環境から消すこと）
+
+- 判明したこと: `createNodeCommandRunner`（`packages/platform`）は `execFile` に環境を渡さないため、子プロセス（tailscale、macOS の security・launchctl など）は親の環境を受け継ぐ。CLI が起動の環境変数から読んだシークレットを `process.env` に残すと、子プロセスから見える。
+- 改める点: CLI は `BUDDY_GOOGLE_OAUTH_CLIENT_SECRET`（と ADR 0178 の `BUDDY_GEMINI_API_KEY`）を `start` の最初に読み、直後に `process.env` から消す（`apps/core/src/cli-secrets.ts` の `takeStartupSecrets`）。読んだ値は Google の設定にだけ渡す。
+- 限界: Linux の `/proc/<pid>/environ` は起動時の環境を見せ続ける。同じ利用者の別のプロセスからは読めるので、環境変数で受け取る方式では防げない（防ぐなら KeyStore に置く方式で、U373 で本人が決める）。
+- 試験: `cli-secrets.test.ts` で、消す前の子プロセスには名前が見え、消した後は実機用 runner の子プロセス（`node -e`）の環境に名前も値も出ないことを確かめた。模擬の試験だけで、実機の tailscale・security・launchctl では未実施。

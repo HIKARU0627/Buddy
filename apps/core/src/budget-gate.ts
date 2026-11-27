@@ -26,6 +26,7 @@ import { randomUUID } from 'node:crypto';
 import type { ModelUsage } from '@buddy/contracts';
 import { planUsageSettlement } from '@buddy/ai';
 import {
+  computeLiability,
   computeLiveSecondsAmount,
   computeReservation,
   creditAvailability,
@@ -1365,6 +1366,27 @@ export class BudgetGate {
         .map((version) => version.price_key),
     );
     return keys.size === 1 ? ([...keys][0] ?? null) : null;
+  }
+
+  // 有料の要求を今の時刻で見積もれるときの単価の版（起動の時点で、profile の単価の系列が設定にあり、確認済みで、最大負担を
+  // 有限にできるかを確かめる。レシートの写真の読み取り。ADR 0178）。見積もれなければ null。受付では、受付の時刻で
+  // 予算の門が改めて版を選ぶ（ここで返した版を受付に使わない）。
+  priceVersionFor(
+    request: Pick<PaidRequest, 'price_key' | 'quantities' | 'timeout_ms'>,
+  ): string | null {
+    const config = this.#config;
+    if (!config.ok) return null;
+    const now = this.#now();
+    const result = computeLiability({
+      budgetCurrency: config.settings.currency,
+      priceKey: request.price_key,
+      priceVersions: config.config.price_versions,
+      verifiedPriceVersions: config.settings.verifiedPriceVersions,
+      billableFrom: iso(now),
+      billableUntil: iso(now + request.timeout_ms),
+      quantities: request.quantities,
+    });
+    return result.ok ? result.priceVersion : null;
   }
 
   // 保存済みの予約から、精算・追加予約に渡す券を作り直す（再起動の後の照合・遅れて届いた使用量の精算で使う）。

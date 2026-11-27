@@ -144,6 +144,13 @@ const ENTRIES: Readonly<Record<string, readonly Entry[]>> = {
       anchors: ['options.cloudGate.open()', 'options.cloudGate.lease()'],
     },
   ],
+  'household-receipt-reader.ts': [
+    {
+      kind: 'wiring',
+      reason:
+        '読み取りの口（ReceiptImageReader）の Gemini の実装と profile（ADR 0178）。呼ぶのは household-receipt.ts で、掃除のゲートはそこで通す',
+    },
+  ],
   'graph-mail-attachments.ts': [
     {
       kind: 'gated',

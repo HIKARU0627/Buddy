@@ -3,9 +3,10 @@
 // - **模擬の HTTP でだけ確かめた**。実 endpoint の wire 形式・usage の欄・終了理由・モデルの名前は未確認で、確認は B15 と本人の
 //   承認まで行わない（実 API は未実施）。
 // - API キー・認証ヘッダーは持たない（transport の外で足す。ADR 0080）。endpoint は profile の値をそのまま使う。
+// - 画像 1 枚の読み取りの要求（家計簿のレシートの写真。ADR 0178）は encodeGeminiImageRequest で作り、応答は同じ decode で読む。
 // - 送る schema は契約の JSON Schema から $ref を展開し、pattern・format などの注釈を落とした部分集合。ローカルの完全検証は
 //   契約の schema で別に行う（形式の検査の正本は契約）。
-import type { ModelUsage } from '@buddy/contracts';
+import type { ModelProfile, ModelUsage } from '@buddy/contracts';
 import type { HttpResponse } from './http.js';
 import type { EncodedRequest, ProviderCodec } from './provider.js';
 import type { AdapterResponse, AdapterResult, ModelCommand } from './types.js';
@@ -100,6 +101,63 @@ function usageOf(metadata: unknown): ModelUsage | null {
     output_tokens: candidates + thoughts,
     reasoning_tokens: thoughtsRaw === undefined ? null : thoughts,
     usage_complete: true,
+  };
+}
+
+// 画像 1 枚の読み取りの要求（家計簿のレシートの写真。ADR 0177・0178）。ModelCommand は文字の messages だけなので、
+// 画像を送る形をここに分けて持つ。応答は createGeminiCodec の decode で読む（同じ generateContent の封筒）。
+export interface GeminiImageRequest {
+  readonly profile: ModelProfile;
+  // 固定の指示文（systemInstruction に置く）。
+  readonly instructions: string;
+  readonly image: {
+    // 画像の media type（例: image/jpeg）。
+    readonly media_type: string;
+    // 画像のバイト列の base64（呼び出し側が符号化する。packages/ai は node:* を読まないため）。
+    readonly data_base64: string;
+  };
+  // 構造化出力の JSON Schema。null なら構造化出力を求めない。
+  readonly output_schema: unknown | null;
+}
+
+// 画像 1 枚の読み取りの要求の封筒（generateContent）。指示文は systemInstruction、contents は画像の part 1 つだけで、
+// それ以外（要求の ID・本人や端末の情報）は送らない。API キー・認証ヘッダーは持たない（呼び出し側が足す）。
+// 思考・出力の上限・temperature の扱いは文字の encode と同じ。
+export function encodeGeminiImageRequest(
+  request: GeminiImageRequest,
+): EncodedRequest {
+  const generationConfig: Record<string, unknown> = {};
+  if (request.output_schema !== null) {
+    generationConfig['responseMimeType'] = 'application/json';
+    generationConfig['responseJsonSchema'] = geminiWireSchema(
+      request.output_schema,
+    );
+  }
+  if (request.profile.output_limit_tokens !== null)
+    generationConfig['maxOutputTokens'] = request.profile.output_limit_tokens;
+  if (request.profile.reasoning !== null)
+    generationConfig['thinkingConfig'] = {
+      thinkingLevel: request.profile.reasoning,
+    };
+  return {
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: request.instructions }] },
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            {
+              inlineData: {
+                mimeType: request.image.media_type,
+                data: request.image.data_base64,
+              },
+            },
+          ],
+        },
+      ],
+      generationConfig,
+    }),
   };
 }
 

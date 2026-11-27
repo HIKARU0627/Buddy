@@ -27,16 +27,18 @@
 
 ## profile の表（模擬の設定）
 
-| profile_id          | 役割             | provider | モデル             | 思考   | 出力の形           | 出力上限 | timeout | 同時数 | price_version          | 予約の方法    | 確認済みの能力（模擬）            |
-| ------------------- | ---------------- | -------- | ------------------ | ------ | ------------------ | -------- | ------- | ------ | ---------------------- | ------------- | --------------------------------- |
-| `voice-primary`     | voice            | gpt-live | gpt-live-1         | なし   | none               | 500      | 30 秒   | 2      | `price-voice-2026-01`  | max_liability | —                                 |
-| `intent-primary`    | intent           | gemini   | gemini-3.8-flash   | low    | json_schema_strict | 500      | 8 秒    | 2      | `price-gemini-2026-01` | max_liability | json_schema_strict、reasoning:low |
-| `reply-draft`       | background_text  | gemini   | gemini-3.8-flash   | low    | none               | 400      | 20 秒   | 2      | `price-gemini-2026-01` | max_liability | reasoning:low                     |
-| `background-low`    | background_text  | gemini   | gemini-3.8-flash   | low    | json_schema_strict | 500      | 20 秒   | 2      | `price-gemini-2026-01` | max_liability | json_schema_strict、reasoning:low |
-| `background-medium` | background_text  | gemini   | gemini-3.8-flash   | medium | none               | 1,500    | 120 秒  | 2      | `price-gemini-2026-01` | max_liability | reasoning:medium                  |
-| `consult-high`      | advanced_consult | gemini   | gemini-3.8-flash   | high   | none               | 2,000    | 120 秒  | 2      | `price-gemini-2026-01` | max_liability | reasoning:high                    |
-| `local-asr`         | local_asr        | local    | （ローカルの一式） | なし   | none               | なし     | 60 秒   | 1      | なし                   | max_liability | —                                 |
+| profile_id                 | 役割             | provider | モデル             | 思考   | 出力の形           | 出力上限 | timeout | 同時数 | price_version                                    | 予約の方法    | 確認済みの能力（模擬）            |
+| -------------------------- | ---------------- | -------- | ------------------ | ------ | ------------------ | -------- | ------- | ------ | ------------------------------------------------ | ------------- | --------------------------------- |
+| `voice-primary`            | voice            | gpt-live | gpt-live-1         | なし   | none               | 500      | 30 秒   | 2      | `price-voice-2026-01`                            | max_liability | —                                 |
+| `intent-primary`           | intent           | gemini   | gemini-3.8-flash   | low    | json_schema_strict | 500      | 8 秒    | 2      | `price-gemini-2026-01`                           | max_liability | json_schema_strict、reasoning:low |
+| `reply-draft`              | background_text  | gemini   | gemini-3.8-flash   | low    | none               | 400      | 20 秒   | 2      | `price-gemini-2026-01`                           | max_liability | reasoning:low                     |
+| `background-low`           | background_text  | gemini   | gemini-3.8-flash   | low    | json_schema_strict | 500      | 20 秒   | 2      | `price-gemini-2026-01`                           | max_liability | json_schema_strict、reasoning:low |
+| `background-medium`        | background_text  | gemini   | gemini-3.8-flash   | medium | none               | 1,500    | 120 秒  | 2      | `price-gemini-2026-01`                           | max_liability | reasoning:medium                  |
+| `consult-high`             | advanced_consult | gemini   | gemini-3.8-flash   | high   | none               | 2,000    | 120 秒  | 2      | `price-gemini-2026-01`                           | max_liability | reasoning:high                    |
+| `local-asr`                | local_asr        | local    | （ローカルの一式） | なし   | none               | なし     | 60 秒   | 1      | なし                                             | max_liability | —                                 |
+| `household-receipt.gemini` | background_text  | gemini   | gemini-3.8-flash   | low    | json_schema_strict | 4,096    | 45 秒   | 2      | 起動の時点の版（系列 `gemini.gemini-3.8-flash`） | max_liability | json_schema_strict、reasoning:low |
 
+- `household-receipt.gemini` は家計簿のレシートの写真の読み取り（ADR 0177・0178）の profile で、ジョブの振り分け表（`TASK_RULES`）を通さず、家計簿の経路が直接使う。コードに置いた実際の設定で、endpoint もコードに置いた（U372）。鍵は起動の環境変数 `BUDDY_GEMINI_API_KEY`、単価の版は起動の時点で `budget-runtime.json` から見積もれる版。確認済みの能力は、ほかの行と同じく模擬の設定の値。
 - **endpoint は実行時の設定**（リポジトリに置かない）。API キー・認証ヘッダーも実行時の設定で、profile・codec・ログには持たせない。
 - `price_version` の ID と単価の実体は B07 の `BudgetRuntimeConfig` の設定にある。この表の ID は模擬の例で、実際の確認済みの版は設定の `verified_price_versions` と照合する。金額・為替・安全係数はこの文書とコードに置かない。
 - `確認済みの能力（模擬）` は**模擬の設定のための値**で、実 endpoint で確かめた記録ではない。実 endpoint の能力の確認と採用は B10-07 の評価・B15 の実 API の承認まで行わない。この表を実機の合格として扱わない。

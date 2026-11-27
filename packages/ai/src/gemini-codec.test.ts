@@ -5,7 +5,11 @@ import type { WireResponse } from '@buddy/contracts';
 import ajvModule from 'ajv/dist/2020.js';
 import formatsModule from 'ajv-formats';
 import { createHttpAdapter } from './adapter.js';
-import { createGeminiCodec, geminiWireSchema } from './gemini-codec.js';
+import {
+  createGeminiCodec,
+  encodeGeminiImageRequest,
+  geminiWireSchema,
+} from './gemini-codec.js';
 import { judgeIntent } from './intent-judgment.js';
 import type { IntentJudgmentInput } from './intent-judgment.js';
 import { createFakeTransport, syntheticProfile } from './testing.js';
@@ -273,4 +277,64 @@ test('timeout and unavailable transports become failures and are sent once', asy
     );
     assert.equal(transport.requests.length, 1);
   }
+});
+
+// 画像 1 枚の読み取りの要求（ADR 0178）。期待値は手で書いた。
+test('the image request sends only the instructions and one inline image, with the profile limits', () => {
+  const imageProfile = syntheticProfile({
+    profile_id: 'receipt-image',
+    role: 'background_text',
+    provider: 'gemini',
+    reasoning: 'low',
+    output_limit_tokens: 4096,
+  });
+  const encoded = encodeGeminiImageRequest({
+    profile: imageProfile,
+    instructions: '合成の指示',
+    image: { media_type: 'image/jpeg', data_base64: '/9j/2Q==' },
+    output_schema: {
+      type: 'object',
+      description: '送らない注釈',
+      properties: { total: { type: ['integer', 'null'], description: 'x' } },
+      required: ['total'],
+      additionalProperties: false,
+    },
+  });
+  assert.deepEqual(encoded.headers, { 'content-type': 'application/json' });
+  assert.deepEqual(JSON.parse(encoded.body), {
+    systemInstruction: { parts: [{ text: '合成の指示' }] },
+    contents: [
+      {
+        role: 'user',
+        parts: [{ inlineData: { mimeType: 'image/jpeg', data: '/9j/2Q==' } }],
+      },
+    ],
+    generationConfig: {
+      responseMimeType: 'application/json',
+      responseJsonSchema: {
+        type: 'object',
+        properties: { total: { type: ['integer', 'null'] } },
+        required: ['total'],
+        additionalProperties: false,
+      },
+      maxOutputTokens: 4096,
+      thinkingConfig: { thinkingLevel: 'low' },
+    },
+  });
+  // 構造化出力・思考・出力の上限がない profile では、その欄を送らない。
+  const plain = encodeGeminiImageRequest({
+    profile: syntheticProfile({
+      profile_id: 'receipt-plain',
+      role: 'background_text',
+      reasoning: null,
+      output_limit_tokens: null,
+    }),
+    instructions: 'i',
+    image: { media_type: 'image/jpeg', data_base64: 'AA==' },
+    output_schema: null,
+  });
+  assert.deepEqual(
+    (JSON.parse(plain.body) as { generationConfig: object }).generationConfig,
+    {},
+  );
 });

@@ -31,6 +31,7 @@ import type {
   StoreGenerationSource,
 } from '@buddy/storage';
 import { webResearchNotificationParts } from '@buddy/domain';
+import type { StorageBoundaryCommand } from '@buddy/domain';
 import { createGoogleReadConnector } from '@buddy/connectors';
 import type { ResearchJobRecord } from '@buddy/storage';
 import {
@@ -118,6 +119,7 @@ import { createClockStateFile } from './clock-state.js';
 import type { NoticeSink } from './notice-sink.js';
 import { NoticeRelay } from './notice-relay.js';
 import { StorageModeGate } from './storage-gate.js';
+import type { PrivateDiscardReason } from './private-turns.js';
 import {
   RestoreInstallError,
   recoverRestoreInstall,
@@ -552,6 +554,11 @@ export interface CoreHandle {
   readonly oauth: { readonly callbackPort: number | null } | null;
   // 保存境界の保持者（記録しない会話のゲート。ADR 0045・0059）。今の保存モード・区切りの世代・由来の照合を持つ。
   readonly storage: StorageModeGate;
+  // 記録しない区切りの RAM に持っている件数（試験・診断用。本文は返さない。B06-07a-2 の 2c、ADR 0190）。HTTPS を設定しなければ
+  // null（発言の経路がない）。
+  readonly privateConversation: {
+    held(): PrivateConversationHeld;
+  } | null;
   // 知らせの中継（UI-05 の段階 3、ADR 0187）。掃除の job・保存境界の保持者・忘却の経路が知らせを渡す口で、流れの表示の
   // 後始末と WSS の購読へ運ぶ。試験は保存層の命令で直接忘れた後の台帳の知らせをここへ渡す（忘却の公開ゲートは閉じたまま）。
   readonly notices: NoticeSink;
@@ -561,6 +568,23 @@ export interface CoreHandle {
   stop(reason: string): Promise<void>;
   // 終了処理が終わると解決する。解放に失敗した場合は拒否する。
   readonly closed: Promise<void>;
+}
+
+// 記録しない区切りの RAM の件数（ADR 0190）。発言の控え・直前のやりとり・流れの表示に結び付けた控え。
+export interface PrivateConversationHeld {
+  readonly replays: number;
+  readonly recent_turns: number;
+  readonly discards: number;
+  readonly last_discard: PrivateDiscardReason | null;
+  readonly stream_turns: number;
+  readonly canvas_private: boolean;
+}
+
+// 保存境界の命令のうち、記録しない区切りの RAM と表示に結び付けるもの（ADR 0190）。HTTPS の受付を作るときにつなぐ。
+interface PrivateConversationHooks {
+  run(command: StorageBoundaryCommand): void;
+  clear(reason: 'locked' | 'forgotten' | 'core_stopped'): void;
+  held(): PrivateConversationHeld;
 }
 
 const GENERATION_LABEL: Readonly<Record<StoreGenerationSource, string>> = {
@@ -802,6 +826,8 @@ export async function startCore(
   let backupScheduler: BackupScheduler | null = null;
   let retention: RetentionSweeper | null = null;
   let storageGate: StorageModeGate | null = null;
+  // 記録しない区切りの RAM と表示（ADR 0190）。HTTPS の受付を作るときにつなぐ（受付がなければ発言の経路もない）。
+  let privateHooks: PrivateConversationHooks | null = null;
   // 知らせの中継（ADR 0187）。掃除の job より前に作り、HTTPS の受付を作るときに流れの表示と WSS の購読をつなぐ。
   const notices = new NoticeRelay({
     ...(options.retention?.notices === undefined
@@ -871,6 +897,8 @@ export async function startCore(
       await researchRun?.drain();
     });
     retention?.close();
+    // 記録しない区切りの RAM（発言・応答・直前のやりとり・一時のキャンバス）を捨てる（ADR 0190）。
+    privateHooks?.clear('core_stopped');
     // 入る・出るを受けなくし、合わせ直せていない世代の書き込みが残っていれば最後に試す。
     await step(async () => {
       await storageGate?.close();
@@ -931,7 +959,8 @@ export async function startCore(
     });
     retention.start();
     // 保存境界の保持者（ADR 0059）。前の起動で記録しない区切りが開いていたら、通常の区切りへ戻して知らせる。HTTPS の受付
-    // （Live の開始・入出力の状態）より前に作る。命令のうち Live を閉じるだけを音声の制御へつなぐ（ほかの保存先は次の段階）。
+    // （Live の開始・入出力の状態）より前に作る。命令のうち Live を閉じるのは音声の制御へ、一時のキャンバス・RAM を捨てる
+    // 命令は記録しない区切りの RAM と表示へつなぐ（B06-07a-2 の 2c、ADR 0190）。
     storageGate = await StorageModeGate.open({
       clock: clockFile,
       notices,
@@ -939,6 +968,7 @@ export async function startCore(
         run: (command) => {
           if (command.type === 'close_voice_session')
             voice?.closeForPrivateConversation();
+          else privateHooks?.run(command);
         },
       },
       now: () => now().getTime(),
@@ -1334,6 +1364,7 @@ export async function startCore(
       streams = started.streams;
       runner = started.runner;
       voice = started.voice;
+      privateHooks = started.privateConversation;
       httpsInfo = started.info;
       homeNetwork = started.homeNetwork;
       pairing = started.pairing;
@@ -1467,6 +1498,10 @@ export async function startCore(
                 : oauthRun.callback.port,
           },
     storage: storageGate as StorageModeGate,
+    privateConversation:
+      privateHooks === null
+        ? null
+        : { held: () => (privateHooks as PrivateConversationHooks).held() },
     notices,
     pairing,
     get state() {
@@ -1511,6 +1546,7 @@ async function startHttps(
   readonly homeNetwork: HomeNetworkGate;
   readonly runner: OperationRunner;
   readonly voice: VoiceControl;
+  readonly privateConversation: PrivateConversationHooks;
 }> {
   const store = opened.store;
   let identity;
@@ -1633,12 +1669,22 @@ async function startHttps(
   deviceConnections.onDeviceClosed((deviceId) => {
     previews.invalidateDevice(deviceId);
   });
+  // 記録しない区切りの中身を捨てる口（ADR 0190）。発言の経路と流れを作った後につなぐ。
+  let clearPrivate: ((reason: 'locked' | 'forgotten') => void) | null = null;
   const base: RequestEnvironment = {
     ...merged,
     lockState: async (input) => {
       const state = await merged.lockState(input);
       if (state !== 'unlocked' && input.device !== null)
         previews.invalidateDevice(input.device.device_id);
+      // 認証した端末がロックを申告したら、記録しない区切りの中身（発言・直前のやりとり・一時のキャンバス）を捨てる。
+      // 記録しない区切りのままにし（出るのは本人の画面操作だけ。ADR 0189）、次の発言は新しい文脈で始まる（U482）。
+      if (
+        state === 'locked' &&
+        input.device !== null &&
+        storage.privateConversation()
+      )
+        clearPrivate?.('locked');
       return state;
     },
   };
@@ -1923,8 +1969,45 @@ async function startHttps(
   });
   // 保存した発言の期限を、流れの区切りへ渡す口をつなぐ（UI-05）。
   streamRecordTurn = stream.recordTurn;
-  // 期限切れ・忘却の知らせで流れの表示（キャンバスの物・つないだ要約）を片付ける（UI-05 の段階 3、ADR 0187）。
-  notices.attachDisplay((notice) => stream.applyNotice(notice));
+  // 記録しない区切りの RAM と表示を、保存境界の命令・ロック・忘却・停止に結び付ける（B06-07a-2 の 2c、ADR 0190）。
+  // open_segment は流れの経路が enterPrivate・exitPrivate の結果（同じ区切りの ID と世代）で開くので、ここでは何もしない。
+  const privateConversation: PrivateConversationHooks = {
+    run: (command) => {
+      if (command.type === 'begin_private_canvas')
+        stream.privateConversation.begin();
+      else if (command.type === 'end_private_canvas')
+        stream.privateConversation.end();
+      else if (command.type === 'discard_private_ram') {
+        turns.privateConversation.discard('private_ended');
+        stream.privateConversation.discard();
+      }
+    },
+    clear: (reason) => {
+      turns.privateConversation.discard(reason);
+      stream.privateConversation.reset();
+    },
+    held: () => {
+      const ram = turns.privateConversation.held();
+      const shown = stream.privateConversation.held();
+      return {
+        ...ram,
+        stream_turns: shown.turns,
+        canvas_private: canvas.privateOpen,
+      };
+    },
+  };
+  clearPrivate = (reason) => privateConversation.clear(reason);
+  // 期限切れ・忘却の知らせで流れの表示（キャンバスの物・つないだ要約）を片付ける（UI-05 の段階 3、ADR 0187）。記録しない
+  // 区切りの間の忘却の知らせでは、記録しない区切りの中身も捨てる（忘れた内容が直前のやりとりに残り得る。ADR 0190、U482）。
+  notices.attachDisplay((notice) => {
+    if (
+      notice.schema === 'buddy.retention-notice.v1' &&
+      notice.kind === 'forgotten' &&
+      storage.privateConversation()
+    )
+      privateConversation.clear('forgotten');
+    return stream.applyNotice(notice);
+  });
   // 実行担当（ADR 0030）。承認の後・起動時の再開・本人の照合と再試行を受け持つ。
   const faults = turnOptions.faults ?? NO_FAULTS;
   const runner = createOperationRunner({
@@ -2090,6 +2173,7 @@ async function startHttps(
     pairing,
     voice,
     streams,
+    privateConversation,
     info: {
       host: api.host,
       port: api.port,

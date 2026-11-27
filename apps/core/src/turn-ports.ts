@@ -33,6 +33,14 @@ export interface InterpretationContext {
   readonly mail_candidates: readonly MailCandidate[];
   // 直前の依頼（省略は無し）。テキスト会話は依頼の保留を持たないので省略、Live は保留中の変更を渡す。
   readonly open_workflows?: readonly OpenWorkflow[];
+  // 記録しない区切りの直前のやりとり（古い順。RAM だけに持つ。B06-07a-2 の 2c、ADR 0190）。通常の区切りでは省略。
+  // 今のモデルの解釈（model-interpreter の judgmentInputOf）はこの欄を送らない（通常の会話も直前のやりとりを送って
+  // いない）。判定に使うかは通常の会話とそろえて決める（U481）。
+  readonly recent_turns?: readonly {
+    readonly role: 'user' | 'buddy';
+    readonly text: string;
+    readonly at: string;
+  }[];
 }
 
 // 解釈の結果。intent・args は Core が意図表と契約（IntentArgs）で検査するまで信用しない。

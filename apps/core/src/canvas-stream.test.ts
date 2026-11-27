@@ -2662,14 +2662,20 @@ test('U170: the stream route enters private without a conversation, writes priva
   assert.equal(session.ok, true);
   assert.equal(session.ok ? session.value : 'error', null);
 
-  // 記録しない区切りの発言は保存しない（2b では DB も区切りも動かさない。RAM の保持は 2c）。
+  // 記録しない区切りの発言は RAM だけで受けて答える（B06-07a-2 の 2c、ADR 0190）。DB の会話は作らない。
   const privateTurn = await postStream(
     core,
     device,
     scope,
     '今日の用事を見せて',
   );
-  assert.equal(privateTurn.status, 503, privateTurn.text);
+  assert.equal(privateTurn.status, 200, privateTurn.text);
+  const privateTurnBody = privateTurn.json as unknown as StreamTurnResponse;
+  assert.equal(privateTurnBody.segment.storage_mode, 'private');
+  assert.equal(
+    privateTurnBody.segment.segment_id,
+    privateBody.segment.segment_id,
+  );
 
   // 流れの今の保存モードは private（UI-05 の段階 6、ADR 0189。端末の状態欄に出す値。ID・世代を返さない）。
   const reading = await getJson(core, device, '/v1/stream/storage-mode');
@@ -2776,7 +2782,7 @@ test('U170: a turn accepted before private is returned on retry after leaving pr
   const firstBody = first.json as unknown as StreamTurnResponse;
   assert.equal(firstBody.segment.storage_mode, 'normal');
 
-  // private を挟む（世代が進む）。private の間の発言は保存しない。
+  // private を挟む（世代が進む）。private の間の発言は RAM だけで答え、保存しない（ADR 0190）。
   assert.equal(
     (await postStorageMode(core, device, scope, 'private')).status,
     200,
@@ -2787,7 +2793,11 @@ test('U170: a turn accepted before private is returned on retry after leaving pr
     scope,
     '今日の用事を見せて',
   );
-  assert.equal(privateTurn.status, 503, privateTurn.text);
+  assert.equal(privateTurn.status, 200, privateTurn.text);
+  assert.equal(
+    (privateTurn.json as unknown as StreamTurnResponse).segment.storage_mode,
+    'private',
+  );
   const exited = await postStorageMode(core, device, scope, 'normal');
   assert.equal(exited.status, 200, exited.text);
 
@@ -3593,7 +3603,8 @@ test('U170: a private segment never rotates automatically, and turns stay refuse
     createCalls += 1;
     return Promise.resolve({ status: 201, body: { session_id: randomUUID() } });
   };
-  // 実際の api-turns は記録しない区切りの間 503 を返す。偽物もそれに合わせる。
+  // 自動の区切りを起こさないことだけを見る偽物（実際の api-turns は記録しない区切りの発言を RAM で答える。ADR 0190）。
+  // 発言の処理が断っても、区切りのループが会話を作らないことを確かめる。
   const postTurn: ApiRouteHandler = () =>
     Promise.resolve({
       status: 503,

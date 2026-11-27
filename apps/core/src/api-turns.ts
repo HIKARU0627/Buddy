@@ -64,6 +64,8 @@ import type { ApiHandlerRequest, ApiRouteHandler } from './api-server.js';
 import type { EventQueryStore } from './event-feed.js';
 import type { PreviewRegistry } from './previews.js';
 import type { JsonObject } from './strict-json.js';
+import { PrivateConversationRam } from './private-turns.js';
+import type { PrivateDiscardReason, PrivateHeld } from './private-turns.js';
 import { canRead, canWrite, replyFields } from './turn-ports.js';
 import type {
   BackgroundJobAcceptor,
@@ -205,6 +207,10 @@ const CLARIFY = {
   // 声（方式 C）の入力は 4 操作だけを進める。それ以外は画面で全文を確かめてから（B05-05）。
   full_text:
     'この操作は、画面で内容を確かめてからにします。画面から送ってください。',
+  // 記録しない会話では、保存を伴う依頼（用事・記憶・外部の変更の承認待ち・裏の調査など）を作らない（ADR 0045 の許可表・
+  // U64。独立した確認は B06-07a-2 の 2d）。参照・雑談・会話の操作だけを答える（ADR 0190）。
+  private_unsupported:
+    '記録しない会話では、この依頼はまだ受け付けられません。記録しない会話を終えてから、もう一度お願いします。',
 } as const;
 
 type ClarifyReason = keyof typeof CLARIFY;
@@ -363,6 +369,12 @@ export type LiveCommitResult =
 
 export interface TurnRoutes {
   readonly handlers: Readonly<Record<string, ApiRouteHandler>>;
+  // 記録しない区切りの RAM（ADR 0190）。discard は記録しない会話の終わり・ロック・忘却・停止で呼ぶ。held は試験・診断用
+  // （件数だけで本文を返さない）。
+  readonly privateConversation: {
+    discard(reason: PrivateDiscardReason): void;
+    held(): PrivateHeld;
+  };
   readonly previewValid: PreviewCheck;
   readonly previewCurrent: (previewId: string) => boolean;
   readonly prime: () => Promise<void>;
@@ -397,6 +409,19 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
       ) &&
       value['segment_id'] === sessionId &&
       value['segment_generation'] === generation
+    );
+  };
+
+  // 処理を始めたときの区切りが今も同じか（保存境界の保持者の区切りの ID と世代。ADR 0190）。記録しない区切りに入る・出ると
+  // 区切りの ID と世代が変わる（domain の storageOriginRejection が null を返すのは、この 2 つが今と同じときだけ）。
+  const originCurrent = (origin: {
+    readonly segment_id: string;
+    readonly segment_generation: string;
+  }): boolean => {
+    const present = options.storage.origin();
+    return (
+      present.segment_id === origin.segment_id &&
+      present.segment_generation === origin.segment_generation
     );
   };
 
@@ -1027,6 +1052,7 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     text: string,
     interpretOptions: {
       readonly open_workflows?: readonly OpenWorkflow[];
+      readonly recent_turns?: InterpretationContext['recent_turns'];
     } = {},
   ): Promise<InterpretedTurn> => {
     const basis: {
@@ -1043,6 +1069,7 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     text: string,
     interpretOptions: {
       readonly open_workflows?: readonly OpenWorkflow[];
+      readonly recent_turns?: InterpretationContext['recent_turns'];
     },
     basis: { context?: InterpretationContext; reply?: InterpreterReply },
   ): Promise<InterpretedTurn> => {
@@ -1061,6 +1088,9 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
       ...(interpretOptions.open_workflows === undefined
         ? {}
         : { open_workflows: interpretOptions.open_workflows }),
+      ...(interpretOptions.recent_turns === undefined
+        ? {}
+        : { recent_turns: interpretOptions.recent_turns }),
     };
     try {
       reply = await options.interpreter.interpret(context);
@@ -1185,6 +1215,98 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     };
   };
 
+  // 発言の応答の本文（保存する発言と、記録しない区切りの RAM の発言で共通。ADR 0190）。
+  const turnResponseBody = (args: {
+    readonly requestId: string;
+    readonly sessionId: string;
+    readonly turnId: string;
+    readonly inputId: string;
+    readonly workflowId: string | null;
+    readonly plan: TurnPlan;
+  }) => {
+    const { requestId, sessionId, turnId, inputId, workflowId, plan } = args;
+    const view = (
+      intent: IntentName,
+      kind: string,
+      status: string,
+      itemRefs: readonly object[],
+      moreCount = 0,
+    ) =>
+      workflowId === null
+        ? null
+        : {
+            workflow_id: workflowId,
+            request_revision: '1',
+            intent,
+            kind,
+            status,
+            item_refs: itemRefs,
+            more_count: moreCount,
+            template_id: null,
+            template_version: null,
+          };
+    const responseOf = (
+      status: 'answered' | 'clarification' | 'session_control' | 'background',
+      resultView: object | null,
+      replyText: string | null,
+      sessionControl: SessionControlAction | null = null,
+    ) => ({
+      request_id: requestId,
+      session_id: sessionId,
+      turn_id: turnId,
+      input_id: inputId,
+      workflow_id: workflowId,
+      status,
+      result_view: resultView,
+      reply_text: replyText,
+      // 会話の操作のときだけ（それ以外は項目を持たない）。
+      ...(sessionControl === null ? {} : { session_control: sessionControl }),
+    });
+    // 受け付けた調査の受付の文はコードの定型文（acceptedCommentary と同じ文）で、モデルの文ではないので、保存する応答にも
+    // 残す（同じ要求の再送でも同じ応答）。
+    return plan.kind === 'session_control'
+      ? responseOf('session_control', null, null, plan.action)
+      : plan.kind === 'clarify'
+        ? responseOf(
+            'clarification',
+            plan.intent === null
+              ? null
+              : view(plan.intent, 'clarification', 'confirming_input', []),
+            CLARIFY[plan.reason],
+          )
+        : plan.kind === 'reply'
+          ? responseOf(
+              'answered',
+              view(plan.intent, 'speech_bubble', 'ready', []),
+              plan.text,
+            )
+          : plan.kind === 'accepted'
+            ? responseOf(
+                'background',
+                view(plan.intent, 'accepted_line', 'preparing', []),
+                ACCEPTED_TEXT,
+              )
+            : plan.kind === 'read'
+              ? responseOf(
+                  'answered',
+                  view(
+                    plan.intent,
+                    'schedule_cards',
+                    plan.overlaps ? 'needs_review' : 'ready',
+                    plan.items,
+                    plan.more,
+                  ),
+                  null,
+                )
+              : responseOf(
+                  'answered',
+                  view(plan.intent, 'approval_link', 'needs_review', [
+                    { kind: 'operation', id: plan.operation_id },
+                  ]),
+                  null,
+                );
+  };
+
   // 保存した応答を返す（同じ要求の再送）。読めなければ中枢側の保留。
   const storedResponse = (json: string, requestId: string) => {
     try {
@@ -1208,6 +1330,12 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     readonly input?: TurnInputRecord;
     readonly workflowId?: string;
     readonly precommit?: () => boolean;
+    // 処理を始めたときの区切りの由来（保存境界の保持者の区切りの ID と世代）。保存の直前に今の区切りと照合し、違えば
+    // 保存しない（記録しない会話に入った・出た後に遅れて届いた結果。ADR 0045 の origin_stale・origin_private、ADR 0190）。
+    readonly origin?: {
+      readonly segment_id: string;
+      readonly segment_generation: string;
+    };
   }): Promise<
     | {
         readonly kind: 'done';
@@ -1285,91 +1413,24 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
         : plan.kind === 'accepted'
           ? plan.workflow_id
           : (args.workflowId ?? randomUUID());
-    const view = (
-      intent: IntentName,
-      kind: string,
-      status: string,
-      itemRefs: readonly object[],
-      moreCount = 0,
-    ) =>
-      workflowId === null
-        ? null
-        : {
-            workflow_id: workflowId,
-            request_revision: '1',
-            intent,
-            kind,
-            status,
-            item_refs: itemRefs,
-            more_count: moreCount,
-            template_id: null,
-            template_version: null,
-          };
-    const responseOf = (
-      status: 'answered' | 'clarification' | 'session_control' | 'background',
-      resultView: object | null,
-      replyText: string | null,
-      sessionControl: SessionControlAction | null = null,
-    ) => ({
-      request_id: requestId,
-      session_id: sessionId,
-      turn_id: turnId,
-      input_id: inputId,
-      workflow_id: workflowId,
-      status,
-      result_view: resultView,
-      reply_text: replyText,
-      // 会話の操作のときだけ（それ以外は項目を持たない）。
-      ...(sessionControl === null ? {} : { session_control: sessionControl }),
+    const responseBody = turnResponseBody({
+      requestId,
+      sessionId,
+      turnId,
+      inputId,
+      workflowId,
+      plan,
     });
-    // 受け付けた調査の受付の文はコードの定型文（acceptedCommentary と同じ文）で、モデルの文ではないので、保存する応答にも
-    // 残す（同じ要求の再送でも同じ応答）。
-    const responseBody =
-      plan.kind === 'session_control'
-        ? responseOf('session_control', null, null, plan.action)
-        : plan.kind === 'clarify'
-          ? responseOf(
-              'clarification',
-              plan.intent === null
-                ? null
-                : view(plan.intent, 'clarification', 'confirming_input', []),
-              CLARIFY[plan.reason],
-            )
-          : plan.kind === 'reply'
-            ? responseOf(
-                'answered',
-                view(plan.intent, 'speech_bubble', 'ready', []),
-                plan.text,
-              )
-            : plan.kind === 'accepted'
-              ? responseOf(
-                  'background',
-                  view(plan.intent, 'accepted_line', 'preparing', []),
-                  ACCEPTED_TEXT,
-                )
-              : plan.kind === 'read'
-                ? responseOf(
-                    'answered',
-                    view(
-                      plan.intent,
-                      'schedule_cards',
-                      plan.overlaps ? 'needs_review' : 'ready',
-                      plan.items,
-                      plan.more,
-                    ),
-                    null,
-                  )
-                : responseOf(
-                    'answered',
-                    view(plan.intent, 'approval_link', 'needs_review', [
-                      { kind: 'operation', id: plan.operation_id },
-                    ]),
-                    null,
-                  );
     // 送出の直前の再検査（新しい発話の開始による保留）。保存の直前に同期で確かめる（この後に await があるのは DB への
     // 送信だけで、保留は保存の命令を送る前に決める）。
     if (args.precommit !== undefined && !args.precommit())
       return { kind: 'held' };
+    // 由来の照合（保存の直前に同期で行う。この後の await は DB への送信だけ）。処理の間に区切りが変わっていれば、結果を
+    // 保存せず 409 にする（記録しない区切りに入った後に、通常の区切りの発言を保存しない）。
+    if (args.origin !== undefined && !originCurrent(args.origin)) {
+      const response = apiErrorResponse(409, 'conflict', requestId);
+      return fail(response.status, response.body);
+    }
     const recorded = await store.conversation({
       kind: 'turn.record',
       session_id: sessionId,
@@ -1429,6 +1490,129 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     };
   };
 
+  // 記録しない区切りの発言・応答・直前のやりとり（RAM だけ。B06-07a-2 の 2c、ADR 0190）。
+  const privateRam = new PrivateConversationRam({
+    utcOffset: options.utcOffset,
+  });
+
+  // 記録しない区切りの計画。参照（予定の照会など）・雑談の返事・聞き返しだけを作る。保存を伴う依頼（用事・記憶・承認待ちの
+  // 外部の変更・裏の調査）は作らず、決まった文で断る（許可表の persist_workflow・save_memory・record_full_operation は
+  // 禁止。外部の変更の独立した確認は 2d）。外部へは、意図の解釈と参照の読み取りだけを送る（通常の会話と同じ）。
+  const privatePlan = async (
+    interpreted: InterpretedTurn,
+    intake: IntakeContext,
+  ): Promise<TurnPlan> => {
+    const refused = (intent: IntentName | null): boolean =>
+      intent !== null &&
+      (intent === 'research' || INTENT_POLICIES[intent].route !== 'read');
+    // 解釈の段階の聞き返し（対象・題名の不足など）でも、保存を伴う依頼なら聞き返さずに断る（答えても進められない）。
+    if (interpreted.kind === 'plan')
+      return interpreted.plan.kind === 'clarify' &&
+        refused(interpreted.plan.intent)
+        ? clarify('private_unsupported', null)
+        : interpreted.plan;
+    if (refused(interpreted.intent))
+      return clarify('private_unsupported', null);
+    const planned = await planFrom(
+      interpreted,
+      observedPermission,
+      'submitted_text',
+      intake,
+    );
+    // 参照の経路から操作・裏の受付は作られないが、作られた場合も RAM の経路では持たない（安全側）。
+    return planned.plan.kind === 'operation' || planned.plan.kind === 'accepted'
+      ? clarify('private_unsupported', null)
+      : planned.plan;
+  };
+
+  const postPrivateTurn = async (
+    request: ApiHandlerRequest,
+    device: NonNullable<ApiHandlerRequest['device']>,
+  ): Promise<{ status: number; body: object }> => {
+    const body = request.body as JsonObject;
+    const requestId = stringOf(body, 'request_id');
+    // 端末内の音声認識・Live の文字起こしは、通常の区切りと同じくこの経路では受けない。
+    if (stringOf(body, 'input_kind') !== 'text')
+      return apiErrorResponse(503, 'dependency_unavailable', requestId);
+    // 端末（流れの経路）が見ていた区切りが、今の記録しない区切り（保存境界の保持者の区切りの ID と世代）か。
+    // 区切りの ID は保持者が作った値で、DB の会話ではない。
+    const sessionId = request.params['session_id'] ?? '';
+    const started = options.storage.origin();
+    if (
+      sessionId !== started.segment_id ||
+      !originMatches(body['origin'], sessionId, started.segment_generation)
+    )
+      return apiErrorResponse(409, 'conflict', requestId);
+    const segment = {
+      segment_id: started.segment_id,
+      segment_generation: started.segment_generation,
+    };
+    // 捨てた回数を控える（処理の間にロック・忘却・終了で捨てたら、結果を持たない）。
+    const epoch = privateRam.epoch;
+    privateRam.bind(segment, utcTime(now()));
+    // 同じ要求の再送は RAM の控えの応答を返す（照合値が違えば 409）。受付レシート・応答は DB に書かない。
+    const ref = requestRef(request, sessionId);
+    const replay = privateRam.replay(segment, ref.command_id, ref.request_hash);
+    if (replay.kind === 'same') return { status: 200, body: replay.body };
+    if (replay.kind === 'conflict')
+      return apiErrorResponse(409, 'conflict', requestId);
+    const text = stringOf(body, 'text');
+    const control = resolveSessionControl(text, SESSION_CONTROL_TABLE, 'text');
+    let plan: TurnPlan;
+    if (control !== null)
+      plan = { kind: 'session_control', action: control.action };
+    else {
+      // 直前のやりとり（30 分・日付の変更を過ぎていれば空）を解釈の入力に添える。影モードの比較の控え（bases）には入れない
+      // （記録しない会話では影モードの記録を作らない。X48）。
+      const interpreted = await interpretInner(
+        text,
+        { recent_turns: privateRam.recent(segment, utcTime(now())) },
+        {},
+      );
+      plan = await privatePlan(interpreted, {
+        dedupe_key: ref.command_id,
+        session_id: sessionId,
+        workflow_id: randomUUID(),
+      });
+    }
+    // 処理の間に記録しない区切りを出た・入り直した・RAM を捨てた（ロック・忘却）なら、結果を持たずに断る（遅れて届いた結果を
+    // 次の区切りへ持ち込まない。ADR 0045 の origin_private）。
+    if (
+      options.storage.mode !== 'private' ||
+      !originCurrent(segment) ||
+      privateRam.epoch !== epoch
+    )
+      return apiErrorResponse(409, 'conflict', requestId);
+    const state = workflowState(plan);
+    const response = turnResponseBody({
+      requestId,
+      sessionId,
+      turnId: randomUUID(),
+      inputId: randomUUID(),
+      workflowId: state === null ? null : randomUUID(),
+      plan,
+    });
+    const held = privateRam.hold({
+      segment,
+      epoch,
+      key: ref.command_id,
+      hash: ref.request_hash,
+      body: response,
+      user_text: text,
+      buddy_text: response.reply_text,
+      at: utcTime(now()),
+    });
+    if (!held) return apiErrorResponse(409, 'conflict', requestId);
+    // 会話の操作は、その端末の開いている Live へも行う（記録しない間は Live を開かないので、多くは何もしない）。
+    if (control !== null)
+      options.onSessionControl?.({
+        device_id: device.device_id,
+        session_id: sessionId,
+        action: control.action,
+      });
+    return { status: 200, body: response };
+  };
+
   const postTurn: ApiRouteHandler = async (request) => {
     // 入力の時点の口座と許可の版は、最初の await より前に Core のメモリーから控える（外部へ問い合わせない）。
     // DB の照会を待つ間に別の要求が値を更新しても、発言を受けた時点の値で比べる（PR #107 の再々レビュー）。
@@ -1437,10 +1621,10 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     const body = request.body as JsonObject;
     const requestId = stringOf(body, 'request_id');
     if (device === null) return apiErrorResponse(401, 'unauthenticated');
-    // 記録しない区切りの間は DB の sessions を引かない（流れの経路は private の会話を作らない。ADR 0060）。
-    // 記録しない発言の受け取りは RAM の経路（2c）で足す。
+    // 記録しない区切りの間は DB の sessions を引かず、RAM の経路で受けて答える（流れの経路は private の会話を作らない。
+    // ADR 0060。RAM の保持は B06-07a-2 の 2c、ADR 0190）。
     if (options.storage.mode === 'private')
-      return apiErrorResponse(503, 'dependency_unavailable', requestId);
+      return postPrivateTurn(request, device);
     // 端末内の音声認識（local_asr）の入力は音声の区間と世代の照合が要る（B06）。B04-03 は文字入力だけ。
     // Live の文字起こし（voice_live）は端末のこの経路では受け付けない（中枢がサイドバンドで受ける。X49）。
     if (stringOf(body, 'input_kind') !== 'text')
@@ -1506,6 +1690,10 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
       text,
       plan: planned.plan,
       permissionAtInput: planned.permissionAtInput,
+      origin: {
+        segment_id: current.segment_id,
+        segment_generation: current.segment_generation,
+      },
     });
     if (done.kind === 'held')
       return apiErrorResponse(503, 'dependency_unavailable', requestId);
@@ -1562,6 +1750,11 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
   ): Promise<LiveCommitResult> => {
     // 入力の時点の許可の版は、最初の await より前に控える（postTurn と同じ）。
     const permission = observedPermission;
+    // 記録しない区切りの間は Live を開かない（ADR 0059）。開く前に始めた委譲が入った後に届いても保存しない。区切りの由来も
+    // ここで控え、保存の直前に照合する（処理の間に入った・出たら保存しない。ADR 0190）。
+    if (options.storage.mode === 'private')
+      return { kind: 'failed', status: 409 };
+    const liveOrigin = options.storage.origin();
     const session = await store.conversation({
       kind: 'session.get',
       session_id: live.session_id,
@@ -1642,6 +1835,10 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
       input: outcome,
       workflowId: live.workflow_id,
       precommit: live.precommit,
+      origin: {
+        segment_id: liveOrigin.segment_id,
+        segment_generation: liveOrigin.segment_generation,
+      },
     });
     if (done.kind === 'held') return { kind: 'held' };
     if (done.status !== 200) return { kind: 'failed', status: done.status };
@@ -1879,6 +2076,10 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
 
   return {
     handlers: { createSession, postTurn, previewOperation, displayOperation },
+    privateConversation: {
+      discard: (reason) => privateRam.discard(reason),
+      held: () => privateRam.held(),
+    },
     interpret: interpretTurn,
     commitLive,
     previewValid,

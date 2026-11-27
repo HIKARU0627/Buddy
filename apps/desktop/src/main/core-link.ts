@@ -532,6 +532,8 @@ export class DesktopCoreLink {
             valid: (name, value) => options.contract.valid(name, value),
             sha256: sha256Hex,
             log: (code) => this.#log(code),
+            // 読んだ複製の持ち主と照合する（登録し直したら、次の保存で前のファイルを退避する。U404）。
+            deviceId: () => this.#connection?.state.deviceId ?? null,
           });
     this.#pairing = new PairingFlow({
       fetchCertificate: options.fetchCertificate ?? fetchPeerCertificate,

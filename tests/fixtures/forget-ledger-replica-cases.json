@@ -1,6 +1,6 @@
 {
   "status": "specification_only",
-  "description": "端末の忘却台帳の複製と追いつき（B06-07b-3、Issue #179、設計 03、09 X15・X16、ADR 0040・0180・0182）の期待値。手で書いたもので、packages/client の ForgetLedgerSync の出力から生成していない。中枢は domain の forgetLedgerDelta（製品の Core と同じ判定）を使う模擬で、台帳の連鎖は試験の中で決まった規則から作る（lineage は系譜の名前、length は世代の数、fork_at はその世代から先の項目を別の内容にした枝）。sent は端末が送った head の世代の順、saved は端末の保存先に残った複製（null は何も保存していない）、matches は保存した複製がどちらの連鎖と同じか（core: 今の中枢、replica: 初めの端末の複製）、saves は続きの保存の回数、replaces は退避してからの保存の回数、set_aside は退避したファイルの数、issue は最後に残した理由のコード。faults の request は、その場合の中で何回目の要求に故障を入れるか（1 から）。entry_hash の既知値は packages/storage の ledgerEntryHash と、Python で手で組んだ JCS の文字列の SHA-256 の 2 つで同じ値になることを確かめた。",
+  "description": "端末の忘却台帳の複製と追いつき（B06-07b-3、Issue #179、設計 03、09 X15・X16、ADR 0040・0180・0182）の期待値。手で書いたもので、packages/client の ForgetLedgerSync の出力から生成していない。中枢は domain の forgetLedgerDelta（製品の Core と同じ判定）を使う模擬で、台帳の連鎖は試験の中で決まった規則から作る（lineage は系譜の名前、length は世代の数、fork_at はその世代から先の項目を別の内容にした枝）。sent は端末が送った head の世代の順、saved は端末の保存先に残った複製（null は何も保存していない）、matches は保存した複製がどちらの連鎖と同じか（core: 今の中枢、replica: 初めの端末の複製）、saves は続きの保存の回数、replaces は退避してからの保存の回数、set_aside は退避したファイルの数、issue は最後に残した理由のコード。faults の request は、その場合の中で何回目の要求に故障を入れるか（1 から）。entry_hash の既知値は packages/storage の ledgerEntryHash と、Python で手で組んだ JCS の文字列の SHA-256 の 2 つで同じ値になることを確かめた。 見直しの追加（ADR 0182 の追記）: faults の kind が diverged の要求は、続きを返せる head にも diverged と答える食い違った中枢。faults の save は、その場合の中で何回目の書き込み（save・replace）に故障を入れるか（save_fails は例外、too_large・set_aside_limit は保存先が返す結果）。load_faults は、読み込みの結果を順に 1 回ずつ入れる（transient は一時的に読めない、too_large は大きすぎる、throws は読み込みの例外。使い切ったら保存先の今の中身を返す）。replica_device は読んだ複製の持ち主（same は今の端末 ID、other は別の端末 ID、省けば持ち主を返さない）。loads は読み込みの回数。",
   "lineages": {
     "A": "a1a1a1a1-0000-4000-8000-00000000000a",
     "B": "b2b2b2b2-0000-4000-8000-00000000000b"
@@ -607,6 +607,220 @@
         "replaces": 1,
         "set_aside": 1,
         "issue": null
+      }
+    },
+    {
+      "id": "x16-replica-diverged-repeated-in-one-sync-sets-aside-once",
+      "replica": { "lineage": "A", "length": 3 },
+      "core": { "lineage": "A", "length": 5 },
+      "page_limit": 2,
+      "faults": [
+        { "request": 1, "kind": "diverged" },
+        { "request": 3, "kind": "diverged" },
+        { "request": 4, "kind": "diverged" },
+        { "request": 6, "kind": "diverged" }
+      ],
+      "steps": [
+        {
+          "do": "connected",
+          "expect": {
+            "saved": { "lineage": "A", "length": 2 },
+            "issue": "diverged_repeated"
+          }
+        },
+        {
+          "do": "connected",
+          "expect": {
+            "saved": { "lineage": "A", "length": 2 },
+            "issue": "diverged_repeated"
+          }
+        },
+        { "do": "connected" }
+      ],
+      "expected": {
+        "sent": ["3", "0", "2", "2", "0", "2", "2", "4"],
+        "saved": { "lineage": "A", "length": 5 },
+        "matches": "core",
+        "saves": 2,
+        "replaces": 2,
+        "set_aside": 2,
+        "issue": null
+      }
+    },
+    {
+      "id": "x16-replica-unreadable-then-diverged-in-one-sync-stops",
+      "replica": "unreadable",
+      "core": { "lineage": "A", "length": 5 },
+      "page_limit": 2,
+      "faults": [{ "request": 2, "kind": "diverged" }],
+      "steps": [{ "do": "connected" }],
+      "expected": {
+        "sent": ["0", "2"],
+        "saved": { "lineage": "A", "length": 2 },
+        "saves": 0,
+        "replaces": 1,
+        "set_aside": 1,
+        "issue": "diverged_repeated"
+      }
+    },
+    {
+      "id": "x16-replica-transient-read-does-not-roll-back-head",
+      "replica": { "lineage": "A", "length": 5 },
+      "core": { "lineage": "A", "length": 3 },
+      "load_faults": ["transient"],
+      "steps": [
+        {
+          "do": "connected",
+          "expect": {
+            "saved": { "lineage": "A", "length": 5 },
+            "issue": "replica_unavailable"
+          }
+        },
+        { "do": "connected" }
+      ],
+      "expected": {
+        "sent": ["5"],
+        "loads": 2,
+        "saved": { "lineage": "A", "length": 5 },
+        "matches": "replica",
+        "saves": 0,
+        "replaces": 0,
+        "set_aside": 0,
+        "issue": "replica_ahead"
+      }
+    },
+    {
+      "id": "x16-replica-transient-read-retried-on-next-sync",
+      "replica": { "lineage": "A", "length": 2 },
+      "core": { "lineage": "A", "length": 4 },
+      "load_faults": ["throws", "transient"],
+      "steps": [
+        {
+          "do": "notice",
+          "generation": "4",
+          "expect": {
+            "saved": { "lineage": "A", "length": 2 },
+            "issue": "replica_unavailable"
+          }
+        },
+        {
+          "do": "connected",
+          "expect": {
+            "saved": { "lineage": "A", "length": 2 },
+            "issue": "replica_unavailable"
+          }
+        },
+        { "do": "connected" }
+      ],
+      "expected": {
+        "sent": ["2"],
+        "loads": 3,
+        "saved": { "lineage": "A", "length": 4 },
+        "matches": "core",
+        "saves": 1,
+        "replaces": 0,
+        "set_aside": 0,
+        "issue": null
+      }
+    },
+    {
+      "id": "x16-replica-too-large-read-kept-without-set-aside",
+      "replica": { "lineage": "A", "length": 5 },
+      "core": { "lineage": "B", "length": 2 },
+      "load_faults": ["too_large", "too_large"],
+      "steps": [{ "do": "connected" }, { "do": "connected" }],
+      "expected": {
+        "sent": [],
+        "loads": 2,
+        "saved": { "lineage": "A", "length": 5 },
+        "matches": "replica",
+        "saves": 0,
+        "replaces": 0,
+        "set_aside": 0,
+        "issue": "replica_too_large"
+      }
+    },
+    {
+      "id": "x16-replica-too-large-write-keeps-previous",
+      "replica": { "lineage": "A", "length": 1 },
+      "core": { "lineage": "A", "length": 3 },
+      "faults": [{ "save": 1, "kind": "too_large" }],
+      "steps": [{ "do": "connected" }],
+      "expected": {
+        "sent": ["1"],
+        "saved": { "lineage": "A", "length": 1 },
+        "matches": "replica",
+        "saves": 0,
+        "replaces": 0,
+        "set_aside": 0,
+        "issue": "replica_too_large"
+      }
+    },
+    {
+      "id": "x16-replica-set-aside-limit-keeps-replica",
+      "replica": { "lineage": "A", "length": 3 },
+      "core": { "lineage": "B", "length": 2 },
+      "faults": [{ "save": 1, "kind": "set_aside_limit" }],
+      "steps": [{ "do": "connected" }],
+      "expected": {
+        "sent": ["3", "0"],
+        "saved": { "lineage": "A", "length": 3 },
+        "matches": "replica",
+        "saves": 0,
+        "replaces": 0,
+        "set_aside": 0,
+        "issue": "set_aside_limit",
+        "replace_pending": true
+      }
+    },
+    {
+      "id": "x16-replica-other-device-set-aside-on-next-save",
+      "replica": { "lineage": "A", "length": 2 },
+      "replica_device": "other",
+      "core": { "lineage": "A", "length": 3 },
+      "steps": [{ "do": "connected" }],
+      "expected": {
+        "sent": ["2"],
+        "saved": { "lineage": "A", "length": 3 },
+        "matches": "core",
+        "saves": 0,
+        "replaces": 1,
+        "set_aside": 1,
+        "issue": null
+      }
+    },
+    {
+      "id": "x16-replica-other-device-nothing-new-keeps-file",
+      "replica": { "lineage": "A", "length": 3 },
+      "replica_device": "other",
+      "core": { "lineage": "A", "length": 3 },
+      "steps": [{ "do": "connected" }],
+      "expected": {
+        "sent": ["3"],
+        "saved": { "lineage": "A", "length": 3 },
+        "matches": "replica",
+        "saves": 0,
+        "replaces": 0,
+        "set_aside": 0,
+        "issue": null,
+        "replace_pending": true
+      }
+    },
+    {
+      "id": "x16-replica-same-device-saves-in-place",
+      "replica": { "lineage": "A", "length": 2 },
+      "replica_device": "same",
+      "core": { "lineage": "A", "length": 3 },
+      "steps": [{ "do": "connected" }],
+      "expected": {
+        "sent": ["2"],
+        "saved": { "lineage": "A", "length": 3 },
+        "matches": "core",
+        "saves": 1,
+        "replaces": 0,
+        "set_aside": 0,
+        "issue": null,
+        "replace_pending": false
       }
     }
   ]

@@ -9,8 +9,13 @@
 //   どれかが違う応答（部分の複製・hash の食い違い・系譜の違い）は保存せず、理由だけを残して次の同期で取り直す。
 // - diverged（中枢が、端末の複製は中枢の台帳の続きでないと答えた）: 保存しないまま、世代 0 から取り直す。取り直した
 //   中枢の台帳を保存するときに、今の複製を消さずに退避する（中枢が忘却を失った証拠として残す。ADR 0182）。
+//   1 回の同期で、diverged による取り直しと退避はそれぞれ 1 回まで。2 回目の diverged はその同期を止める（U405）。
 // - replica_ahead（端末が中枢より新しい世代を持つ）: 巻き戻さず、何も保存しない。
-// - 前の複製が読めない: 世代 0 から取り直し、最初の保存のときに読めないファイルを退避する。
+// - 前の複製が読めない（中身が壊れている）: 世代 0 から取り直し、最初の保存のときに読めないファイルを退避する。
+// - 前の複製を一時的に読めない（ほかのプログラムが開いている・権限）・大きすぎる: その同期では送りも保存も退避もせず、
+//   次の同期で読み直す（正常な複製を退避して head を巻き戻さない。U407）。
+// - 複製の持ち主（device_id）が今の端末 ID と違う（登録し直した）: 連鎖はそのまま使い、次に保存するときに前のファイルを
+//   退避してから今の端末 ID で書く（U404）。
 // ログには決まった理由のコードだけを出し、台帳の中身（ID・HMAC・世代・hash）を出さない。
 // Node・DOM・Electron の API を使わない（SHA-256・保存・通信は端末の main が渡す）。
 
@@ -292,21 +297,47 @@ export type LedgerReplicaIssue =
   // 保存できなかった。
   | 'save_failed'
   // 1 回の同期の頁の上限に達した（次の同期で続ける）。
-  | 'page_limit';
+  | 'page_limit'
+  // 取り直した台帳を保存した後で、同じ同期の中でまた diverged と答えた（取り直しを繰り返さない。U405）。
+  | 'diverged_repeated'
+  // 退避したファイルが上限に達した（新しく退避せず、置き換えない。U405）。
+  | 'set_aside_limit'
+  // 前の複製を一時的に読めない（次の同期で読み直す。U407）。
+  | 'replica_unavailable'
+  // 前の複製・保存する複製が大きさの上限を超える（退避も置き換えもしない。U408）。
+  | 'replica_too_large';
 
 export type LedgerReplicaLoad =
   | { readonly kind: 'missing' }
-  | { readonly kind: 'loaded'; readonly chain: LedgerReplicaChain }
-  // 読めない・壊れている・部分の複製。使わず、世代 0 から取り直し、最初の保存で退避する。
-  | { readonly kind: 'unreadable' };
+  | {
+      readonly kind: 'loaded';
+      readonly chain: LedgerReplicaChain;
+      // 複製の持ち主（保存したときの端末 ID）。分からなければ省く（照合しない）。
+      readonly device_id?: string;
+    }
+  // 中身が壊れている（JSON・UTF-8・契約の形・連鎖・部分の複製）。使わず、世代 0 から取り直し、最初の保存で退避する。
+  | { readonly kind: 'unreadable' }
+  // 一時的に読めない（ほかのプログラムが開いている・権限など、中身を確かめられなかった）。退避も置き換えもしない。
+  | { readonly kind: 'transient' }
+  // 大きさの上限を超える。読まず、退避も置き換えもしない。
+  | { readonly kind: 'too_large' };
+
+// 保存の結果。保存できなかった（書き込みの失敗）は例外にする。
+export type LedgerReplicaWriteResult =
+  | 'saved'
+  // 書く複製が大きさの上限を超える（書かない。読み直せないファイルを作らない）。
+  | 'too_large'
+  // 退避したファイルが上限に達した（退避も置き換えもしない。replace だけ）。
+  | 'set_aside_limit';
 
 export interface LedgerReplicaStorePort {
-  // 前に保存した複製を読む（最初の同期の前に 1 回だけ）。
+  // 前に保存した複製を読む（最初の同期の前に 1 回。一時的に読めない・大きすぎるときは次の同期で読み直す）。
   load(): Promise<LedgerReplicaLoad>;
   // 今の複製の続きを保存する（一時ファイル → fsync → rename → ディレクトリの fsync）。
-  save(chain: LedgerReplicaChain): Promise<void>;
-  // 今のファイル（読めないもの・中枢と食い違うもの）を消さずに退避してから、chain を保存する。
-  replace(chain: LedgerReplicaChain): Promise<void>;
+  save(chain: LedgerReplicaChain): Promise<LedgerReplicaWriteResult>;
+  // 今のファイル（読めないもの・中枢と食い違うもの・持ち主の違うもの）を消さずに退避してから、chain を保存する。
+  // 置き換えの間も、保存先のファイルが欠ける時間を作らない。
+  replace(chain: LedgerReplicaChain): Promise<LedgerReplicaWriteResult>;
 }
 
 export type LedgerSyncRequestOutcome =
@@ -331,6 +362,8 @@ export interface ForgetLedgerSyncOptions {
   readonly sha256: Sha256Hex;
   readonly log?: (code: string) => void;
   readonly maxPagesPerRun?: number;
+  // 今の登録の端末 ID（分からなければ null。読んだ複製の持ち主と照合する）。
+  readonly deviceId?: () => string | null;
 }
 
 export interface ForgetLedgerSyncState {
@@ -338,7 +371,7 @@ export interface ForgetLedgerSyncState {
   readonly head: ForgetLedgerSyncRequest;
   // 最後の同期で残した理由（追いついたら null）。
   readonly issue: LedgerReplicaIssue | null;
-  // 次の保存で、今のファイルを退避するか（読めない複製・中枢と食い違う複製）。
+  // 次の保存で、今のファイルを退避するか（読めない複製・中枢と食い違う複製・持ち主の違う複製）。
   readonly replace_pending: boolean;
   // 送った同期の要求の数（試験と状態の確認用）。
   readonly requests: number;
@@ -352,8 +385,15 @@ type Target = Pick<
 export class ForgetLedgerSync {
   readonly #options: ForgetLedgerSyncOptions;
   #load: Promise<void> | null = null;
+  // 読み込みが一時的に失敗した・大きすぎた（その同期を止め、次の同期で読み直す）。
+  #loadBlocked: LedgerReplicaIssue | null = null;
+  // 読んだ複製の持ち主（最初の同期で今の端末 ID と照合したら null）。
+  #owner: string | null = null;
   #chain: LedgerReplicaChain = EMPTY_LEDGER_CHAIN;
+  // 次の保存で、今のファイルを退避してから書く。
   #replaceNext = false;
+  // 送る head を世代 0 にする（diverged の後。取り直した台帳を保存するまで）。
+  #refetch = false;
   #issue: LedgerReplicaIssue | null = null;
   #requests = 0;
   #running: Promise<void> | null = null;
@@ -409,12 +449,27 @@ export class ForgetLedgerSync {
       try {
         loaded = await this.#options.store.load();
       } catch {
-        loaded = { kind: 'unreadable' };
+        // 読めたかどうか分からない。正常な複製を退避しないよう、一時的に読めないものとして扱う。
+        loaded = { kind: 'transient' };
       }
-      if (loaded.kind === 'loaded') this.#chain = loaded.chain;
-      else if (loaded.kind === 'unreadable') {
-        this.#replaceNext = true;
-        this.#log('replica_unreadable');
+      this.#loadBlocked = null;
+      switch (loaded.kind) {
+        case 'loaded':
+          this.#chain = loaded.chain;
+          this.#owner = loaded.device_id ?? null;
+          break;
+        case 'missing':
+          break;
+        case 'unreadable':
+          this.#replaceNext = true;
+          this.#log('replica_unreadable');
+          break;
+        case 'transient':
+          this.#loadBlocked = 'replica_unavailable';
+          break;
+        case 'too_large':
+          this.#loadBlocked = 'replica_too_large';
+          break;
       }
     })();
     return this.#load;
@@ -441,9 +496,17 @@ export class ForgetLedgerSync {
     }
     const running = (async () => {
       try {
-        await this.#ensureLoaded();
         for (;;) {
           this.#again = null;
+          await this.#ensureLoaded();
+          const blocked = this.#loadBlocked;
+          if (blocked !== null) {
+            // 何も送らず・保存せず・退避せずに止め、次の同期でファイルを読み直す。
+            this.#load = null;
+            this.#loadBlocked = null;
+            this.#stop(blocked);
+            break;
+          }
           await this.#run();
           const again: 'connected' | Target | null = this.#again;
           if (again === null) break;
@@ -465,8 +528,19 @@ export class ForgetLedgerSync {
   async #run(): Promise<void> {
     const options = this.#options;
     const maxPages = options.maxPagesPerRun ?? FORGET_LEDGER_SYNC_MAX_PAGES;
+    // 読んだ複製の持ち主が今の端末 ID と違えば（登録し直した）、次の保存で前のファイルを退避する（連鎖はそのまま使う）。
+    const deviceId = options.deviceId?.() ?? null;
+    if (this.#owner !== null && deviceId !== null) {
+      if (this.#owner !== deviceId && this.#chain.entries.length > 0) {
+        this.#replaceNext = true;
+        this.#log('replica_other_device');
+      }
+      this.#owner = null;
+    }
     // 送る head の連鎖。diverged の後は空（世代 0）から取り直す。
-    let base = this.#replaceNext ? EMPTY_LEDGER_CHAIN : this.#chain;
+    let base = this.#refetch ? EMPTY_LEDGER_CHAIN : this.#chain;
+    // この同期で diverged による取り直しか退避をしたか（どちらも 1 回の同期で 1 回まで）。
+    let refetchedInRun = false;
     for (let page = 0; page < maxPages; page += 1) {
       this.#requests += 1;
       let outcome: LedgerSyncRequestOutcome;
@@ -491,7 +565,12 @@ export class ForgetLedgerSync {
       if (applied.kind === 'diverged') {
         // 世代 0 を送っても食い違う応答は中枢の誤り。取り直しを繰り返さない。
         if (base.entries.length === 0) return this.#stop('diverged');
+        // 同じ同期の中で 2 回目（取り直した台帳か、退避の後に保存した台帳が、また続きでないと言われた）: 止める。
+        // 取り直すたびに退避すると、食い違う中枢に対して退避したファイルが際限なく増える（U405）。
+        if (refetchedInRun) return this.#stop('diverged_repeated');
         this.#stop('diverged');
+        refetchedInRun = true;
+        this.#refetch = true;
         this.#replaceNext = true;
         base = EMPTY_LEDGER_CHAIN;
         continue;
@@ -505,15 +584,24 @@ export class ForgetLedgerSync {
           applied.core_generation < BigInt(this.#chain.entries.length)
         )
           return this.#stop('replica_ahead');
+        // 退避は 1 回の同期で 1 回まで（読めない複製を退避した後の diverged は上で止まる）。
+        let written: LedgerReplicaWriteResult;
         try {
-          if (replacing) await options.store.replace(applied.chain);
-          else await options.store.save(applied.chain);
+          written = replacing
+            ? await options.store.replace(applied.chain)
+            : await options.store.save(applied.chain);
         } catch {
           return this.#stop('save_failed');
         }
-        if (replacing) this.#log('replica_set_aside');
+        if (written === 'too_large') return this.#stop('replica_too_large');
+        if (written === 'set_aside_limit') return this.#stop('set_aside_limit');
+        if (replacing) {
+          this.#log('replica_set_aside');
+          refetchedInRun = true;
+        }
         this.#chain = applied.chain;
         this.#replaceNext = false;
+        this.#refetch = false;
       }
       base = applied.chain;
       if (!applied.has_more) {

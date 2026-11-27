@@ -29,6 +29,7 @@ import type {
   LedgerReplicaChain,
   LedgerReplicaLoad,
   LedgerReplicaStorePort,
+  LedgerReplicaWriteResult,
   LedgerSyncRequestOutcome,
 } from './forget-ledger.js';
 import { schemaContract } from './test-support.js';
@@ -52,6 +53,9 @@ interface Fault {
   readonly kind: string;
 }
 
+// 読み込みの結果を入れる（順に 1 回ずつ。使い切ったら保存先の今の中身を返す）。
+type LoadFault = 'transient' | 'too_large' | 'throws';
+
 interface Step {
   readonly do:
     'connected' | 'notice' | 'notice_malformed' | 'restart' | 'core_becomes';
@@ -67,12 +71,16 @@ interface Step {
 interface SyncCase {
   readonly id: string;
   readonly replica: ChainSpec | null | 'unreadable';
+  // 読んだ複製の持ち主（省けば持ち主を返さない）。same は今の端末 ID、other は別の端末 ID。
+  readonly replica_device?: 'same' | 'other';
   readonly core: ChainSpec;
   readonly page_limit?: number;
   readonly faults?: readonly Fault[];
+  readonly load_faults?: readonly LoadFault[];
   readonly steps: readonly Step[];
   readonly expected: {
     readonly sent: readonly string[];
+    readonly loads?: number;
     readonly saved: ChainSpec | null | 'unreadable';
     readonly matches?: 'core' | 'replica' | 'first_core';
     readonly saves: number;
@@ -209,6 +217,13 @@ function faulted(
       status: 503,
       body: { error: { code: 'dependency_unavailable', request_id: null } },
     };
+  // 食い違った中枢: 続きを返せる head にも diverged と答える。
+  if (kind === 'diverged')
+    return {
+      kind: 'response',
+      status: 200,
+      body: { ...delta, outcome: 'diverged', entries: [], has_more: false },
+    };
   const body = clone(delta) as {
     ledger_id: string | null;
     head: { forgetting_generation: string; entry_hash: string };
@@ -250,42 +265,72 @@ function faulted(
   return { kind: 'response', status: 200, body };
 }
 
+const DEVICE = 'd0000000-0000-4000-8000-00000000000d';
+const OTHER_DEVICE = 'd0000000-0000-4000-8000-0000000000ee';
+
 class MemoryStore implements LedgerReplicaStorePort {
   saved: LedgerReplicaChain | 'unreadable' | null;
   saves = 0;
   replaces = 0;
+  loads = 0;
   readonly setAside: (LedgerReplicaChain | 'unreadable')[] = [];
   #attempts = 0;
-  readonly #failAt: ReadonlySet<number>;
+  // 書き込みの何回目を、失敗（例外）か、結果（大きすぎる・退避の上限）にするか。
+  readonly #faults: ReadonlyMap<number, string>;
+  readonly #loadFaults: LoadFault[];
+  #owner: string | undefined;
   constructor(
     initial: LedgerReplicaChain | 'unreadable' | null,
-    failAt: number[],
+    faults: readonly Fault[] = [],
+    loadFaults: readonly LoadFault[] = [],
+    owner?: string,
   ) {
     this.saved = initial;
-    this.#failAt = new Set(failAt);
+    this.#faults = new Map(
+      faults
+        .filter((fault) => fault.save !== undefined)
+        .map((fault) => [fault.save as number, fault.kind]),
+    );
+    this.#loadFaults = [...loadFaults];
+    this.#owner = owner;
   }
   load(): Promise<LedgerReplicaLoad> {
+    this.loads += 1;
+    const fault = this.#loadFaults.shift();
+    if (fault === 'throws') return Promise.reject(new Error('synthetic_load'));
+    if (fault !== undefined) return Promise.resolve({ kind: fault });
     if (this.saved === null) return Promise.resolve({ kind: 'missing' });
     if (this.saved === 'unreadable')
       return Promise.resolve({ kind: 'unreadable' });
-    return Promise.resolve({ kind: 'loaded', chain: this.saved });
+    return Promise.resolve(
+      this.#owner === undefined
+        ? { kind: 'loaded', chain: this.saved }
+        : { kind: 'loaded', chain: this.saved, device_id: this.#owner },
+    );
   }
-  #attempt(): void {
+  #attempt(): LedgerReplicaWriteResult {
     this.#attempts += 1;
-    if (this.#failAt.has(this.#attempts)) throw new Error('synthetic_save');
+    const fault = this.#faults.get(this.#attempts);
+    if (fault === 'too_large' || fault === 'set_aside_limit') return fault;
+    if (fault !== undefined) throw new Error('synthetic_save');
+    return 'saved';
   }
-  save(chain: LedgerReplicaChain): Promise<void> {
-    this.#attempt();
+  save(chain: LedgerReplicaChain): Promise<LedgerReplicaWriteResult> {
+    const result = this.#attempt();
+    if (result !== 'saved') return Promise.resolve(result);
     this.saved = chain;
+    this.#owner = DEVICE;
     this.saves += 1;
-    return Promise.resolve();
+    return Promise.resolve(result);
   }
-  replace(chain: LedgerReplicaChain): Promise<void> {
-    this.#attempt();
+  replace(chain: LedgerReplicaChain): Promise<LedgerReplicaWriteResult> {
+    const result = this.#attempt();
+    if (result !== 'saved') return Promise.resolve(result);
     if (this.saved !== null) this.setAside.push(this.saved);
     this.saved = chain;
+    this.#owner = DEVICE;
     this.replaces += 1;
-    return Promise.resolve();
+    return Promise.resolve(result);
   }
 }
 
@@ -453,10 +498,16 @@ for (const scenario of cases.sync_cases) {
       scenario.replica === null || scenario.replica === 'unreadable'
         ? scenario.replica
         : buildChain(scenario.replica);
-    const saveFaults = (scenario.faults ?? [])
-      .filter((fault) => fault.save !== undefined)
-      .map((fault) => fault.save as number);
-    const store = new MemoryStore(initial, saveFaults);
+    const store = new MemoryStore(
+      initial,
+      scenario.faults,
+      scenario.load_faults,
+      scenario.replica_device === undefined
+        ? undefined
+        : scenario.replica_device === 'same'
+          ? DEVICE
+          : OTHER_DEVICE,
+    );
     const sent: string[] = [];
     const logs: string[] = [];
     const request = (
@@ -482,6 +533,7 @@ for (const scenario of cases.sync_cases) {
         valid,
         sha256,
         log: (code) => logs.push(code),
+        deviceId: () => DEVICE,
       });
     let sync = make();
     for (const step of scenario.steps) {
@@ -543,31 +595,37 @@ for (const scenario of cases.sync_cases) {
     assert.equal(store.saves, expected.saves, 'saves');
     assert.equal(store.replaces, expected.replaces, 'replaces');
     assert.equal(store.setAside.length, expected.set_aside, 'set aside');
+    if (expected.loads !== undefined)
+      assert.equal(store.loads, expected.loads, 'loads');
     assert.equal(sync.state.issue, expected.issue, 'issue');
     if (expected.replace_pending !== undefined)
       assert.equal(sync.state.replace_pending, expected.replace_pending);
-    // 退避した複製は、初めの端末の複製か、前に保存した中枢の台帳のどちらか（消していない）。
+    // 退避した複製は、初めの端末の複製か、前に保存した中枢の台帳（その頭の部分）のどちらか（消していない）。
     for (const aside of store.setAside)
       assert(
         aside === 'unreadable' ||
           (initial !== null &&
             initial !== 'unreadable' &&
             sameChain(aside, initial)) ||
-          sameChain(aside, firstCore),
+          (aside.ledger_id === firstCore.ledger_id &&
+            sameChain(aside, {
+              ledger_id: firstCore.ledger_id,
+              entries: firstCore.entries.slice(0, aside.entries.length),
+            })),
         'set-aside replica is an earlier copy',
       );
     // ログは決まったコードだけ（台帳の中身・世代・hash を出さない）。
     for (const code of logs)
       assert.match(
         code,
-        /^forget_ledger:(diverged|replica_ahead|chain_invalid|response_invalid|unreachable|save_failed|page_limit|replica_unreadable|replica_set_aside|notice_invalid)$/u,
+        /^forget_ledger:(diverged|diverged_repeated|replica_ahead|chain_invalid|response_invalid|unreachable|save_failed|page_limit|set_aside_limit|replica_unavailable|replica_too_large|replica_unreadable|replica_other_device|replica_set_aside|notice_invalid)$/u,
       );
   });
 }
 
 test('a notice that arrives during a sync is served by the same run when the head is reached', async () => {
   const core = buildChain({ lineage: 'A', length: 3 });
-  const store = new MemoryStore(null, []);
+  const store = new MemoryStore(null);
   const sent: string[] = [];
   let release: () => void = () => undefined;
   const gate = new Promise<void>((resolve) => {
@@ -597,7 +655,7 @@ test('a notice that arrives during a sync is served by the same run when the hea
 
 test('a reconnection during a sync runs one more sync after it', async () => {
   let core = buildChain({ lineage: 'A', length: 2 });
-  const store = new MemoryStore(null, []);
+  const store = new MemoryStore(null);
   const sent: string[] = [];
   let release: () => void = () => undefined;
   const gate = new Promise<void>((resolve) => {
@@ -624,4 +682,45 @@ test('a reconnection during a sync runs one more sync after it', async () => {
   // 1 回目は世代 2 の頃の台帳（応答は今の台帳から作るので 4 まで届く）。もう 1 回だけ送り、何も取らない。
   assert.deepEqual(sent, ['0', '4']);
   assert.equal(store.saves, 1);
+});
+
+test('a core that keeps answering diverged gets one refetch and one set-aside per sync', async () => {
+  // 食い違った中枢: 世代 0 には頁を返すが、それ以外の head にはいつも diverged と答える。
+  const core = buildChain({ lineage: 'A', length: 10 });
+  const store = new MemoryStore(buildChain({ lineage: 'A', length: 3 }));
+  const sent: string[] = [];
+  const logs: string[] = [];
+  const sync = new ForgetLedgerSync({
+    store,
+    request: (body) => {
+      sent.push(body.forgetting_generation);
+      const delta = deltaOf(core, body, 2);
+      return Promise.resolve({
+        kind: 'response',
+        status: 200,
+        body:
+          body.forgetting_generation === '0'
+            ? delta
+            : { ...delta, outcome: 'diverged', entries: [], has_more: false },
+      });
+    },
+    valid,
+    sha256,
+    log: (code) => logs.push(code),
+  });
+  await sync.connected();
+  assert.deepEqual(sent, ['3', '0', '2']);
+  assert.equal(store.replaces, 1);
+  assert.equal(store.setAside.length, 1);
+  assert.equal(sync.state.issue, 'diverged_repeated');
+  assert.deepEqual(logs, [
+    'forget_ledger:diverged',
+    'forget_ledger:replica_set_aside',
+    'forget_ledger:diverged_repeated',
+  ]);
+  // 次の同期も 1 回の取り直しと 1 回の退避で止まる（同期ごとに 1 個まで。数の上限は保存先が持つ）。
+  await sync.connected();
+  assert.deepEqual(sent, ['3', '0', '2', '2', '0', '2']);
+  assert.equal(store.setAside.length, 2);
+  assert.equal(sync.state.issue, 'diverged_repeated');
 });

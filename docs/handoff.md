@@ -53,10 +53,11 @@
 | #342 | 0183        | 忘却の画面（記憶の一覧・忘却の計画・確認の帯）。公開ゲートは閉じたまま（Issue #180）  |
 | #343 | なし        | B06 の模擬の統合試験・証拠・完了判定（Issue #145。B06 は完了としない）                |
 | #344 | 0185        | 忘却の計画で消える指示の本文を返し、忘却の画面に本文の行を出す（U433）                |
+| #345 | 0186        | 忘却の命令の後に WAL を切り詰め、忘れた暗号文を WAL に残さない（U440）                |
 
 ## 作業中の PR
 
-- U440: 忘却の命令の COMMIT の後に WAL を切り詰める（ADR 0186、U463・U464）。busy・失敗のときは忘却を成功のままにし、次の掃除の後に再試行する。公開ゲートは閉じたまま。ゲートを開くか（U431）は本人の判断で、その前に U385・U383 と実機の確認が残る。
+- UI-05 の段階 3: Core の知らせ（期限切れ・忘却・忘却台帳）を WSS の `notice` で開いている購読へ流し、期限切れ・忘却でキャンバスの物を閉じる（ADR 0187、U465〜U469）。端末は台帳の知らせで追いつく（U403 を閉じた）。再送・永続はしない（U168）。忘却の公開ゲートは閉じたまま。
 - B04・B05・B07 の模擬証拠は、main の現行のソースと一致しない（`pnpm run evidence:check`。この期間より前からの食い違いを含む）。それぞれの工程か main の記録の更新のときに作り直す。
 
 CI が通ればマージしてよいと本人から許可を受けている。マージの状態は GitHub の PR の画面で確かめる。
@@ -139,5 +140,5 @@ CI が通ればマージしてよいと本人から許可を受けている。�
 - コミットの前に `pnpm run security:staged`、push の前に `pnpm run security:scan`。
 - 公開物の検査は、`example.com`・`example.org`・`example.net`・`example.invalid` 以外のメールアドレスの形を拒む。試験の送り主は合成の一覧を引数で渡している（`checkHouseholdNoticeSender` の第 2 引数、`createHouseholdMailIntake` の `issuers`）。検査を避ける書き方はしない。
 - マイグレーションを足すときは、`packages/storage/src/migrations.test.ts` の一覧・hash・表の数、`packages/domain/src/backup-plan.ts` の表の分類、`packages/storage/src/policy.ts`、`tests/fixtures/backup-restore-cases.json`、`packages/storage/migrations/README.md` をそろえ、試験の中の DB の版（`store-binding`・`db-worker`・`backup-ops`・`backup-store`・`operation-retention`・`voice-store`・`restore-aftermath-store`・`apps/core` の `backup`・`restore`・`forget-ledger` の試験、`tests/integration/b05-expectations.json`・`b07-expectations.json`）を上げる。除外する表なら `backup-store.test.ts` と `apps/core/src/backup.test.ts` の除外の一覧も直す。
-- 次の ADR の番号は 0187、次の未決事項の番号は U465（U411〜U429・U441〜U459 は空き）。
+- 次の ADR の番号は 0188、次の未決事項の番号は U470（U411〜U429・U441〜U459 は空き）。
 - この環境の既定の Node.js が 22 のときは、24 系を PATH の先頭に置いてから pnpm を使う（`pnpm install` が版の違いで止まる）。clone の履歴が浅いと push の前の検査（`pnpm run security:scan`）が止まるので、`git fetch --unshallow` で全履歴を取ってから検査する。

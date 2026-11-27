@@ -761,3 +761,53 @@ test('request sends only while live, adds the scope when asked, and never retrie
   assert.equal(connection.state.phase, 'reregistration_required');
   connection.stop();
 });
+
+test('notices on the stream reach onNotice; unknown or malformed notices are ignored without dropping the stream (ADR 0187)', async () => {
+  const { transport, connection } = setup();
+  const received: unknown[] = [];
+  connection.onNotice(() => {
+    throw new Error('first listener');
+  });
+  connection.onNotice((notice) => received.push(notice));
+  await connectLive(transport, connection);
+  const stream = transport.streams[0];
+  const ledger = {
+    schema: 'buddy.forget-ledger-notice.v1',
+    notice_id: IDS.event1,
+    occurred_at: '2030-10-01T00:00:00Z',
+    kind: 'ledger_advanced',
+    ledger_id: IDS.event2,
+    forgetting_generation: '2',
+    entry_hash: HASH,
+  };
+  const expired = {
+    schema: 'buddy.retention-notice.v1',
+    notice_id: IDS.event3,
+    occurred_at: '2030-10-01T00:00:00Z',
+    kind: 'expired',
+    reason: 'retention_due',
+    forgetting_generation: null,
+    items: [{ item_kind: 'turn', item_id: IDS.op1 }],
+  };
+  // 知らない知らせ・本文の欄を持つ知らせ・欄の欠けた知らせは渡さず、購読も切らない。
+  stream?.send({
+    type: 'notice',
+    notice: { schema: 'buddy.future-notice.v1', notice_id: IDS.event1 },
+  });
+  stream?.send({ type: 'notice', notice: { ...ledger, text: '本文' } });
+  stream?.send({ type: 'notice' });
+  stream?.send({ type: 'notice', notice: ledger });
+  stream?.send({ type: 'notice', notice: expired });
+  await settle();
+  assert.deepEqual(received, [ledger, expired]);
+  assert.equal(connection.state.phase, 'live');
+  assert.equal(connection.state.reason, null);
+  assert.equal(stream?.closed, false);
+  // 知らせはイベントの cursor を進めない。
+  assert.equal(connection.state.cursor, 'cursor-5');
+  // 知らせ以外の形の違いは、従来どおり接続し直す。
+  stream?.send({ type: 'unknown-kind' });
+  await settle();
+  assert.equal(connection.state.reason, 'protocol_error');
+  connection.stop();
+});

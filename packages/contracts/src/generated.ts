@@ -1037,6 +1037,10 @@ export type EventStreamMessage =
       canvas_revision: CanvasRevision;
     }
   | {
+      type: 'notice';
+      notice: RetentionNotice | ForgetLedgerNotice | StorageBoundaryNotice;
+    }
+  | {
       type: 'resnapshot_required';
       reason: 'store_generation_changed' | 'history_expired' | 'scope_expired';
     };
@@ -1044,6 +1048,36 @@ export type EventStreamMessage =
  * キャンバスの記述の版（ADR 0032）。Core が変更の束ごとに 1 進める。state_revision・request_revision とは別。
  */
 export type CanvasRevision = string;
+/**
+ * 期限切れ・忘却の知らせ（キャンバス向け。UI-05、ADR 0040）。ID と理由だけで、本文・要約・検索語を入れない。受け取った側は該当の物を表示から消す。期限切れは forgetting_generation が null、忘却は台帳の世代を持つ。
+ */
+export type RetentionNotice =
+  | {
+      schema: 'buddy.retention-notice.v1';
+      notice_id: Id;
+      occurred_at: UtcTime;
+      kind: 'expired';
+      reason: 'retention_due' | 'review_unanswered' | 'summary_origin_expired';
+      forgetting_generation: null;
+      /**
+       * @minItems 1
+       * @maxItems 256
+       */
+      items: [RetentionNoticeItem, ...RetentionNoticeItem[]];
+    }
+  | {
+      schema: 'buddy.retention-notice.v1';
+      notice_id: Id;
+      occurred_at: UtcTime;
+      kind: 'forgotten';
+      reason: 'forgotten' | 'derived_from_forgotten';
+      forgetting_generation: ForgettingGeneration;
+      /**
+       * @minItems 1
+       * @maxItems 256
+       */
+      items: [RetentionNoticeItem, ...RetentionNoticeItem[]];
+    };
 export type DevicePlatform = 'windows' | 'macos' | 'linux';
 /**
  * MAC アドレス（小文字の 16 進 2 桁をコロンでつないだ 6 組）。中枢は受け取った値を HMAC にしてから保存し、平文を DB に置かない（ADR 0022）。
@@ -2638,36 +2672,6 @@ export type ForgetLedgerDelta =
        */
       entries: [];
       has_more: false;
-    };
-/**
- * 期限切れ・忘却の知らせ（キャンバス向け。UI-05、ADR 0040）。ID と理由だけで、本文・要約・検索語を入れない。受け取った側は該当の物を表示から消す。期限切れは forgetting_generation が null、忘却は台帳の世代を持つ。
- */
-export type RetentionNotice =
-  | {
-      schema: 'buddy.retention-notice.v1';
-      notice_id: Id;
-      occurred_at: UtcTime;
-      kind: 'expired';
-      reason: 'retention_due' | 'review_unanswered' | 'summary_origin_expired';
-      forgetting_generation: null;
-      /**
-       * @minItems 1
-       * @maxItems 256
-       */
-      items: [RetentionNoticeItem, ...RetentionNoticeItem[]];
-    }
-  | {
-      schema: 'buddy.retention-notice.v1';
-      notice_id: Id;
-      occurred_at: UtcTime;
-      kind: 'forgotten';
-      reason: 'forgotten' | 'derived_from_forgotten';
-      forgetting_generation: ForgettingGeneration;
-      /**
-       * @minItems 1
-       * @maxItems 256
-       */
-      items: [RetentionNoticeItem, ...RetentionNoticeItem[]];
     };
 /**
  * 区切りの保存モードの状態（設計 03 保存期限・記録しない会話の境界、ADR 0040）。モードごとに何を保存し何を禁じるかを固定の値で持ち、private では発言・要約・記憶・抽出・影モードの記録・Live の接続を持てない。端末内の音声認識（③）は使える。判定は Core のコードが持ち、クライアントは表示にだけ使う。
@@ -6762,6 +6766,38 @@ export interface IoResumeRequest {
   scope: 'local' | 'guest' | 'global';
   expected_io_epoch: IoEpoch;
 }
+/**
+ * 知らせの対象 1 件。ID だけ（OriginalSourceId の文字種と長さに限る。文字種の制限は文と ID を区別しないので、Core が自分の DB の行から作った ID だけを入れる）。carried_summary の item_id は要約をつないだ区間の ID。
+ */
+export interface RetentionNoticeItem {
+  item_kind: 'turn' | 'source_item' | 'memory' | 'carried_summary';
+  item_id: OriginalSourceId;
+}
+/**
+ * 忘却台帳が進んだことの知らせ（B06-07b-2、ADR 0180）。台帳の系譜と新しい head だけで、項目・本文を持たない。端末は受け取ったら台帳の配信（ForgetLedgerDelta）から続きを取る。1 回だけ渡し、再送・永続しない（取りこぼしは次の接続の配信で追いつく）。運び方は UI-05（U40）。
+ */
+export interface ForgetLedgerNotice {
+  schema: 'buddy.forget-ledger-notice.v1';
+  notice_id: Id;
+  occurred_at: UtcTime;
+  kind: 'ledger_advanced';
+  ledger_id: Id;
+  forgetting_generation: ForgettingGeneration;
+  entry_hash: Hash;
+}
+/**
+ * 記録しない会話が終わったことの知らせ（キャンバス向け。UI-05、ADR 0059）。Core が再起動して記録しない区切りの RAM を失ったので、通常の区切りへ戻した。ended_generation は終わった記録しない区切りの世代、segment_id と segment_generation は戻った先の通常の区切り。区切りの本文・発言・要約を入れない。端末は ended_generation 以前の由来の入力・結果を送らない（送っても Core が拒否する）。
+ */
+export interface StorageBoundaryNotice {
+  schema: 'buddy.storage-boundary-notice.v1';
+  notice_id: Id;
+  occurred_at: UtcTime;
+  kind: 'private_ended';
+  reason: 'core_restarted';
+  ended_generation: SegmentGeneration;
+  segment_id: Id;
+  segment_generation: SegmentGeneration;
+}
 export interface PairingStartRequest {
   request_id: Id;
   command_scope_id: Id;
@@ -9887,18 +9923,6 @@ export interface ForgetLedgerHead {
   entry_hash: Hash;
 }
 /**
- * 忘却台帳が進んだことの知らせ（B06-07b-2、ADR 0180）。台帳の系譜と新しい head だけで、項目・本文を持たない。端末は受け取ったら台帳の配信（ForgetLedgerDelta）から続きを取る。1 回だけ渡し、再送・永続しない（取りこぼしは次の接続の配信で追いつく）。運び方は UI-05（U40）。
- */
-export interface ForgetLedgerNotice {
-  schema: 'buddy.forget-ledger-notice.v1';
-  notice_id: Id;
-  occurred_at: UtcTime;
-  kind: 'ledger_advanced';
-  ledger_id: Id;
-  forgetting_generation: ForgettingGeneration;
-  entry_hash: Hash;
-}
-/**
  * バックアップの封筒（manifest。設計 03 バックアップ・復元、ADR 0040）。本文を持たず、復元の最初の判定に要る値だけを平文で持つ。included_storage_modes に private を入れられない。excluded_data の 4 つ（生音声・記録しない会話・OAuth トークン・API キー）は必ず記録する。store_generation は取った時点の DB の世代で、復元では新しい値にする。forgetting_generation と ledger_head_hash は取った時点の台帳の最新（世代 0 なら 64 個の 0）。
  */
 export interface BackupManifest {
@@ -9996,26 +10020,6 @@ export interface RestoreAftermath {
   operations_unverified_count: number;
   consents_reset: true;
   connections_reauth_required: true;
-}
-/**
- * 知らせの対象 1 件。ID だけ（OriginalSourceId の文字種と長さに限る。文字種の制限は文と ID を区別しないので、Core が自分の DB の行から作った ID だけを入れる）。carried_summary の item_id は要約をつないだ区間の ID。
- */
-export interface RetentionNoticeItem {
-  item_kind: 'turn' | 'source_item' | 'memory' | 'carried_summary';
-  item_id: OriginalSourceId;
-}
-/**
- * 記録しない会話が終わったことの知らせ（キャンバス向け。UI-05、ADR 0059）。Core が再起動して記録しない区切りの RAM を失ったので、通常の区切りへ戻した。ended_generation は終わった記録しない区切りの世代、segment_id と segment_generation は戻った先の通常の区切り。区切りの本文・発言・要約を入れない。端末は ended_generation 以前の由来の入力・結果を送らない（送っても Core が拒否する）。
- */
-export interface StorageBoundaryNotice {
-  schema: 'buddy.storage-boundary-notice.v1';
-  notice_id: Id;
-  occurred_at: UtcTime;
-  kind: 'private_ended';
-  reason: 'core_restarted';
-  ended_generation: SegmentGeneration;
-  segment_id: Id;
-  segment_generation: SegmentGeneration;
 }
 /**
  * 復旧キーの初回の表示（J1、ADR 0040）。CLI のプロセスが OS の乱数で作った 256 ビットを Crockford base32（4 文字 × 13 組）にした文字列で、作った直後に 1 度だけ端末の画面へ出す。Core には渡さず（Core へ渡すのは包んだ鍵 BackupKeyWrap と確認値だけ）、HTTP・制御チャネル・イベント・ログ・DB・バックアップへ出さない。

@@ -1,8 +1,9 @@
 // 端末の忘却台帳の複製（B06-07b-3、Issue #179、ADR 0182）を、127.0.0.1 の製品の Core（startCore、鍵は模擬）と
 // main の部品（DesktopCoreLink・ForgetLedgerSync・複製のファイル）で通す統合の試験（household-link.test.ts と同じ形）。
 // 端末は中枢の DB に直接登録する。忘却は保存層の命令で直接適用する（忘却の公開ゲートは閉じたままなので、ゲートを通らない
-// 試験の手順。apps/core の forget-core.test.ts と同じ）。「台帳が進んだ」知らせの運び方は UI-05 が決める（U40・U403）ので、
-// 試験が中枢の台帳の head から知らせを組んで端末の受け取り口へ渡す。Electron は起動しない。実機・実データは未実施。
+// 試験の手順。apps/core の forget-core.test.ts と同じ）。ここでは試験が中枢の台帳の head から知らせを組んで端末の受け取り口
+// （forgetLedgerNotice）へ直接渡す。中枢の購読（WSS の notice）で運ぶ経路は notice-link.test.ts が確かめる（UI-05 の段階 3、
+// ADR 0187）。Electron は起動しない。実機・実データは未実施。
 // 確かめること: 台帳が空なら 1 回だけ尋ねて何も書かない・知らせで続きを受け取って保存する・知らせの head を持っていれば
 // 尋ねない・ロック中も追いつく・再起動の後も複製が残り、接続で 1 回だけ尋ねて余分に取らない・壊れたファイルは退避して
 // 取り直す・ファイルとログに元サービスの生の ID・台帳の中身を出さない。期待値は手で書いた。
@@ -83,7 +84,7 @@ async function forget(hub: TestHub, index: number): Promise<void> {
   assert(applied.ok, 'forget apply failed');
 }
 
-// 中枢の台帳の head から「台帳が進んだ」知らせを組む（運び方は UI-05。ここでは試験が渡す）。
+// 中枢の台帳の head から「台帳が進んだ」知らせを組む（ここでは試験が受け取り口へ直接渡す）。
 async function noticeOf(hub: TestHub) {
   const exported = await hub.handle.store.memory({
     kind: 'forget.ledger_export',

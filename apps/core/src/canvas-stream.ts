@@ -17,10 +17,15 @@
 // - ユーザーの操作（UI-06、ADR 0032）: 動かす・大きさを変える・閉じる・棚へ片付ける・棚から出すを postCanvasUserOp で
 //   記録し、記述に当てる（applyCanvasUserOp）。古い版への操作は、その物の置き場所・存在が後から変わっていなければ当て、
 //   変わっていれば 409 で捨てる。記録（RAM に 64 件まで）は次の配置者の入力にする。保存は未決（U169）。
+// - 期限切れ・忘却の知らせ（UI-05 の段階 3、ADR 0187）: 消えた発言・記憶に結び付くキャンバスの物を閉じる束を Core が作って
+//   当て、版を進める（端末は版の知らせと getCanvas で収束する）。結び付きは、物を置いた・最後に中身を変えた発言と、物の
+//   参照（screen_result の発言 ID・memory の記憶 ID）。忘却の知らせでは、今の区切りにつないだ要約を外し、次の発言で
+//   新しい区切り（forget_requested）を始める。要約をつないだ区間が消えたときも要約を外す。
 
 import { randomUUID } from 'node:crypto';
 import type {
   CanvasCell,
+  CanvasOp,
   CanvasContentRequest,
   CanvasContentResponse,
   CanvasDocument,
@@ -35,6 +40,7 @@ import type {
   TurnResponse,
 } from '@buddy/contracts';
 import {
+  CANVAS_OPS_LIMIT,
   applyCanvasBatch,
   applyCanvasUserOp,
   automaticSegmentBoundary,
@@ -51,6 +57,7 @@ import type { ApiRoute } from './api-routes.js';
 import { apiErrorResponse } from './api-server.js';
 import type { ApiErrorCode } from './api-server.js';
 import { mockCanvasContent } from './canvas-content.js';
+import type { Notice } from './notice-sink.js';
 import type { ApiHandlerRequest, ApiRouteHandler } from './api-server.js';
 import type { JsonObject } from './strict-json.js';
 
@@ -184,6 +191,88 @@ export class CanvasHub {
     this.#pruneTexts(next);
     this.#commit(next);
     return { ok: true, revision: next.canvas_revision };
+  }
+
+  // 物を閉じる（期限切れ・忘却の後始末。ADR 0187）。Core が作る束で、AI の束と同じ検査（Schema・意味）を通して当てる。
+  // 残る物の関係がその物を指していれば先に外す（関係の先がない記述にしない）。1 つの束の操作は CANVAS_OPS_LIMIT までなので、
+  // 多ければ束を分け、束ごとに版を 1 進める。ない物は数えない。閉じた物がなければ null、当てられなければ false。
+  // 束を分けるときは、閉じる物どうしの関係も先に外す（後の束で閉じる物が、先の束で閉じた物を指したまま残らないように。
+  // ADR 0187 の見直し）。途中の束で当てられなかったときは、そこまでの束は当たったまま（閉じた物の置き場所の版は捨てる）で
+  // false を返す。残りは呼び出し側が次の機会に閉じ直す。
+  removeItems(itemIds: ReadonlySet<string>): string | null | false {
+    const document = this.#document;
+    const targets = document.items
+      .filter((item) => itemIds.has(item.item_id))
+      .map((item) => item.item_id);
+    if (targets.length === 0) return null;
+    const doomed = new Set(targets);
+    const pointing = (item: CanvasItem) =>
+      item.relations.some((relation) => doomed.has(relation.target));
+    const strip = (item: CanvasItem): CanvasOp => ({
+      op: 'update',
+      item_id: item.item_id,
+      changes: {
+        // 契約の型は長さごとの組（上限 4）。元の関係を減らすだけなので上限を超えない。
+        relations: item.relations.filter(
+          (relation) => !doomed.has(relation.target),
+        ) as CanvasItem['relations'],
+      },
+    });
+    const keepers = document.items.filter(
+      (item) => !doomed.has(item.item_id) && pointing(item),
+    );
+    const closes = targets.map((itemId): CanvasOp => ({
+      op: 'close',
+      item_id: itemId,
+    }));
+    // 1 つの束に収まるなら、閉じる物どうしの関係は外さなくてよい（同じ束で両方とも消える）。収まらなければ、閉じる物の
+    // 関係も外す。外す update をすべて close より前に並べるので、close を含む束を当てた時点で、残る物（後の束で閉じる物を
+    // 含む）はどれも閉じた物を指さない。
+    const updates = (
+      keepers.length + closes.length <= CANVAS_OPS_LIMIT
+        ? keepers
+        : document.items.filter(pointing)
+    ).map(strip);
+    // 束に分ける。同じ物の update と close を 1 つの束に入れない（op_target_duplicate）。
+    const chunks: CanvasOp[][] = [];
+    let chunk: CanvasOp[] = [];
+    let touched = new Set<string>();
+    for (const op of [...updates, ...closes]) {
+      const target = op.op === 'update' || op.op === 'close' ? op.item_id : '';
+      if (chunk.length === CANVAS_OPS_LIMIT || touched.has(target)) {
+        chunks.push(chunk);
+        chunk = [];
+        touched = new Set();
+      }
+      chunk.push(op);
+      touched.add(target);
+    }
+    if (chunk.length > 0) chunks.push(chunk);
+    let ok = true;
+    for (const ops of chunks) {
+      const closing = new Set(
+        ops.flatMap((op) => (op.op === 'close' ? [op.item_id] : [])),
+      );
+      const base = this.#document.canvas_revision;
+      const outcome = this.apply({
+        base_canvas_revision: base,
+        canvas_revision: (BigInt(base) + 1n).toString(),
+        // 契約の型は長さごとの組（上限 CANVAS_OPS_LIMIT）。上で 1〜CANVAS_OPS_LIMIT 件に切っている。
+        ops: ops as CanvasOpBatch['ops'],
+        reading_order: this.#document.reading_order.filter(
+          (itemId) => !closing.has(itemId),
+        ),
+      });
+      if (!outcome.ok) {
+        ok = false;
+        break;
+      }
+    }
+    // 記述から消えた物の置き場所の版を捨てる（途中で失敗したときも、当たった束で閉じた物の分は捨てる）。
+    const alive = new Set(this.#document.items.map((item) => item.item_id));
+    for (const itemId of targets)
+      if (!alive.has(itemId)) this.#placedAt.delete(itemId);
+    return ok ? this.#document.canvas_revision : false;
   }
 
   // 記述から消えた物の本文を捨てる（閉じた物の本文を残さない）。
@@ -511,6 +600,12 @@ export interface StreamRoutes {
     readonly created_at: string;
     readonly expires_at: string;
   }) => void;
+  // 期限切れ・忘却の知らせに合わせて流れの表示を片付ける（UI-05 の段階 3、ADR 0187。notice-relay.ts から呼ぶ）。
+  // 消えた発言・記憶に結び付く物を閉じて版を進め、忘却なら区切りにつないだ要約を外して次の発言で区切る。
+  // 当てられなかった（束が検査に通らない）ときだけ false。
+  readonly applyNotice: (notice: Notice) => boolean;
+  // 発言との結び付きを持っている物の ID（試験・診断用。ADR 0187）。
+  readonly boundItemIds: () => readonly string[];
 }
 
 const stringOf = (body: JsonObject | null, key: string): string => {
@@ -526,6 +621,33 @@ const routeOf = (operationId: string): ApiRoute => {
 
 // 応答のキャッシュの上限（前に当てた変更の束）。
 const MAX_REPLAYS = 256;
+
+// 期限切れ・忘却で消えた発言・記憶の ID を覚えておく件数（種類ごと。Core の RAM。ADR 0187 の見直し）。処理中だった
+// 発言の結果を後から置かない・閉じ損ねた物を次の機会に閉じ直すために使う。古いものから捨てる。
+export const GONE_IDS_LIMIT = 256;
+
+// 上限つきの ID の集合（古く入れたものから捨てる。入れ直したものは新しい扱い）。
+class RecentIds {
+  readonly #ids = new Set<string>();
+  readonly #limit: number;
+  constructor(limit: number) {
+    this.#limit = limit;
+  }
+  has(id: string): boolean {
+    return this.#ids.has(id);
+  }
+  get size(): number {
+    return this.#ids.size;
+  }
+  add(id: string): void {
+    this.#ids.delete(id);
+    this.#ids.add(id);
+    for (const old of this.#ids) {
+      if (this.#ids.size <= this.#limit) break;
+      this.#ids.delete(old);
+    }
+  }
+}
 
 // 受け付けた要求を元の区切りへ結び付けておく期間（受付レシートの保存期限と同じ 7 日。設計 03 の command_receipt）。
 // 応答の束のキャッシュとは別に数える。
@@ -567,9 +689,55 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
   // 忘却の指示（`memory_forget`）を受けた区切り。次の発言で新しい区切りを始め、前の要約はつながない
   // （ADR 0032・0068。忘却の対象は期限内でも文脈・要約から外す）。
   let afterForget: { readonly from: string } | null = null;
+  // 忘却の知らせを受けた回数（ADR 0187）。区切りを作る間（会話の作成を待つ間）に忘却の知らせが来たら、新しい区切りに
+  // 要約をつながない（作る前に決めた要約に、忘れた内容が入りうる。U466）。
+  let forgetNotices = 0;
   // 前に当てた束（応答のキャッシュ。上限つき）と、配置を済ませた発言の ID（上限なし。1 人の流れの RAM だけ）。
   const replays = new Map<string, CanvasOpBatch | null>();
   const placed = new Set<string>();
+  // 物 → その物を置いた・最後に中身を変えた発言（ADR 0187）。発言が期限切れ・忘却で消えたら、その物を閉じる。
+  // 物が閉じたら（AI の close・ユーザーの閉じる操作・知らせの後始末）消す。
+  const itemTurns = new Map<string, string>();
+  // 期限切れ・忘却で消えた発言・記憶の ID（上限つき。ADR 0187 の見直し）。知らせの後に処理を終えた発言の結果を置かない、
+  // 置いた物が消えた発言・記憶を参照していれば閉じる、閉じ損ねた物を次の知らせ・次の発言で閉じ直す。
+  const goneTurns = new RecentIds(GONE_IDS_LIMIT);
+  const goneMemories = new RecentIds(GONE_IDS_LIMIT);
+  // 今の記述にない物の結び付きを捨てる。
+  const forgetClosedItems = (): void => {
+    if (itemTurns.size === 0) return;
+    const alive = new Set(
+      options.canvas.document.items.map((item) => item.item_id),
+    );
+    for (const itemId of [...itemTurns.keys()])
+      if (!alive.has(itemId)) itemTurns.delete(itemId);
+  };
+  // 消えた発言・記憶に結び付く物を閉じる（ADR 0187）。extra はこの知らせの ID（上限で捨てる前の分も確かめる）。
+  // 閉じた物・今の記述にない物の結び付きを捨てる。当てられなかったら false（残りは次の機会に閉じ直す）。
+  const sweepGone = (
+    extraTurns: ReadonlySet<string> = new Set(),
+    extraMemories: ReadonlySet<string> = new Set(),
+  ): boolean => {
+    const turnGone = (id: string) => extraTurns.has(id) || goneTurns.has(id);
+    const memoryGone = (id: string) =>
+      extraMemories.has(id) || goneMemories.has(id);
+    const doomed = new Set<string>();
+    for (const item of options.canvas.document.items) {
+      const origin = itemTurns.get(item.item_id);
+      if (
+        (origin !== undefined && turnGone(origin)) ||
+        item.data.item_refs.some(
+          (ref) =>
+            (ref.kind === SCREEN_REF_KIND && turnGone(ref.id)) ||
+            (ref.kind === 'memory' && memoryGone(ref.id)),
+        )
+      )
+        doomed.add(item.item_id);
+    }
+    const removed =
+      doomed.size === 0 ? null : options.canvas.removeItems(doomed);
+    forgetClosedItems();
+    return removed !== false;
+  };
   // 受け付けた発言の要求（request_id）→ 元の区切り（会話）と受付レシートの期限。同じ要求の再送は、区切りを
   // 切り替える前にこの対応で解決する（新しい区切りで送ると request_hash が変わり 409 になる。PR #191 のレビュー P1）。
   // 応答の束のキャッシュ（MAX_REPLAYS）とは別に、受付レシートの有効期間（`command_receipt` の 7 日。設計 03）だけ保つ。
@@ -776,6 +944,7 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
                 ],
                 expires_at: summary.expires_at,
               };
+        const forgetsBefore = forgetNotices;
         const created = await options.createSession({
           ...request,
           route: createSessionRoute,
@@ -805,7 +974,7 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
           storage_mode: stream.segment.storage_mode,
           opened_at: openedAt,
           open_reason: reason,
-          carried_summary: carried,
+          carried_summary: forgetNotices === forgetsBefore ? carried : null,
         };
         if (
           !contract.valid('StreamSegment', segment) ||
@@ -864,6 +1033,13 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
     text: string | null = null,
   ): CanvasOpBatch | null => {
     if (placed.has(turn.turn_id)) return replays.get(turn.turn_id) ?? null;
+    // 処理の間に期限切れ・忘却で消えた発言の結果は置かない（消えた発言を指す物を残さない。ADR 0187 の見直し）。
+    // 配置済みとして覚え、再送でも置かない。
+    if (goneTurns.has(turn.turn_id)) {
+      placed.add(turn.turn_id);
+      replays.set(turn.turn_id, null);
+      return null;
+    }
     const context = {
       record: options.canvas.record,
       seen_revision: seenRevision,
@@ -884,6 +1060,12 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
     // 本文は、当てた束の物にだけ預ける（当てられなかった本文を残さない）。
     if (canvas !== null && reply !== null)
       options.canvas.setText(reply.item_id, reply.text);
+    // 当てた束の物を、この発言に結び付ける（追加と中身の更新。ADR 0187）。閉じた物の結び付きは捨てる。
+    if (canvas !== null)
+      for (const op of canvas.ops)
+        if (op.op === 'add') itemTurns.set(op.item.item_id, turn.turn_id);
+        else if (op.op === 'update') itemTurns.set(op.item_id, turn.turn_id);
+        else if (op.op === 'close') itemTurns.delete(op.item_id);
     // 配置を試みた発言だけ覚える（聞き返しなど、配置しない発言は入れない。同じ結果なら再送でも配置しないので）。
     if (batch !== null) placed.add(turn.turn_id);
     replays.set(turn.turn_id, canvas);
@@ -891,6 +1073,9 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
       if (replays.size <= MAX_REPLAYS) break;
       replays.delete(old);
     }
+    // 置いた物が消えた発言・記憶を参照していれば閉じる。前の知らせで閉じ損ねた物もここで閉じ直す（当たる物があれば
+    // 版がさらに進む。なければ何もしない）。
+    if (goneTurns.size > 0 || goneMemories.size > 0) sweepGone();
     return canvas;
   };
 
@@ -908,9 +1093,55 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
     const canvas = options.canvas.apply(placement.batch).ok
       ? placement.batch
       : null;
-    if (canvas !== null)
+    if (canvas !== null) {
       options.canvas.setText(placement.item_id, placement.text);
+      // 保留を捨てた知らせは発言の結果ではない（前に置いた発言との結び付きを外す）。
+      itemTurns.delete(placement.item_id);
+    }
     return canvas;
+  };
+
+  // 期限切れ・忘却の知らせ（UI-05 の段階 3、ADR 0187）。RetentionNotice だけを見る（台帳の前進・記録しない会話の終了は
+  // 表示の物を持たない）。発言・記憶の ID は Core の DB の行の ID で、物の参照・結び付きと照らし合わせる。
+  const applyNotice = (notice: Notice): boolean => {
+    if (notice.schema !== 'buddy.retention-notice.v1') return true;
+    const ids = (kind: string) =>
+      new Set(
+        notice.items
+          .filter((item) => item.item_kind === kind)
+          .map((item) => item.item_id),
+      );
+    const turns = ids('turn');
+    const memories = ids('memory');
+    const summaries = ids('carried_summary');
+    for (const id of turns) goneTurns.add(id);
+    for (const id of memories) goneMemories.add(id);
+    // この知らせと、前に閉じ損ねた物（覚えている消えた ID に結び付く物）を閉じる。消えた発言の束を再送の応答に返さない
+    // （配置済みの印は残し、置き直さない）。
+    const removed = sweepGone(turns, memories);
+    for (const turnId of turns)
+      if (replays.has(turnId)) replays.set(turnId, null);
+    // 区切りにつないだ要約: 忘却なら外す（忘れた内容が今の文脈の要約に入っているかを Core は確かめられないので、安全側。
+    // U466）。期限切れ・忘却で要約をつないだ区間が消えたときも外す。
+    const stream = current;
+    if (stream !== null) {
+      const carried = stream.segment.carried_summary;
+      const forgotten = notice.kind === 'forgotten';
+      if (
+        carried !== null &&
+        (forgotten ||
+          summaries.has(stream.segment.segment_id) ||
+          carried.source_segment_ids.some((id) => summaries.has(id)))
+      )
+        current = {
+          ...stream,
+          segment: { ...stream.segment, carried_summary: null },
+        };
+      // 忘却の後の次の発言で新しい区切りを始める（要約はつながない。ADR 0068 の段階 2-i と同じ印。U383 の残り）。
+      if (forgotten) afterForget = { from: stream.sessionId };
+    }
+    if (notice.kind === 'forgotten') forgetNotices += 1;
+    return removed;
   };
 
   const postStreamTurn: ApiRouteHandler = async (request) => {
@@ -1180,6 +1411,7 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
       afterForget !== null &&
       carriedFrom !== null &&
       afterForget.from === carriedFrom.sessionId;
+    const forgetsBefore = forgetNotices;
     const created = await createSessionWithMode(target, request);
     if (!created.ok) {
       // 記録しない区切りはもう閉じている（exitPrivate は確定済みで戻せない）。使えない区切りを残すと、private の
@@ -1201,7 +1433,8 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
     } else {
       // normal ⇔ extended。要約は、期限内の由来の範囲でだけつなぐ（ADR 0032 の nextCarriedSummary）。
       openReason = 'storage_mode_changed';
-      if (!forgetDue) {
+      // 会話の作成を待つ間に忘却の知らせが来たときも、つながない（ADR 0187）。
+      if (!forgetDue && forgetNotices === forgetsBefore) {
         const carried = nextCarriedSummary({
           previous: carriedFrom.segment.carried_summary,
           closing: {
@@ -1331,6 +1564,9 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
       body.expected_canvas_revision,
     );
     let response: { status: number; body: object };
+    // 閉じた物の、発言との結び付きを捨てる（ADR 0187 の見直し）。
+    if (outcome.ok && body.op.kind === 'close')
+      itemTurns.delete(body.op.item_id);
     if (outcome.ok) {
       const ok: CanvasUserOpResponse = {
         request_id: body.request_id,
@@ -1418,5 +1654,7 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
       ),
     placeNotice,
     recordTurn,
+    applyNotice,
+    boundItemIds: () => [...itemTurns.keys()],
   };
 }

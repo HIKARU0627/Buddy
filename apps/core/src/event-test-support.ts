@@ -334,6 +334,8 @@ export interface StreamMessage {
   readonly reason?: string;
   // キャンバスの版の知らせ（UI-03、ADR 0032）。
   readonly canvas_revision?: string;
+  // 期限切れ・忘却・忘却台帳の前進の知らせ（UI-05 の段階 3、ADR 0187）。
+  readonly notice?: Record<string, unknown>;
 }
 
 export interface StreamClient {

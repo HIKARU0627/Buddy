@@ -13044,6 +13044,25 @@
           "properties": {
             "type": {
               "type": "string",
+              "const": "notice"
+            },
+            "notice": {
+              "oneOf": [
+                { "$ref": "#/$defs/RetentionNotice" },
+                { "$ref": "#/$defs/ForgetLedgerNotice" },
+                { "$ref": "#/$defs/StorageBoundaryNotice" }
+              ]
+            }
+          },
+          "required": ["type", "notice"],
+          "additionalProperties": false,
+          "description": "期限切れ・忘却・忘却台帳の前進・記録しない会話の終了の知らせ（UI-05 の段階 3、ADR 0187、U40・U168）。Core の NoticeSink に入った知らせを、そのとき開いている購読（接続範囲を確かめた後のもの）にだけ送る。イベントの記録（cursor）に入れず、再送・永続しない。取り逃した端末の表示は canvas の版と getCanvas で収束し、忘却台帳は次の接続の同期で追いつく。ID と理由と番号だけで、本文・要約・検索語・HMAC を含めない。RetentionNotice の source_item（元サービスの生の ID）は Core が除いて送り、除いて空になった知らせは送らない。端末は知らない知らせを無視する。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
               "const": "resnapshot_required"
             },
             "reason": {

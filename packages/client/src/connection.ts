@@ -11,12 +11,15 @@
 // - 切断中の命令はためない。送れる状態（live）でなければその場で not_sent を返し、復帰しても送らない。
 // - 401・証明書の不一致・失効（4401）は再登録が必要（以後は要求を送らない）。自宅の外（403・4403）・
 //   接続できない・中枢の停止などは間隔を空けて接続し直す。
+// - 知らせ（`{type:"notice"}`。UI-05 の段階 3、ADR 0187）は、契約に合うものだけを onNotice の受け手へ渡す。知らない・形の
+//   違う知らせは無視し、購読を切らない（中枢が新しい知らせを足しても古い端末が止まらない）。知らせは再送されない。
 // Node・DOM・Electron の API を使わない。通信・時計・形式の検査は transport.ts の境界から受け取る。
 
 import type {
   Bootstrap,
   CommandReceipt,
   EventEnvelope,
+  EventStreamMessage,
   OperationSnapshot,
   Snapshot,
 } from '@buddy/contracts';
@@ -262,6 +265,12 @@ function closeFailure(code: number): Failure {
   }
 }
 
+const isNoticeMessage = (value: unknown): boolean =>
+  typeof value === 'object' &&
+  value !== null &&
+  !Array.isArray(value) &&
+  (value as { type?: unknown }).type === 'notice';
+
 const byOperationId = (a: OperationSnapshot, b: OperationSnapshot) =>
   a.operation_id < b.operation_id
     ? -1
@@ -269,11 +278,20 @@ const byOperationId = (a: OperationSnapshot, b: OperationSnapshot) =>
       ? 1
       : 0;
 
+// 購読で届く知らせ（ADR 0187）。期限切れ・忘却（RetentionNotice）・忘却台帳の前進（ForgetLedgerNotice）・記録しない
+// 会話の終了（StorageBoundaryNotice）。
+export type ClientStreamNotice = Extract<
+  EventStreamMessage,
+  { type: 'notice' }
+>['notice'];
+
 export class ClientConnection {
   readonly #options: ClientConnectionOptions;
   readonly #listeners = new Set<(state: LinkState) => void>();
   // キャンバスの版の知らせ（ADR 0032）。版だけを渡す（本文は getCanvas で取る）。
   readonly #canvasListeners = new Set<(revision: string) => void>();
+  // 知らせ（ADR 0187）。契約に合うものだけを渡す。
+  readonly #noticeListeners = new Set<(notice: ClientStreamNotice) => void>();
   #state: LinkState = INITIAL_STATE;
   // 接続の試み・購読ごとに進める。古い試みの応答・切断は無視する。
   #generation = 0;
@@ -312,6 +330,13 @@ export class ClientConnection {
   onCanvas(listener: (revision: string) => void): () => void {
     this.#canvasListeners.add(listener);
     return () => this.#canvasListeners.delete(listener);
+  }
+
+  // 中枢から知らせ（購読の notice メッセージ）を受けたとき（ADR 0187）。ID と理由と番号だけで、本文を持たない。
+  // 接続の表示（操作・カーソル）は変えない。
+  onNotice(listener: (notice: ClientStreamNotice) => void): () => void {
+    this.#noticeListeners.add(listener);
+    return () => this.#noticeListeners.delete(listener);
   }
 
   start(): void {
@@ -671,6 +696,8 @@ export class ClientConnection {
       return;
     }
     if (!this.#options.contract.valid('EventStreamMessage', event.data)) {
+      // 知らない・形の違う知らせは無視する（購読は切らない。ADR 0187）。ほかの形の違いは従来どおり接続し直す。
+      if (isNoticeMessage(event.data)) return;
       this.#fail(generation, { kind: 'retry', reason: 'protocol_error' });
       return;
     }
@@ -678,6 +705,7 @@ export class ClientConnection {
       | { type: 'event'; event: EventEnvelope }
       | { type: 'voice'; event: unknown }
       | { type: 'canvas'; canvas_revision: string }
+      | { type: 'notice'; notice: ClientStreamNotice }
       | { type: 'resnapshot_required'; reason: string };
     if (message.type === 'resnapshot_required') {
       this.#fail(generation, { kind: 'resnapshot' });
@@ -687,6 +715,16 @@ export class ClientConnection {
     if (message.type === 'canvas') {
       for (const listener of [...this.#canvasListeners])
         listener(message.canvas_revision);
+      return;
+    }
+    if (message.type === 'notice') {
+      for (const listener of [...this.#noticeListeners]) {
+        try {
+          listener(message.notice);
+        } catch {
+          // 1 つの受け手の失敗で他の受け手と購読を止めない。
+        }
+      }
       return;
     }
     this.#applyEvent(generation, message.event);

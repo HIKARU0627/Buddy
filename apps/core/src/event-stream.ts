@@ -10,6 +10,9 @@
 // - ping を pingIntervalMs ごとに送り、前の ping に pong がなければ切る。同じ間隔で、接続範囲（再接続・失効・期限）
 //   と自宅判定を確かめ直し、満たさなければ理由つきで閉じる。端末の失効・自宅判定の不成立は DeviceConnections から
 //   すぐに閉じる（B03-02・B03-03 が呼ぶ）。
+// - 知らせ（UI-05 の段階 3、ADR 0187）: 期限切れ・忘却・忘却台帳の前進の知らせを `{type:"notice"}` で送る。接続範囲を
+//   確かめて配信を始めた後の購読だけに登録し、閉じたら外す。イベントの記録（cursor）に入れず、溜めず、再送しない（U168）。
+//   ロック中も送る（event・canvas と同じく本文を持たない。U465）。自宅判定・接続範囲は上の確かめ直しのまま。
 // - 端末から送るメッセージは定義していない。受け取ったら閉じる。送り先が詰まったら閉じる（端末は cursor から再開する）。
 //
 // 閉じるコード（OpenAPI の x-buddy-websocket-close-codes と同じ）:
@@ -34,6 +37,7 @@ import { apiErrorResponse } from './api-server.js';
 import type { ApiEventStream, ApiHandlerRequest } from './api-server.js';
 import type { DeviceConnections } from './device-connections.js';
 import type { FaultHook } from './turn-ports.js';
+import type { NoticeNotifier } from './notice-relay.js';
 import { cursorReplayDecision, decodeEventCursor } from './event-cursor.js';
 import type { ResnapshotReason } from './event-cursor.js';
 import type {
@@ -73,6 +77,9 @@ export interface EventStreamOptions {
   // 音声の制御イベント（B05-03、ADR 0046）。その端末の購読にだけ `{type:"voice"}` で送る。イベントの記録（cursor）には
   // 入れない（届かなくても端末はリースの期限で止まる。10 §2A）。なければ送らない。
   readonly voice?: VoiceNotifier;
+  // 期限切れ・忘却・忘却台帳の前進の知らせ（UI-05 の段階 3、ADR 0187）。接続範囲を確かめた後の購読にだけ `{type:"notice"}`
+  // で送る。イベントの記録（cursor）に入れず、再送しない。なければ送らない。
+  readonly notices?: NoticeNotifier;
   readonly now?: () => number;
   readonly pingIntervalMs?: number;
   readonly maxBufferedBytes?: number;
@@ -156,6 +163,7 @@ export function createEventStream(
     let unregister: (() => void) | null = null;
     let unsubscribeCanvas: (() => void) | null = null;
     let unsubscribeVoice: (() => void) | null = null;
+    let unsubscribeNotices: (() => void) | null = null;
     let pingTimer: NodeJS.Timeout | null = null;
     let checking = false;
 
@@ -170,6 +178,8 @@ export function createEventStream(
       unsubscribeCanvas = null;
       unsubscribeVoice?.();
       unsubscribeVoice = null;
+      unsubscribeNotices?.();
+      unsubscribeNotices = null;
       sessions.delete(finish);
       if (counted) {
         counted = false;
@@ -347,6 +357,18 @@ export function createEventStream(
         resnapshot: (reason) => finish(reason),
         fail: () => finish('dependency_unavailable'),
       });
+      // 知らせ（ADR 0187）。接続範囲を確かめて配信を始めた後にだけ登録する（それより前の知らせは送らない。再送もしない）。
+      // ID と理由と番号だけで、本文を含めない（端末へ送る形は notice-relay.ts の streamNoticeOf）。
+      if (!closed)
+        unsubscribeNotices =
+          options.notices?.subscribe((message) => {
+            if (closed || client.readyState !== WebSocket.OPEN) return;
+            if (client.bufferedAmount > maxBuffered) {
+              finish('slow_consumer');
+              return;
+            }
+            client.send(JSON.stringify(message));
+          }) ?? null;
       pingTimer = setInterval(() => {
         if (closed) return;
         if (!alive) {

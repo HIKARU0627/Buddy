@@ -116,6 +116,7 @@ import {
 import type { ForgetService } from './forget-service.js';
 import { createClockStateFile } from './clock-state.js';
 import type { NoticeSink } from './notice-sink.js';
+import { NoticeRelay } from './notice-relay.js';
 import { StorageModeGate } from './storage-gate.js';
 import {
   RestoreInstallError,
@@ -483,7 +484,8 @@ export interface CoreBackupOptions {
 }
 
 export interface CoreRetentionOptions {
-  // 期限切れの知らせの受け取り口（U40。運搬は UI-05）。
+  // 知らせの受け取り口（試験・診断）。Core は知らせを流れの表示の後始末と WSS の購読へ運び（UI-05 の段階 3、
+  // ADR 0187）、ここへもそのまま渡す。
   readonly notices?: NoticeSink;
   // 復帰の検知に使う単調時計（試験で差し替える）。
   readonly monotonic?: () => number;
@@ -550,6 +552,9 @@ export interface CoreHandle {
   readonly oauth: { readonly callbackPort: number | null } | null;
   // 保存境界の保持者（記録しない会話のゲート。ADR 0045・0059）。今の保存モード・区切りの世代・由来の照合を持つ。
   readonly storage: StorageModeGate;
+  // 知らせの中継（UI-05 の段階 3、ADR 0187）。掃除の job・保存境界の保持者・忘却の経路が知らせを渡す口で、流れの表示の
+  // 後始末と WSS の購読へ運ぶ。試験は保存層の命令で直接忘れた後の台帳の知らせをここへ渡す（忘却の公開ゲートは閉じたまま）。
+  readonly notices: NoticeSink;
   readonly state: LifecycleState;
   status(): ControlStatus;
   // 停止を要求する。二度目以降は進行中の終了処理を返す。
@@ -797,6 +802,13 @@ export async function startCore(
   let backupScheduler: BackupScheduler | null = null;
   let retention: RetentionSweeper | null = null;
   let storageGate: StorageModeGate | null = null;
+  // 知らせの中継（ADR 0187）。掃除の job より前に作り、HTTPS の受付を作るときに流れの表示と WSS の購読をつなぐ。
+  const notices = new NoticeRelay({
+    ...(options.retention?.notices === undefined
+      ? {}
+      : { downstream: options.retention.notices }),
+    log,
+  });
   let forgetService: ForgetService;
   let syncRun: {
     executor: SyncExecutor;
@@ -912,9 +924,7 @@ export async function startCore(
       clock: clockFile,
       freshClockState: opened.binding.storeGenerationSource === 'created',
       monotonic: options.retention?.monotonic ?? (() => performance.now()),
-      ...(options.retention?.notices === undefined
-        ? {}
-        : { notices: options.retention.notices }),
+      notices,
       ...(options.retention?.sweepIntervalMs === undefined
         ? {}
         : { sweepIntervalMs: options.retention.sweepIntervalMs }),
@@ -924,9 +934,7 @@ export async function startCore(
     // （Live の開始・入出力の状態）より前に作る。命令のうち Live を閉じるだけを音声の制御へつなぐ（ほかの保存先は次の段階）。
     storageGate = await StorageModeGate.open({
       clock: clockFile,
-      ...(options.retention?.notices === undefined
-        ? {}
-        : { notices: options.retention.notices }),
+      notices,
       effects: {
         run: (command) => {
           if (command.type === 'close_voice_session')
@@ -1265,9 +1273,7 @@ export async function startCore(
         // job が次の掃除の後に試す。
         truncateLog: () =>
           retention?.truncateLogAfterForget() ?? Promise.resolve(false),
-        ...(options.retention?.notices === undefined
-          ? {}
-          : { notices: options.retention.notices }),
+        notices,
         now: () => now().getTime(),
         log,
       });
@@ -1307,6 +1313,7 @@ export async function startCore(
         budget,
         retention,
         storageGate,
+        notices,
         researchRun?.acceptor,
         oauthRun === null ? undefined : oauthRun.service,
         forgetService,
@@ -1460,6 +1467,7 @@ export async function startCore(
                 : oauthRun.callback.port,
           },
     storage: storageGate as StorageModeGate,
+    notices,
     pairing,
     get state() {
       return lifecycle.state;
@@ -1485,6 +1493,8 @@ async function startHttps(
   budget: BudgetGate,
   retention: RetentionSweeper | null,
   storage: StorageModeGate,
+  // 知らせの中継（ADR 0187）。流れの表示の後始末と WSS の購読をつなぐ。
+  notices: NoticeRelay,
   // 公開 Web 調査の受付器（B12-05、ADR 0141）。口が無ければ undefined で、調査は未対応のまま。
   researchAcceptor?: BackgroundJobAcceptor,
   // 接続の作成・OAuth のサービス（B03-04、ADR 0144）。無ければ undefined で、認可の開始・解除の経路は無い。
@@ -1909,6 +1919,8 @@ async function startHttps(
   });
   // 保存した発言の期限を、流れの区切りへ渡す口をつなぐ（UI-05）。
   streamRecordTurn = stream.recordTurn;
+  // 期限切れ・忘却の知らせで流れの表示（キャンバスの物・つないだ要約）を片付ける（UI-05 の段階 3、ADR 0187）。
+  notices.attachDisplay((notice) => stream.applyNotice(notice));
   // 実行担当（ADR 0030）。承認の後・起動時の再開・本人の照合と再試行を受け持つ。
   const faults = turnOptions.faults ?? NO_FAULTS;
   const runner = createOperationRunner({
@@ -1958,6 +1970,8 @@ async function startHttps(
     voice: {
       subscribe: (deviceId, listener) => voice.subscribe(deviceId, listener),
     },
+    // 期限切れ・忘却・忘却台帳の前進の知らせ（ADR 0187）。接続範囲を確かめた後の購読にだけ送る。
+    notices,
     now: () => now().getTime(),
     faults,
     ...https.eventStream,

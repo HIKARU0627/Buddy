@@ -115,7 +115,7 @@ Core では、保存の口を `household-receipt-setting.ts`（`ReceiptSettingSt
 
 ### 既知の制約
 
-- 0022 の `household_bills` は、`INSERT OR REPLACE` で衝突した行を置き換えられないよう、`household_bills_no_replace`（ID か出所の鍵が既にあれば INSERT を拒む BEFORE INSERT）を足した。`recursive_triggers` が 0 のため、削除の trigger は `INSERT OR REPLACE` の置き換えでは動かない。家計の記録（0016 の `household_entries`）にも同じ穴がある（消した印の行を `INSERT OR REPLACE` で置き換えられる）。今回は直さない。
+- 0022 の `household_bills` は、`INSERT OR REPLACE` で衝突した行を置き換えられないよう、`household_bills_no_replace`（ID か出所の鍵が既にあれば INSERT を拒む BEFORE INSERT）を足した。`recursive_triggers` が 0 のため、削除の trigger は `INSERT OR REPLACE` の置き換えでは動かない。家計の記録（0016 の `household_entries`）にも同じ穴があったが、マイグレーション 0023 で塞いだ（追補を参照）。
 - DB は、有効から消したへの `UPDATE` だけを打ち `sealed_blobs` の行を消さないことを拒まない（保存層は一つの transaction で消すので、今の経路では起きない。家計の記録と同じ作り）。
 - 復号できない請求予定は ID を返さないので、画面から消せない。
 
@@ -124,3 +124,9 @@ Core では、保存の口を `household-receipt-setting.ts`（`ReceiptSettingSt
 - 実在の請求のお知らせで、誤った請求予定がどのくらい出るか、消す操作で足りるかを確かめる（`docs/household/README.md` の項目 K の K7・K9〜K11）。
 - 起動し直しても入のままなこと、鍵を外して起動し直すと切に倒れることを実機で確かめる（項目 L の L12・L14・L15・L16）。読み取りの provider の配線（ADR 0178）と合わせて確かめる。
 - U376〜U380 の本人の確認。
+
+## 追補: 家計の記録の置き換えの穴（マイグレーション 0023）
+
+0016 の `household_entries` は、同じ出所の鍵（source_key）または同じ ID（entry_id）で `INSERT OR REPLACE` を打つと、消した印（state = 'deleted'）の行を新しい有効な行で置き換えられた。`recursive_triggers` が 0 のため、置き換えで衝突した行の削除では `household_entries_no_delete` が動かないからである。保存層は普通の `INSERT` しか使わないので今の経路では起きないが、DB の最終ガードとして、マイグレーション 0023（DB の版 23）で `household_entries_no_replace`（entry_id か source_key が既にあれば INSERT を拒む BEFORE INSERT の trigger）を足した。表は作り直さず trigger を足すだけなので、既存の行は変わらず、表の数（STRICT の表は 64）と分類も変わらない。
+
+ほかの家計簿の表は塞がない。行の削除を拒む trigger を持つのは `household_entries` と `household_bills`（0022 で塞いだ）だけである。`household_category_rules`・`household_settings`・`household_budgets` は削除を拒む trigger を持たず、置き換えで消えて困る印の行もない。`household_mail_checks`・`household_mail_baselines` は trigger を持たず、取得し直せる source_cache である。なお `household_category_rules` の「本人の規則を取込みの規則で置き換えない」と、`household_settings`・`household_budgets` の「版を 1 ずつだけ進める」は更新の trigger であり、`INSERT OR REPLACE` でも避けられる。ただし保存層はこれらの表へ普通の `INSERT` と `UPDATE` しか使わず、置き換えても出所の鍵のような作り直しを止める印は失われないので、今回は扱わない。

@@ -1,0 +1,137 @@
+{
+  "status": "recorded",
+  "description": "B10-04 の模擬結果（ADR 0105〜0109・0135・0195）。委譲のつなぎ・背景化・遅着・閉じた接続への追記 0・端末への委譲の状態・同じ session への保存・記録しない会話の保存 0 件と Live 接続 0 回・欠落した断片や重複した委譲で変更が 0 のことを、Core の会話の経路・模擬のサイドバンド・手で進める時計で確かめ、手書きの期待値に一致した。commit は観測した基点で、source_sha256 はその commit の検査対象の内容。実音声・実 API・実請求・実機は未実施。結果が次回の文脈へ回る経路（B10-06）と完了の気づき（B11）は未実装で、観測していない。",
+  "command": "node --test apps/core/dist/live-conversation.test.js apps/core/dist/api-turns.test.js apps/core/dist/private-conversation.test.js apps/core/dist/voice-private.test.js scripts/voice-commentary-limits.test.mjs",
+  "source_sha256": [
+    {
+      "path": "apps/core/src/api-turns.ts",
+      "sha256": "e909b0204e4f625c921a4a2424db8f8040aea6a39787f6e8373cce1dac87d892"
+    },
+    {
+      "path": "apps/core/src/turn-ports.ts",
+      "sha256": "b84dd05146311c924bb55965101c5f3caf28951e276f121aa58bf61f534b134a"
+    },
+    {
+      "path": "apps/core/src/live-conversation.ts",
+      "sha256": "5ccc26d2c81dad7408a2390679302ec719c6a800a3f1e124bb580f7a839dd7f0"
+    },
+    {
+      "path": "apps/core/src/live-conversation.test.ts",
+      "sha256": "4b63e9e7a11af2e5240d665c8a4f5a9e0b753df894728a69448deda22e206195"
+    },
+    {
+      "path": "apps/core/src/api-turns.test.ts",
+      "sha256": "6f79d8cc9ee05142eb505f959fa2f6153b5eca34b5749d909baf3540094d2045"
+    },
+    {
+      "path": "apps/core/src/private-conversation.test.ts",
+      "sha256": "64ce007429326098e6536bbdc3d1cd8d19c48bbce621b603060e9c0d47e7fc32"
+    },
+    {
+      "path": "apps/core/src/voice-private.test.ts",
+      "sha256": "92a96353e14918cac75ae8d1125aebb4be907fa8807e50011f1e624d0bbd274e"
+    },
+    {
+      "path": "packages/domain/src/voice-commentary.ts",
+      "sha256": "0f5bdde1fceba7afcb9ad1bba12aa914265f569d4d56c992e765ddf315c03aec"
+    },
+    {
+      "path": "packages/domain/src/voice-interaction.ts",
+      "sha256": "a0f552730fbbf9fd28390fc6242173d75bc08320e24881575ea3df1ccf5edab5"
+    },
+    {
+      "path": "scripts/voice-commentary-limits.test.mjs",
+      "sha256": "2d0338ab8ed813afb2d1a3c5b8fbf41df132a5bfef72ae88f660ce9b6fd778bc"
+    }
+  ],
+  "records": [
+    {
+      "case_id": "X29-b10-04-foreground-background-and-late-result",
+      "kind": "simulated",
+      "commit": "ca49601ae972b787fd72e854063d614f6362fb6c",
+      "contract_version": "1.0.0",
+      "db_version": "24",
+      "environment": {
+        "os": "linux 6.18.44-fc-v880 / v24.22.3",
+        "hub": "同一プロセスの Core の会話の経路（一時ディレクトリの DB と DB worker）・模擬の Live のサイドバンドと provider・手で進める時計。実 provider へは接続しない。",
+        "devices": []
+      },
+      "seed": null,
+      "fault_point": "delegation_phase,late_result_after_close",
+      "provider_requests": 0,
+      "provider_state_changes": 0,
+      "approvals": 0,
+      "final_state": "foreground_then_background_at_8s,finished_on_result,closed_live_voice_0,result_to_screen_once",
+      "observed_at": "2026-11-27T22:44:32.000Z",
+      "deviation": "模擬のみ。手で進める時計・模擬のサイドバンド・模擬の解釈・偽の受付器を使った。実音声・実 API・実請求・実機・実際の解釈（LLM）は未実施（#132・#133・B05-08・B05-09・B15）。結果が次回の文脈へ回る経路（B10-06）と完了の気づき（B11）は未実装で観測していない。",
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation"
+    },
+    {
+      "case_id": "X33-b10-04-bridge-background-and-closed-connection",
+      "kind": "simulated",
+      "commit": "ca49601ae972b787fd72e854063d614f6362fb6c",
+      "contract_version": "1.0.0",
+      "db_version": "24",
+      "environment": {
+        "os": "linux 6.18.44-fc-v880 / v24.22.3",
+        "hub": "同一プロセスの Core の会話の経路（一時ディレクトリの DB と DB worker）・模擬の Live のサイドバンドと provider・手で進める時計。実 provider へは接続しない。",
+        "devices": []
+      },
+      "seed": null,
+      "fault_point": "bridge_1500ms,background_8000ms,closed_connection",
+      "provider_requests": 0,
+      "provider_state_changes": 0,
+      "approvals": 0,
+      "final_state": "bridge_once,background_once,no_bridge_when_fast,closed_connection_append_0",
+      "observed_at": "2026-11-27T22:44:32.000Z",
+      "deviation": "模擬のみ。手で進める時計・模擬のサイドバンド・模擬の解釈・偽の受付器を使った。実音声・実 API・実請求・実機・実際の解釈（LLM）は未実施（#132・#133・B05-08・B05-09・B15）。結果が次回の文脈へ回る経路（B10-06）と完了の気づき（B11）は未実装で観測していない。",
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation"
+    },
+    {
+      "case_id": "X36-b10-04-same-session-and-private-zero-saves",
+      "kind": "simulated",
+      "commit": "ca49601ae972b787fd72e854063d614f6362fb6c",
+      "contract_version": "1.0.0",
+      "db_version": "24",
+      "environment": {
+        "os": "linux 6.18.44-fc-v880 / v24.22.3",
+        "hub": "同一プロセスの Core の会話の経路（一時ディレクトリの DB と DB worker）・模擬の Live のサイドバンドと provider・手で進める時計。実 provider へは接続しない。",
+        "devices": []
+      },
+      "seed": null,
+      "fault_point": "same_session_turns,private_conversation",
+      "provider_requests": 0,
+      "provider_state_changes": 0,
+      "approvals": 0,
+      "final_state": "two_user_turns_one_session,private_db_untouched,private_live_connections_0",
+      "observed_at": "2026-11-27T22:44:32.000Z",
+      "deviation": "模擬のみ。手で進める時計・模擬のサイドバンド・模擬の解釈・偽の受付器を使った。実音声・実 API・実請求・実機・実際の解釈（LLM）は未実施（#132・#133・B05-08・B05-09・B15）。結果が次回の文脈へ回る経路（B10-06）と完了の気づき（B11）は未実装で観測していない。",
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation"
+    },
+    {
+      "case_id": "QA05-b10-04-partial-input-makes-no-change",
+      "kind": "simulated",
+      "commit": "ca49601ae972b787fd72e854063d614f6362fb6c",
+      "contract_version": "1.0.0",
+      "db_version": "24",
+      "environment": {
+        "os": "linux 6.18.44-fc-v880 / v24.22.3",
+        "hub": "同一プロセスの Core の会話の経路（一時ディレクトリの DB と DB worker）・模擬の Live のサイドバンドと provider・手で進める時計。実 provider へは接続しない。",
+        "devices": []
+      },
+      "seed": null,
+      "fault_point": "fragment_gap,unmapped_offset,duplicate_delegation",
+      "provider_requests": 0,
+      "provider_state_changes": 0,
+      "approvals": 0,
+      "final_state": "ask_again,no_operation,no_memory_save,same_request_once",
+      "observed_at": "2026-11-27T22:44:32.000Z",
+      "deviation": "模擬のみ。手で進める時計・模擬のサイドバンド・模擬の解釈・偽の受付器を使った。実音声・実 API・実請求・実機・実際の解釈（LLM）は未実施（#132・#133・B05-08・B05-09・B15）。結果が次回の文脈へ回る経路（B10-06）と完了の気づき（B11）は未実装で観測していない。",
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation"
+    }
+  ]
+}

@@ -64,7 +64,7 @@ const view = (fields: Partial<DesktopMemoryView> = {}): DesktopMemoryView => ({
   plan: null,
   result: null,
   list_seq: 2,
-  settings: { allowed_kinds: [] },
+  settings: { ref: uuid(0x5e1), allowed_kinds: [] },
   ...fields,
 });
 

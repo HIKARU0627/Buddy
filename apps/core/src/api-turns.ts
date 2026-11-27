@@ -276,6 +276,8 @@ export function memoryReplyText(
       return '覚えませんでした。覚える内容は 80 文字までにしてください。';
     case 'text_control_character':
       return '覚えませんでした。覚える内容に、画面に見えない文字が含まれています。';
+    case 'text_not_in_utterance':
+      return '覚えませんでした。覚える内容を、言ったとおりの言葉で受け取れませんでした。覚えてほしい言葉をそのまま入れて、言い換えてください。';
     case 'settings_changed':
       return '覚えませんでした。保存してよい記憶の種類の設定が、受け付けている間に変わりました。もう一度お願いします。';
     case 'private_conversation':
@@ -1576,6 +1578,7 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
           },
           {
             body: plan.body,
+            utterance: text,
             memory_kind: plan.memory_kind,
             turn_id: turnId,
             private_conversation: options.storage.mode === 'private',

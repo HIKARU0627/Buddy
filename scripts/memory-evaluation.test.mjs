@@ -10,6 +10,7 @@ import {
   artifactIssues,
   driftReasons,
   explicitMemoryText,
+  memoryTextInUtterance,
   expiryUsableReasons,
   initialReviewAt,
   memoryAdmission,
@@ -472,4 +473,67 @@ test('explicit memory text: whitespace is folded, 80 code points is the limit an
     );
   // 分解した文字は NFC にそろえる（「が」= か + 濁点）。
   assert.deepEqual(explicitMemoryText('が'), { ok: true, text: 'が' });
+});
+
+// 見えない文字の範囲（ADR 0191 の見直し、U499）。Cf・Cc・Zl・Zp・Cn とフィラーの一覧は拒み、改行・タブ・復帰と、見える空白
+// （ノーブレークスペース・和文の空白）は空白として扱う。異体字セレクターは拒まない。期待値は手で書いた。
+test('explicit memory text: format, control, separator, unassigned and filler characters are refused', () => {
+  const refused = [
+    '­', // ソフトハイフン（Cf）
+    '‍', // ゼロ幅接合子（Cf）
+    '⁦', // 書字方向の分離（Cf）
+    '\u{E0041}', // タグ文字（Cf）
+    '\u001B', // ESC（Cc）
+    '\u0085', // NEL（Cc）
+    ' ', // 行の区切り（Zl）
+    ' ', // 段落の区切り（Zp）
+    '͸', // 割り当てなし（Cn）
+    '﷐', // 非文字（Cn）
+    'ᅟ', // ハングルの初声のフィラー
+    'ᅠ', // ハングルの中声のフィラー
+    'ㅤ', // ハングルのフィラー
+    'ﾠ', // 半角のハングルのフィラー
+    '⠀', // 点字の空白
+    '឴', // クメールの見えない母音
+    '͏', // 結合書記素接合子
+    '᠋', // モンゴルの自由字形選択子
+  ];
+  for (const hidden of refused)
+    assert.deepEqual(
+      explicitMemoryText(`合成${hidden}の好み`),
+      { ok: false, reason: 'control_character' },
+      hidden.codePointAt(0).toString(16),
+    );
+  assert.deepEqual(explicitMemoryText('合成\r\n\tの 好み　だ'), {
+    ok: true,
+    text: '合成 の 好み だ',
+  });
+  assert.equal(explicitMemoryText('紅茶☕️').ok, true);
+});
+
+// 本人の発言にそのまま含まれる本文だけを記憶にする（ADR 0191 の見直し）。期待値は手で書いた。
+test('memory text must appear verbatim in the utterance after the same folding', () => {
+  assert.equal(
+    memoryTextInUtterance(
+      '返信は 短めが好み',
+      '「返信は\n短めが好み」を覚えて',
+    ),
+    true,
+  );
+  assert.equal(
+    memoryTextInUtterance('返信は短めが好み', '「返信は短めが好み」を覚えて'),
+    true,
+  );
+  // 言い換え・補い・要約は含まれない。
+  assert.equal(
+    memoryTextInUtterance('返信は簡潔が好み', '返信は短くしてと覚えて'),
+    false,
+  );
+  assert.equal(
+    memoryTextInUtterance('朝は紅茶が好き', '朝は紅茶と覚えて'),
+    false,
+  );
+  // 分解した文字も NFC にそろえて比べる（が = か + 濁点）。
+  assert.equal(memoryTextInUtterance('がっこう', 'がっこうと覚えて'), true);
+  assert.equal(memoryTextInUtterance('', '何か'), false);
 });

@@ -849,6 +849,8 @@ async function oldBackupRestore(seed, round) {
       return restoreSourceHmac(key.key.key);
     };
     const hmac = await ledgerHmac(handle.store);
+    // 保存してよい種類の設定の版（復元の後は許可が全部 off になり版が進むので、選び直した版に変える。U494）。
+    let settingsRevision = '1';
     // record: 暗号文を目印に加える（復元の後の遅着の確かめの保存は加えない）。
     const save = async (
       store,
@@ -867,6 +869,7 @@ async function oldBackupRestore(seed, round) {
         generation,
         now: clock.value,
         n,
+        settingsRevision,
       });
       if (record) ct[name] = sealed.ciphertext;
       return saveOutcome(await store.memory(op));
@@ -958,6 +961,20 @@ async function oldBackupRestore(seed, round) {
       kind: 'forget.ledger_export',
     });
     assert.ok(exported.ok);
+    // 復元の後は保存してよい種類の許可が全部 off に戻る（U494）。本人が好みを選び直してから遅着を確かめる。
+    const settingsAfterRestore = await handle.store.memory({
+      kind: 'memory.settings_get',
+    });
+    assert.ok(settingsAfterRestore.ok);
+    checked.settings_after_restore = settingsAfterRestore.value;
+    const reallowed = await handle.store.memory({
+      kind: 'memory.settings_set',
+      expected_revision: settingsAfterRestore.value.settings_revision,
+      allowed_kinds: ['preference'],
+      now: clock.value,
+    });
+    assert.ok(reallowed.ok, JSON.stringify(reallowed));
+    settingsRevision = reallowed.value.settings_revision;
     // 忘却より前（世代 0）に始めた抽出が、忘れた記憶の元の発言から届く。台帳は復元を越えて効く。
     const lateForgotten = await save(
       handle.store,

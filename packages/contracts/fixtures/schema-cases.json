@@ -30153,7 +30153,10 @@
         },
         "result": null,
         "list_seq": 2,
-        "settings": { "allowed_kinds": ["preference"] }
+        "settings": {
+          "ref": "00000000-0000-4000-8000-000000000e90",
+          "allowed_kinds": ["preference"]
+        }
       }
     }
   },
@@ -30213,7 +30216,10 @@
         },
         "result": null,
         "list_seq": 2,
-        "settings": { "allowed_kinds": ["preference"] }
+        "settings": {
+          "ref": "00000000-0000-4000-8000-000000000e90",
+          "allowed_kinds": ["preference"]
+        }
       }
     }
   },
@@ -30269,7 +30275,10 @@
         },
         "result": null,
         "list_seq": 2,
-        "settings": { "allowed_kinds": ["preference"] }
+        "settings": {
+          "ref": "00000000-0000-4000-8000-000000000e90",
+          "allowed_kinds": ["preference"]
+        }
       }
     }
   },
@@ -30303,7 +30312,10 @@
         "plan": null,
         "result": null,
         "list_seq": 2,
-        "settings": { "allowed_kinds": ["preference"] }
+        "settings": {
+          "ref": "00000000-0000-4000-8000-000000000e90",
+          "allowed_kinds": ["preference"]
+        }
       }
     }
   },
@@ -30345,7 +30357,10 @@
         "plan": null,
         "result": null,
         "list_seq": 3,
-        "settings": { "allowed_kinds": ["preference", "goal"] }
+        "settings": {
+          "ref": "00000000-0000-4000-8000-000000000e90",
+          "allowed_kinds": ["preference", "goal"]
+        }
       }
     }
   },
@@ -30367,6 +30382,7 @@
         "result": null,
         "list_seq": 3,
         "settings": {
+          "ref": "00000000-0000-4000-8000-000000000e90",
           "allowed_kinds": ["preference"],
           "memory_settings_revision": "2"
         }
@@ -30380,7 +30396,10 @@
     "value": {
       "channel": "desktop.memory_settings_change",
       "request_id": "00000000-0000-4000-8000-000000000e82",
-      "payload": { "allowed_kinds": ["goal", "preference"] }
+      "payload": {
+        "settings_ref": "00000000-0000-4000-8000-000000000e90",
+        "allowed_kinds": ["goal", "preference"]
+      }
     }
   },
   {
@@ -30390,7 +30409,41 @@
     "value": {
       "channel": "desktop.memory_settings_change",
       "request_id": "00000000-0000-4000-8000-000000000e82",
-      "payload": { "allowed_kinds": [] }
+      "payload": {
+        "settings_ref": "00000000-0000-4000-8000-000000000e90",
+        "allowed_kinds": []
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-memory-settings-change-without-ref",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.memory_settings_change",
+      "request_id": "00000000-0000-4000-8000-000000000e82",
+      "payload": { "allowed_kinds": ["goal"] }
+    }
+  },
+  {
+    "id": "desktop-ipc-memory-settings-view-without-ref",
+    "schema": "DesktopIpcResponse",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000e81",
+      "channel": "desktop.memory_settings_change",
+      "outcome": "ok",
+      "memories": {
+        "fetch": "loaded",
+        "fetched_at": "2030-11-04T08:59:00.000Z",
+        "forget": "closed",
+        "truncated": false,
+        "entries": [],
+        "plan": null,
+        "result": null,
+        "list_seq": 3,
+        "settings": { "allowed_kinds": ["goal"] }
+      }
     }
   },
   {
@@ -30400,7 +30453,10 @@
     "value": {
       "channel": "desktop.memory_settings_change",
       "request_id": "00000000-0000-4000-8000-000000000e82",
-      "payload": { "allowed_kinds": ["health"] }
+      "payload": {
+        "settings_ref": "00000000-0000-4000-8000-000000000e90",
+        "allowed_kinds": ["health"]
+      }
     }
   },
   {
@@ -30410,7 +30466,10 @@
     "value": {
       "channel": "desktop.memory_settings_change",
       "request_id": "00000000-0000-4000-8000-000000000e82",
-      "payload": { "allowed_kinds": ["goal", "goal"] }
+      "payload": {
+        "settings_ref": "00000000-0000-4000-8000-000000000e90",
+        "allowed_kinds": ["goal", "goal"]
+      }
     }
   },
   {
@@ -30421,6 +30480,7 @@
       "channel": "desktop.memory_settings_change",
       "request_id": "00000000-0000-4000-8000-000000000e82",
       "payload": {
+        "settings_ref": "00000000-0000-4000-8000-000000000e90",
         "allowed_kinds": ["goal"],
         "expected_memory_settings_revision": "3"
       }

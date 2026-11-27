@@ -13,6 +13,7 @@ import {
   explicitMemoryText,
   ledgerSubkeyHkdfInput,
   memoryAdmission,
+  memoryTextInUtterance,
 } from '@buddy/domain';
 import { restoreSourceHmac, sealBlob } from '@buddy/storage';
 import type {
@@ -30,6 +31,8 @@ export type MemoryNotSavedReason =
   | 'text_empty'
   | 'text_too_long'
   | 'text_control_character'
+  // 解釈が返した本文が、本人の発言（整えた文）にそのまま含まれていない（言い換え・要約・補い。ADR 0191 の見直し）。
+  | 'text_not_in_utterance'
   // 種類が分からない（モデルが種類を返さなかった）。
   | 'kind_missing'
   // 保存してよい種類に入っていない（既定は空）。
@@ -61,6 +64,8 @@ export type ExplicitMemoryPlan =
 
 export interface ExplicitMemoryInput {
   readonly body: string;
+  // 本人の発言の文（記憶の本文がこの中にそのまま含まれるときだけ保存する）。
+  readonly utterance: string;
   readonly memory_kind: MemoryKindName | null;
   // 保存する発言の ID（由来）。発言と同じ transaction で保存する。
   readonly turn_id: string;
@@ -176,6 +181,9 @@ export async function planExplicitMemory(
           ? 'text_too_long'
           : 'text_control_character',
     );
+  // 本文を決めるのは解釈（LLM）なので、本人の言っていない文を記憶にしない（種類は確かめられない。U498）。
+  if (!memoryTextInUtterance(text.text, input.utterance))
+    return notSaved('text_not_in_utterance');
   if (kind === null) return notSaved('kind_missing');
   // 記録しない会話では、鍵・保存層を読む前に断る（記録しない間の発言の痕跡を作らない）。
   if (input.private_conversation) return notSaved('private_conversation');

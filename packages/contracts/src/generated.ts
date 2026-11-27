@@ -1737,6 +1737,7 @@ export type DesktopIpcRequest =
       channel: 'desktop.memory_settings_change';
       request_id: Id;
       payload: {
+        settings_ref: Id;
         /**
          * @maxItems 6
          */
@@ -9051,6 +9052,10 @@ export interface DesktopForgetResultView {
  * 忘却の画面の上の「保存してよい記憶の種類」の欄の表示用の値（ADR 0191）。設定の版は main が持ち、画面へは渡さない。
  */
 export interface DesktopMemorySettingsView {
+  /**
+   * B00初版のランダムUUID v4。認証情報ではない。
+   */
+  ref: string;
   /**
    * @maxItems 6
    */

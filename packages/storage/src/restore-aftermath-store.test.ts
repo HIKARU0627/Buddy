@@ -227,6 +227,7 @@ test('restore aftermath: every reset is written in one transaction (hand-written
       connections_reauth_count: 1,
       sync_scopes_reset_count: 1,
       receipt_settings_closed_count: 0,
+      memory_settings_closed_count: 0,
       safety_revision: '8',
     });
     const after = snapshot(db);
@@ -493,5 +494,56 @@ test('restore aftermath: 切だったレシートの設定は変えず、版も�
         updated_at: 5,
       },
     ]);
+  });
+});
+
+test('restore aftermath: 保存してよい記憶の種類の許可を全部 off にし、版を 1 進める（ADR 0191 の見直し、U494）', async () => {
+  await withSeeded((db) => {
+    db.prepare(
+      "INSERT INTO memory_settings (setting_id, preference, goal, person, routine, lexicon, progress, settings_revision, updated_at) VALUES (1, 'on', 'off', 'on', 'off', 'off', 'off', 1, 5)",
+    ).run();
+    db.prepare(
+      "UPDATE memory_settings SET goal = 'on', settings_revision = 2 WHERE setting_id = 1",
+    ).run();
+    const result = applyRestoreAftermath(db, INPUT);
+    assert.equal(result.memory_settings_closed_count, 1);
+    assert.deepEqual(db.prepare('SELECT * FROM memory_settings').all(), [
+      {
+        setting_id: 1,
+        preference: 'off',
+        goal: 'off',
+        person: 'off',
+        routine: 'off',
+        lexicon: 'off',
+        progress: 'off',
+        settings_revision: 3,
+        updated_at: RESTORED_AT,
+      },
+    ]);
+  });
+});
+
+test('restore aftermath: 許可のない記憶の種類の設定は変えず、版も進めない。行がなければ作らない', async () => {
+  await withSeeded((db) => {
+    assert.equal(
+      applyRestoreAftermath(db, INPUT).memory_settings_closed_count,
+      0,
+    );
+    assert.deepEqual(db.prepare('SELECT * FROM memory_settings').all(), []);
+  });
+  await withSeeded((db) => {
+    db.prepare(
+      "INSERT INTO memory_settings (setting_id, preference, goal, person, routine, lexicon, progress, settings_revision, updated_at) VALUES (1, 'off', 'off', 'off', 'off', 'off', 'off', 1, 5)",
+    ).run();
+    assert.equal(
+      applyRestoreAftermath(db, INPUT).memory_settings_closed_count,
+      0,
+    );
+    assert.deepEqual(
+      db
+        .prepare('SELECT settings_revision, updated_at FROM memory_settings')
+        .all(),
+      [{ settings_revision: 1, updated_at: 5 }],
+    );
   });
 });

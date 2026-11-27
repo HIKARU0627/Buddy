@@ -1519,7 +1519,10 @@ export class DesktopCoreLink {
         : raw.channel === 'desktop.forget_plan'
           ? await this.#memories.plan(raw.payload.ref)
           : raw.channel === 'desktop.memory_settings_change'
-            ? await this.#memories.changeSettings(raw.payload.allowed_kinds)
+            ? await this.#memories.changeSettings(
+                raw.payload.settings_ref,
+                raw.payload.allowed_kinds,
+              )
             : await this.#memories.execute(raw.payload.ref);
     return this.#withinGeneration(
       generation,

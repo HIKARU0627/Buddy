@@ -155,6 +155,7 @@ export function memorySaveOp({
   now,
   n,
   origin = 'auto_extraction',
+  settingsRevision = SETTINGS_REVISION,
 }) {
   const sealed = seal(text, 'memories', memoryId, 'memory_text');
   return {
@@ -180,7 +181,7 @@ export function memorySaveOp({
         hmac: hmac(source),
       })),
       forgetting_generation: generation,
-      settings_revision: SETTINGS_REVISION,
+      settings_revision: settingsRevision,
       now,
     },
   };

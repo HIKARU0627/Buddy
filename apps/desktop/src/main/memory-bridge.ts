@@ -14,11 +14,15 @@
 //   計画を作り直さない（本人が見ていない物を消さない）。結果が分からない（届いたか分からない・503 outcome_unknown・ほかの
 //   5xx・形の違う 2xx）は、消えたかもしれないので計画を捨て、結果を「分からない」として残し、自動では送り直さない。
 // - 保存してよい記憶の種類の設定（ADR 0191）: 一覧と一緒に中枢の GET /v1/memory/settings を読み、種類だけを画面へ渡す（設定の
-//   版は main が持つ）。変更は画面から変えた後の種類の全部を受け、main が持つ版を付けて POST /v1/memory/settings へ送る。
+//   版は main が持ち、画面へは版が変わるたびに新しくなる参照を渡す）。変更は画面から変えた後の種類の全部と、画面が見ている
+//   設定の参照を受け、参照が今のものでなければ送らずに preview_stale を返す（409 の後に main が先に読み直していると、画面の
+//   古い表示から作った全部で別の画面の変更を上書きしてしまうため。ADR 0191 の見直し）。今の参照なら main が持つ版を付けて
+//   POST /v1/memory/settings へ送る。
 //   版が違う（409）は別の画面で変わったので、設定を読み直して preview_stale を返す（自動では送り直さない）。結果が分からない
 //   ときは outcome_unknown で、読み直して今の値を見せる。読めなかった設定は前の値のまま（読めたことがなければ null）。
 // - 世代（ロック・切断）: reset で一覧・参照・計画・結果・設定を捨て、非同期の処理は await の後に世代を照合する。
 // Electron に依存しない（node:test で試験する）。
+import { randomUUID } from 'node:crypto';
 import type {
   DesktopForgetPlanView,
   DesktopForgetResultView,
@@ -112,6 +116,8 @@ export class MemoryBridge {
   #executing = false;
   // 保存してよい記憶の種類の設定（中枢の値。版は画面へ渡さない）。読めたことがなければ null。
   #settings: MemorySettings | null = null;
+  // 設定の参照（中枢の設定の版が変わるたびに新しくする）。読めたことがなければ null。
+  #settingsRef: string | null = null;
   // 設定の変更の旗（変更の応答を待つ間の 2 回目は送らない）。
   #changingSettings = false;
 
@@ -132,6 +138,7 @@ export class MemoryBridge {
     this.#fetchedAt = null;
     this.#failed = false;
     this.#settings = null;
+    this.#settingsRef = null;
     this.#listSeq += 1;
   }
   // 実行の旗は reset では下ろさない（古い世代の実行が終わるときに、その実行の finally が下ろす）。
@@ -222,9 +229,12 @@ export class MemoryBridge {
       result: this.#result,
       list_seq: this.#listSeq,
       settings:
-        this.#settings === null
+        this.#settings === null || this.#settingsRef === null
           ? null
-          : { allowed_kinds: [...this.#settings.allowed_kinds] },
+          : {
+              ref: this.#settingsRef,
+              allowed_kinds: [...this.#settings.allowed_kinds],
+            },
     };
   }
 
@@ -296,8 +306,7 @@ export class MemoryBridge {
       read.status === 200 &&
       this.#host.contract.valid('MemorySettings', read.body)
     ) {
-      this.#settings = read.body as MemorySettings;
-      this.#listSeq += 1;
+      this.#takeSettings(read.body as MemorySettings);
       return;
     }
     this.#host.log('memory_settings_unavailable');
@@ -305,20 +314,35 @@ export class MemoryBridge {
 
   // --- 保存してよい記憶の種類の設定（ADR 0191） ---
 
+  // 中枢の設定を持つ。版が変わったら参照を新しくする（同じ版の読み直しでは参照を変えない）。
+  #takeSettings(next: MemorySettings): void {
+    if (
+      this.#settings === null ||
+      this.#settingsRef === null ||
+      this.#settings.memory_settings_revision !== next.memory_settings_revision
+    )
+      // 記憶・計画の参照（host.newRef）の通し番号と分けるため、設定の参照は別に作る。
+      this.#settingsRef = randomUUID();
+    this.#settings = next;
+    this.#listSeq += 1;
+  }
+
   // 画面から変えた後の種類の全部を受け、main が持つ版を付けて送る。読めたことがない設定は変えない（版が分からない）。
   async changeSettings(
+    settingsRef: string,
     kinds: readonly MemorySettings['allowed_kinds'][number][],
   ): Promise<MemoryOutcome<DesktopMemoryView>> {
     if (this.#changingSettings) return fail('confirmation_pending');
     this.#changingSettings = true;
     try {
-      return await this.#changeSettings(kinds);
+      return await this.#changeSettings(settingsRef, kinds);
     } finally {
       this.#changingSettings = false;
     }
   }
 
   async #changeSettings(
+    settingsRef: string,
     kinds: readonly MemorySettings['allowed_kinds'][number][],
   ): Promise<MemoryOutcome<DesktopMemoryView>> {
     const gen = this.#gen;
@@ -327,6 +351,8 @@ export class MemoryBridge {
     if (connection === null || scope === null) return fail('not_connected');
     const current = this.#settings;
     if (current === null) return fail('entry_not_found');
+    // 画面が見ている設定が今の設定でない（読み直した後の新しい版を、画面がまだ見ていない）。送らない。
+    if (settingsRef !== this.#settingsRef) return fail('preview_stale');
     const outcome = await connection.request({
       method: 'POST',
       path: '/v1/memory/settings',
@@ -345,8 +371,7 @@ export class MemoryBridge {
       outcome.status === 200 &&
       this.#host.contract.valid('MemorySettings', outcome.body)
     ) {
-      this.#settings = outcome.body as MemorySettings;
-      this.#listSeq += 1;
+      this.#takeSettings(outcome.body as MemorySettings);
       return { ok: true, value: this.view() };
     }
     // 別の画面で変わった（409）・結果が分からない: 自動では送り直さず、今の設定を読み直す。

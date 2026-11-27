@@ -15508,6 +15508,9 @@
             "payload": {
               "type": "object",
               "properties": {
+                "settings_ref": {
+                  "$ref": "#/$defs/Id"
+                },
                 "allowed_kinds": {
                   "type": "array",
                   "maxItems": 6,
@@ -15517,13 +15520,13 @@
                   }
                 }
               },
-              "required": ["allowed_kinds"],
+              "required": ["settings_ref", "allowed_kinds"],
               "additionalProperties": false
             }
           },
           "required": ["channel", "request_id", "payload"],
           "additionalProperties": false,
-          "description": "保存してよい記憶の種類の設定を変える（ADR 0191）。変えた後の種類の全部を送り、設定の版は main が付ける。版が今と違えば（別の画面で変わった）preview_stale で、main は設定を読み直す。ロック解除済みの画面操作（前面）だけ。中枢の設定を変えるだけで外部へは送らないので、入出力の停止中も受け付ける。"
+          "description": "保存してよい記憶の種類の設定を変える（ADR 0191）。変えた後の種類の全部と、画面が見ている設定の参照（settings_ref）を送り、設定の版は main が付ける。参照が main の今の参照と違えば（画面が古い設定を見ている）preview_stale で、中枢へは送らない。版が今と違えば（別の画面で変わった）preview_stale で、main は設定を読み直す。ロック解除済みの画面操作（前面）だけ。中枢の設定を変えるだけで外部へは送らないので、入出力の停止中も受け付ける。"
         },
         {
           "type": "object",
@@ -20663,6 +20666,10 @@
     "DesktopMemorySettingsView": {
       "type": "object",
       "properties": {
+        "ref": {
+          "$ref": "#/$defs/Id",
+          "description": "main が付ける設定の参照。中枢の設定の版が変わるたびに新しくなる。画面は変更の要求にこの参照を載せ、main は今の参照と違えば preview_stale で断る（古い表示から作った種類の全部で、別の画面の変更を上書きしない。ADR 0191 の見直し）。"
+        },
         "allowed_kinds": {
           "type": "array",
           "maxItems": 6,
@@ -20670,7 +20677,7 @@
           "items": { "$ref": "#/$defs/MemoryKind" }
         }
       },
-      "required": ["allowed_kinds"],
+      "required": ["ref", "allowed_kinds"],
       "additionalProperties": false,
       "description": "忘却の画面の上の「保存してよい記憶の種類」の欄の表示用の値（ADR 0191）。設定の版は main が持ち、画面へは渡さない。"
     },

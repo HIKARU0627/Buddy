@@ -22,6 +22,9 @@ after(async () => {
   await happy.happyDOM.close();
 });
 
+const SETTINGS_REF = '00000000-0000-4000-8000-0000000005e1';
+const SETTINGS_REF_2 = '00000000-0000-4000-8000-0000000005e2';
+
 const view = (
   settings: DesktopMemoryView['settings'],
   listSeq = 2,
@@ -131,14 +134,17 @@ test('ADR 0191: the default is nothing allowed; checking a kind sends every allo
         request_id: request.request_id,
         channel: request.channel,
         outcome: 'ok',
-        memories: view({ allowed_kinds: [] }),
+        memories: view({ ref: SETTINGS_REF, allowed_kinds: [] }),
       } as DesktopIpcResponse;
     const answer = {
       request_id: request.request_id,
       channel: request.channel,
       outcome: 'ok',
       memories: view(
-        { allowed_kinds: request.payload.allowed_kinds as never },
+        {
+          ref: SETTINGS_REF_2,
+          allowed_kinds: request.payload.allowed_kinds as never,
+        },
         5,
       ),
     } as DesktopIpcResponse;
@@ -183,7 +189,7 @@ test('ADR 0191: the default is nothing allowed; checking a kind sends every allo
           (request) => request.channel === 'desktop.memory_settings_change',
         )
         .map((request) => request.payload),
-      [{ allowed_kinds: ['goal'] }],
+      [{ settings_ref: SETTINGS_REF, allowed_kinds: ['goal'] }],
     );
     assert.deepEqual(
       boxes(screen.container).map((box) => box.checked),
@@ -210,7 +216,10 @@ test('ADR 0191: a change refused because another screen changed the settings is 
             request_id: request.request_id,
             channel: request.channel,
             outcome: 'ok',
-            memories: view({ allowed_kinds: ['person'] }, 2 + sent.length),
+            memories: view(
+              { ref: SETTINGS_REF, allowed_kinds: ['person'] },
+              2 + sent.length,
+            ),
           }) as DesktopIpcResponse,
   );
   const screen = await render(api);

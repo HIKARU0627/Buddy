@@ -6,8 +6,9 @@
 //   （ADR 0024 の約束 7「押せないボタンは置かない」の例外。理由を同じ欄に出す。ADR 0183）。
 // - 実行は確認の帯の中のボタンだけから送る。main が OS の確認ダイアログを 1 回出す。計画の後に変わった（preview_stale）は
 //   計画を作り直させ、自動では作り直さない。結果が分からない（outcome_unknown）は「消えたかもしれない」と見せ、自動では送り直さない。
-// - 保存してよい記憶の種類の設定（ADR 0191）: 種類ごとの選択を変えたら、変えた後の種類の全部をすぐ送る（版は main が持つ）。
-//   別の画面で変わった・結果が分からないときは送り直さず、main が読み直した今の設定を見せる。
+// - 保存してよい記憶の種類の設定（ADR 0191）: 種類ごとの選択を変えたら、変えた後の種類の全部と、見ている設定の参照をすぐ
+//   送る（版は main が持つ）。別の画面で変わった・結果が分からないときは送り直さず、一覧と設定を読み直し、読み直しが終わる
+//   まで選択を押せないままにする（古い表示から作った全部を新しい版で送らない。ADR 0191 の見直し）。
 // 理由のコード・API の名前・「世代」の語は画面に出さない。
 import type {
   DesktopForgetPlanView,
@@ -466,6 +467,12 @@ export function applyExecuteResponse(
   return withView({ ...idle, notice: null }, response.memories);
 }
 
+// 読み直しが終わるまで選択を押せないままにする拒否（main が設定を読み直している）。
+const SETTINGS_REREAD: ReadonlySet<RejectReason> = new Set([
+  'preview_stale',
+  'outcome_unknown',
+]);
+
 export function applySettingsResponse(
   state: MemoryViewState,
   response: DesktopIpcResponse,
@@ -476,7 +483,7 @@ export function applySettingsResponse(
   };
   if (response.outcome === 'rejected')
     return {
-      ...idle,
+      ...(SETTINGS_REREAD.has(response.reason) ? state : idle),
       notice: {
         tone: 'warning',
         text: memoryFailureText('settings', response.reason),
@@ -492,6 +499,11 @@ type AllowedKinds = Extract<
   DesktopIpcRequest,
   { channel: 'desktop.memory_settings_change' }
 >['payload']['allowed_kinds'];
+
+// 画面が見ている設定の参照（main が版ごとに付ける。読めていなければ null）。
+export function settingsRefOf(state: MemoryViewState): string | null {
+  return state.view?.settings?.ref ?? null;
+}
 
 // 中枢から読めた保存してよい種類（読めていなければ null）。
 export function allowedKinds(
@@ -689,12 +701,15 @@ export class MemoryStore {
   // 別の画面で変わったときは送り直さない（main が今の設定を読み直す）。
   #setKind(kind: DesktopMemoryEntry['kind'], allowed: boolean): void {
     const current = allowedKinds(this.#state);
-    if (this.#state.busy !== null || current === null) return;
+    const settingsRef = settingsRefOf(this.#state);
+    if (this.#state.busy !== null || current === null || settingsRef === null)
+      return;
     if (current.includes(kind) === allowed) return;
     const epoch = this.#epoch;
     this.#set({ ...this.#state, busy: SETTINGS_PLACE, notice: null });
     void this.#send(
       request('desktop.memory_settings_change', {
+        settings_ref: settingsRef,
         allowed_kinds: nextAllowedKinds(current, kind, allowed) as AllowedKinds,
       }),
       applySettingsResponse,
@@ -703,12 +718,30 @@ export class MemoryStore {
       if (
         response !== null &&
         response.outcome === 'rejected' &&
-        (response.reason === 'preview_stale' ||
-          response.reason === 'outcome_unknown') &&
+        SETTINGS_REREAD.has(response.reason) &&
         epoch === this.#epoch
       )
-        this.#reread();
+        this.#rereadSettings();
     });
+  }
+
+  // 設定の変更が断られた・結果が分からなかった後の読み直し。読み直しが終わる（読めた・読めなかった）まで選択を押せないままにし、
+  // 終わったら外す（文言は残す）。
+  #rereadSettings(): void {
+    const release = (state: MemoryViewState): MemoryViewState => ({
+      ...state,
+      busy: state.busy === SETTINGS_PLACE ? null : state.busy,
+    });
+    void this.#send(
+      request('desktop.memories_list', null),
+      (state, response) =>
+        release(
+          response.outcome === 'ok' && 'memories' in response
+            ? withView(state, response.memories)
+            : state,
+        ),
+      release,
+    );
   }
 
   // 出せなくなった（ロック・切断）: 世代を進めて内容を捨てる。

@@ -198,9 +198,38 @@ test('memory settings: empty by default, the revision steps by one, a stale revi
           .run(),
       /CHECK constraint failed/u,
     );
+    // 行は作り直さず消さない（版が 0・1 に戻らない。ADR 0191 の見直し）。INSERT OR REPLACE も作る前に拒む。
+    for (const sql of [
+      "INSERT INTO memory_settings (setting_id, preference, goal, person, routine, lexicon, progress, settings_revision, updated_at) VALUES (1, 'on', 'on', 'on', 'on', 'on', 'on', 1, 9)",
+      "INSERT OR REPLACE INTO memory_settings (setting_id, preference, goal, person, routine, lexicon, progress, settings_revision, updated_at) VALUES (1, 'on', 'on', 'on', 'on', 'on', 'on', 1, 9)",
+    ])
+      assert.throws(() => db.prepare(sql).run(), /memory_settings_no_replace/u);
+    assert.throws(
+      () => db.prepare('DELETE FROM memory_settings').run(),
+      /memory_settings_no_delete/u,
+    );
     assert.deepEqual(value(memoryOp(db, { kind: 'memory.settings_get' })), {
       allowed_kinds: [],
       settings_revision: '3',
+    });
+  });
+});
+
+test('memory settings: the first row starts at revision 1 (a direct insert with another revision is refused)', async () => {
+  await withStore((db) => {
+    for (const revision of [2, 7])
+      assert.throws(
+        () =>
+          db
+            .prepare(
+              "INSERT INTO memory_settings (setting_id, preference, goal, person, routine, lexicon, progress, settings_revision, updated_at) VALUES (1, 'on', 'off', 'off', 'off', 'off', 'off', ?, 9)",
+            )
+            .run(revision),
+        /memory_settings_insert_first/u,
+      );
+    assert.deepEqual(value(memoryOp(db, { kind: 'memory.settings_get' })), {
+      allowed_kinds: [],
+      settings_revision: '0',
     });
   });
 });

@@ -68,6 +68,10 @@ interface Said {
   intent: string;
   body: string | null;
   memory_kind: string | null;
+  // 解釈が返す、本人の発言の中の対象の候補（memory_correct では使わないことを確かめる）。
+  target_candidate_id?: string | null;
+  // 本人の発言。省略は「「本文」を覚えて」（記憶の本文は発言にそのまま含まれるときだけ保存する）。
+  utterance?: string;
 }
 
 interface Rig {
@@ -106,7 +110,12 @@ async function withMemoryRoutes(
         return Promise.resolve({
           kind: 'intent',
           intent: said.intent,
-          args: { ...NO_ARGS, body: said.body, memory_kind: said.memory_kind },
+          args: {
+            ...NO_ARGS,
+            body: said.body,
+            memory_kind: said.memory_kind,
+            target_candidate_id: said.target_candidate_id ?? null,
+          },
         });
       },
     };
@@ -191,7 +200,7 @@ const say = async (
     body: {
       request_id: requestId,
       command_scope_id: SCOPE_A,
-      text: '合成の発言',
+      text: rig.said.utterance ?? `「${rig.said.body ?? ''}」を覚えて`,
       input_kind: 'text',
       origin: { segment_id: rig.sessionId, segment_generation: '1' },
     },
@@ -502,6 +511,7 @@ test('ADR 0191: in a private conversation the plan refuses before reading the ke
     },
     {
       body: '合成の好み',
+      utterance: '「合成の好み」を覚えて',
       memory_kind: 'preference',
       turn_id: randomUUID(),
       private_conversation: true,
@@ -515,4 +525,146 @@ test('ADR 0191: in a private conversation the plan refuses before reading the ke
   });
   assert.equal(ledgerReads, 0);
   assert.equal(storeReads, 0);
+});
+
+// ---- 見直し（ADR 0191 の見直し） ----
+
+const NOT_IN_UTTERANCE =
+  '覚えませんでした。覚える内容を、言ったとおりの言葉で受け取れませんでした。覚えてほしい言葉をそのまま入れて、言い換えてください。';
+
+test(
+  'ADR 0191 review: a body the model paraphrased (not in the utterance) is not saved and the reply does not carry it',
+  { timeout: 60_000 },
+  async () => {
+    await withMemoryRoutes({}, async (rig) => {
+      await allow(rig, '0', ['preference']);
+      // 本人は「返信は短く」と言ったが、解釈は言い換えた本文を返した。
+      rig.said.utterance = '返信は短くしてほしいと覚えて';
+      rig.said.body = '返信は簡潔なものが好み';
+      const refused = await say(rig);
+      assert.equal(refused['reply_text'], NOT_IN_UTTERANCE);
+      assert.equal(viewOf(refused)['status'], 'needs_review');
+      assert(!JSON.stringify(refused).includes('簡潔'));
+      assert.equal(count(rig, 'memories'), 0);
+      // 改行・空白の違いは同じ整えで比べる（発言の中にそのまま含まれる）。
+      rig.said.utterance = '「返信は\n短めが好み」を覚えて';
+      rig.said.body = '返信は 短めが好み';
+      assert.equal((await say(rig))['reply_text'], SAVED_PREFERENCE);
+      // 本文が発言の一部を縮めた（補った）だけでも、そのまま含まれなければ保存しない。
+      rig.said.utterance = '朝はコーヒーを飲むと覚えて';
+      rig.said.body = '朝はコーヒーが好き';
+      assert.equal((await say(rig))['reply_text'], NOT_IN_UTTERANCE);
+      assert.equal(count(rig, 'memories'), 1);
+    });
+  },
+);
+
+test(
+  'ADR 0191 review: the mock interpreter keeps the quoted words, so the check passes; a model-style paraphrase does not',
+  { timeout: 60_000 },
+  async () => {
+    const { createMockInterpreter } = await import('./turn-ports.js');
+    const mock = createMockInterpreter();
+    const reply = await mock.interpret({
+      text: '「朝は紅茶」を好みとして覚えて',
+      today: '2026-10-05',
+      mail_candidates: [],
+    });
+    assert.equal(reply.kind, 'intent');
+    const args = (
+      reply as unknown as { args: { body: string; memory_kind: string } }
+    ).args;
+    assert.deepEqual([args.body, args.memory_kind], ['朝は紅茶', 'preference']);
+    const { memoryTextInUtterance } = await import('@buddy/domain');
+    assert.equal(
+      memoryTextInUtterance(args.body, '「朝は紅茶」を好みとして覚えて'),
+      true,
+    );
+    assert.equal(
+      memoryTextInUtterance('朝は紅茶が好み', '「朝は紅茶」を好みとして覚えて'),
+      false,
+    );
+  },
+);
+
+test(
+  'ADR 0191 review: memory_correct ignores target_candidate_id from the model and keeps the old memory',
+  { timeout: 60_000 },
+  async () => {
+    await withMemoryRoutes({}, async (rig) => {
+      await allow(rig, '0', ['preference']);
+      rig.said.body = '返信は長めが好み';
+      assert.equal((await say(rig))['reply_text'], SAVED_PREFERENCE);
+      const before = await memories(rig);
+      rig.said.intent = 'memory_correct';
+      rig.said.body = '返信は短めが好み';
+      // 解釈が対象の候補（メールの候補の形の ID）を返しても、古い記憶を選ぶのは画面の本人だけ。
+      rig.said.target_candidate_id = '00000000-0000-4000-8000-0000000000c1';
+      const corrected = await say(rig);
+      assert.equal(corrected['reply_text'], CORRECTED_GATE_CLOSED);
+      const after = await memories(rig);
+      assert.equal(after.length, 2);
+      // 古い記憶は消えず、変わらない。
+      assert(
+        after.some(
+          (row) =>
+            row.text === '返信は長めが好み' &&
+            JSON.stringify(row.sources) === JSON.stringify(before[0]?.sources),
+        ),
+      );
+      assert(!JSON.stringify(corrected).includes('0000000000c1'));
+    });
+  },
+);
+
+test('ADR 0191 review: the content and target HMACs match values computed by hand with node:crypto', async () => {
+  // 期待値: node:crypto で別に計算した値（HKDF-SHA256(ikm = 0x4c × 32, salt = 空, info = buddy/memory/dedupe/v1, L = 32) の鍵で
+  // HMAC-SHA256(用途の名前 ‖ 0x00 ‖ preference ‖ 0x00 ‖ 返信は短めが好み)。由来は info = buddy/ledger/source-id/v1 の鍵で
+  // HMAC-SHA256(buddy/ledger/source-id/v1 ‖ 0x00 ‖ turn ‖ 0x00 ‖ 発言 ID)）。
+  const turnId = '00000000-0000-4000-8000-0000000000aa';
+  const plan = await planExplicitMemory(
+    {
+      store: {
+        memory: (() =>
+          Promise.resolve({
+            ok: true as const,
+            value: {
+              settings: {
+                allowed_kinds: ['preference'],
+                settings_revision: '1',
+              },
+              forgetting_generation: '0',
+              ledger: [],
+              existing: [],
+            },
+          })) as never,
+      },
+      ledgerKey: () => Promise.resolve(LEDGER_KEY),
+      newId: () => '00000000-0000-4000-8000-0000000000bb',
+    },
+    {
+      body: '返信は短めが好み',
+      utterance: '「返信は短めが好み」を覚えて',
+      memory_kind: 'preference',
+      turn_id: turnId,
+      private_conversation: false,
+      data_key: DATA_KEY_MATERIAL,
+    },
+  );
+  assert.equal(plan.kind, 'save');
+  const memory = (plan as Extract<typeof plan, { kind: 'save' }>).memory;
+  assert.equal(
+    memory.dedupe_key,
+    'e62f6454a203d1df229f28e3884f207bb89f8eae5ef76010196c04406ff53c5b',
+  );
+  assert.equal(
+    memory.target_key_hash,
+    '3f87b229cb44f2a7af6712c513d8f7eff6f2db9b9c2f812fc49ddd3be8475f98',
+  );
+  assert.equal(
+    memory.source_hmac,
+    'c30f51b8119a9debc732900b3cbdeea5c1adc7c2a418bd7f5a2a6e35edc16cb3',
+  );
+  assert.equal(memory.settings_revision, '1');
+  assert.equal(memory.forgetting_generation, '0');
 });

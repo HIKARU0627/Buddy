@@ -26,12 +26,15 @@ import type {
 } from '@buddy/contracts';
 import {
   ClientConnection,
+  ForgetLedgerSync,
   hubConnectionOf,
   type BackoffPolicy,
   type ClientClock,
   type ClientLockState,
   type ClientTransport,
+  type ForgetLedgerSyncState,
   type HubConnection,
+  type LedgerSyncRequestOutcome,
   type LinkState,
 } from '@buddy/client';
 import {
@@ -89,6 +92,10 @@ import type {
   OperationConfirmRequest,
 } from './operation-bridge.js';
 import { PairingFlow } from './pairing-flow.js';
+import {
+  createReplicaFileStore,
+  sha256Hex,
+} from './forget-ledger-replica-store.js';
 
 export const CONNECTION_CHANNELS: readonly DesktopIpcChannel[] = [
   'desktop.get_connection',
@@ -264,6 +271,11 @@ export interface DesktopCoreLinkOptions {
       { channel: 'desktop.canvas_changed' }
     >,
   ) => void;
+  // 忘却台帳の複製の保存先（Electron の userData 配下の forget-ledger-replica.json。B06-07b-3、ADR 0182）。省略すると
+  // 複製しない（中枢への要求の数を数える試験で、背景の同期を混ぜないため）。
+  readonly forgetLedgerReplicaPath?: string;
+  // 試験で複製の rename の前の停止を再現する。
+  readonly forgetLedgerBeforeRename?: () => void | Promise<void>;
 }
 
 // 承認・拒否・失効の前の本人の確認（本人の判断 2026-10-22、ADR 0026）。main が OS の確認ダイアログで行う。
@@ -426,6 +438,8 @@ export class DesktopCoreLink {
   readonly #household: HouseholdBridge;
   // 連携の接続の一覧と取得範囲の変更（参照だけを画面へ渡す。B08-02 P3・B09-05、ADR 0142）。
   readonly #connections: ConnectionsBridge;
+  // 忘却台帳の複製と追いつき（B06-07b-3、ADR 0182）。保存先がなければ null。
+  readonly #ledger: ForgetLedgerSync | null;
 
   constructor(options: DesktopCoreLinkOptions) {
     this.#options = options;
@@ -500,6 +514,27 @@ export class DesktopCoreLink {
       turnResult: (turn) => this.#operations.streamTurnResult(turn),
       log: (code) => this.#log(code),
     });
+    const replicaPath = options.forgetLedgerReplicaPath;
+    this.#ledger =
+      replicaPath === undefined
+        ? null
+        : new ForgetLedgerSync({
+            store: createReplicaFileStore({
+              path: replicaPath,
+              valid: (name, value) => options.contract.valid(name, value),
+              deviceId: () => this.#connection?.state.deviceId ?? null,
+              now: () => new Date(options.clock.now()),
+              ...(options.forgetLedgerBeforeRename === undefined
+                ? {}
+                : { beforeRename: options.forgetLedgerBeforeRename }),
+            }),
+            request: (body) => this.#ledgerRequest({ ...body }),
+            valid: (name, value) => options.contract.valid(name, value),
+            sha256: sha256Hex,
+            log: (code) => this.#log(code),
+            // 読んだ複製の持ち主と照合する（登録し直したら、次の保存で前のファイルを退避する。U404）。
+            deviceId: () => this.#connection?.state.deviceId ?? null,
+          });
     this.#pairing = new PairingFlow({
       fetchCertificate: options.fetchCertificate ?? fetchPeerCertificate,
       request: (hub: PinnedHub, request: HubHttpRequest) =>
@@ -897,6 +932,10 @@ export class DesktopCoreLink {
         if (this.#options.budgetAuto !== false) void this.refreshBudget();
         // 接続するたびに、中枢のキャンバスの今の記述を取る（捨てた記述の復元。UI-03）。
         if (this.#options.canvasMode === true) void this.#canvas.refresh();
+        // 接続するたびに、忘却台帳の複製の head を送って追いつく（B06-07b-3、ADR 0182）。ロック中でも送る（台帳は
+        // 本文を持たない）。復元で DB の世代（store_generation）が変わったときも、bootstrap をやり直して live に
+        // なるので、ここで中枢の台帳と照らし合わせ直す。
+        void this.#ledger?.connected();
       }
       // 中枢の API の major が違えば、以後は要求を送らない。自宅の指紋の報告も止める（レビューの指摘 L4）。
       if (state.phase === 'upgrade_required') this.#reporter?.stop();
@@ -2381,6 +2420,37 @@ export class DesktopCoreLink {
     this.#reporter = null;
     this.#connection?.stop();
     this.#connection = null;
+  }
+
+  // 「忘却台帳が進んだ」知らせ（ForgetLedgerNotice）を受けたとき。運び方は UI-05（U40）が決めるので、ここは受け取りの
+  // 口だけ（U403）。形が違えば捨て、知らせの head をもう保存していれば何も取らない。
+  forgetLedgerNotice(raw: unknown): Promise<void> {
+    return this.#ledger?.notice(raw) ?? Promise.resolve();
+  }
+
+  // 試験用: 忘却台帳の複製の状態（head・残した理由のコード。台帳の中身は持たない）。
+  get forgetLedgerState(): ForgetLedgerSyncState | null {
+    return this.#ledger?.state ?? null;
+  }
+
+  // 試験用: 進行中の忘却台帳の同期が終わるまで待つ。
+  async forgetLedgerIdle(): Promise<void> {
+    await this.#ledger?.idle();
+  }
+
+  // 忘却台帳の同期の要求。送った後に接続が替わっていたら（切断・登録し直し）、応答を使わない。
+  async #ledgerRequest(
+    body: Readonly<Record<string, unknown>>,
+  ): Promise<LedgerSyncRequestOutcome> {
+    const connection = this.#connection;
+    if (connection === null) return { kind: 'not_sent' };
+    const outcome = await connection.request({
+      method: 'POST',
+      path: '/v1/forget-ledger/sync',
+      body,
+    });
+    if (this.#connection !== connection) return { kind: 'not_sent' };
+    return outcome.kind === 'not_sent' ? { kind: 'not_sent' } : outcome;
   }
 
   // 試験用: 接続の状態機械（命令の送信を確かめる）。トークンは含まない。

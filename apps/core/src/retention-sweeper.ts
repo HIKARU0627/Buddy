@@ -9,6 +9,8 @@
 //      発言／元情報／派生物の期限削除・記憶の見直し待ちと期限削除）。
 //   5. 掃除の記録（SweepRecord）を確定してゲートを開き、実際に消せた物の知らせを NoticeSink に渡す。
 //   6. 削除を伴ったときだけ WAL を切り詰め、間隔（既定 1 日）を空けて VACUUM する（後始末は記録の外。ADR 0053）。
+// 忘却の経路も COMMIT の後に同じ切り詰めをこの job に頼む（truncateLogAfterForget。U440、ADR 0186）。切り詰められなかった
+// ときは 6. の保留に入れ、次の掃除の後に試す。
 // 掃除の記録（SweepRecord）を startupGate に渡し、済むまで検索・クラウドへの送信・自動利用を許さない。
 // 復帰（スリープ明け）は起動と同じく新しい epoch にして、前の掃除を数えず、もう一度掃除が済むまでゲートを閉じる。
 //
@@ -453,6 +455,28 @@ export class RetentionSweeper {
         () => undefined,
       );
     }
+  }
+
+  // 忘却の COMMIT の後に WAL を切り詰める（U440、ADR 0186）。掃除の後始末と同じ retention.checkpoint
+  // （wal_checkpoint(TRUNCATE)）を 1 回だけ頼み、忘れた行の暗号文を書き込んだときの WAL のフレームを消す（消した後の
+  // ページは secure_delete で 0 になっている）。他の接続が使用中（busy）で切り詰められなかった・命令が失敗したときは
+  // checkpoint の保留を立て、次の掃除の後の後始末でもう一度試す（削除のない掃除でも試す）。停止の後は頼まない（DB を
+  // 閉じると WAL は書き戻されて消える）。例外は投げず、忘却の結果を変えない。切り詰められたときだけ true。
+  async truncateLogAfterForget(): Promise<boolean> {
+    if (this.#closed) return false;
+    try {
+      const result = await this.#port.checkpoint();
+      if (result.busy === 0) return true;
+      this.#log(
+        '忘却の後に、ログを切り詰められませんでした（他の接続が使用中）。次の掃除の後にもう一度試します。',
+      );
+    } catch (error) {
+      this.#log(
+        `忘却の後のログの切り詰めに失敗しました（${reasonOf(error)}）。次の掃除の後にもう一度試します。`,
+      );
+    }
+    this.#checkpointPending = true;
+    return false;
   }
 
   // 外部への送出の区間（ゲートの確認から送信の終わりまで）を、掃除の本体と直列にする貸し出し。

@@ -18,6 +18,10 @@
 //   その指示を「読めない指示」（本文 null）として計画に残す（計画から外すと、本人が知らない指示が消える）。消える指示が
 //   あるのにデータ鍵を読めないときは計画を作らない（503）。全部を読めない指示として見せると、壊れていない指示まで
 //   見せずに消すことになる。
+// - WAL の切り詰め（U440、ADR 0186）: 忘却の COMMIT の後（成否不明のときも）に truncateLog を呼び、忘れた行の暗号文を
+//   書き込んだときの WAL のフレームを消す。製品は掃除の job の truncateLogAfterForget（掃除の後始末と同じ
+//   wal_checkpoint(TRUNCATE)）を渡し、busy・失敗のときの再試行は掃除の job が持つ（次の掃除の後）。切り詰めの失敗・
+//   例外は忘却の結果を変えない（忘却は COMMIT で確定している）。拒否された忘却（何も消していない）では呼ばない。
 // 結果・知らせ・ログに本文・検索語・HMAC を入れない（ID・件数・世代だけ）。計画の応答だけが消える指示の本文を持つ。
 
 import { randomUUID } from 'node:crypto';
@@ -127,6 +131,9 @@ export interface ForgetServiceOptions {
   readonly sourceHmac: () => Promise<((source: MemorySource) => string) | null>;
   // データ鍵（消える指示の本文を開く。要求ごとに読み、保持しない）。読めなければ null。
   readonly dataKey: () => Promise<DataKeyMaterial | null>;
+  // 忘却の COMMIT の後の WAL の切り詰め（U440、ADR 0186）。製品は掃除の job の truncateLogAfterForget を渡す。
+  // 切り詰められたときだけ true。busy・失敗の再試行はこの口の側が持つ。
+  readonly truncateLog: () => Promise<boolean>;
   readonly notices?: NoticeSink;
   // UTC の Unix ミリ秒。
   readonly now: () => number;
@@ -410,6 +417,9 @@ export class ForgetService {
     } finally {
       stored.executing = false;
     }
+    // 成否不明は COMMIT した可能性があるので、成功と同じく切り詰めを頼む（切り詰めは何も消さないので害がない）。
+    if (applied.result.ok || applied.result.outcome === 'unknown')
+      await this.#truncateLog();
     if (!applied.result.ok) {
       // 拒否・成否不明のどちらでも、この計画はもう使わない（成否不明の計画を再び送らない）。
       this.#plans.delete(stored.plan_id);
@@ -436,6 +446,17 @@ export class ForgetService {
       );
     this.#publish(value, now);
     return { ok: true, result, ledger_file: applied.file };
+  }
+
+  // WAL の切り詰め（U440、ADR 0186）。失敗・例外は忘却の結果に影響させない（再試行は口の側）。
+  async #truncateLog(): Promise<void> {
+    try {
+      await this.#options.truncateLog();
+    } catch {
+      this.#log(
+        '忘却の後のログの切り詰めを頼めませんでした（忘却には影響しません）。',
+      );
+    }
   }
 
   // 知らせ（運び方は UI-05。U40）。配信の失敗は忘却の失敗にしない。

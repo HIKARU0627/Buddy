@@ -1261,6 +1261,10 @@ export async function startCore(
           const result = await options.keyStore.loadDataKey();
           return result.ok ? result.dataKey : null;
         },
+        // 忘却の COMMIT の後の WAL の切り詰め（U440、ADR 0186）。掃除の後始末と同じ命令で、busy・失敗のときは掃除の
+        // job が次の掃除の後に試す。
+        truncateLog: () =>
+          retention?.truncateLogAfterForget() ?? Promise.resolve(false),
         ...(options.retention?.notices === undefined
           ? {}
           : { notices: options.retention.notices }),

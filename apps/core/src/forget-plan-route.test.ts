@@ -157,6 +157,7 @@ async function start(t: test.TestContext): Promise<Started> {
     gate: () => gate.open,
     sourceHmac: () => Promise.resolve(() => SOURCE_HMAC),
     dataKey: () => Promise.resolve(KEY),
+    truncateLog: () => Promise.resolve(true),
     now: () => Date.parse('2031-03-04T05:06:07.000Z'),
   });
   const routes = createForgetRoutes({

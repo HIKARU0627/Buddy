@@ -199,7 +199,7 @@
             },
             "ciphertext_in_db_files": {
               "before_forget": ["M", "M_OTHER", "T_OTHER", "T_SRC"],
-              "after_forget": ["L1", "L2", "M", "M_OTHER", "T_OTHER", "T_SRC"],
+              "after_forget": ["L2", "M_OTHER", "T_OTHER", "T_SRC"],
               "after_restart": ["L2", "M_OTHER", "T_OTHER", "T_SRC"]
             },
             "plaintext_found": []
@@ -237,7 +237,7 @@
             },
             "ciphertext_in_db_files": {
               "before_forget": ["M", "M_OTHER", "T_OTHER", "T_SRC"],
-              "after_forget": ["L2", "M", "M_OTHER", "T_OTHER", "T_SRC"],
+              "after_forget": ["L2", "M_OTHER", "T_OTHER", "T_SRC"],
               "after_restart": ["L2", "M_OTHER", "T_OTHER", "T_SRC"]
             },
             "plaintext_found": []

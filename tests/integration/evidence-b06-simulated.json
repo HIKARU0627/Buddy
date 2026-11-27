@@ -45,7 +45,7 @@
     },
     {
       "path": "apps/core/src/api-memory.ts",
-      "sha256": "eb1286c69130ec1c07ecf12adaed3d21379274dd9ea5f374a676da6ca10456b4"
+      "sha256": "08eb34fec26e261c6de8750339dda299c9d45ef7b0a1d4c502e9a5e88081a4ba"
     },
     {
       "path": "apps/core/src/api-operations.ts",
@@ -149,7 +149,7 @@
     },
     {
       "path": "apps/core/src/core.ts",
-      "sha256": "c995a6d39d6499e590c7d577e5a282d6ed026d476e50d74803a39df8104936ed"
+      "sha256": "870e78152d8adc00cc78cecb83676dbe2348e3e45b6587f2be7076ee8d6b1a3f"
     },
     {
       "path": "apps/core/src/data-dir.ts",
@@ -185,7 +185,7 @@
     },
     {
       "path": "apps/core/src/forget-service.ts",
-      "sha256": "ffd786cf45d0aac9553b16b1de8ea9a03aed073df20ae86e5a1d12cd81f2dd9b"
+      "sha256": "b1313ca642b4748cc5209b14c8c1c195154fc2341b28f2c7dd01b15eb2e89937"
     },
     {
       "path": "apps/core/src/graph-sync-executor.ts",
@@ -301,7 +301,11 @@
     },
     {
       "path": "apps/core/src/retention-sweeper.ts",
-      "sha256": "673e5da744a2456ff2fc9cea5e54203dab3aae4b8c63d004b11fc1353cb7a71a"
+      "sha256": "7249135f88623ef97748456ede7cdecd38fbc0491b98a33dfdca921dbb2635a7"
+    },
+    {
+      "path": "apps/core/src/sealed-text.ts",
+      "sha256": "ab3099b9abb34c063faa8ef7d7fb35ae8a489ee13fc9a5dcc343d756dd02ca1e"
     },
     {
       "path": "apps/core/src/shadow-mode.ts",
@@ -469,7 +473,7 @@
     },
     {
       "path": "packages/contracts/schemas/buddy.schema.json",
-      "sha256": "0b7eaf722adf798eb33702c5d42380dfc9a05290f187e6e9f39259fbb9fc7945"
+      "sha256": "f9e3f9ade116307cd89ab033f6aa6dcb55ff31621710340b5cb1264d379016c7"
     },
     {
       "path": "packages/domain/package.json",
@@ -1065,7 +1069,7 @@
     },
     {
       "path": "packages/storage/src/memory-store.ts",
-      "sha256": "17f2aefea624d1981610009c13696039a83fc2168c697c2cbffd9c1e93df6859"
+      "sha256": "7e11ebeb090d3631d962e678c92dc74810667c19a147ae43902840cc2ac40ff6"
     },
     {
       "path": "packages/storage/src/migrations.ts",
@@ -1141,11 +1145,11 @@
     },
     {
       "path": "tests/integration/b06-cases.mjs",
-      "sha256": "0c4bac9ce7f8fc6a392fb2276b94459a08ab95080039a64487d6ba6d99ffefaf"
+      "sha256": "9d452567b0c48b998233dcf63da0002abecb4ce45453feb1810de7cc2f6c657a"
     },
     {
       "path": "tests/integration/b06-expectations.json",
-      "sha256": "04c5d6d1b71ca447e7f39a4a43da673e96c38bbcbd3e4745a5191601c3a2b549"
+      "sha256": "343363cab62327fc7682c6643049bdf24d8e3174952f10abed74d616af586e02"
     },
     {
       "path": "tests/integration/b06-support.mjs",
@@ -1164,7 +1168,7 @@
     {
       "case_id": "X16-retention-deadline-and-resummary",
       "kind": "simulated",
-      "commit": "2cd330662f4358528508b977d4319abdc600aa1a",
+      "commit": "3d16ded7ff7ecf4df3fa5324a05ca347e574d37b",
       "contract_version": "1.0.0",
       "db_version": "23",
       "environment": {
@@ -1178,7 +1182,7 @@
       "provider_state_changes": 0,
       "approvals": 0,
       "final_state": "turns=T_S2;summaries=",
-      "observed_at": "2026-11-27T10:26:34.154Z",
+      "observed_at": "2026-11-27T11:18:30.335Z",
       "deviation": "模擬の試験。合成のデータ鍵・台帳の鍵・バックアップの鍵（模擬の KeyStore）、一時ディレクトリの DB と DB worker、同じプロセスの Core（HTTPS は 127.0.0.1）、模擬の Live の provider を使った。忘却の公開ゲートは製品では閉じたままで、試験の組み立てで開いた関数を渡した。実機の Mac mini での実際のバックアップと鍵の復元・同期フォルダー・SSD の痕跡・実 API・実請求は未実施（B15）。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -1186,7 +1190,7 @@
     {
       "case_id": "X16-clock-rollback-no-extension",
       "kind": "simulated",
-      "commit": "2cd330662f4358528508b977d4319abdc600aa1a",
+      "commit": "3d16ded7ff7ecf4df3fa5324a05ca347e574d37b",
       "contract_version": "1.0.0",
       "db_version": "23",
       "environment": {
@@ -1200,7 +1204,7 @@
       "provider_state_changes": 0,
       "approvals": 0,
       "final_state": "turns=none",
-      "observed_at": "2026-11-27T10:26:34.154Z",
+      "observed_at": "2026-11-27T11:18:30.335Z",
       "deviation": "模擬の試験。合成のデータ鍵・台帳の鍵・バックアップの鍵（模擬の KeyStore）、一時ディレクトリの DB と DB worker、同じプロセスの Core（HTTPS は 127.0.0.1）、模擬の Live の provider を使った。忘却の公開ゲートは製品では閉じたままで、試験の組み立てで開いた関数を渡した。実機の Mac mini での実際のバックアップと鍵の復元・同期フォルダー・SSD の痕跡・実 API・実請求は未実施（B15）。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -1208,7 +1212,7 @@
     {
       "case_id": "X44-memory-review-deadline",
       "kind": "simulated",
-      "commit": "2cd330662f4358528508b977d4319abdc600aa1a",
+      "commit": "3d16ded7ff7ecf4df3fa5324a05ca347e574d37b",
       "contract_version": "1.0.0",
       "db_version": "23",
       "environment": {
@@ -1222,7 +1226,7 @@
       "provider_state_changes": 0,
       "approvals": 0,
       "final_state": "memories=M_CONTINUE:active",
-      "observed_at": "2026-11-27T10:26:34.154Z",
+      "observed_at": "2026-11-27T11:18:30.335Z",
       "deviation": "模擬の試験。合成のデータ鍵・台帳の鍵・バックアップの鍵（模擬の KeyStore）、一時ディレクトリの DB と DB worker、同じプロセスの Core（HTTPS は 127.0.0.1）、模擬の Live の provider を使った。忘却の公開ゲートは製品では閉じたままで、試験の組み立てで開いた関数を渡した。実機の Mac mini での実際のバックアップと鍵の復元・同期フォルダー・SSD の痕跡・実 API・実請求は未実施（B15）。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -1230,7 +1234,7 @@
     {
       "case_id": "X15-forget-and-late-result-order",
       "kind": "simulated",
-      "commit": "2cd330662f4358528508b977d4319abdc600aa1a",
+      "commit": "3d16ded7ff7ecf4df3fa5324a05ca347e574d37b",
       "contract_version": "1.0.0",
       "db_version": "23",
       "environment": {
@@ -1244,7 +1248,7 @@
       "provider_state_changes": 0,
       "approvals": 0,
       "final_state": "memories=L2,M_OTHER;generation=1",
-      "observed_at": "2026-11-27T10:26:34.154Z",
+      "observed_at": "2026-11-27T11:18:30.335Z",
       "deviation": "模擬の試験。合成のデータ鍵・台帳の鍵・バックアップの鍵（模擬の KeyStore）、一時ディレクトリの DB と DB worker、同じプロセスの Core（HTTPS は 127.0.0.1）、模擬の Live の provider を使った。忘却の公開ゲートは製品では閉じたままで、試験の組み立てで開いた関数を渡した。実機の Mac mini での実際のバックアップと鍵の復元・同期フォルダー・SSD の痕跡・実 API・実請求は未実施（B15）。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -1252,7 +1256,7 @@
     {
       "case_id": "X16-old-backup-restore-applies-ledger",
       "kind": "simulated",
-      "commit": "2cd330662f4358528508b977d4319abdc600aa1a",
+      "commit": "3d16ded7ff7ecf4df3fa5324a05ca347e574d37b",
       "contract_version": "1.0.0",
       "db_version": "23",
       "environment": {
@@ -1266,7 +1270,7 @@
       "provider_state_changes": 0,
       "approvals": 0,
       "final_state": "restored;memories=M_OTHER;generation=1",
-      "observed_at": "2026-11-27T10:26:34.154Z",
+      "observed_at": "2026-11-27T11:18:30.335Z",
       "deviation": "模擬の試験。合成のデータ鍵・台帳の鍵・バックアップの鍵（模擬の KeyStore）、一時ディレクトリの DB と DB worker、同じプロセスの Core（HTTPS は 127.0.0.1）、模擬の Live の provider を使った。忘却の公開ゲートは製品では閉じたままで、試験の組み立てで開いた関数を渡した。実機の Mac mini での実際のバックアップと鍵の復元・同期フォルダー・SSD の痕跡・実 API・実請求は未実施（B15）。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -1274,7 +1278,7 @@
     {
       "case_id": "X17-private-conversation-not-saved",
       "kind": "simulated",
-      "commit": "2cd330662f4358528508b977d4319abdc600aa1a",
+      "commit": "3d16ded7ff7ecf4df3fa5324a05ca347e574d37b",
       "contract_version": "1.0.0",
       "db_version": "23",
       "environment": {
@@ -1288,7 +1292,7 @@
       "provider_state_changes": 0,
       "approvals": 0,
       "final_state": "turns=2;private_turn=503;live=409",
-      "observed_at": "2026-11-27T10:26:34.154Z",
+      "observed_at": "2026-11-27T11:18:30.335Z",
       "deviation": "模擬の試験。合成のデータ鍵・台帳の鍵・バックアップの鍵（模擬の KeyStore）、一時ディレクトリの DB と DB worker、同じプロセスの Core（HTTPS は 127.0.0.1）、模擬の Live の provider を使った。忘却の公開ゲートは製品では閉じたままで、試験の組み立てで開いた関数を渡した。実機の Mac mini での実際のバックアップと鍵の復元・同期フォルダー・SSD の痕跡・実 API・実請求は未実施（B15）。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -1414,7 +1418,7 @@
           },
           "ciphertext_in_db_files": {
             "before_forget": ["M", "M_OTHER", "T_OTHER", "T_SRC"],
-            "after_forget": ["L2", "M", "M_OTHER", "T_OTHER", "T_SRC"],
+            "after_forget": ["L2", "M_OTHER", "T_OTHER", "T_SRC"],
             "after_restart": ["L2", "M_OTHER", "T_OTHER", "T_SRC"]
           },
           "plaintext_found": []
@@ -2102,7 +2106,7 @@
           },
           "ciphertext_in_db_files": {
             "before_forget": ["M", "M_OTHER", "T_OTHER", "T_SRC"],
-            "after_forget": ["L1", "L2", "M", "M_OTHER", "T_OTHER", "T_SRC"],
+            "after_forget": ["L2", "M_OTHER", "T_OTHER", "T_SRC"],
             "after_restart": ["L2", "M_OTHER", "T_OTHER", "T_SRC"]
           },
           "plaintext_found": []
@@ -2442,7 +2446,7 @@
           },
           "ciphertext_in_db_files": {
             "before_forget": ["M", "M_OTHER", "T_OTHER", "T_SRC"],
-            "after_forget": ["L2", "M", "M_OTHER", "T_OTHER", "T_SRC"],
+            "after_forget": ["L2", "M_OTHER", "T_OTHER", "T_SRC"],
             "after_restart": ["L2", "M_OTHER", "T_OTHER", "T_SRC"]
           },
           "plaintext_found": []

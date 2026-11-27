@@ -54,12 +54,20 @@ export interface DesktopViewState {
   // キャンバスの窓が描く記述（main が検査して参照を置き換えたもの。ADR 0032）。null は受け取っていない・捨てた。
   // ロック中・不明になったら、main の通知を待たずに捨てる（解除しても main が送り直すまで戻さない）。
   readonly canvas: DesktopCanvasView | null;
+  // キャンバスの物を描かない理由（main が表示のリースを失ったと知らせた。UI-05 の段階 4、ADR 0188）。null は理由なし。
+  // 理由があるときは canvas も null で、キャンバスの窓は理由の 1 文だけを出す。
+  readonly canvasWithheld: CanvasWithheldReason | null;
   // キャンバスの窓の作業領域の外の幅（main が画面の作業領域から決めて送る。UI-06）。null は受け取っていない
   // （画面は window.screen から求めた値を使う）。
   readonly canvasInsets: CanvasWorkAreaInsets | null;
   // 音声の状態（状態の層だけが受け取る。B05-06）。null は main からまだ受け取っていないこと。
   readonly voice: DesktopVoiceView | null;
 }
+
+export type CanvasWithheldReason = Extract<
+  DesktopIpcNotification,
+  { withheld_reason: unknown }
+>['withheld_reason'];
 
 export type CanvasWorkAreaInsets = Extract<
   DesktopIpcNotification,
@@ -76,6 +84,7 @@ export const INITIAL_VIEW_STATE: DesktopViewState = {
   lastTarget: null,
   submittedName: null,
   canvas: null,
+  canvasWithheld: null,
   canvasInsets: null,
   voice: null,
 };
@@ -117,6 +126,11 @@ export function applyNotification(
         status.visibility === 'shown' && status.stop_scope === 'none'
           ? state.canvas
           : null,
+      // 描かない理由も同じ（ロック中・停止中は理由ではなく、中身を出さないだけ）。
+      canvasWithheld:
+        status.visibility === 'shown' && status.stop_scope === 'none'
+          ? state.canvasWithheld
+          : null,
       // 再開したら止まった理由を消す。入出力の状態が変わったら、入出力の拒否の文言も消す。
       stopCause: resumed ? null : state.stopCause,
       message:
@@ -140,7 +154,12 @@ export function applyNotification(
     };
   }
   if (notification.channel === 'desktop.canvas_changed')
-    return { ...state, canvas: notification.canvas };
+    return {
+      ...state,
+      canvas: notification.canvas,
+      canvasWithheld:
+        'withheld_reason' in notification ? notification.withheld_reason : null,
+    };
   if (notification.channel === 'desktop.canvas_work_area')
     return { ...state, canvasInsets: notification.insets };
   if (notification.channel === 'desktop.voice_changed')

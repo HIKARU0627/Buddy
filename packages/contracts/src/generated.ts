@@ -2282,6 +2282,11 @@ export type DesktopIpcNotification =
       canvas: DesktopCanvasView | null;
     }
   | {
+      channel: 'desktop.canvas_changed';
+      canvas: null;
+      withheld_reason: 'display_lease_lost';
+    }
+  | {
       channel: 'desktop.canvas_work_area';
       insets: {
         top: number;

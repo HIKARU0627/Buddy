@@ -68,6 +68,8 @@ export function bootstrapBody(
     readonly core?: string;
     readonly generation?: string;
     readonly scope?: string;
+    // 中枢が持つこの端末の入出力の世代（io_state.io_epoch）。省略は '0'。
+    readonly ioEpoch?: string;
   } = {},
 ): Record<string, unknown> {
   return {
@@ -78,7 +80,7 @@ export function bootstrapBody(
     command_scope_id: options.scope ?? IDS.scope1,
     command_scope_expires_at: '2030-10-02T00:00:00Z',
     capabilities: [],
-    io_state: ioState('unknown'),
+    io_state: { ...ioState('unknown'), io_epoch: options.ioEpoch ?? '0' },
   };
 }
 

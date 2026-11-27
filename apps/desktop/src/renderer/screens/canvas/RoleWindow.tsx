@@ -44,6 +44,7 @@ import { WorkOperations, usePreviewFocus } from '../work/WorkPanel.js';
 import {
   canSummonCanvas,
   canvasContentShown,
+  canvasWithheldLine,
   contentShown,
   inputBarEnabled,
   inputDraftAfter,
@@ -59,6 +60,7 @@ import {
 import { CanvasBoard } from './CanvasBoard.js';
 import { CanvasGround } from './CanvasGround.js';
 import { CanvasIsland, useIslandHold } from './CanvasIsland.js';
+import { CanvasWithheld } from './CanvasWithheld.js';
 import { InputBar } from './InputBar.js';
 import { StatusPanel } from './StatusPanel.js';
 import { VoiceStrip } from './VoiceStrip.js';
@@ -71,10 +73,13 @@ function CanvasWindow({ api }: { readonly api: BuddyDesktopApi }) {
   const focused = useWindowFocused();
   const viewport = useCanvasViewport();
   const shown = canvasContentShown(state.status);
+  const withheld = canvasWithheldLine(state.canvasWithheld);
   // ロック中・停止中は CanvasGround が中身を描かない（配置・選択・ドラッグも捨てる）。操作は前に出ている間だけ。
   // 作業領域の外の幅は main が送る値（desktop.canvas_work_area）を使い、受け取る前は window.screen から求める。
+  // 表示のリースを失った間は物を描かず、理由の 1 文だけを出す（ADR 0188）。
   return (
     <CanvasGround front={focused} shown={shown}>
+      {withheld === null ? null : <CanvasWithheld line={withheld} />}
       <CanvasBoard
         view={state.canvas}
         front={focused && shown}

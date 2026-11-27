@@ -10,6 +10,7 @@ import { IO_STATE_LABELS } from '../labels.js';
 import type { StatusLine } from '../tones.js';
 import { ioLine } from './status-lines.js';
 import { groupOperations } from './work-state.js';
+import type { CanvasWithheldReason } from './desktop-state.js';
 
 export type RendererWindowRole =
   'legacy' | 'canvas' | 'status' | 'input' | 'island';
@@ -99,6 +100,19 @@ export function contentShown(status: DesktopStatusBar | null): boolean {
 // （ADR 0032 の「停止で隠す」。再開したら main が取り直して送る）。
 export function canvasContentShown(status: DesktopStatusBar | null): boolean {
   return status?.visibility === 'shown' && status.stop_scope === 'none';
+}
+
+// キャンバスの物を描かない理由の 1 文（UI-05 の段階 4、ADR 0188）。表示のリースを失った間だけ出す。記号は「接続し直し待ち」と
+// 同じ warning の ○（tones.ts。自動で取り直すので、本人の操作は要らない）。理由がなければ null。
+export function canvasWithheldLine(
+  reason: CanvasWithheldReason | null,
+): StatusLine | null {
+  if (reason === null) return null;
+  return {
+    tone: 'warning',
+    mark: 'circle',
+    text: '中枢との表示の確認が途切れたため、キャンバスの物を隠しています（確認し直せたら戻ります）。',
+  };
 }
 
 // 状態が変わった後の入力バーの下書き。内容を出せないとき（ロック中・不明）は捨てる（解除しても戻さない）。

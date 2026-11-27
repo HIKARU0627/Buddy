@@ -314,7 +314,10 @@ async function startClient(
       const transport = createHubTransport({ hub: target, token: bearer });
       return {
         request: async (request) => {
-          requests.push(`${request.method} ${request.path}`);
+          // 表示のリースの更新（2 秒ごと。ADR 0188）は実時間のタイマーで送るので数えない（要求の数の比べに混ぜない。
+          // リースは display-lease-link.test.ts で確かめる）。
+          if (request.path !== '/v1/leases/renew')
+            requests.push(`${request.method} ${request.path}`);
           if (request.path === '/v1/stream/turns')
             streamBodies.push(request.body as Record<string, unknown>);
           const outcome = await transport.request(request);

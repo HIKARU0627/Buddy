@@ -89,6 +89,10 @@ export interface LinkState {
   readonly storeGeneration: string | null;
   readonly deviceId: string | null;
   readonly commandScopeId: string | null;
+  // bootstrap の時点の中枢の入出力の世代（io_state.io_epoch。中枢が持つこの端末の値で、端末の io_epoch とは別。U70）。
+  // 表示のリース（UI-05 の段階 4、ADR 0188）の更新に添える。bootstrap をやり直すまで変わらない（途中で中枢の世代が進んでも
+  // 読み直さない。U470）。
+  readonly ioEpoch: string | null;
   // スナップショットの表示の範囲。ロック中・ロック状態不明は management_only で操作を持たない。
   readonly view: 'full' | 'management_only' | null;
   readonly cursor: string | null;
@@ -183,6 +187,7 @@ const INITIAL_STATE: LinkState = {
   storeGeneration: null,
   deviceId: null,
   commandScopeId: null,
+  ioEpoch: null,
   view: null,
   cursor: null,
   operations: [],
@@ -561,6 +566,7 @@ export class ClientConnection {
       storeGeneration: bootstrap.store_generation,
       deviceId: bootstrap.device_id,
       commandScopeId: bootstrap.command_scope_id,
+      ioEpoch: bootstrap.io_state.io_epoch,
     });
     const cursor = this.#state.cursor;
     const unlocked = this.#lockState === 'unlocked';

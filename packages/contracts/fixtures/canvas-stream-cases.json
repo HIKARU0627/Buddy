@@ -5841,6 +5841,54 @@
     }
   },
   {
+    "id": "desktop-canvas-notification-withheld-display-lease",
+    "refs": ["ADR 0188 UI-05 の段階 4 表示のリース"],
+    "schema": "DesktopIpcNotification",
+    "valid": true,
+    "value": {
+      "channel": "desktop.canvas_changed",
+      "canvas": null,
+      "withheld_reason": "display_lease_lost"
+    }
+  },
+  {
+    "id": "desktop-canvas-notification-withheld-with-view",
+    "refs": ["ADR 0188 理由つきの形は canvas を持たない"],
+    "schema": "DesktopIpcNotification",
+    "valid": false,
+    "value": {
+      "channel": "desktop.canvas_changed",
+      "canvas": {
+        "canvas_revision": "4",
+        "items": [],
+        "reading_order": []
+      },
+      "withheld_reason": "display_lease_lost"
+    }
+  },
+  {
+    "id": "desktop-canvas-notification-withheld-unknown-reason",
+    "refs": ["ADR 0188 知らない理由は受けない"],
+    "schema": "DesktopIpcNotification",
+    "valid": false,
+    "value": {
+      "channel": "desktop.canvas_changed",
+      "canvas": null,
+      "withheld_reason": "locked"
+    }
+  },
+  {
+    "id": "desktop-canvas-notification-withheld-null-reason",
+    "refs": ["ADR 0188 理由のない形は withheld_reason を持たない"],
+    "schema": "DesktopIpcNotification",
+    "valid": false,
+    "value": {
+      "channel": "desktop.canvas_changed",
+      "canvas": null,
+      "withheld_reason": null
+    }
+  },
+  {
     "id": "desktop-canvas-notification-extra",
     "schema": "DesktopIpcNotification",
     "valid": false,

@@ -88,6 +88,14 @@ import type {
 import { CandidateBridge } from './candidate-bridge.js';
 import { ConnectionsBridge } from './connections-bridge.js';
 import { CanvasBridge } from './canvas-bridge.js';
+import type { CanvasWithheldReason } from './canvas-bridge.js';
+import { DisplayLeaseKeeper } from './display-lease-keeper.js';
+import type {
+  DisplayLeaseContext,
+  DisplayLeaseResponse,
+  DisplayLeaseState,
+} from './display-lease-keeper.js';
+import type { LeaseClock } from './voice-lease-keeper.js';
 import { OperationBridge } from './operation-bridge.js';
 import type {
   BridgeOutcome,
@@ -275,18 +283,24 @@ export interface DesktopCoreLinkOptions {
   // （ユーザーの操作を受け付けない）。
   readonly canvasFront?: () => boolean;
   // キャンバスの記述の通知（検査済み。キャンバスの窓だけへ送るのは Electron の層）。
-  readonly onCanvas?: (
-    notification: Extract<
-      DesktopIpcNotification,
-      { channel: 'desktop.canvas_changed' }
-    >,
-  ) => void;
+  readonly onCanvas?: (notification: CanvasChangedNotification) => void;
+  // 表示のリース（UI-05 の段階 4、ADR 0188）。キャンバスのモードのとき、キャンバスの窓が見えている間だけ POST /v1/leases/renew の
+  // display を保ち、持っている間だけキャンバスの記述を取る・渡す。省略は取る（時計は clock と単調時計 performance.now）。
+  // clock を渡すと、その時計とタイマーで更新する（試験が実時間を待たないため）。false は取らない（リースと関係のない試験だけ。
+  // 製品の起動では渡さない）。
+  readonly displayLease?: false | { readonly clock?: LeaseClock };
   // 忘却台帳の複製の保存先（Electron の userData 配下の forget-ledger-replica.json。B06-07b-3、ADR 0182）。省略すると
   // 複製しない（中枢への要求の数を数える試験で、背景の同期を混ぜないため）。
   readonly forgetLedgerReplicaPath?: string;
   // 試験で複製の rename の前の停止を再現する。
   readonly forgetLedgerBeforeRename?: () => void | Promise<void>;
 }
+
+// キャンバスの窓へ送る通知（記述・空・描かない理由つきの空）。
+export type CanvasChangedNotification = Extract<
+  DesktopIpcNotification,
+  { channel: 'desktop.canvas_changed' }
+>;
 
 // 承認・拒否・失効の前の本人の確認（本人の判断 2026-10-22、ADR 0026）。main が OS の確認ダイアログで行う。
 // 表示する値（端末名・OS・確認コード）は main が中枢から受け取った一覧の値で、画面からは受け取らない。
@@ -453,6 +467,8 @@ export class DesktopCoreLink {
   readonly #connections: ConnectionsBridge;
   // 忘却台帳の複製と追いつき（B06-07b-3、ADR 0182）。保存先がなければ null。
   readonly #ledger: ForgetLedgerSync | null;
+  // 表示のリース（キャンバスのモードだけ。ADR 0188）。取らない組み立てでは null。
+  readonly #display: DisplayLeaseKeeper | null;
 
   constructor(options: DesktopCoreLinkOptions) {
     this.#options = options;
@@ -531,10 +547,30 @@ export class DesktopCoreLink {
           ? { permitted: true, epoch: '' }
           : { permitted: desktopInputPermitted(state), epoch: state.ioEpoch };
       },
-      publish: (canvas) => this.#publishCanvas(canvas),
+      publish: (canvas, withheld) => this.#publishCanvas(canvas, withheld),
+      displayHeld: () =>
+        this.#display === null || this.#display.state === 'held',
       turnResult: (turn) => this.#operations.streamTurnResult(turn),
       log: (code) => this.#log(code),
     });
+    const leaseOption = options.displayLease;
+    this.#display =
+      options.canvasMode !== true || leaseOption === false
+        ? null
+        : new DisplayLeaseKeeper({
+            port: {
+              wanted: () => this.#displayLeaseContext(),
+              renew: (body) => this.#renewDisplayLease({ ...body }),
+            },
+            clock: leaseOption?.clock ?? {
+              mono: () => Math.floor(performance.now()),
+              wall: () => options.clock.now(),
+              setTimer: (ms, run) => options.clock.setTimer(ms, run),
+              newId: () => options.clock.newRequestId(),
+            },
+            onChange: (state) => this.#displayLeaseChanged(state),
+            log: (code) => this.#log(code),
+          });
     const replicaPath = options.forgetLedgerReplicaPath;
     this.#ledger =
       replicaPath === undefined
@@ -622,6 +658,7 @@ export class DesktopCoreLink {
     // 終了では受取りの結果を待たない（受取りの最中なら、中枢で失効してやり直す）。
     this.#pairing.dispose();
     this.#disconnect();
+    this.#display?.stop();
   }
 
   setLockState(lockState: ClientLockState): void {
@@ -638,6 +675,8 @@ export class DesktopCoreLink {
     }
     // ロックした・不明になったら、自宅の登録の参照を捨てる（解除の後に読み取り直して確かめ直す。B03-08）。
     else this.#homeRef = null;
+    // ロック中・不明は表示のリースを取らない。解除したら取り直す（ADR 0188）。
+    this.#display?.update();
     this.#options.onChange();
   }
 
@@ -958,6 +997,8 @@ export class DesktopCoreLink {
         // なるので、ここで中枢の台帳と照らし合わせ直す。
         void this.#ledger?.connected();
       }
+      // 接続している間だけ表示のリースを保つ（ADR 0188。切れたら更新をやめる。接続し直したら新しい接続範囲で取り直す）。
+      this.#display?.update();
       // 中枢の API の major が違えば、以後は要求を送らない。自宅の指紋の報告も止める（レビューの指摘 L4）。
       if (state.phase === 'upgrade_required') this.#reporter?.stop();
       // 自宅の外で拒否されたら、すぐに指紋を報告し直す（通れば次の接続で使える）。
@@ -2387,10 +2428,87 @@ export class DesktopCoreLink {
     return this.#options.canvasMode === true ? this.#canvas.view : null;
   }
 
+  // 読み込み直したキャンバスの窓へ送る通知（記述か、描かない理由つきの空）。送る物がなければ null。
+  canvasNotification(): CanvasChangedNotification | null {
+    if (this.#options.canvasMode !== true) return null;
+    const view = this.#canvas.view;
+    const withheld = this.#canvas.withheld;
+    if (view !== null)
+      return { channel: 'desktop.canvas_changed', canvas: view };
+    if (withheld !== null)
+      return {
+        channel: 'desktop.canvas_changed',
+        canvas: null,
+        withheld_reason: withheld,
+      };
+    return null;
+  }
+
+  // 試験用: 表示のリースの状態（取らない組み立てでは null）。
+  get displayLeaseState(): DisplayLeaseState | null {
+    return this.#display?.state ?? null;
+  }
+
+  // 表示のリースを取る条件（ADR 0188）: キャンバスの窓が隠れていない・ロック解除済み・入出力が止まっていない・中枢に接続中で、
+  // 中枢の事実（端末 ID・起動 ID・接続範囲・中枢の入出力の世代）が揃っている。
+  #displayLeaseContext(): DisplayLeaseContext | null {
+    if (this.#canvas.hidden || this.#lockState !== 'unlocked') return null;
+    const io = this.#options.ioState?.() ?? null;
+    if (io !== null && !desktopInputPermitted(io)) return null;
+    const state = this.#connection?.state ?? null;
+    if (
+      state === null ||
+      state.phase !== 'live' ||
+      state.deviceId === null ||
+      state.coreInstanceId === null ||
+      state.commandScopeId === null ||
+      state.ioEpoch === null
+    )
+      return null;
+    return {
+      deviceId: state.deviceId,
+      coreInstanceId: state.coreInstanceId,
+      commandScopeId: state.commandScopeId,
+      ioEpoch: state.ioEpoch,
+    };
+  }
+
+  // 表示のリースの更新を送る。本文は要求 ID・接続範囲を自分で持つ（ClientConnection の scoped で置き換えない）。送った時点の
+  // 接続範囲と違えば送らない。200 で契約（LeaseRenewalResponse）に合う応答だけを返し、それ以外は結果が分からない（null）。
+  async #renewDisplayLease(
+    body: Record<string, unknown>,
+  ): Promise<DisplayLeaseResponse | null> {
+    const connection = this.#connection;
+    const scope = body['command_scope_id'];
+    if (connection === null || typeof scope !== 'string') return null;
+    const outcome = await connection.request({
+      method: 'POST',
+      path: '/v1/leases/renew',
+      body,
+      expectedScopeId: scope,
+    });
+    if (outcome.kind !== 'response') return null;
+    if (
+      outcome.status !== 200 ||
+      !this.#options.contract.valid('LeaseRenewalResponse', outcome.body)
+    ) {
+      this.#log(`display_lease_renew_failed:${outcome.status}`);
+      return null;
+    }
+    return outcome.body as DisplayLeaseResponse;
+  }
+
+  #displayLeaseChanged(state: DisplayLeaseState): void {
+    this.#log(`display_lease:${state}`);
+    this.#canvas.displayChanged(state);
+  }
+
   // 入出力の状態（停止・io_epoch）が変わった（Electron の層が呼ぶ）。停止・世代の変化ではキャンバスの記述を捨て、再開
   // したら取り直す（キャンバスのモードだけ）。
   ioStateChanged(): void {
     if (this.#options.canvasMode === true) this.#canvas.ioChanged();
+    // 停止中は表示のリースを取らない。再開したら取り直す（ADR 0188）。
+    this.#display?.update();
     // 入出力を止めたら、中枢へ送っている途中のレシートの写真の読み取りを止める（ADR 0177 の追補）。
     const io = this.#options.ioState?.();
     if (io !== undefined && !desktopInputPermitted(io))
@@ -2402,11 +2520,15 @@ export class DesktopCoreLink {
   // 後ろにあるが表示している間は呼ばない。表示し直したら canvasShown で今の記述を取り直す。
   canvasHidden(): void {
     if (this.#options.canvasMode === true) this.#canvas.hide();
+    // 隠れている間は表示のリースを更新しない（ADR 0188）。
+    this.#display?.update();
   }
 
   // キャンバスの窓が表示し直された（show・restore）。隠れていたなら、取れるようにして今の記述を取り直す。
   canvasShown(): void {
     if (this.#options.canvasMode === true) this.#canvas.show();
+    // 見えたら表示のリースを取り直し、取れたら今の記述を取る（ADR 0188）。
+    this.#display?.update();
   }
 
   // キャンバスの窓が通知を受け取る準備を終えた。今の記述を送り直す（なければ取り直す）。
@@ -2420,9 +2542,19 @@ export class DesktopCoreLink {
   }
 
   // キャンバスの記述をキャンバスの窓へ通知する。送る前に契約で確かめる（形式に合わなければ送らず捨てる）。
-  #publishCanvas(canvas: DesktopCanvasView | null): void {
+  #publishCanvas(
+    canvas: DesktopCanvasView | null,
+    withheld?: CanvasWithheldReason,
+  ): void {
     if (this.#options.canvasMode !== true) return;
-    const notification = { channel: 'desktop.canvas_changed' as const, canvas };
+    const notification: CanvasChangedNotification =
+      canvas === null && withheld !== undefined
+        ? {
+            channel: 'desktop.canvas_changed',
+            canvas: null,
+            withheld_reason: withheld,
+          }
+        : { channel: 'desktop.canvas_changed', canvas };
     if (this.#options.contract.notificationErrors(notification).length > 0) {
       this.#log('canvas_notification_invalid');
       return;

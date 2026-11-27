@@ -75,6 +75,8 @@ test('bootstrap, snapshot and subscription in order with the lock state on each 
   assert.equal(hubConnectionOf(state), 'connected');
   assert.equal(state.commandScopeId, IDS.scope1);
   assert.equal(state.coreInstanceId, IDS.core1);
+  // 中枢が持つこの端末の入出力の世代（bootstrap の io_state。表示のリースに添える。ADR 0188）。
+  assert.equal(state.ioEpoch, '0');
   assert.equal(state.view, 'full');
   assert.equal(state.lastConfirmedAt, clock.now());
   assert.deepEqual(
@@ -295,10 +297,13 @@ test('after a hub restart the client takes a new scope and resumes the stream fr
     [[IDS.op1, '1']],
   );
   transport.respond(
-    () => ok(bootstrapBody({ core: IDS.core2, scope: IDS.scope2 })),
+    () =>
+      ok(bootstrapBody({ core: IDS.core2, scope: IDS.scope2, ioEpoch: '7' })),
     () => ok(operation(IDS.op1, '4', 'unknown_held')),
   );
   await clock.advance(1_000);
+  // 接続し直した bootstrap の中枢の入出力の世代に置き換える。
+  assert.equal(connection.state.ioEpoch, '7');
   assert.deepEqual(transport.paths().slice(2), ['GET /v1/bootstrap']);
   assert.equal(transport.streams[1]?.cursor, 'cursor-5');
   assert.equal(connection.state.coreInstanceId, IDS.core2);

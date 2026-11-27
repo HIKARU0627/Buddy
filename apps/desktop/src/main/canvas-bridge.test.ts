@@ -64,12 +64,16 @@ function setup(
     readonly unlocked?: () => boolean;
     readonly permitted?: () => boolean;
     readonly epoch?: () => string;
+    // 表示のリースを持っているか（ADR 0188）。省略は host に渡さない（持っている扱い）。
+    readonly held?: () => boolean;
   } = {},
 ) {
   const sent: Sent[] = [];
   // 応答を決めた順に返す。Promise なら、その解決まで応答を保つ（取得の順・世代の競合を作る）。
   const script: (Outcome | Promise<Outcome>)[] = [];
   const published: (DesktopCanvasView | null)[] = [];
+  // 通知ごとの描かない理由（published と同じ順。理由のない通知は null）。
+  const withheld: (string | null)[] = [];
   const logs: string[] = [];
   let refCounter = 0x1000;
   const connection = {
@@ -98,7 +102,11 @@ function setup(
       permitted: options.permitted?.() ?? true,
       epoch: options.epoch?.() ?? '0',
     }),
-    publish: (canvas) => published.push(canvas),
+    publish: (canvas, reason) => {
+      published.push(canvas);
+      withheld.push(reason ?? null);
+    },
+    ...(options.held === undefined ? {} : { displayHeld: options.held }),
     turnResult: (turn) => ({
       status: turn.status,
       reply_text: turn.reply_text,
@@ -111,6 +119,7 @@ function setup(
     sent,
     script,
     published,
+    withheld,
     logs,
   };
 }
@@ -513,4 +522,87 @@ test('a state notice that does not change the stop state or io_epoch neither dro
   bridge.ioChanged();
   assert.equal(sent.length, 1);
   assert.equal(published.length, 1);
+});
+
+// 表示のリース（UI-05 の段階 4、ADR 0188）: 持っている間だけ取り、失ったら記述と参照を捨てて理由つきの空を 1 回渡す。取り直せたら
+// 理由を消して今の記述を取り直す。ロック・停止・隠れた（idle）は理由を出さない。
+test('display lease: nothing is fetched without it; losing it drops the description with the reason once; regaining fetches again', async () => {
+  let held = false;
+  const { bridge, script, sent, published, withheld } = setup({
+    held: () => held,
+  });
+  await bridge.refresh();
+  bridge.onRevision('3');
+  bridge.resend();
+  await bridge.idle();
+  assert.deepEqual(sent, []);
+  assert.deepEqual(published, []);
+
+  held = true;
+  script.push(ok(document('1')));
+  bridge.displayChanged('held');
+  await bridge.idle();
+  assert.equal(sent.length, 1);
+  assert.equal(bridge.view?.canvas_revision, '1');
+  assert.equal(bridge.refCount, 2);
+  assert.deepEqual(withheld, [null]);
+
+  held = false;
+  bridge.displayChanged('lost');
+  assert.equal(bridge.view === null, true);
+  assert.equal(bridge.refCount, 0);
+  assert.equal(bridge.withheld, 'display_lease_lost');
+  assert.deepEqual(published.slice(1), [null]);
+  assert.deepEqual(withheld, [null, 'display_lease_lost']);
+  // 失ったままの知らせは重ねて渡さない。失っている間は取らない（版の知らせ・送り直しでも）。
+  bridge.displayChanged('lost');
+  bridge.onRevision('5');
+  await bridge.refresh();
+  assert.equal(published.length, 2);
+  assert.equal(sent.length, 1);
+  // 読み込み直した窓には、理由つきの空を送り直す。
+  bridge.resend();
+  assert.deepEqual(withheld, [
+    null,
+    'display_lease_lost',
+    'display_lease_lost',
+  ]);
+  assert.equal(sent.length, 1);
+
+  // 取り直せた: 理由を消し（理由のない空）、今の記述を取る。
+  held = true;
+  script.push(ok(document('2')));
+  bridge.displayChanged('held');
+  await bridge.idle();
+  assert.equal(bridge.withheld, null);
+  assert.deepEqual(published.slice(3, 4), [null]);
+  assert.deepEqual(withheld.slice(3), [null, null]);
+  assert.equal(bridge.view?.canvas_revision, '2');
+  assert.equal(sent.length, 2);
+
+  // 取りに行かない間（ロック・停止・隠れた・切断）: 記述を捨て、理由は出さない。
+  bridge.displayChanged('idle');
+  assert.equal(bridge.view, null);
+  assert.equal(bridge.withheld, null);
+  assert.deepEqual(published.at(-1), null);
+  assert.equal(withheld.at(-1), null);
+  const count = published.length;
+  bridge.displayChanged('idle');
+  bridge.displayChanged('acquiring');
+  assert.equal(published.length, count);
+});
+
+test('display lease: a description that arrives after the lease was lost is not handed over', async () => {
+  let held = true;
+  const { bridge, script, published, withheld } = setup({ held: () => held });
+  let release: (outcome: Outcome) => void = () => undefined;
+  script.push(new Promise<Outcome>((resolve) => (release = resolve)));
+  const pending = bridge.refresh();
+  held = false;
+  bridge.displayChanged('lost');
+  release(ok(document('1')));
+  await pending;
+  assert.equal(bridge.view, null);
+  assert.deepEqual(published, [null]);
+  assert.deepEqual(withheld, ['display_lease_lost']);
 });

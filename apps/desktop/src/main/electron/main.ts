@@ -609,13 +609,10 @@ function createWindow(role: UiWindowRole): BrowserWindow {
       channel: 'desktop.state_changed',
       status: controller.statusBar,
     });
-    // 読み込み直したキャンバスの窓へ、今の記述を送る（役割の表に通知がある窓だけ）。
-    const canvas = link?.canvasView() ?? null;
-    if (canvas !== null)
-      sendHere('desktop.canvas_changed', {
-        channel: 'desktop.canvas_changed',
-        canvas,
-      });
+    // 読み込み直したキャンバスの窓へ、今の記述か、描かない理由（表示のリースを失った。ADR 0188）を送る（役割の表に通知が
+    // ある窓だけ）。
+    const canvas = link?.canvasNotification() ?? null;
+    if (canvas !== null) sendHere('desktop.canvas_changed', canvas);
     // 読み込み直した画面は前回の接続の状態を持っていないので、同じ内容でも送る。
     connectionPublisher.reset();
     pushConnection();

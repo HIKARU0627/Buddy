@@ -6,15 +6,23 @@
 // - 対象キー・内容の HMAC（dedupe_key）・由来の ID・元サービスの生の ID は返さない。由来は種類ごとの件数だけ（U388 と同じ考え）。
 // - 忘却の公開ゲート（U112・U382）の今の値を添える。開けるのは中枢のコードの定数だけで、この経路はゲートを読むだけ。
 //   一覧は読み取りなので、ゲートが閉じていても返す（画面は計画・実行の操作を「まだ使えません」と無効にする）。
+// - 保存してよい記憶の種類の設定（ADR 0191）: 読み取り（GET /v1/memory/settings）は一覧と同じ検査、変更（POST）は本人の画面
+//   操作で接続範囲つき。版は保存層が同じ transaction で照合し、違えば 409（同じ要求の再送も 409）。種類の全部を受け取る。
 // 拒否の本文は ApiError だけ。
 
-import type { MemoryListItem, MemoryListResponse } from '@buddy/contracts';
+import type {
+  MemoryListItem,
+  MemoryListResponse,
+  MemorySettings,
+} from '@buddy/contracts';
 import type {
   DataKeyMaterial,
   DbWorkerClient,
+  MemoryKindName,
   MemoryListRow,
+  MemorySettingsValue,
 } from '@buddy/storage';
-import { MEMORY_LIST_MAX } from '@buddy/storage';
+import { MEMORY_KIND_NAMES, MEMORY_LIST_MAX } from '@buddy/storage';
 import { apiErrorResponse } from './api-server.js';
 import type { ApiRouteHandler } from './api-server.js';
 import { openSealedText } from './sealed-text.js';
@@ -33,8 +41,20 @@ export interface MemoryRoutesOptions {
 }
 
 export interface MemoryRoutes {
-  readonly handlers: { readonly listMemories: ApiRouteHandler };
+  readonly handlers: {
+    readonly listMemories: ApiRouteHandler;
+    readonly getMemorySettings: ApiRouteHandler;
+    readonly changeMemorySettings: ApiRouteHandler;
+  };
 }
+
+const settingsBody = (value: MemorySettingsValue): MemorySettings => ({
+  schema: 'buddy.memory-settings.v1',
+  allowed_kinds: [...value.allowed_kinds] as MemorySettings['allowed_kinds'],
+  memory_settings_revision: value.settings_revision,
+});
+
+const REVISION = /^(0|[1-9][0-9]*)$/u;
 
 const iso = (millis: number): string => new Date(millis).toISOString();
 
@@ -102,5 +122,49 @@ export function createMemoryRoutes(options: MemoryRoutesOptions): MemoryRoutes {
     };
     return { status: 200, body };
   };
-  return { handlers: { listMemories } };
+  const getMemorySettings: ApiRouteHandler = async () => {
+    const read = await options.store.memory({ kind: 'memory.settings_get' });
+    if (!read.ok) return apiErrorResponse(503, 'dependency_unavailable');
+    return {
+      status: 200,
+      body: settingsBody(read.value as MemorySettingsValue),
+    };
+  };
+
+  // 設定の変更（本人の画面操作だけ。経路の検査は api-server が先に行う）。契約の検査（種類・重なり・版の形）も api-server が
+  // 先に行うが、保存層へ渡す前にもう一度確かめる。
+  const changeMemorySettings: ApiRouteHandler = async (request) => {
+    const body = request.body ?? {};
+    const requestId =
+      typeof body['request_id'] === 'string' ? body['request_id'] : null;
+    const expected = body['expected_memory_settings_revision'];
+    const kinds = body['allowed_kinds'];
+    if (
+      typeof expected !== 'string' ||
+      !REVISION.test(expected) ||
+      !Array.isArray(kinds) ||
+      new Set(kinds).size !== kinds.length ||
+      !kinds.every((kind) => MEMORY_KIND_NAMES.includes(kind as MemoryKindName))
+    )
+      return apiErrorResponse(422, 'invalid_input', requestId);
+    const changed = await options.store.memory({
+      kind: 'memory.settings_set',
+      expected_revision: expected,
+      allowed_kinds: kinds as MemoryKindName[],
+      now: options.now(),
+    });
+    if (!changed.ok)
+      return changed.outcome === 'rejected' &&
+        changed.reasons.includes('settings_revision_conflict')
+        ? apiErrorResponse(409, 'conflict', requestId)
+        : apiErrorResponse(503, 'dependency_unavailable', requestId);
+    return {
+      status: 200,
+      body: settingsBody(changed.value as MemorySettingsValue),
+    };
+  };
+
+  return {
+    handlers: { listMemories, getMemorySettings, changeMemorySettings },
+  };
 }

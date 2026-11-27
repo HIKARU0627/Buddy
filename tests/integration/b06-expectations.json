@@ -1,7 +1,7 @@
 {
   "description": "B06-09（Issue #145）の模擬の統合試験の手書きの期待値。設計 03・ADR 0043・0044・0047・0053・0054・0058・0059・0060・0180 の規則から手で導いた値で、実装の関数から作らない。ラベル（M・L1・T_SRC など）は試験の中の呼び名で、目印は試験ごとに作る合成の文字列。ciphertext_* は封筒の暗号文のバイト列が見つかったラベル、plaintext_found は平文の目印が見つかった『ファイル > 目印』の組。時刻は UTC。",
   "seeds": [7, 1006, 2026],
-  "db_version": "23",
+  "db_version": "24",
   "cases": [
     {
       "id": "X16-retention-deadline-and-resummary",
@@ -344,6 +344,56 @@
           { "step": "normal_turn_after", "status": 200, "turns": 2 }
         ],
         "visible_turn_markers": ["NORMAL_1", "NORMAL_2"],
+        "plaintext_found": []
+      }
+    },
+    {
+      "id": "X59-private-conversation-no-memory-save",
+      "condition": "private",
+      "faults": ["private_memory_save", "private_resend_after_exit"],
+      "expected": {
+        "steps": [
+          {
+            "step": "allow_preference",
+            "status": 200,
+            "allowed_kinds": ["preference"]
+          },
+          { "step": "enter_private", "status": 200 },
+          {
+            "step": "private_memory_save",
+            "status": 200,
+            "storage_mode": "private",
+            "turn_status": "clarification",
+            "reply_text": "記録しない会話では、この依頼はまだ受け付けられません。記録しない会話を終えてから、もう一度お願いします。",
+            "turns": 0,
+            "memories": 0
+          },
+          { "step": "exit_private", "status": 200 },
+          {
+            "step": "private_memory_save_resent_after_exit",
+            "status": 409,
+            "turns": 0,
+            "memories": 0
+          },
+          {
+            "step": "normal_memory_save",
+            "status": 200,
+            "storage_mode": "normal",
+            "turn_status": "answered",
+            "reply_text": "「好み」の記憶として覚えました。「記憶と忘却」の欄で確かめられます。",
+            "turns": 1,
+            "memories": 1
+          },
+          {
+            "step": "normal_memory_save_replay",
+            "status": 200,
+            "same_turn": true,
+            "turns": 1,
+            "memories": 1
+          }
+        ],
+        "visible_memory_markers": ["NORMAL"],
+        "memory_sources": ["turn:explicit_request"],
         "plaintext_found": []
       }
     }

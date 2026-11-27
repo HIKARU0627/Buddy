@@ -51,6 +51,8 @@ export const DK_M2 = 'd2'.repeat(32);
 export const DK_OTHER = 'd3'.repeat(32);
 export const H_T_SRC = 'b1'.repeat(32);
 export const H_T_OTHER = 'b2'.repeat(32);
+// seedWorld の保存してよい記憶の種類の設定の版（6 種類とも許可。ADR 0191）。
+export const SETTINGS_REVISION = '1';
 export const NOW_1 = Date.parse('2031-01-02T03:04:05.678Z');
 export const NOW_2 = Date.parse('2031-01-03T00:00:00.000Z');
 // 手で求めた連鎖の hash（上の説明のとおり Python で計算した値）。
@@ -246,6 +248,10 @@ export function seedWorld(db: SqliteDatabase): void {
   ok(db, dispatchCommand(OP_DISP, '3', 'att-disp'));
   for (const id of [OP_DONE, OP_RET, OP_DISP])
     edge(db, 'operation_content', id, 'memory', M);
+  // 保存してよい記憶の種類（ADR 0191）: 試験の世界では 6 種類とも許可し、版は SETTINGS_REVISION。
+  db.prepare(
+    "INSERT INTO memory_settings (setting_id, preference, goal, person, routine, lexicon, progress, settings_revision, updated_at) VALUES (1, 'on', 'on', 'on', 'on', 'on', 'on', 1, 1000)",
+  ).run();
 }
 
 function lookup(

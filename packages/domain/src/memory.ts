@@ -362,3 +362,47 @@ export function restoreReasons(input: {
   }
   return { restoreMemories: reasons.length === 0, reasons };
 }
+
+// 記憶の本文の上限（契約の MemoryRecord.text・MemoryCandidateWire.text・MemoryListItem.text と同じ 80 コードポイント）。
+export const MEMORY_TEXT_MAX_CODE_POINTS = 80;
+
+// 本人の明示の依頼（memory_save・memory_correct の body）を記憶の本文にする（ADR 0191）。Unicode の NFC にそろえ、前後の
+// 空白を除き、続く空白を 1 つにする。制御文字・書字方向の制御文字・ゼロ幅の文字を含む本文は、見かけと中身が食い違うので
+// 記憶にしない（受け付けずに理由を返す）。空・80 文字を超える本文も記憶にしない（勝手に縮めない）。
+export type ExplicitMemoryText =
+  | { readonly ok: true; readonly text: string }
+  | {
+      readonly ok: false;
+      readonly reason: 'empty' | 'too_long' | 'control_character';
+    };
+
+// C0・DEL・C1 の制御文字（改行・タブ・復帰は空白として扱うので除く）、書字方向の制御文字（U+061C・U+200E・U+200F・
+// U+202A〜U+202E・U+2066〜U+2069）、ゼロ幅の文字（U+200B〜U+200D・U+2060・U+FEFF）。
+function hasHiddenCharacter(text: string): boolean {
+  for (const character of text) {
+    const code = character.codePointAt(0) ?? 0;
+    if (
+      (code <= 0x1f && code !== 0x09 && code !== 0x0a && code !== 0x0d) ||
+      (code >= 0x7f && code <= 0x9f) ||
+      code === 0x061c ||
+      (code >= 0x200b && code <= 0x200f) ||
+      (code >= 0x202a && code <= 0x202e) ||
+      code === 0x2060 ||
+      (code >= 0x2066 && code <= 0x2069) ||
+      code === 0xfeff
+    )
+      return true;
+  }
+  return false;
+}
+
+export function explicitMemoryText(body: string): ExplicitMemoryText {
+  const normalized = body.normalize('NFC');
+  if (hasHiddenCharacter(normalized))
+    return { ok: false, reason: 'control_character' };
+  const text = normalized.replace(/\s+/gu, ' ').trim();
+  if (text.length === 0) return { ok: false, reason: 'empty' };
+  if ([...text].length > MEMORY_TEXT_MAX_CODE_POINTS)
+    return { ok: false, reason: 'too_long' };
+  return { ok: true, text };
+}

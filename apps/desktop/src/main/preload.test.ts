@@ -176,6 +176,8 @@ test('requests go only to the contract channels', async () => {
       'desktop.memories_list',
       'desktop.forget_plan',
       'desktop.forget_execute',
+      // 保存してよい記憶の種類の設定の変更（ADR 0191。従来の窓と状態の層）。
+      'desktop.memory_settings_change',
       // 保存モードの切り替え（UI-05 の段階 6、ADR 0189。従来の窓と状態の層。キャンバス・入力バー・島には渡さない）。
       'desktop.storage_mode_change',
     ],
@@ -210,6 +212,8 @@ test('requests go only to the contract channels', async () => {
     'desktop.memories_list',
     'desktop.forget_plan',
     'desktop.forget_execute',
+    // 保存してよい記憶の種類の設定の変更（ADR 0191。従来の窓と状態の層）。
+    'desktop.memory_settings_change',
     // 保存モードの切り替え（UI-05 の段階 6、ADR 0189。従来の窓と状態の層。キャンバス・入力バー・島には渡さない）。
     'desktop.storage_mode_change',
   ];
@@ -379,6 +383,8 @@ const EXPECTED_ROLE_CHANNELS: Readonly<Record<string, readonly string[]>> = {
     'desktop.memories_list',
     'desktop.forget_plan',
     'desktop.forget_execute',
+    // 保存してよい記憶の種類の設定の変更（ADR 0191。従来の窓と状態の層）。
+    'desktop.memory_settings_change',
     // 保存モードの切り替え（UI-05 の段階 6、ADR 0189。従来の窓と状態の層。キャンバス・入力バー・島には渡さない）。
     'desktop.storage_mode_change',
   ],

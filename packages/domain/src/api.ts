@@ -131,6 +131,10 @@ export const ROUTE_CHECKS: Readonly<Record<string, readonly CoreCheck[]>> = {
   // 記憶の一覧（UI-10 の忘却の画面、ADR 0183）。本文（要約）を返すので、ロック解除済みの本人の画面操作だけ（音声・チャット・
   // 中枢の自動の処理の起源からは読ませない）。読み取りなので接続範囲は求めない。端末をまたいだ本文の表示の範囲は U430。
   listMemories: [...READ, 'unlocked', 'screen_operation'],
+  // 保存してよい記憶の種類の設定（ADR 0191）。読み取りは一覧と同じ検査、変更は本人の画面操作だけ（音声・チャット・発言からは
+  // 変えない）。設定の版の照合は経路の処理が行い、409 にする。
+  getMemorySettings: [...READ, 'unlocked', 'screen_operation'],
+  changeMemorySettings: SCREEN,
   // 記憶の忘却の計画と、本人が確かめた計画の実行（B06-07b-2、ADR 0180）。どちらも本人の画面操作だけ（2026-11-01 Q2）。
   // 忘却の公開ゲート（U112）・計画の世代と期限の照合は経路の処理が行う。
   createForgetPlan: SCREEN,

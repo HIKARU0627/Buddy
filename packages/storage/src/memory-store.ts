@@ -8,6 +8,11 @@
 // - memory.start_review: 見直し日を過ぎた記憶を見直し待ちへ（見直しから 30 日で削除）。
 // - memory.delete_due: 見直し待ちのまま 30 日を過ぎた記憶の物理削除（期限切れ。台帳には書かない）。
 // - directive.revoke: 本人の指示（「今後は」など）の取り消し。行と暗号文を消す。
+// - memory.settings_get・memory.settings_set: 保存してよい記憶の種類の設定（マイグレーション 0024、ADR 0191）。行がなければ
+//   6 種類とも保存しない・版 0。版は本人の変更ごとに 1 進み、違う版からの変更は settings_revision_conflict。
+// - memory.admission_facts: 保存の前の検査（domain の memoryAdmission）に使う、設定・台帳・今ある記憶の HMAC を同じ時点で読む。
+// memory.save（と、発言と同じ transaction の保存 saveMemoryInTransaction）は、同じ transaction で設定を読み、種類が許可に
+// なければ kind_not_allowed、処理を始めた時点の版と今の版が違えば permission_changed で保存しない（最後の保証）。
 // 書込みは 1 命令を 1 つの短い BEGIN IMMEDIATE の transaction で行う。時刻は呼び出し側の now を信じる（DB は時計を
 // 持たない。期限の命令は B06-06d1 の sweepPlan の時計の判定を通してから呼ぶ）。結果には ID・件数だけを入れる。
 
@@ -18,7 +23,12 @@ import {
   RETENTION_RULES,
   ledgerRelationReasons,
 } from '@buddy/domain';
-import type { ForgetGraph, ForgetPlan, MemorySource } from '@buddy/domain';
+import type {
+  ForgetEntry,
+  ForgetGraph,
+  ForgetPlan,
+  MemorySource,
+} from '@buddy/domain';
 import { writeConnectionReasons } from './connection.js';
 import type { SqliteDatabase, StoragePlatform } from './connection.js';
 import { isSealedBlob } from './operation-commands.js';
@@ -60,6 +70,27 @@ const MEMORY_KINDS = [
   'lexicon',
   'progress',
 ] as const;
+// 記憶の種類（契約の MemoryKind。保存してよい種類の設定の列の順）。
+export const MEMORY_KIND_NAMES: readonly MemoryKindName[] = MEMORY_KINDS;
+export type MemoryKindName = (typeof MEMORY_KINDS)[number];
+// 保存してよい記憶の種類の設定（ADR 0191）。allowed_kinds は MEMORY_KIND_NAMES の順。行がなければ空・版 '0'。
+export interface MemorySettingsValue {
+  readonly allowed_kinds: readonly MemoryKindName[];
+  readonly settings_revision: string;
+}
+// 保存の前の検査の材料（同じ読み取りの transaction で読む）。existing の target_key は対象キーの HMAC（target_key_hash）。
+export interface MemoryAdmissionFacts {
+  readonly settings: MemorySettingsValue;
+  readonly forgetting_generation: string;
+  readonly ledger: readonly ForgetEntry[];
+  readonly existing: readonly {
+    readonly memory_id: string;
+    readonly kind: MemoryKindName;
+    readonly target_key: string;
+    readonly dedupe_key: string;
+    readonly status: 'active' | 'review_pending';
+  }[];
+}
 const SOURCE_KINDS = ['turn', 'source_item', 'memory'] as const;
 // 元情報の ID の形の最低限（契約の OriginalSourceId）。
 const ORIGINAL_SOURCE_ID = /^[A-Za-z0-9._:=+~-]{1,256}$/u;
@@ -113,6 +144,8 @@ export type MemoryOp =
       readonly source_hmacs: readonly SourceHmacValue[];
       // 保存の判定を始めたときの台帳の世代。
       readonly forgetting_generation: string;
+      // 保存の判定を始めたときの、保存してよい記憶の種類の設定の版（ADR 0191）。今の版と違えば保存しない。
+      readonly settings_revision: string;
       readonly now: number;
     }
   | {
@@ -137,7 +170,18 @@ export type MemoryOp =
       readonly kind: 'memory.list';
       readonly limit: number;
       readonly now: number;
-    };
+    }
+  // 保存してよい記憶の種類の設定（ADR 0191）。
+  | { readonly kind: 'memory.settings_get' }
+  // 本人の画面操作の設定の変更。expected_revision が今の版と違えば settings_revision_conflict。同じ値でも版は進む。
+  | {
+      readonly kind: 'memory.settings_set';
+      readonly expected_revision: string;
+      readonly allowed_kinds: readonly MemoryKindName[];
+      readonly now: number;
+    }
+  // 保存の前の検査の材料（設定・台帳の世代と全件・今ある記憶の種類と HMAC）。
+  | { readonly kind: 'memory.admission_facts' };
 
 export type MemoryOpKind = MemoryOp['kind'];
 
@@ -224,6 +268,9 @@ export interface MemoryOpValues {
     // 上限で切った（ほかにも出せる記憶がある）か。
     readonly truncated: boolean;
   };
+  'memory.settings_get': MemorySettingsValue;
+  'memory.settings_set': MemorySettingsValue;
+  'memory.admission_facts': MemoryAdmissionFacts;
 }
 
 export type MemoryOpValue = MemoryOpValues[MemoryOpKind];
@@ -251,6 +298,7 @@ export const MEMORY_WRITE_OPS: ReadonlySet<MemoryOpKind> = new Set([
   'memory.start_review',
   'memory.delete_due',
   'directive.revoke',
+  'memory.settings_set',
 ]);
 
 const KINDS: ReadonlySet<string> = new Set<MemoryOpKind>([
@@ -266,6 +314,9 @@ const KINDS: ReadonlySet<string> = new Set<MemoryOpKind>([
   'memory.delete_due',
   'directive.revoke',
   'memory.list',
+  'memory.settings_get',
+  'memory.settings_set',
+  'memory.admission_facts',
 ]);
 
 // 記憶の一覧の上限（契約の MemoryListResponse.items の maxItems）。
@@ -375,6 +426,11 @@ export function memoryOpShapeReasons(op: MemoryOp): string[] {
         !GENERATION.test(op.forgetting_generation)
       )
         reasons.push('generation_invalid');
+      if (
+        typeof op.settings_revision !== 'string' ||
+        !GENERATION.test(op.settings_revision)
+      )
+        reasons.push('settings_revision_invalid');
       if (!isTime(op.now)) reasons.push('now_invalid');
       break;
     case 'memory.continue':
@@ -395,8 +451,104 @@ export function memoryOpShapeReasons(op: MemoryOp): string[] {
         reasons.push('limit_invalid');
       if (!isTime(op.now)) reasons.push('now_invalid');
       break;
+    case 'memory.settings_get':
+    case 'memory.admission_facts':
+      break;
+    case 'memory.settings_set':
+      if (
+        typeof op.expected_revision !== 'string' ||
+        !GENERATION.test(op.expected_revision)
+      )
+        reasons.push('settings_revision_invalid');
+      if (!isKindList(op.allowed_kinds)) reasons.push('allowed_kinds_invalid');
+      if (!isTime(op.now)) reasons.push('now_invalid');
+      break;
   }
   return reasons;
+}
+
+// 保存してよい種類の一覧の形（重なりなし・知っている種類だけ・6 件まで）。
+function isKindList(value: unknown): value is readonly MemoryKindName[] {
+  return (
+    Array.isArray(value) &&
+    value.length <= MEMORY_KINDS.length &&
+    new Set(value).size === value.length &&
+    value.every((item) => MEMORY_KINDS.includes(item as MemoryKindName))
+  );
+}
+
+// --- 保存してよい記憶の種類の設定（0024、ADR 0191） ---
+
+interface MemorySettingsRow {
+  preference: 'on' | 'off';
+  goal: 'on' | 'off';
+  person: 'on' | 'off';
+  routine: 'on' | 'off';
+  lexicon: 'on' | 'off';
+  progress: 'on' | 'off';
+  settings_revision: number;
+}
+
+// 今の設定。行がなければ 6 種類とも保存しない・版 0（既定は空。#180 の Q10）。
+export function readMemorySettings(db: SqliteDatabase): MemorySettingsValue {
+  const row = db
+    .prepare(
+      'SELECT preference, goal, person, routine, lexicon, progress, settings_revision FROM memory_settings WHERE setting_id = 1',
+    )
+    .get() as MemorySettingsRow | undefined;
+  if (row === undefined) return { allowed_kinds: [], settings_revision: '0' };
+  return {
+    allowed_kinds: MEMORY_KINDS.filter((kind) => row[kind] === 'on'),
+    settings_revision: String(row.settings_revision),
+  };
+}
+
+function setMemorySettings(
+  db: SqliteDatabase,
+  op: Extract<MemoryOp, { kind: 'memory.settings_set' }>,
+): MemorySettingsValue {
+  const current = readMemorySettings(db);
+  if (current.settings_revision !== op.expected_revision)
+    throw new ForgetRejection(['settings_revision_conflict']);
+  const value = (kind: MemoryKindName): 'on' | 'off' =>
+    op.allowed_kinds.includes(kind) ? 'on' : 'off';
+  const values = MEMORY_KINDS.map(value);
+  if (current.settings_revision === '0')
+    db.prepare(
+      'INSERT INTO memory_settings (setting_id, preference, goal, person, routine, lexicon, progress, settings_revision, updated_at) VALUES (1, ?, ?, ?, ?, ?, ?, 1, ?)',
+    ).run(...values, op.now);
+  else
+    db.prepare(
+      'UPDATE memory_settings SET preference = ?, goal = ?, person = ?, routine = ?, lexicon = ?, progress = ?, settings_revision = settings_revision + 1, updated_at = ? WHERE setting_id = 1',
+    ).run(...values, op.now);
+  return readMemorySettings(db);
+}
+
+// 保存の前の検査の材料（ADR 0191）。同じ読み取りの transaction で読む。
+function admissionFacts(db: SqliteDatabase): MemoryAdmissionFacts {
+  const existing = db
+    .prepare(
+      "SELECT memory_id, kind, target_key_hash, dedupe_key, status FROM memories WHERE status <> 'deleted' ORDER BY memory_id",
+    )
+    .all() as {
+    memory_id: string;
+    kind: MemoryKindName;
+    target_key_hash: string;
+    dedupe_key: string;
+    status: 'active' | 'review_pending';
+  }[];
+  return {
+    settings: readMemorySettings(db),
+    forgetting_generation: String(currentForgettingGeneration(db)),
+    ledger: readLedgerEntries(db),
+    existing: existing.map((row) => ({
+      memory_id: row.memory_id,
+      kind: row.kind,
+      target_key: row.target_key_hash,
+      dedupe_key: row.dedupe_key,
+      status: row.status,
+    })),
+  };
 }
 
 // --- 記憶 ---
@@ -450,12 +602,21 @@ function insertMemoryBlob(
   );
 }
 
-// 記憶の保存。保存の直前の最後の保証として、台帳の全件と由来を照合する（ADR 0040 の「忘却の関連の判定」）。
-function saveMemory(
+// 記憶の保存。保存の直前の最後の保証として、保存してよい種類の設定（ADR 0191）と、台帳の全件と由来を照合する（ADR 0040 の
+// 「忘却の関連の判定」）。発言と同じ transaction で保存する経路（conversation-store の turn.record、ADR 0191）も、この関数を
+// transaction の中から呼ぶ（拒否は ForgetRejection を投げ、呼び出し側の transaction ごと戻る）。
+export function saveMemoryInTransaction(
   db: SqliteDatabase,
   op: Extract<MemoryOp, { kind: 'memory.save' }>,
 ): MemoryScheduleValue {
   const reasons: string[] = [];
+  // 保存してよい種類（本人の設定）。既定は空なので、本人が許可するまで何も保存しない。処理を始めた後に設定が変わったら、
+  // 変わる前の判断で保存しない。
+  const settings = readMemorySettings(db);
+  if (!settings.allowed_kinds.includes(op.memory_kind))
+    reasons.push('kind_not_allowed');
+  if (settings.settings_revision !== op.settings_revision)
+    reasons.push('permission_changed');
   // 記憶は由来関係を必ず記録する（03）。由来がなければ忘却と関係するか判定できない。
   if (op.sources.length === 0) reasons.push('provenance_unknown');
   const hmacs = new Map(
@@ -777,7 +938,9 @@ function applyWrite(db: SqliteDatabase, op: MemoryOp): MemoryOpValue {
     case 'backup.record_setup':
       return recordBackupSetup(db, op);
     case 'memory.save':
-      return saveMemory(db, op);
+      return saveMemoryInTransaction(db, op);
+    case 'memory.settings_set':
+      return setMemorySettings(db, op);
     case 'memory.continue':
       return continueMemory(db, op);
     case 'memory.start_review':
@@ -932,6 +1095,10 @@ function readOnly(db: SqliteDatabase, op: MemoryOp): MemoryOpValue {
       return readBackupFacts(db);
     case 'memory.list':
       return db.transaction(() => listMemories(db, op))();
+    case 'memory.settings_get':
+      return readMemorySettings(db);
+    case 'memory.admission_facts':
+      return db.transaction(() => admissionFacts(db))();
     default:
       throw new ForgetRejection(['kind_invalid']);
   }

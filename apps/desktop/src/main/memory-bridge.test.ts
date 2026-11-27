@@ -83,6 +83,12 @@ const planBody = (fields = {}) => ({
   ...fields,
 });
 
+const settingsBody = (kinds: string[], revision: string) => ({
+  schema: 'buddy.memory-settings.v1',
+  allowed_kinds: kinds,
+  memory_settings_revision: revision,
+});
+
 type Outcome =
   | { kind: 'response'; status: number; body: unknown }
   | { kind: 'unknown' }
@@ -102,6 +108,9 @@ interface Rig {
   readonly calls: Call[];
   readonly confirms: ForgetConfirmRequest[];
   list: () => Outcome;
+  // 保存してよい記憶の種類の設定の読み取りと変更（ADR 0191）。
+  settings: () => Outcome;
+  settingsChange: () => Outcome;
   plan: () => Outcome;
   execute: () => Outcome;
   confirm: () => Promise<{ scope: string } | DesktopIpcRejectReason>;
@@ -118,6 +127,16 @@ function rig(): Rig {
     calls,
     confirms,
     list: () => ({ kind: 'response', status: 200, body: listBody() }),
+    settings: () => ({
+      kind: 'response',
+      status: 200,
+      body: settingsBody([], '0'),
+    }),
+    settingsChange: () => ({
+      kind: 'response',
+      status: 200,
+      body: settingsBody(['preference'], '1'),
+    }),
     plan: () => ({ kind: 'response', status: 200, body: planBody() }),
     execute: () => ({
       kind: 'response',
@@ -140,6 +159,10 @@ function rig(): Rig {
     },
     request: (call: Call): Promise<Outcome> => {
       calls.push(call);
+      if (call.path === '/v1/memory/settings')
+        return Promise.resolve(
+          call.method === 'GET' ? state.settings() : state.settingsChange(),
+        );
       if (call.method === 'GET') return Promise.resolve(state.list());
       if (call.path === '/v1/memory/forget-plans')
         return Promise.resolve(state.plan());
@@ -192,7 +215,7 @@ test('the list carries refs and display values only, and the gate is copied from
       [uuid(0x102), 'routine', '毎朝 7 時に散歩する'],
     ],
   );
-  // 一覧は本人の画面操作として読み、接続範囲は本文に入れない（GET）。
+  // 一覧と保存してよい種類の設定は本人の画面操作として読み、接続範囲は本文に入れない（GET）。
   assert.deepEqual(r.calls, [
     {
       method: 'GET',
@@ -200,7 +223,15 @@ test('the list carries refs and display values only, and the gate is copied from
       screenOperation: true,
       expectedScopeId: SCOPE,
     },
+    {
+      method: 'GET',
+      path: '/v1/memory/settings',
+      screenOperation: true,
+      expectedScopeId: SCOPE,
+    },
   ]);
+  // 設定は種類だけを渡し、版は渡さない（既定は空）。
+  assert.deepEqual(view.settings, { allowed_kinds: [] });
   // 同じ記憶は読み直しても同じ参照。
   const again = ok(await r.bridge.list());
   assert.deepEqual(
@@ -683,4 +714,102 @@ test('directive texts reach the screen without control, bidi or zero-width chara
     view.plan?.removed.directives.map((directive) => directive.text),
     ['今後は 返信を 短めに して', null],
   );
+});
+
+// ---- 保存してよい記憶の種類の設定（ADR 0191） ----
+
+test('ADR 0191: a settings change sends every allowed kind with the revision main holds and shows only the kinds', async () => {
+  const r = rig();
+  r.settings = () => ({
+    kind: 'response',
+    status: 200,
+    body: settingsBody(['goal'], '4'),
+  });
+  const listed = ok(await r.bridge.list());
+  assert.deepEqual(listed.settings, { allowed_kinds: ['goal'] });
+  r.settingsChange = () => ({
+    kind: 'response',
+    status: 200,
+    body: settingsBody(['preference', 'goal'], '5'),
+  });
+  const changed = ok(await r.bridge.changeSettings(['preference', 'goal']));
+  assert(contract.valid('DesktopMemoryView', changed));
+  assert.deepEqual(changed.settings, { allowed_kinds: ['preference', 'goal'] });
+  assert(changed.list_seq > listed.list_seq);
+  // 版は main が付ける（画面は版を送らない・受け取らない）。
+  assert.deepEqual(r.calls.at(-1), {
+    method: 'POST',
+    path: '/v1/memory/settings',
+    body: {
+      expected_memory_settings_revision: '4',
+      allowed_kinds: ['preference', 'goal'],
+    },
+    scoped: true,
+    screenOperation: true,
+    expectedScopeId: SCOPE,
+  });
+  assert(!JSON.stringify(changed).includes('settings_revision'));
+});
+
+test('ADR 0191: a stale revision or an unknown outcome is not re-sent; the settings are read again', async () => {
+  const r = rig();
+  r.settings = () => ({
+    kind: 'response',
+    status: 200,
+    body: settingsBody([], '2'),
+  });
+  ok(await r.bridge.list());
+  r.settingsChange = () => ({ kind: 'response', status: 409, body: {} });
+  // 別の画面で変わっていた: 読み直した後の値は中枢の今の値。
+  r.settings = () => ({
+    kind: 'response',
+    status: 200,
+    body: settingsBody(['person'], '3'),
+  });
+  assert.deepEqual(await r.bridge.changeSettings(['goal']), {
+    ok: false,
+    reason: 'preview_stale',
+  });
+  await r.bridge.refresh();
+  assert.deepEqual(r.bridge.view().settings, { allowed_kinds: ['person'] });
+  const posts = () =>
+    r.calls.filter(
+      (call) => call.method === 'POST' && call.path === '/v1/memory/settings',
+    ).length;
+  assert.equal(posts(), 1);
+  r.settingsChange = () => ({ kind: 'unknown' });
+  assert.deepEqual(await r.bridge.changeSettings(['goal']), {
+    ok: false,
+    reason: 'outcome_unknown',
+  });
+  await r.bridge.refresh();
+  // 自動では送り直さない（送ったのは押した 2 回だけ）。
+  assert.equal(posts(), 2);
+});
+
+test('ADR 0191: settings that were never read cannot be changed, unreadable settings keep the last value, and a reset drops them', async () => {
+  const r = rig();
+  r.settings = () => ({ kind: 'response', status: 503, body: {} });
+  const first = ok(await r.bridge.list());
+  // 読めたことがない設定は null（「何も許可していない」と区別する）。変更は送らない。
+  assert.equal(first.settings, null);
+  assert.deepEqual(await r.bridge.changeSettings(['goal']), {
+    ok: false,
+    reason: 'entry_not_found',
+  });
+  assert.equal(r.calls.filter((call) => call.method === 'POST').length, 0);
+  r.settings = () => ({
+    kind: 'response',
+    status: 200,
+    body: settingsBody(['lexicon'], '1'),
+  });
+  ok(await r.bridge.list());
+  // 次に読めなかった: 前の値のまま。
+  r.settings = () => ({ kind: 'unknown' });
+  assert.deepEqual(ok(await r.bridge.list()).settings, {
+    allowed_kinds: ['lexicon'],
+  });
+  // ロック・切断: 捨てる。
+  r.bridge.reset();
+  assert.equal(r.bridge.view().settings, null);
 });

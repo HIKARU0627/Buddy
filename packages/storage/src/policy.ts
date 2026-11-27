@@ -341,6 +341,13 @@ export const TABLE_POLICIES: Readonly<Record<string, TablePolicy>> = {
     retention: 'until_replaced',
     transaction: 'household',
   },
+  // 0024（ADR 0191）。保存してよい記憶の種類の設定（1 行だけ。6 種類の on・off と 1 ずつだけ進む版）。記憶の保存と同じ
+  // transaction で読む。
+  memory_settings: {
+    body: 'none',
+    retention: 'until_replaced',
+    transaction: 'memory',
+  },
   // 0019（ADR 0166）。分類ごとの予算（1 行だけ。金額は暗号文）。
   household_budgets: {
     body: 'sealed_refs',

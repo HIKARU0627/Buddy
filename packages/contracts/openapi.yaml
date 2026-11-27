@@ -2452,6 +2452,78 @@ paths:
           $ref: '#/components/responses/RateLimited'
         '503':
           $ref: '#/components/responses/Unavailable'
+  /v1/memory/settings:
+    get:
+      operationId: getMemorySettings
+      summary: 保存してよい記憶の種類の設定
+      description: 保存してよい記憶の種類（好み・目標・人・習慣・言葉の使い方・進み具合）と設定の版を返す（#180 の Q10・U432、ADR 0191）。まだ変えていなければ空（何も保存しない）・版 0。ロック解除済みの本人の画面操作（Buddy-Input-Origin が screen）だけに返す。
+      x-buddy-core-checks:
+        - device_token
+        - home_network
+        - unlocked
+        - screen_operation
+      parameters:
+        - $ref: '#/components/parameters/InputOrigin'
+        - $ref: '#/components/parameters/LockState'
+      responses:
+        '200':
+          description: 今の設定。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/MemorySettings
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+    post:
+      operationId: changeMemorySettings
+      summary: 保存してよい記憶の種類の設定の変更
+      description: 本人がロック解除済みの画面で、保存してよい記憶の種類を変える（ADR 0191）。変えた後の種類の全部を送る。版（expected_memory_settings_revision）が今と違えば 409（同じ要求の再送も 409）。許可から外しても、保存済みの記憶は消さない。記憶の保存は、保存の直前に同じ transaction でこの設定を読み直し、処理の間に設定が変わったら保存しない。音声・チャット・発言からは変えない。成否が不明なときは 503。
+      x-buddy-core-checks:
+        - device_token
+        - home_network
+        - command_scope
+        - unlocked
+        - screen_operation
+      parameters:
+        - $ref: '#/components/parameters/InputOrigin'
+        - $ref: '#/components/parameters/LockState'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas/buddy.schema.json#/$defs/MemorySettingsChangeRequest
+      responses:
+        '200':
+          description: 変更後の設定。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/MemorySettings
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/Gone'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
   /v1/memory/forget-plans:
     post:
       operationId: createForgetPlan

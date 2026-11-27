@@ -69,6 +69,9 @@ const VERSION_FIELDS = {
   // 本人の家計簿の設定の版（ADR 0163）。
   settings_revision: 'HouseholdSettingsRevision',
   expected_settings_revision: 'HouseholdSettingsRevision',
+  // 保存してよい記憶の種類の設定の版（ADR 0191）。
+  memory_settings_revision: 'MemorySettingsRevision',
+  expected_memory_settings_revision: 'MemorySettingsRevision',
   // 分類ごとの予算の版（ADR 0166）。
   budget_revision: 'HouseholdBudgetRevision',
   expected_budget_revision: 'HouseholdBudgetRevision',
@@ -129,6 +132,7 @@ const DECIMAL_KINDS = [
   'HouseholdRevision',
   'HouseholdSettingsRevision',
   'HouseholdBudgetRevision',
+  'MemorySettingsRevision',
   'Sequence',
 ];
 

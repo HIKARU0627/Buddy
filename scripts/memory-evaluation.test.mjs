@@ -9,6 +9,7 @@ import {
   applyMemoryEvent,
   artifactIssues,
   driftReasons,
+  explicitMemoryText,
   expiryUsableReasons,
   initialReviewAt,
   memoryAdmission,
@@ -378,8 +379,8 @@ test('local invariants of memory and evaluation records are checked semantically
   );
 });
 
-// Issue #180 の Q10（保存してよい記憶の種類の設定）は暫定で別の Issue に分けた（ADR 0183、U432）。既定は空なので、その設定が
-// できるまでは、会話からの自動の抽出のどの種類も保存しない。保存の直前の検査（memoryAdmission）が、許可した種類が空のとき
+// Issue #180 の Q10（保存してよい記憶の種類の設定）は ADR 0191 で作った（U432。ADR 0183 の暫定は別の Issue）。既定は空なので、本人が
+// 許可するまでは、会話からの自動の抽出のどの種類も保存しない。保存の直前の検査（memoryAdmission）が、許可した種類が空のとき
 // 6 つの種類をすべて kind_not_allowed で拒否することを、fixture の基本の候補（台帳と関係のない由来）で確かめる。期待値は手で書いた。
 test('with no allowed memory kinds (the default until the setting exists) automatic extraction saves nothing', () => {
   const { base_candidate, base_context, source_hmacs } = memorySpec.admission;
@@ -416,9 +417,12 @@ test('with no allowed memory kinds (the default until the setting exists) automa
   );
 });
 
-// 同じく Q10 の暫定（U432）: 製品の Core のソース（試験を除く）に、記憶を保存する命令（memory.save）を呼ぶ所がまだないこと。
-// 自動の抽出から記憶を保存する経路を足すときは、この試験を外す前に、保存してよい記憶の種類の設定（既定は空）を通すこと。
-test('no product Core source issues memory.save yet, so nothing is saved from automatic extraction', async () => {
+// Q10（U432）は ADR 0191 で保存してよい記憶の種類の設定を作った（既定は空）。製品の Core から記憶を保存するのは、本人の明示の
+// 依頼（memory_save・memory_correct）を発言と同じ transaction で保存する経路（memory-save.ts と api-turns.ts の turn.record の
+// memory）だけで、保存の直前に設定を通す。自動の抽出から保存する経路はまだないこと（auto_extraction の値を使う所がないこと）と、
+// 保存層の memory.save の命令を直接呼ぶ所がないことを、製品の Core のソース（試験を除く）で確かめる。自動の抽出の経路を
+// 足すときは、この試験を外す前に、保存してよい記憶の種類の設定（既定は空）を通すこと。
+test('the product Core saves memories only from explicit requests through the settings, never from automatic extraction yet', async () => {
   const { readdir } = await import('node:fs/promises');
   const dir = new URL('../apps/core/src/', import.meta.url);
   const sources = (await readdir(dir)).filter(
@@ -429,9 +433,43 @@ test('no product Core source issues memory.save yet, so nothing is saved from au
   );
   assert(sources.length > 0);
   const callers = [];
+  const automatic = [];
+  const explicit = [];
   for (const name of sources) {
     const text = await readFile(new URL(name, dir), 'utf8');
     if (/kind:\s*'memory\.save'/u.test(text)) callers.push(name);
+    if (/'auto_extraction'/u.test(text)) automatic.push(name);
+    if (/origin:\s*'explicit_request'/u.test(text)) explicit.push(name);
   }
   assert.deepEqual(callers, []);
+  assert.deepEqual(automatic, []);
+  assert.deepEqual(explicit, ['memory-save.ts']);
+});
+
+// 本人の明示の依頼の本文を記憶の本文にする規則（ADR 0191）。期待値は手で書いた（80 コードポイントの境界・空白のまとめ・
+// 見えない文字の拒否）。
+test('explicit memory text: whitespace is folded, 80 code points is the limit and hidden characters are refused', () => {
+  assert.deepEqual(explicitMemoryText('  返信は\n\t短めが好み  '), {
+    ok: true,
+    text: '返信は 短めが好み',
+  });
+  assert.deepEqual(explicitMemoryText('あ'.repeat(80)), {
+    ok: true,
+    text: 'あ'.repeat(80),
+  });
+  assert.deepEqual(explicitMemoryText('あ'.repeat(81)), {
+    ok: false,
+    reason: 'too_long',
+  });
+  // サロゲートペアの文字は 1 文字と数える。
+  assert.equal(explicitMemoryText('😀'.repeat(80)).ok, true);
+  assert.deepEqual(explicitMemoryText(' \n '), { ok: false, reason: 'empty' });
+  for (const hidden of ['‮', '​', '\u0007', '﻿', '⁦'])
+    assert.deepEqual(
+      explicitMemoryText(`合成${hidden}の好み`),
+      { ok: false, reason: 'control_character' },
+      JSON.stringify(hidden),
+    );
+  // 分解した文字は NFC にそろえる（「が」= か + 濁点）。
+  assert.deepEqual(explicitMemoryText('が'), { ok: true, text: 'が' });
 });

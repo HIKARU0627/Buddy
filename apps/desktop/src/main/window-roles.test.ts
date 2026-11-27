@@ -106,6 +106,8 @@ const AUTO_ACTIONS = [
   'desktop.memories_list',
   'desktop.forget_plan',
   'desktop.forget_execute',
+  // 保存してよい記憶の種類の設定の変更（ADR 0191。従来の窓と状態の層）。
+  'desktop.memory_settings_change',
   // 保存モードの切り替え（UI-05 の段階 6、ADR 0189。従来の窓と状態の層。キャンバス・入力バー・島は使わない）。
   'desktop.storage_mode_change',
 ];
@@ -1087,6 +1089,8 @@ test('forget screen channels: only the legacy window and the status panel reach 
     'desktop.memories_list',
     'desktop.forget_plan',
     'desktop.forget_execute',
+    // 保存してよい記憶の種類の設定の変更（ADR 0191）も同じ窓だけ。
+    'desktop.memory_settings_change',
   ];
   for (const channel of memory) {
     for (const [id, role] of [
@@ -1140,6 +1144,11 @@ test('forget screen channels: only the legacy window and the status panel reach 
     ok: false,
     reason: 'screen_operation_required',
   });
+  // 保存してよい記憶の種類の設定の変更（ADR 0191）も前面の画面操作だけ。
+  assert.deepEqual(back('desktop.memory_settings_change'), {
+    ok: false,
+    reason: 'screen_operation_required',
+  });
   for (const lockState of ['locked', 'unknown'] as const)
     for (const channel of memory)
       assert.deepEqual(
@@ -1153,7 +1162,11 @@ test('forget screen channels: only the legacy window and the status panel reach 
         `${lockState} ${channel}`,
       );
   // 中枢の記録を消すだけで外部へは送らないので、この端末の入出力の停止中も計画・実行を受け付ける。
-  for (const channel of ['desktop.forget_plan', 'desktop.forget_execute'])
+  for (const channel of [
+    'desktop.forget_plan',
+    'desktop.forget_execute',
+    'desktop.memory_settings_change',
+  ])
     assert.deepEqual(
       admitDesktopRequest(
         channel,

@@ -13,7 +13,11 @@
 //   ときだけ送る）。計画の後に台帳・系譜が変わった（409）は、何も消えていないので計画を捨てて preview_stale を返し、自動では
 //   計画を作り直さない（本人が見ていない物を消さない）。結果が分からない（届いたか分からない・503 outcome_unknown・ほかの
 //   5xx・形の違う 2xx）は、消えたかもしれないので計画を捨て、結果を「分からない」として残し、自動では送り直さない。
-// - 世代（ロック・切断）: reset で一覧・参照・計画・結果を捨て、非同期の処理は await の後に世代を照合する。
+// - 保存してよい記憶の種類の設定（ADR 0191）: 一覧と一緒に中枢の GET /v1/memory/settings を読み、種類だけを画面へ渡す（設定の
+//   版は main が持つ）。変更は画面から変えた後の種類の全部を受け、main が持つ版を付けて POST /v1/memory/settings へ送る。
+//   版が違う（409）は別の画面で変わったので、設定を読み直して preview_stale を返す（自動では送り直さない）。結果が分からない
+//   ときは outcome_unknown で、読み直して今の値を見せる。読めなかった設定は前の値のまま（読めたことがなければ null）。
+// - 世代（ロック・切断）: reset で一覧・参照・計画・結果・設定を捨て、非同期の処理は await の後に世代を照合する。
 // Electron に依存しない（node:test で試験する）。
 import type {
   DesktopForgetPlanView,
@@ -23,6 +27,7 @@ import type {
   ForgetPlanView,
   MemoryListItem,
   MemoryListResponse,
+  MemorySettings,
 } from '@buddy/contracts';
 import type { ClientConnection } from '@buddy/client';
 import type { DesktopIpcRejectReason } from '@buddy/domain';
@@ -105,6 +110,10 @@ export class MemoryBridge {
   // 実行の旗。確認の前に立て、結果が出るか失敗したら下ろす。立っている間の 2 回目の実行は、確認も送信もせずに断る
   // （同じ計画の確認が 2 回通り、実行が 2 回送られて、結果不明の「送り直さない」が破れるのを防ぐ）。
   #executing = false;
+  // 保存してよい記憶の種類の設定（中枢の値。版は画面へ渡さない）。読めたことがなければ null。
+  #settings: MemorySettings | null = null;
+  // 設定の変更の旗（変更の応答を待つ間の 2 回目は送らない）。
+  #changingSettings = false;
 
   constructor(host: MemoryHost) {
     this.#host = host;
@@ -122,6 +131,7 @@ export class MemoryBridge {
     this.#result = null;
     this.#fetchedAt = null;
     this.#failed = false;
+    this.#settings = null;
     this.#listSeq += 1;
   }
   // 実行の旗は reset では下ろさない（古い世代の実行が終わるときに、その実行の finally が下ろす）。
@@ -211,6 +221,10 @@ export class MemoryBridge {
       plan,
       result: this.#result,
       list_seq: this.#listSeq,
+      settings:
+        this.#settings === null
+          ? null
+          : { allowed_kinds: [...this.#settings.allowed_kinds] },
     };
   }
 
@@ -249,6 +263,8 @@ export class MemoryBridge {
     });
     if (gen !== this.#gen) return;
     this.#listSeq += 1;
+    await this.#readSettings(gen, connection, scope);
+    if (gen !== this.#gen) return;
     if (
       listed.kind === 'response' &&
       listed.status === 200 &&
@@ -260,6 +276,85 @@ export class MemoryBridge {
     // 読めなかった。前の値のまま、読めなかったことを画面に出す（「記憶なし」の証拠にしない）。
     this.#failed = true;
     this.#host.log('memory_list_unavailable');
+  }
+
+  // 保存してよい記憶の種類の設定を読む。読めなければ前の値のまま（「何も許可していない」の証拠にしない）。
+  async #readSettings(
+    gen: number,
+    connection: ClientConnection,
+    scope: string,
+  ): Promise<void> {
+    const read = await connection.request({
+      method: 'GET',
+      path: '/v1/memory/settings',
+      screenOperation: true,
+      expectedScopeId: scope,
+    });
+    if (gen !== this.#gen) return;
+    if (
+      read.kind === 'response' &&
+      read.status === 200 &&
+      this.#host.contract.valid('MemorySettings', read.body)
+    ) {
+      this.#settings = read.body as MemorySettings;
+      this.#listSeq += 1;
+      return;
+    }
+    this.#host.log('memory_settings_unavailable');
+  }
+
+  // --- 保存してよい記憶の種類の設定（ADR 0191） ---
+
+  // 画面から変えた後の種類の全部を受け、main が持つ版を付けて送る。読めたことがない設定は変えない（版が分からない）。
+  async changeSettings(
+    kinds: readonly MemorySettings['allowed_kinds'][number][],
+  ): Promise<MemoryOutcome<DesktopMemoryView>> {
+    if (this.#changingSettings) return fail('confirmation_pending');
+    this.#changingSettings = true;
+    try {
+      return await this.#changeSettings(kinds);
+    } finally {
+      this.#changingSettings = false;
+    }
+  }
+
+  async #changeSettings(
+    kinds: readonly MemorySettings['allowed_kinds'][number][],
+  ): Promise<MemoryOutcome<DesktopMemoryView>> {
+    const gen = this.#gen;
+    const connection = this.#host.connection();
+    const scope = connection?.state.commandScopeId ?? null;
+    if (connection === null || scope === null) return fail('not_connected');
+    const current = this.#settings;
+    if (current === null) return fail('entry_not_found');
+    const outcome = await connection.request({
+      method: 'POST',
+      path: '/v1/memory/settings',
+      body: {
+        expected_memory_settings_revision: current.memory_settings_revision,
+        allowed_kinds: [...kinds],
+      },
+      scoped: true,
+      screenOperation: true,
+      expectedScopeId: scope,
+    });
+    if (outcome.kind === 'not_sent') return fail('not_connected');
+    if (gen !== this.#gen) return fail('not_connected');
+    if (
+      outcome.kind === 'response' &&
+      outcome.status === 200 &&
+      this.#host.contract.valid('MemorySettings', outcome.body)
+    ) {
+      this.#settings = outcome.body as MemorySettings;
+      this.#listSeq += 1;
+      return { ok: true, value: this.view() };
+    }
+    // 別の画面で変わった（409）・結果が分からない: 自動では送り直さず、今の設定を読み直す。
+    void this.refresh();
+    if (outcome.kind === 'unknown' || outcome.status >= 500)
+      return fail('outcome_unknown');
+    if (outcome.status === 409) return fail('preview_stale');
+    return fail('core_rejected');
   }
 
   // 読み取った一覧を反映する。同じ記憶は同じ参照を保つ。ゲートの値は中枢の値に戻す（503 の「使えない」を解く）。

@@ -133,6 +133,18 @@ export function edge(db, artifactKind, artifactId, sourceKind, sourceId, at) {
   ).run(artifactKind, artifactId, sourceKind, sourceId, at);
 }
 
+// 保存してよい記憶の種類の設定（ADR 0191）。既定は空なので、記憶を保存するケースは先に好みを許可する（版 0 → 1）。
+export const SETTINGS_REVISION = '1';
+export async function allowPreference(store, now) {
+  const allowed = await store.memory({
+    kind: 'memory.settings_set',
+    expected_revision: '0',
+    allowed_kinds: ['preference'],
+    now,
+  });
+  if (!allowed.ok) throw new Error(JSON.stringify(allowed));
+}
+
 // 記憶の保存の命令（memory.save）。由来の HMAC は渡された関数で求める（Core と同じ restoreSourceHmac の形）。
 export function memorySaveOp({
   memoryId,
@@ -168,6 +180,7 @@ export function memorySaveOp({
         hmac: hmac(source),
       })),
       forgetting_generation: generation,
+      settings_revision: SETTINGS_REVISION,
       now,
     },
   };

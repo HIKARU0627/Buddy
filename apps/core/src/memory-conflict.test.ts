@@ -62,6 +62,8 @@ function save(dedupeKey: string): Extract<MemoryOp, { kind: 'memory.save' }> {
     sources: [{ source_kind: 'turn', source_id: TURN }],
     source_hmacs: [{ source_kind: 'turn', source_id: TURN, hmac: TURN_HMAC }],
     forgetting_generation: '0',
+    // 保存してよい種類の設定（ADR 0191）の版。下で好みを許可した版 1。
+    settings_revision: '1',
     now: 1_000_000,
   };
 }
@@ -87,6 +89,10 @@ test('a conflicting memory save reaches the caller as memory_conflict_review_req
     db.prepare(
       "INSERT INTO turns (turn_id, session_id, role, input_kind, text_blob_id, created_at, expires_at) VALUES (?, ?, 'user', 'text', NULL, 1000, 9999999999999)",
     ).run(TURN, SESSION);
+    // 保存してよい種類（ADR 0191）: 好みだけを許可する（版 1）。
+    db.prepare(
+      "INSERT INTO memory_settings (setting_id, preference, goal, person, routine, lexicon, progress, settings_revision, updated_at) VALUES (1, 'on', 'off', 'off', 'off', 'off', 'off', 1, 1000)",
+    ).run();
   } finally {
     db.close();
   }

@@ -49,11 +49,11 @@
 | #338 | 0181        | 従来の窓の上の中央に島を作り、確認が必要な操作と操作の結果のときだけ広げる（段階 2）  |
 | #339 | 0181        | 各画面の部品を島の形にそろえ、浮いた物の影を縁取りの線にする（段階 3）                |
 | #340 | 0181        | キャンバス表示の上の中央の島の窓、端のつまみの廃止、入力バーのカプセル（段階 4）      |
+| #341 | 0182        | 端末が忘却台帳の複製を保存し、接続と知らせで追いつく（Issue #179）                    |
 
 ## 作業中の PR
 
-- B06-07b-3 端末側の忘却台帳の保存（ADR 0182、U403〜U410、Issue #179）。Core から端末へ「台帳が進んだ」知らせを運ぶ経路はまだなく、今は接続のたびの同期だけが働く（U403）。
-- UI-10 忘却の画面（Issue #180、ADR 0183、U430〜）は別の作業で進行中。公開ゲートは閉じたまま。
+- UI-10 忘却の画面（Issue #180、ADR 0183、U430〜U439）。従来の窓に「記憶と忘却」の欄（左に記憶の一覧、右に忘却の計画、下に確認の帯）。公開ゲートは閉じたままで、計画・実行のボタンは理由を添えて無効。ゲートを開くのは本人の判断（U431）。開く前に、消える指示の本文を見せる形（U433）・台帳の鍵がない間の扱い（U385）・途中と後の守り（U383）と実機の確認を済ませる。
 
 CI が通ればマージしてよいと本人から許可を受けている。マージの状態は GitHub の PR の画面で確かめる。
 
@@ -135,5 +135,5 @@ CI が通ればマージしてよいと本人から許可を受けている。�
 - コミットの前に `pnpm run security:staged`、push の前に `pnpm run security:scan`。
 - 公開物の検査は、`example.com`・`example.org`・`example.net`・`example.invalid` 以外のメールアドレスの形を拒む。試験の送り主は合成の一覧を引数で渡している（`checkHouseholdNoticeSender` の第 2 引数、`createHouseholdMailIntake` の `issuers`）。検査を避ける書き方はしない。
 - マイグレーションを足すときは、`packages/storage/src/migrations.test.ts` の一覧・hash・表の数、`packages/domain/src/backup-plan.ts` の表の分類、`packages/storage/src/policy.ts`、`tests/fixtures/backup-restore-cases.json`、`packages/storage/migrations/README.md` をそろえ、試験の中の DB の版（`store-binding`・`db-worker`・`backup-ops`・`backup-store`・`operation-retention`・`voice-store`・`restore-aftermath-store`・`apps/core` の `backup`・`restore`・`forget-ledger` の試験、`tests/integration/b05-expectations.json`・`b07-expectations.json`）を上げる。除外する表なら `backup-store.test.ts` と `apps/core/src/backup.test.ts` の除外の一覧も直す。
-- 次の ADR の番号は 0184、次の未決事項の番号は U411（U430 以降は UI-10 の作業が使う）。
+- 次の ADR の番号は 0184、次の未決事項の番号は U440（U411〜U429 は空き）。
 - この環境の既定の Node.js が 22 のときは、24 系を PATH の先頭に置いてから pnpm を使う（`pnpm install` が版の違いで止まる）。clone の履歴が浅いと push の前の検査（`pnpm run security:scan`）が止まるので、`git fetch --unshallow` で全履歴を取ってから検査する。

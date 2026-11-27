@@ -997,6 +997,52 @@
           "canvas_revision": "4"
         },
         {
+          "type": "notice",
+          "notice": {
+            "schema": "buddy.retention-notice.v1",
+            "notice_id": "00000000-0000-4000-8000-0000000000e1",
+            "occurred_at": "2030-01-01T00:00:30Z",
+            "kind": "expired",
+            "reason": "retention_due",
+            "forgetting_generation": null,
+            "items": [
+              {
+                "item_kind": "turn",
+                "item_id": "00000000-0000-4000-8000-0000000000e2"
+              }
+            ]
+          }
+        },
+        {
+          "type": "notice",
+          "notice": {
+            "schema": "buddy.retention-notice.v1",
+            "notice_id": "00000000-0000-4000-8000-0000000000e3",
+            "occurred_at": "2030-01-01T00:00:31Z",
+            "kind": "forgotten",
+            "reason": "forgotten",
+            "forgetting_generation": "2",
+            "items": [
+              {
+                "item_kind": "memory",
+                "item_id": "00000000-0000-4000-8000-0000000000e4"
+              }
+            ]
+          }
+        },
+        {
+          "type": "notice",
+          "notice": {
+            "schema": "buddy.forget-ledger-notice.v1",
+            "notice_id": "00000000-0000-4000-8000-0000000000e5",
+            "occurred_at": "2030-01-01T00:00:31Z",
+            "kind": "ledger_advanced",
+            "ledger_id": "00000000-0000-4000-8000-0000000000e6",
+            "forgetting_generation": "2",
+            "entry_hash": "abababababababababababababababababababababababababababababababab"
+          }
+        },
+        {
           "type": "resnapshot_required",
           "reason": "store_generation_changed"
         }
@@ -1033,6 +1079,74 @@
         {
           "type": "canvas",
           "canvas_revision": "04"
+        },
+        {
+          "type": "notice",
+          "notice": {
+            "schema": "buddy.forget-ledger-notice.v1",
+            "notice_id": "00000000-0000-4000-8000-0000000000e5",
+            "occurred_at": "2030-01-01T00:00:31Z",
+            "kind": "ledger_advanced",
+            "ledger_id": "00000000-0000-4000-8000-0000000000e6",
+            "forgetting_generation": "2",
+            "entry_hash": "abababababababababababababababababababababababababababababababab",
+            "entries": []
+          }
+        },
+        {
+          "type": "notice",
+          "notice": {
+            "schema": "buddy.retention-notice.v1",
+            "notice_id": "00000000-0000-4000-8000-0000000000e1",
+            "occurred_at": "2030-01-01T00:00:30Z",
+            "kind": "expired",
+            "reason": "retention_due",
+            "forgetting_generation": null,
+            "items": [
+              {
+                "item_kind": "turn",
+                "item_id": "00000000-0000-4000-8000-0000000000e2",
+                "text": "本文"
+              }
+            ]
+          }
+        },
+        {
+          "type": "notice",
+          "notice": {
+            "schema": "buddy.future-notice.v1",
+            "notice_id": "00000000-0000-4000-8000-0000000000e7"
+          }
+        },
+        {
+          "type": "notice",
+          "notice": {
+            "schema": "buddy.retention-notice.v1",
+            "notice_id": "00000000-0000-4000-8000-0000000000e1",
+            "occurred_at": "2030-01-01T00:00:30Z",
+            "kind": "expired",
+            "reason": "retention_due",
+            "forgetting_generation": null,
+            "items": []
+          }
+        },
+        {
+          "type": "notice",
+          "notice": {
+            "schema": "buddy.retention-notice.v1",
+            "notice_id": "00000000-0000-4000-8000-0000000000e1",
+            "occurred_at": "2030-01-01T00:00:30Z",
+            "kind": "expired",
+            "reason": "retention_due",
+            "forgetting_generation": null,
+            "items": [
+              {
+                "item_kind": "turn",
+                "item_id": "00000000-0000-4000-8000-0000000000e2"
+              }
+            ]
+          },
+          "canvas_revision": "5"
         }
       ],
       "rejections": [

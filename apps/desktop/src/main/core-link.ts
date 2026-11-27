@@ -981,6 +981,17 @@ export class DesktopCoreLink {
     // 中枢のキャンバスの版の知らせ（本文なし）。取るのは canvas の窓のためだけ（キャンバスのモード）。
     if (this.#options.canvasMode === true)
       connection.onCanvas((revision) => this.#canvas.onRevision(revision));
+    // 中枢の知らせ（UI-05 の段階 3、ADR 0187）。忘却台帳の前進は台帳の複製の受け取り口へ（U403）、期限切れ・忘却・記録しない
+    // 会話の終了はキャンバスの読み直しへ渡す。画面への表示（本人への知らせ）はしない（U409・U464）。
+    connection.onNotice((notice) => {
+      if (notice.schema === 'buddy.forget-ledger-notice.v1') {
+        void this.forgetLedgerNotice(notice);
+        return;
+      }
+      // 消えた物は中枢が記述から閉じて版を進める。版の知らせを取り逃しても、知らせで今の記述を取り直す（ロック中・停止中・
+      // 隠れている間は取らない。CanvasBridge.refresh の判定のまま）。
+      if (this.#options.canvasMode === true) void this.#canvas.refresh();
+    });
     const reporter = new HomeReporter({
       collect: () => this.#options.collectHome(),
       send: (body) =>
@@ -2494,8 +2505,8 @@ export class DesktopCoreLink {
     this.#connection = null;
   }
 
-  // 「忘却台帳が進んだ」知らせ（ForgetLedgerNotice）を受けたとき。運び方は UI-05（U40）が決めるので、ここは受け取りの
-  // 口だけ（U403）。形が違えば捨て、知らせの head をもう保存していれば何も取らない。
+  // 「忘却台帳が進んだ」知らせ（ForgetLedgerNotice）を受けたとき。中枢の購読の notice から呼ぶ（UI-05 の段階 3、ADR 0187。
+  // U403）。形が違えば捨て、知らせの head をもう保存していれば何も取らない。
   forgetLedgerNotice(raw: unknown): Promise<void> {
     return this.#ledger?.notice(raw) ?? Promise.resolve();
   }

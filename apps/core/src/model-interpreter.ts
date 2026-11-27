@@ -46,6 +46,8 @@ export interface ModelCallGuard {
   admit(call: {
     readonly request_id: string;
     readonly profile: ModelProfile;
+    // 記録しない会話の発言を送る呼び出しの目印（ADR 0190）。予約の記録には本文・要約を入れず、この目印も残さない（費用の区分だけ）。
+    readonly private_conversation?: true;
   }): Promise<ModelCallAdmission>;
 }
 
@@ -60,6 +62,8 @@ export interface JudgmentDiagnostic {
   readonly reasons: readonly string[];
   readonly usage: ModelUsage | null;
   readonly elapsed_ms: number;
+  // 記録しない会話の発言の判定だったか（ADR 0190）。診断を保存する側は、真なら本文以外の値も会話へたどれる形で残さない。
+  readonly private_conversation: boolean;
 }
 
 export interface ModelInterpreterOptions {
@@ -165,6 +169,7 @@ export function createModelInterpreter(
             reasons: result?.reasons ?? [],
             usage,
             elapsed_ms: Math.max(0, now() - started),
+            private_conversation: context.private === true,
           });
         } catch {
           // 診断の失敗で解釈を止めない。
@@ -185,6 +190,9 @@ export function createModelInterpreter(
         admission = await options.guard.admit({
           request_id: requestId,
           profile: options.profile,
+          ...(context.private === true
+            ? { private_conversation: true as const }
+            : {}),
         });
       } catch {
         // 予算の口が答えなかった。送らない（送った可能性がないので安全側）。

@@ -17,6 +17,7 @@ import {
   waitUntil,
   withRig,
 } from './voice-rig-test-support.js';
+import type { LiveHandle } from './live-conversation.js';
 
 type RigOf = Parameters<Parameters<typeof withRig>[0]>[0];
 
@@ -329,6 +330,46 @@ test(
         assert.equal(back?.not_private_conversation, true);
       },
       { privateConversation: () => state.private },
+    );
+  },
+);
+
+test(
+  'private: a Live keeps the storage origin of the moment it was opened, for the delegation to commit with (ADR 0190)',
+  TIMEOUT,
+  async () => {
+    const state = {
+      origin: { segment_id: 'segment-open', segment_generation: '4' },
+    };
+    const handles: LiveHandle[] = [];
+    await withRig(
+      async (rig) => {
+        rig.voice.setConversation({
+          opened: (live) => handles.push(live),
+          closed: (live) => handles.push(live),
+          fragment: () => undefined,
+          speechStarted: () => undefined,
+          endCandidate: () => undefined,
+          delegation: () => undefined,
+          playbackStopped: () => undefined,
+        });
+        await openLive(rig);
+        await waitUntil(
+          rig,
+          'the conversation learns the Live',
+          () => handles.length > 0,
+        );
+        // 開いた後に区切りが変わっても、Live が持つ由来は開いた時点のまま（委譲の保存で今の区切りと照合して断る）。
+        state.origin = { segment_id: 'segment-later', segment_generation: '5' };
+        assert.deepEqual(handles[0]?.storage_origin, {
+          segment_id: 'segment-open',
+          segment_generation: '4',
+        });
+      },
+      {
+        storageBoundary: () => state.origin.segment_generation,
+        storageOrigin: () => state.origin,
+      },
     );
   },
 );

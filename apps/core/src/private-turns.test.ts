@@ -63,6 +63,7 @@ test('the recent turns keep the last 6 entries (user and Buddy counted one by on
   assert.deepEqual(ram.held(), {
     replays: 5,
     recent_turns: 6,
+    running: 0,
     discards: 0,
     last_discard: null,
   });
@@ -119,6 +120,7 @@ test('a discard drops everything and a result that started before it is not held
   assert.deepEqual(ram.held(), {
     replays: 0,
     recent_turns: 0,
+    running: 0,
     discards: 1,
     last_discard: 'locked',
   });
@@ -139,6 +141,7 @@ test('binding to another private segment drops the previous contents, and a resu
   assert.deepEqual(ram.held(), {
     replays: 0,
     recent_turns: 0,
+    running: 0,
     discards: 0,
     last_discard: null,
   });
@@ -149,4 +152,47 @@ test('binding to another private segment drops the previous contents, and a resu
   holdTurn(ram, 3, T0, OTHER);
   ram.bind(OTHER, T0);
   assert.equal(ram.held().replays, 1);
+});
+
+test('expire drops the recent turns from memory at the 30-minute boundary without reading them', () => {
+  const ram = new PrivateConversationRam({ utcOffset: '+09:00' });
+  ram.bind(SEGMENT, T0);
+  holdTurn(ram, 1, T0);
+  ram.expire(SEGMENT, '2026-10-05T00:29:59.999Z');
+  assert.equal(ram.held().recent_turns, 2);
+  ram.expire(SEGMENT, '2026-10-05T00:30:00Z');
+  assert.equal(ram.held().recent_turns, 0);
+  // 別の区切りの指定では何もしない。
+  holdTurn(ram, 2, '2026-10-05T01:00:00Z');
+  ram.expire(OTHER, '2026-10-06T00:00:00Z');
+  assert.equal(ram.held().recent_turns, 2);
+});
+
+test('a running request is shared with the same request, refused for a changed one, and forgotten when done or discarded', async () => {
+  const ram = new PrivateConversationRam({ utcOffset: '+09:00' });
+  ram.bind(SEGMENT, T0);
+  let finish: (value: object) => void = () => undefined;
+  const work = new Promise<object>((resolve) => {
+    finish = resolve;
+  });
+  ram.track('key-1', 'hash-1', work);
+  const same = ram.running(SEGMENT, 'key-1', 'hash-1');
+  assert.equal(same.kind, 'same');
+  assert.deepEqual(ram.running(SEGMENT, 'key-1', 'other'), {
+    kind: 'conflict',
+  });
+  assert.deepEqual(ram.running(OTHER, 'key-1', 'hash-1'), { kind: 'none' });
+  assert.equal(ram.held().running, 1);
+  finish({ turn: 1 });
+  assert.deepEqual(await (same as { promise: Promise<unknown> }).promise, {
+    turn: 1,
+  });
+  assert.equal(ram.held().running, 0);
+  assert.deepEqual(ram.running(SEGMENT, 'key-1', 'hash-1'), { kind: 'none' });
+  // 捨てると処理中の印も外す（捨てた後の同じ要求は新しく処理する）。
+  ram.track('key-2', 'hash-2', new Promise(() => undefined));
+  ram.discard('locked');
+  ram.bind(SEGMENT, T0);
+  assert.equal(ram.held().running, 0);
+  assert.deepEqual(ram.running(SEGMENT, 'key-2', 'hash-2'), { kind: 'none' });
 });

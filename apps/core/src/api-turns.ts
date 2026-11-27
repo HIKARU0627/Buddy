@@ -354,6 +354,12 @@ export interface LiveCommitInput {
   readonly workflow_id: string;
   // 保存の直前の確認。false なら保存せず held を返す（新しい発話の開始による保留。送出の直前の再検査）。
   readonly precommit: () => boolean;
+  // Live の受付を始めた時点の保存の区切りの由来（VoiceControl が Live に持たせた値。ADR 0190）。あれば保存の由来にし、今の区切りと
+  // 違えば DB に触れずに断る（Live を開いた後に記録しない会話へ入った・出た）。省略は保存を始めた時点の区切り。
+  readonly origin?: {
+    readonly segment_id: string;
+    readonly segment_generation: string;
+  };
 }
 
 export type LiveCommitResult =
@@ -1070,6 +1076,7 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     interpretOptions: {
       readonly open_workflows?: readonly OpenWorkflow[];
       readonly recent_turns?: InterpretationContext['recent_turns'];
+      readonly private?: true;
     },
     basis: { context?: InterpretationContext; reply?: InterpreterReply },
   ): Promise<InterpretedTurn> => {
@@ -1091,6 +1098,7 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
       ...(interpretOptions.recent_turns === undefined
         ? {}
         : { recent_turns: interpretOptions.recent_turns }),
+      ...(interpretOptions.private === true ? { private: true as const } : {}),
     };
     try {
       reply = await options.interpreter.interpret(context);
@@ -1550,12 +1558,51 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     // 捨てた回数を控える（処理の間にロック・忘却・終了で捨てたら、結果を持たない）。
     const epoch = privateRam.epoch;
     privateRam.bind(segment, utcTime(now()));
+    // 発言のたびに、期限（最後のやりとりから 30 分・日付の変更）を過ぎた直前のやりとりをメモリーから捨てる。
+    privateRam.expire(segment, utcTime(now()));
     // 同じ要求の再送は RAM の控えの応答を返す（照合値が違えば 409）。受付レシート・応答は DB に書かない。
     const ref = requestRef(request, sessionId);
     const replay = privateRam.replay(segment, ref.command_id, ref.request_hash);
     if (replay.kind === 'same') return { status: 200, body: replay.body };
     if (replay.kind === 'conflict')
       return apiErrorResponse(409, 'conflict', requestId);
+    // 同じ要求が処理中なら、その結果を待って同じ応答を返す（解釈・読み取りを外部へ 2 回送らない）。
+    const running = privateRam.running(
+      segment,
+      ref.command_id,
+      ref.request_hash,
+    );
+    if (running.kind === 'conflict')
+      return apiErrorResponse(409, 'conflict', requestId);
+    if (running.kind === 'same')
+      return (await running.promise) as { status: number; body: object };
+    const processing = processPrivateTurn({
+      request,
+      device,
+      requestId,
+      sessionId,
+      segment,
+      epoch,
+      ref,
+    });
+    privateRam.track(ref.command_id, ref.request_hash, processing);
+    return processing;
+  };
+
+  const processPrivateTurn = async (args: {
+    readonly request: ApiHandlerRequest;
+    readonly device: NonNullable<ApiHandlerRequest['device']>;
+    readonly requestId: string;
+    readonly sessionId: string;
+    readonly segment: {
+      readonly segment_id: string;
+      readonly segment_generation: string;
+    };
+    readonly epoch: number;
+    readonly ref: ConversationRequestRef;
+  }): Promise<{ status: number; body: object }> => {
+    const { request, device, requestId, sessionId, segment, epoch, ref } = args;
+    const body = request.body as JsonObject;
     const text = stringOf(body, 'text');
     const control = resolveSessionControl(text, SESSION_CONTROL_TABLE, 'text');
     let plan: TurnPlan;
@@ -1564,9 +1611,13 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     else {
       // 直前のやりとり（30 分・日付の変更を過ぎていれば空）を解釈の入力に添える。影モードの比較の控え（bases）には入れない
       // （記録しない会話では影モードの記録を作らない。X48）。
+      // 外部へ送る入力には「記録しない会話」の目印を付ける（provider 側の保持の設定は B10 でこの目印を使う。ADR 0190）。
       const interpreted = await interpretInner(
         text,
-        { recent_turns: privateRam.recent(segment, utcTime(now())) },
+        {
+          recent_turns: privateRam.recent(segment, utcTime(now())),
+          private: true,
+        },
         {},
       );
       plan = await privatePlan(interpreted, {
@@ -1754,7 +1805,8 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     // ここで控え、保存の直前に照合する（処理の間に入った・出たら保存しない。ADR 0190）。
     if (options.storage.mode === 'private')
       return { kind: 'failed', status: 409 };
-    const liveOrigin = options.storage.origin();
+    const liveOrigin = live.origin ?? options.storage.origin();
+    if (!originCurrent(liveOrigin)) return { kind: 'failed', status: 409 };
     const session = await store.conversation({
       kind: 'session.get',
       session_id: live.session_id,

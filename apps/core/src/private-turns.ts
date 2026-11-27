@@ -7,8 +7,10 @@
 // - 同じ要求の再送に同じ応答を返すための控え（接続範囲と要求 ID の組 → 要求の照合値と応答）。上限 PRIVATE_REPLAY_LIMIT 件で、
 //   古いものから捨てる（捨てた要求の再送は新しい要求として処理し直す。保存はしないので二重の記録にはならない）。
 // - 直前のやりとり（本人の発言と Buddy の返事の文）。上限 PRIVATE_RECENT_TURNS_LIMIT 件（契約の ConversationContext の
-//   recent_turns の上限と同じ 6 件）。最後のやりとりから 30 分・本人の時間帯の日付の変更で捨てる（通常の区切りの自動の
-//   区切りと同じ規則。domain の automaticSegmentBoundary）。
+//   recent_turns の上限と同じ 6 件）。最後のやりとりから 30 分・本人の時間帯の日付の変更を過ぎたら捨てる（通常の区切りの
+//   自動の区切りと同じ規則。domain の automaticSegmentBoundary）。期限は記録しない間の発言のたびに確かめて捨てる（expire）。
+//   発言がない間は時計で捨てず、次の発言・終える・ロック・忘却・停止まで残る。
+// - 処理中の要求（同時に届いた同じ要求は、その結果を待って同じ応答を返す。解釈・読み取りを外部へ 2 回送らない）。
 //
 // 捨てる時（discard）: 記録しない会話を終えた（保存境界の命令 discard_private_ram）・Core の停止・端末のロックの申告・
 // 忘却の知らせ。Core の再起動では RAM ごと失われる。捨てるたびに epoch を進め、処理の途中で捨てた後に届いた結果を
@@ -44,6 +46,8 @@ export type PrivateReplay =
 export interface PrivateHeld {
   readonly replays: number;
   readonly recent_turns: number;
+  // 処理中の要求の数。
+  readonly running: number;
   readonly discards: number;
   // 最後に捨てた理由（まだ捨てていなければ null）。
   readonly last_discard: PrivateDiscardReason | null;
@@ -74,6 +78,11 @@ export class PrivateConversationRam {
   #lastAt: string | null = null;
   #epoch = 0;
   #lastDiscard: PrivateDiscardReason | null = null;
+  // 処理中の要求（鍵 → 照合値と処理の結果）。同時に届いた同じ要求は、この結果を待って同じ応答を返す。
+  #running = new Map<
+    string,
+    { readonly hash: string; readonly promise: Promise<unknown> }
+  >();
 
   constructor(options: PrivateConversationRamOptions) {
     this.#utcOffset = options.utcOffset;
@@ -89,6 +98,7 @@ export class PrivateConversationRam {
     return {
       replays: this.#replays.size,
       recent_turns: this.#recent.length,
+      running: this.#running.size,
       discards: this.#epoch,
       last_discard: this.#lastDiscard,
     };
@@ -115,25 +125,57 @@ export class PrivateConversationRam {
       : { kind: 'conflict' };
   }
 
-  // 直前のやりとり（古い順の写し）。最後のやりとりから 30 分・日付の変更を過ぎていれば、ここで捨てて空を返す。
-  recent(
-    segment: PrivateSegmentRef,
-    now: string,
-  ): readonly PrivateRecentTurn[] {
-    if (!sameSegment(this.#segment, segment)) return [];
-    if (this.#recent.length === 0) return [];
+  // 期限（最後のやりとりから 30 分・本人の時間帯の日付の変更）を過ぎた直前のやりとりをメモリーから捨てる。記録しない間の
+  // 発言のたびに、応答の控えを返す前に呼ぶ（会話の操作・再送でも呼ぶ）。発言がない間は、次の発言・終える・ロック・忘却・停止で捨てる。
+  expire(segment: PrivateSegmentRef, now: string): void {
+    if (!sameSegment(this.#segment, segment)) return;
+    if (this.#recent.length === 0) return;
     const boundary = automaticSegmentBoundary({
       opened_at: this.#openedAt ?? now,
       last_turn_at: this.#lastAt,
       now,
       utc_offset: this.#utcOffset,
     });
-    if (boundary !== null) {
-      this.#recent = [];
-      this.#lastAt = null;
-      return [];
-    }
+    if (boundary === null) return;
+    this.#recent = [];
+    this.#lastAt = null;
+  }
+
+  // 直前のやりとり（古い順の写し）。期限を過ぎていれば、ここでも捨てて空を返す。
+  recent(
+    segment: PrivateSegmentRef,
+    now: string,
+  ): readonly PrivateRecentTurn[] {
+    this.expire(segment, now);
+    if (!sameSegment(this.#segment, segment)) return [];
     return this.#recent.map((turn) => ({ ...turn }));
+  }
+
+  // 同じ要求（鍵）が処理中か。照合値が違えば conflict。
+  running(
+    segment: PrivateSegmentRef,
+    key: string,
+    hash: string,
+  ):
+    | { readonly kind: 'none' }
+    | { readonly kind: 'same'; readonly promise: Promise<unknown> }
+    | { readonly kind: 'conflict' } {
+    if (!sameSegment(this.#segment, segment)) return { kind: 'none' };
+    const found = this.#running.get(key);
+    if (found === undefined) return { kind: 'none' };
+    return found.hash === hash
+      ? { kind: 'same', promise: found.promise }
+      : { kind: 'conflict' };
+  }
+
+  // 処理中の要求を控える。終わったら外す（捨てた後に別の処理が入っていれば、それは外さない）。
+  track(key: string, hash: string, promise: Promise<unknown>): void {
+    this.#running.set(key, { hash, promise });
+    const done = () => {
+      if (this.#running.get(key)?.promise === promise)
+        this.#running.delete(key);
+    };
+    promise.then(done, done);
   }
 
   // 処理を終えた発言を持つ。始めたときの epoch と区切りが今と同じときだけ持つ（捨てた後・出た後に届いた結果を持たない）。
@@ -184,6 +226,7 @@ export class PrivateConversationRam {
   }
 
   #reset(): void {
+    this.#running = new Map();
     this.#replays = new Map();
     this.#recent = [];
     this.#lastAt = null;

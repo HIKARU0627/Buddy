@@ -41,6 +41,10 @@ export interface InterpretationContext {
     readonly text: string;
     readonly at: string;
   }[];
+  // 記録しない会話の発言の目印（ADR 0190）。記録しない区切りの間は必ず true を付け、通常の区切りでは省略する。解釈の実装は
+  // 予算の予約・診断の記録にこの目印を渡す。provider 側の保持の設定（store=false に当たるもの）は、実モデルを接続するとき（B10）
+  // にこの目印を使って扱う。
+  readonly private?: true;
 }
 
 // 解釈の結果。intent・args は Core が意図表と契約（IntentArgs）で検査するまで信用しない。

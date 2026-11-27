@@ -574,6 +574,7 @@ export interface CoreHandle {
 export interface PrivateConversationHeld {
   readonly replays: number;
   readonly recent_turns: number;
+  readonly running: number;
   readonly discards: number;
   readonly last_discard: PrivateDiscardReason | null;
   readonly stream_turns: number;
@@ -1629,6 +1630,14 @@ async function startHttps(
     // 記録しない会話の間は Live を開かない・入力を受けない（保存境界の保持者の値。ADR 0059）。
     privateConversation: () => storage.privateConversation(),
     storageBoundary: () => storage.origin().segment_generation,
+    // Live を開いた時点の区切りの由来（委譲の保存の由来にする。ADR 0190）。
+    storageOrigin: () => {
+      const origin = storage.origin();
+      return {
+        segment_id: origin.segment_id,
+        segment_generation: origin.segment_generation,
+      };
+    },
     // Live の開始は外部への送信。起動・復帰の掃除が済むまで開かない（ADR 0058 の U108）。
     ...(retention === null
       ? {}

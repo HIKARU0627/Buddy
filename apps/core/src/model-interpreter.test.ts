@@ -184,6 +184,41 @@ test('an intent judgment is returned as an intent reply and the usage is settled
   assert.ok(!JSON.stringify(diagnostics).includes('歯医者'));
 });
 
+test('a private conversation mark on the input reaches the budget reservation and the diagnostic, without the text (ADR 0190)', async () => {
+  const calls: Parameters<ModelCallGuard['admit']>[0][] = [];
+  const guard: ModelCallGuard = {
+    admit(call) {
+      calls.push(call);
+      return Promise.resolve({
+        ok: true,
+        release: () => Promise.resolve(),
+        settle: () => Promise.resolve(),
+      });
+    },
+  };
+  const diagnostics: JudgmentDiagnostic[] = [];
+  const { interpreter } = build(
+    [response(wireJson()), response(wireJson())],
+    guard,
+    diagnostics,
+  );
+  await interpreter.interpret(context('用事に歯医者の予約を追加して'));
+  await interpreter.interpret(
+    context('用事に歯医者の予約を追加して', { private: true }),
+  );
+  // 通常の入力の予約には目印を付けず、記録しない会話の入力の予約には付ける。
+  assert.equal(calls.length, 2);
+  assert.equal('private_conversation' in (calls[0] as object), false);
+  assert.equal(calls[1]?.private_conversation, true);
+  assert.deepEqual(
+    diagnostics.map((diagnostic) => diagnostic.private_conversation),
+    [false, true],
+  );
+  // 予約の要求と診断に発話の本文を含めない。
+  assert.ok(!JSON.stringify(calls).includes('歯医者'));
+  assert.ok(!JSON.stringify(diagnostics).includes('歯医者'));
+});
+
 test('the reply carries the elapsed time of the judgment for diagnostics', async () => {
   const { guard } = fakeGuard();
   const { raw } = build(response(wireJson()), guard);

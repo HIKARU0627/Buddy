@@ -91,6 +91,12 @@ export interface LiveHandle {
   readonly audio_epoch: string;
   readonly session_epoch: string;
   readonly command_scope_id: string;
+  // Live の受付を始めた時点の保存の区切りの由来（保存境界の保持者の区切りの ID と世代。ADR 0190）。委譲の保存の由来にする。
+  // 省略は由来なし（保存の処理が保存を始めた時点の区切りを控える）。
+  readonly storage_origin?: {
+    readonly segment_id: string;
+    readonly segment_generation: string;
+  };
 }
 
 // VoiceControl が LiveConversation に渡す口（Live の状態と、声への出力・接続の操作）。
@@ -1052,6 +1058,9 @@ export class LiveConversation implements LiveConversationPort {
       text: pending.text ?? '',
       audio_epoch: context.handle.audio_epoch,
       policy_version: this.#policyVersion,
+      ...(context.handle.storage_origin === undefined
+        ? {}
+        : { origin: context.handle.storage_origin }),
       interpreted,
       outcome,
       workflow_id: pending.workflow_id,

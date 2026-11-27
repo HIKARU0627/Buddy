@@ -83,6 +83,9 @@ export function createForgetRoutes(options: ForgetRoutesOptions): ForgetRoutes {
       case 'generation_mismatch':
       case 'replan_required':
         return apiErrorResponse(409, 'conflict', requestId);
+      // 確定の成否が分からない。計画は捨てたので再試行しても残っておらず、消えた可能性がある（自動では送り直さない）。
+      case 'outcome_unknown':
+        return apiErrorResponse(503, 'outcome_unknown', requestId);
       default:
         return apiErrorResponse(503, 'dependency_unavailable', requestId);
     }

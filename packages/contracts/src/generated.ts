@@ -3289,7 +3289,7 @@ export interface EventPage {
   resnapshot_required: boolean;
 }
 /**
- * HTTP の拒否（設計 07 §3）。対象の本文を返さない。どのコードを返すかは domain の経路ごとの検査表（ADR 0009）が決め、形式の不正は invalid_input にする。io_suspended・audio_lease_invalid・output_mode_text・external_send_consent_required は Live の接続の受付（domain の admitLiveStart。ADR 0038・0046）。not_sent は送出意図の前に止めた（外部へ送っていない・費用はかかっていない）ことを、結果の分からない dependency_unavailable と分けて示す（レシートの写真の読み取り。ADR 0177）。
+ * HTTP の拒否（設計 07 §3）。対象の本文を返さない。どのコードを返すかは domain の経路ごとの検査表（ADR 0009）が決め、形式の不正は invalid_input にする。io_suspended・audio_lease_invalid・output_mode_text・external_send_consent_required は Live の接続の受付（domain の admitLiveStart。ADR 0038・0046）。not_sent は送出意図の前に止めた（外部へ送っていない・費用はかかっていない）ことを、結果の分からない dependency_unavailable と分けて示す（レシートの写真の読み取り。ADR 0177）。outcome_unknown は変更の確定（COMMIT）の成否が分からないことを示す（忘却の実行。ADR 0180）。計画は中枢に残っておらず、自動では送り直さない。消えた可能性がある。
  */
 export interface ApiError {
   code:
@@ -3317,7 +3317,8 @@ export interface ApiError {
     | 'undo_expired'
     | 'pairing_failed'
     | 'unsupported_api_version'
-    | 'not_sent';
+    | 'not_sent'
+    | 'outcome_unknown';
   message: string;
   request_id: Id | null;
 }

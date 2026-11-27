@@ -112,7 +112,9 @@ export type ApiErrorCode =
   | 'target_changed'
   | 'undo_expired'
   // 外部へ送る前に止めた（費用はかかっていない）。結果の分からない dependency_unavailable と分ける（ADR 0177）。
-  | 'not_sent';
+  | 'not_sent'
+  // 変更の確定の成否が分からない（忘却の実行。ADR 0180）。計画は残っておらず、自動では送り直さない。
+  | 'outcome_unknown';
 
 const MESSAGES: Readonly<Record<ApiErrorCode, string>> = {
   unauthenticated: '端末トークンがない、無効、または失効しています。',
@@ -139,6 +141,8 @@ const MESSAGES: Readonly<Record<ApiErrorCode, string>> = {
   target_changed: '対象がその後に変わったため、自動では戻しません。',
   undo_expired: '取り消しの期限を過ぎました。',
   not_sent: '外部へ送る前に止めました。費用はかかっていません。',
+  outcome_unknown:
+    '変更を確定できたか分かりません。計画は残っておらず、消えた可能性があります。',
 };
 
 // 経路の処理（handlers）が返す拒否の応答。本文は ApiError（code・message・request_id）だけ。

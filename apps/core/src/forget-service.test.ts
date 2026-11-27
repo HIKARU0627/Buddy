@@ -24,8 +24,10 @@ import type { ApiRouteHandler } from './api-server.js';
 import { sharedApiContract } from './api-test-support.js';
 import { createCommand } from './event-test-support.js';
 import {
+  FORGET_MAX_PENDING_PLANS,
   FORGET_PLAN_TTL_MS,
   FORGET_PUBLIC_GATE_OPEN,
+  FORGET_RESULT_RETENTION_MS,
   createForgetService,
 } from './forget-service.js';
 import type { ForgetService, ForgetServiceOptions } from './forget-service.js';
@@ -442,7 +444,14 @@ test('two executions of one plan at the same time forget once', async (t) => {
 test('forgetting the same memory twice: the second plan is not applied and asks to plan again', async (t) => {
   const w = world(t);
   const first = await planOk(w);
-  const second = await planOk(w);
+  // 同じ端末は計画を 1 件しか持てないので、2 つ目の計画は別の端末が作る。
+  const secondPlanned = await w.service.plan({
+    device_id: OTHER_DEVICE,
+    memory_id: M,
+  });
+  assert.equal(secondPlanned.ok, true);
+  if (!secondPlanned.ok) return;
+  const second = secondPlanned.view;
   assert.notEqual(first.plan_id, second.plan_id);
   const done = await w.service.execute({
     device_id: DEVICE,
@@ -451,7 +460,7 @@ test('forgetting the same memory twice: the second plan is not applied and asks 
   });
   assert.equal(done.ok, true);
   const stale = await w.service.execute({
-    device_id: DEVICE,
+    device_id: OTHER_DEVICE,
     plan_id: second.plan_id,
     forgetting_generation: '0',
   });
@@ -462,7 +471,7 @@ test('forgetting the same memory twice: the second plan is not applied and asks 
   // 取り直しを求めた計画は捨てる。同じ計画をもう一度送っても消さない。
   assert.deepEqual(
     await w.service.execute({
-      device_id: DEVICE,
+      device_id: OTHER_DEVICE,
       plan_id: second.plan_id,
       forgetting_generation: '0',
     }),
@@ -516,9 +525,15 @@ test('a derivative made after the plan stops the execution; nothing is deleted u
 test('an unrelated forget between the plan and the execution changes the generation, so the plan is made again', async (t) => {
   const w = world(t);
   const mine = await planOk(w);
-  const other = await planOk(w, M_OTHER);
+  const otherPlanned = await w.service.plan({
+    device_id: OTHER_DEVICE,
+    memory_id: M_OTHER,
+  });
+  assert.equal(otherPlanned.ok, true);
+  if (!otherPlanned.ok) return;
+  const other = otherPlanned.view;
   const otherDone = await w.service.execute({
-    device_id: DEVICE,
+    device_id: OTHER_DEVICE,
     plan_id: other.plan_id,
     forgetting_generation: '0',
   });
@@ -665,6 +680,141 @@ test('when the ledger file cannot be written the forget still stands and devices
   assert.deepEqual(
     body.entries.map((link) => link.entry.forgetting_generation),
     ['1'],
+  );
+});
+
+test('one pending plan per device: a new plan drops the old one, other devices keep theirs', async (t) => {
+  const w = world(t);
+  const first = await planOk(w);
+  const other = await w.service.plan({
+    device_id: OTHER_DEVICE,
+    memory_id: M,
+  });
+  assert.equal(other.ok, true);
+  if (!other.ok) return;
+  assert.equal(w.service.pendingPlans(), 2);
+  const second = await planOk(w, M2);
+  assert.equal(w.service.pendingPlans(), 2);
+  assert.deepEqual(
+    await w.service.execute({
+      device_id: DEVICE,
+      plan_id: first.plan_id,
+      forgetting_generation: '0',
+    }),
+    { ok: false, reason: 'plan_not_found', reasons: [] },
+  );
+  assert.equal(w.applies.count, 0);
+  // 別の端末の計画は残っていて、実行できる。
+  const done = await w.service.execute({
+    device_id: OTHER_DEVICE,
+    plan_id: other.view.plan_id,
+    forgetting_generation: '0',
+  });
+  assert.equal(done.ok, true);
+  assert.equal(w.applies.count, 1);
+  // 新しい計画（second）はまだ未実行。
+  assert.equal(w.service.pendingPlans(), 1);
+  assert.notEqual(second.plan_id, first.plan_id);
+});
+
+test('a new plan does not drop an executed plan of the same device, and its result is still returned', async (t) => {
+  const w = world(t);
+  const view = await planOk(w);
+  const done = await w.service.execute({
+    device_id: DEVICE,
+    plan_id: view.plan_id,
+    forgetting_generation: '0',
+  });
+  assert.equal(done.ok, true);
+  const next = await planOk(w, M_OTHER);
+  assert.notEqual(next.plan_id, view.plan_id);
+  const again = await w.service.execute({
+    device_id: DEVICE,
+    plan_id: view.plan_id,
+    forgetting_generation: '0',
+  });
+  assert.equal(again.ok, true);
+  if (!done.ok || !again.ok) return;
+  assert.deepEqual(again.result, done.result);
+  assert.equal(w.applies.count, 1);
+});
+
+test('the number of pending plans is limited to 64: the 64th is made, the 65th is refused without dropping any', async (t) => {
+  assert.equal(FORGET_MAX_PENDING_PLANS, 64);
+  const w = world(t);
+  const deviceOf = (n: number): string =>
+    `f1000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+  const plans: string[] = [];
+  for (let n = 1; n <= 64; n += 1) {
+    const planned = await w.service.plan({
+      device_id: deviceOf(n),
+      memory_id: M,
+    });
+    assert.equal(planned.ok, true, `device ${String(n)}`);
+    if (planned.ok) plans.push(planned.view.plan_id);
+  }
+  assert.equal(w.service.pendingPlans(), 64);
+  assert.deepEqual(
+    await w.service.plan({ device_id: deviceOf(65), memory_id: M }),
+    { ok: false, reason: 'too_many_plans', reasons: [] },
+  );
+  assert.equal(w.service.pendingPlans(), 64);
+  // 上限の端末が計画を取り直すのは、自分の古い計画の置き換えなので断らない。
+  const replaced = await w.service.plan({
+    device_id: deviceOf(1),
+    memory_id: M,
+  });
+  assert.equal(replaced.ok, true);
+  assert.equal(w.service.pendingPlans(), 64);
+  // 断った 65 番目は何も捨てていない（2 番目の端末の計画は実行できる）。
+  const kept = await w.service.execute({
+    device_id: deviceOf(2),
+    plan_id: plans[1] ?? '',
+    forgetting_generation: '0',
+  });
+  assert.equal(kept.ok, true);
+  // 期限が過ぎれば空き、65 番目も作れる。
+  w.clock.now = NOW + FORGET_PLAN_TTL_MS;
+  assert.equal(w.service.pendingPlans(), 0);
+  assert.equal(
+    (await w.service.plan({ device_id: deviceOf(65), memory_id: M_OTHER })).ok,
+    true,
+  );
+});
+
+test('an executed plan returns its result before the expiry check and is dropped after the retention time', async (t) => {
+  assert.equal(FORGET_RESULT_RETENTION_MS, 600_000);
+  const w = world(t);
+  const view = await planOk(w);
+  const request = {
+    device_id: DEVICE,
+    plan_id: view.plan_id,
+    forgetting_generation: '0',
+  };
+  const done = await w.service.execute(request);
+  assert.equal(done.ok, true);
+  if (!done.ok) return;
+  // 期限（NOW + 10 分）を 1 ms 過ぎても、結果を持つ計画は同じ結果を返す。二度は消さない。
+  w.clock.now = NOW + FORGET_PLAN_TTL_MS + 1;
+  const late = await w.service.execute(request);
+  assert.equal(late.ok, true);
+  if (late.ok) assert.deepEqual(late.result, done.result);
+  // 期限の 10 分後の 1 ms 前までは返し、ちょうどで捨てる。
+  w.clock.now = NOW + 2 * FORGET_PLAN_TTL_MS - 1;
+  assert.equal((await w.service.execute(request)).ok, true);
+  w.clock.now = NOW + 2 * FORGET_PLAN_TTL_MS;
+  assert.deepEqual(await w.service.execute(request), {
+    ok: false,
+    reason: 'plan_not_found',
+    reasons: [],
+  });
+  assert.equal(w.applies.count, 1);
+  // 結果を持たない計画は、期限で 410 相当の plan_expired のまま。
+  const fresh = await planOk(w, M_OTHER);
+  w.clock.now += FORGET_PLAN_TTL_MS;
+  assert.deepEqual(
+    await w.service.execute({ ...request, plan_id: fresh.plan_id }),
+    { ok: false, reason: 'plan_expired', reasons: [] },
   );
 });
 
@@ -870,5 +1020,112 @@ test('the ledger route returns the continuation, a divergence or a replica ahead
     const got = response.body as { outcome: string; entries: unknown[] };
     assert.equal(got.outcome, outcome, JSON.stringify(body));
     assert.deepEqual(got.entries, []);
+  }
+});
+
+test('uncertain outcomes, refusals and capacity map to distinct HTTP answers', async (t) => {
+  const scope = '00000000-0000-4000-8000-000000009002';
+  const planBody = {
+    request_id: '00000000-0000-4000-8000-0000000f0201',
+    command_scope_id: scope,
+    memory_id: M,
+  };
+  const executeBody = {
+    request_id: '00000000-0000-4000-8000-0000000f0202',
+    command_scope_id: scope,
+    forgetting_generation: '0',
+  };
+  // 成否不明: 503 outcome_unknown（dependency_unavailable と分ける）。計画は残っておらず、再試行は 409。
+  const unknown = world(t, {
+    applyResult: (op) =>
+      op.kind === 'forget.apply'
+        ? { ok: false, outcome: 'unknown', reasons: ['commit_failed'] }
+        : null,
+  });
+  const unknownRoutes = createForgetRoutes({
+    service: unknown.service,
+    store: unknown.store as never,
+  });
+  const planned = await call(unknownRoutes.handlers.createForgetPlan, planBody);
+  const planId = (planned.body as { plan_id: string }).plan_id;
+  const lost = await call(
+    unknownRoutes.handlers.executeForgetPlan,
+    executeBody,
+    { plan_id: planId },
+  );
+  assert.equal(lost.status, 503);
+  assert.equal((lost.body as { code: string }).code, 'outcome_unknown');
+  assert.equal(
+    (lost.body as { request_id: string }).request_id,
+    executeBody.request_id,
+  );
+  assert(contract.valid('ApiError', lost.body));
+  const retry = await call(
+    unknownRoutes.handlers.executeForgetPlan,
+    executeBody,
+    {
+      plan_id: planId,
+    },
+  );
+  assert.equal(retry.status, 409);
+  assert.equal((retry.body as { code: string }).code, 'conflict');
+  // 計画の照合以外の拒否（何も消していない）は、成否不明と分けて 503 dependency_unavailable。
+  const rejected = world(t, {
+    applyResult: (op) =>
+      op.kind === 'forget.apply'
+        ? { ok: false, outcome: 'rejected', reasons: ['something_else'] }
+        : null,
+  });
+  const rejectedRoutes = createForgetRoutes({
+    service: rejected.service,
+    store: rejected.store as never,
+  });
+  const rejectedPlan = await call(
+    rejectedRoutes.handlers.createForgetPlan,
+    planBody,
+  );
+  const refused = await call(
+    rejectedRoutes.handlers.executeForgetPlan,
+    executeBody,
+    { plan_id: (rejectedPlan.body as { plan_id: string }).plan_id },
+  );
+  assert.equal(refused.status, 503);
+  assert.equal(
+    (refused.body as { code: string }).code,
+    'dependency_unavailable',
+  );
+  // 台帳の鍵がない: 503 dependency_unavailable。
+  const keyless = world(t, { sourceHmac: () => Promise.resolve(null) });
+  const keylessRoutes = createForgetRoutes({
+    service: keyless.service,
+    store: keyless.store as never,
+  });
+  const noKey = await call(keylessRoutes.handlers.createForgetPlan, planBody);
+  assert.equal(noKey.status, 503);
+  assert.equal((noKey.body as { code: string }).code, 'dependency_unavailable');
+  // 計画の上限と、一覧の大きすぎる計画（サービスの結果を直接返す代役）。
+  for (const reason of ['plan_too_large', 'too_many_plans'] as const) {
+    const stub = createForgetRoutes({
+      service: {
+        plan: () => Promise.resolve({ ok: false, reason, reasons: [] }),
+        execute: () =>
+          Promise.resolve({
+            ok: false,
+            reason: 'forget_gate_closed',
+            reasons: [],
+          }),
+      },
+      store: unknown.store as never,
+    });
+    const answer = await call(stub.handlers.createForgetPlan, planBody);
+    assert.equal(answer.status, 503, reason);
+    assert.equal(
+      (answer.body as { code: string }).code,
+      'dependency_unavailable',
+    );
+    const closed = await call(stub.handlers.executeForgetPlan, executeBody, {
+      plan_id: planId,
+    });
+    assert.equal(closed.status, 503);
   }
 });

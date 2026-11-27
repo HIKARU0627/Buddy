@@ -38,6 +38,13 @@ export const FORGET_PUBLIC_GATE_OPEN: boolean = false;
 // 計画の有効期間（U383）。
 export const FORGET_PLAN_TTL_MS = 10 * 60_000;
 
+// 実行した計画の結果を、期限の後も控える時間。端末が応答を受け取れずに送り直したとき、期限が過ぎていても同じ結果を返す
+// ために置く（二度は消さない）。この時間を過ぎたら捨てる。
+export const FORGET_RESULT_RETENTION_MS = 10 * 60_000;
+
+// 同時に持つ未実行の計画の数の上限（端末ごとに 1 件なので、端末の数の上限でもある）。超えたら新しい計画を断る。
+export const FORGET_MAX_PENDING_PLANS = 64;
+
 // DB worker の拒否のうち、計画が古くなったことを表すもの（計画を取り直せば進める）。
 const REPLAN_REASONS: ReadonlySet<string> = new Set([
   'forgetting_generation_changed',
@@ -55,7 +62,9 @@ export type ForgetPlanFailure =
   // 系譜が読めない・計画が作れない（知らない種類の辺・HMAC の形など）。
   | 'plan_unavailable'
   // 計画の一覧が上限を超える（途中までを見せない）。
-  | 'plan_too_large';
+  | 'plan_too_large'
+  // 他の端末の未実行の計画が上限に達している（古い計画の期限切れを待つ）。
+  | 'too_many_plans';
 
 export type ForgetExecuteFailure =
   | 'forget_gate_closed'
@@ -103,6 +112,8 @@ export interface ForgetServiceOptions {
   readonly notices?: NoticeSink;
   // UTC の Unix ミリ秒。
   readonly now: () => number;
+  // 未実行の計画の数の上限（試験用。既定は FORGET_MAX_PENDING_PLANS）。
+  readonly maxPendingPlans?: number;
   readonly newId?: () => string;
   readonly log?: (message: string) => void;
 }
@@ -116,6 +127,8 @@ interface StoredPlan {
   readonly previous_generation: string;
   readonly expires_at: number;
   result: ForgetExecuteResult | null;
+  // forget.apply を送っている間（結果が出るまで）。この間は捨てない。
+  executing: boolean;
 }
 
 const iso = (ms: number): string => new Date(ms).toISOString();
@@ -139,8 +152,15 @@ export class ForgetService {
   }
 
   #prune(now: number): void {
-    for (const [id, stored] of this.#plans)
-      if (now >= stored.expires_at) this.#plans.delete(id);
+    for (const [id, stored] of this.#plans) {
+      if (stored.executing) continue;
+      // 結果を持つ計画は、再送に同じ結果を返すために期限の後も控える。それも一定の時間で捨てる。
+      const keepUntil =
+        stored.result === null
+          ? stored.expires_at
+          : stored.expires_at + FORGET_RESULT_RETENTION_MS;
+      if (now >= keepUntil) this.#plans.delete(id);
+    }
   }
 
   // 有効な計画の数（試験・診断用）。
@@ -197,6 +217,18 @@ export class ForgetService {
     if (!view.ok) return fail('plan_too_large', view.reasons);
     const now = this.#options.now();
     this.#prune(now);
+    // 端末ごとに有効な未実行の計画は 1 件。同じ端末の古い未実行の計画は捨てる（実行中・実行済みの計画は残す）。
+    // 上限は他の端末の未実行の計画を数えて、断るときは何も捨てない。
+    const limit = this.#options.maxPendingPlans ?? FORGET_MAX_PENDING_PLANS;
+    let others = 0;
+    const own: string[] = [];
+    for (const [id, other] of this.#plans) {
+      if (other.result !== null || other.executing) continue;
+      if (other.device_id === input.device_id) own.push(id);
+      else others += 1;
+    }
+    if (others >= limit) return fail('too_many_plans');
+    for (const id of own) this.#plans.delete(id);
     const stored: StoredPlan = {
       plan_id: this.#newId(),
       device_id: input.device_id,
@@ -206,6 +238,7 @@ export class ForgetService {
       previous_generation: read.value.forgetting_generation,
       expires_at: now + FORGET_PLAN_TTL_MS,
       result: null,
+      executing: false,
     };
     this.#plans.set(stored.plan_id, stored);
     const parts = view.view;
@@ -262,31 +295,47 @@ export class ForgetService {
     if (stored === undefined || stored.device_id !== input.device_id)
       return fail('plan_not_found');
     const now = this.#options.now();
+    // 同じ計画の実行の再送には、期限より先に、同じ結果を返す（二度は消さない）。結果を控える時間は prune が決める。
+    if (
+      stored.result !== null &&
+      now >= stored.expires_at + FORGET_RESULT_RETENTION_MS
+    ) {
+      this.#plans.delete(stored.plan_id);
+      return fail('plan_not_found');
+    }
+    if (stored.result !== null) {
+      if (input.forgetting_generation !== stored.previous_generation)
+        return fail('generation_mismatch');
+      return { ok: true, result: stored.result, ledger_file: null };
+    }
     if (now >= stored.expires_at) {
       this.#plans.delete(stored.plan_id);
       return fail('plan_expired');
     }
     if (input.forgetting_generation !== stored.previous_generation)
       return fail('generation_mismatch');
-    // 同じ計画の実行の再送には、同じ結果を返す（二度は消さない）。
-    if (stored.result !== null)
-      return { ok: true, result: stored.result, ledger_file: null };
-    const applied = await applyForgetAndSyncLedger(
-      this.#options.store,
-      {
-        kind: 'forget.apply',
-        target: stored.target,
-        instruction_turn_id: null,
-        plan: stored.plan,
-        source_hmacs: stored.source_hmacs,
-        entry_id: this.#newId(),
-        previous_generation: stored.previous_generation,
-        new_ledger_id: this.#newId(),
-        now,
-      },
-      this.#options.ledgerPath,
-      new Date(now),
-    );
+    stored.executing = true;
+    let applied: Awaited<ReturnType<typeof applyForgetAndSyncLedger>>;
+    try {
+      applied = await applyForgetAndSyncLedger(
+        this.#options.store,
+        {
+          kind: 'forget.apply',
+          target: stored.target,
+          instruction_turn_id: null,
+          plan: stored.plan,
+          source_hmacs: stored.source_hmacs,
+          entry_id: this.#newId(),
+          previous_generation: stored.previous_generation,
+          new_ledger_id: this.#newId(),
+          now,
+        },
+        this.#options.ledgerPath,
+        new Date(now),
+      );
+    } finally {
+      stored.executing = false;
+    }
     if (!applied.result.ok) {
       // 拒否・成否不明のどちらでも、この計画はもう使わない（成否不明の計画を再び送らない）。
       this.#plans.delete(stored.plan_id);

@@ -2680,7 +2680,7 @@ components:
           schema:
             $ref: ./schemas/buddy.schema.json#/$defs/ApiError
     Unavailable:
-      description: 中枢・依存先の保留（dependency_unavailable）。
+      description: 中枢・依存先の保留（dependency_unavailable）。忘却の実行（executeForgetPlan）だけ、確定の成否が分からないときは outcome_unknown（計画は残っておらず、消えた可能性がある。自動では送り直さない。ADR 0180）。
       content:
         application/json:
           schema:

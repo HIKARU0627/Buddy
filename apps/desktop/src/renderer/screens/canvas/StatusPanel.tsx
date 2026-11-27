@@ -1,6 +1,8 @@
-// 状態の層のパネル（UI-04、本人の決定 2026-10-22、ADR 0032・0014・0024・0031）。つまみを押すと main が状態の層の窓を
-// 画面の端から広げ、この部品が窓いっぱいに描かれる。左の列にはつまみがそのまま残り（押すとしまう）、右に上から:
-// 1. この端末の入出力の記号と、停止（いつでも 1 回で効く。確認を挟まない）か再開。
+// 状態の層のパネル（UI-04、本人の決定 2026-10-22、ADR 0032・0014・0024・0031）。上の中央の島の「状態のパネルを出す」
+// （または全体のショートカット）で main が状態の層の窓を表示し、この部品が窓いっぱいに描かれる（ADR 0181 の段階 4 で
+// 端のつまみをやめ、左の列のつまみの代わりに右上の「しまう」を置いた）。上から:
+// 1. この端末の入出力の記号と、停止（いつでも 1 回で効く。確認を挟まない）か再開と、しまうボタン。入出力の 1 行の
+//    ライブ領域は島が持つ（同じ文を 2 か所で読ませない。ADR 0181 の U394）。
 // 1.5. 音声の段（B05-06）: 音声の状態・「音声を外部へ送っている」の印・同意の取り消し・最小の「続ける」（VoiceStrip）。
 // 2. ADR 0014 の常に見せる 8 項目。記号と決まった位置（4 × 2 の格子）で示し、名前と値はフォーカス・ポインターで出す。
 //    値のない項目は点線の枠（未受信）、警告は塗りと ⚠ の形。ロック中・不明は、位置だけを灰色の面で残して値を隠す。
@@ -10,7 +12,7 @@
 // ボタンは main が渡した操作の一覧（connection.operations）からだけ作る。キャンバスの記述・外部の内容からは作らない
 // （キャンバスの記述は状態の層へ届かない。ADR 0032 の窓の役割の表）。
 import { useEffect, useRef, type ReactNode } from 'react';
-import { Button, Tooltip } from '@heroui/react';
+import { Button, CloseButton, Tooltip } from '@heroui/react';
 import type { DesktopStatusBar } from '@buddy/contracts';
 import { InlineNotice } from '../../components/InlineNotice.js';
 import { StatusItemIcon } from '../../components/StatusIcons.js';
@@ -33,6 +35,7 @@ export const PANEL_LABELS = {
   stopName: 'この端末の入出力を停止',
   resume: '再開',
   resumeName: 'この端末で入出力を再開',
+  close: '状態のパネルをしまう',
   hidden: '隠しています',
 } as const;
 
@@ -113,7 +116,7 @@ function HiddenTile({ itemKey }: { readonly itemKey: StatusItem['key'] }) {
 }
 
 export function StatusPanel({
-  tab,
+  onClose,
   status,
   ioLine,
   items,
@@ -125,8 +128,8 @@ export function StatusPanel({
   operations,
   voice = null,
 }: {
-  // 左の列に残すつまみ（StatusTab）。
-  readonly tab: ReactNode;
+  // パネルをしまう（desktop.status_panel の open: false。Esc・外へのクリックと同じ）。
+  readonly onClose: () => void;
   readonly status: DesktopStatusBar | null;
   // 先頭の入出力の記号と文言（ロック中・不明なら「ロック中」）。
   readonly ioLine: StatusLine;
@@ -151,18 +154,15 @@ export function StatusPanel({
     regionRef.current?.focus();
   }, []);
   return (
-    <div className="flex h-screen w-screen bg-surface text-foreground">
-      <div className="flex w-14 shrink-0 items-center border-r border-separator">
-        {tab}
-      </div>
+    <div className="flex h-screen w-screen border-l border-separator bg-surface text-foreground">
       <section
         ref={regionRef}
         tabIndex={-1}
         aria-label={PANEL_LABELS.region}
         className="flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto p-4 outline-none motion-safe:animate-status-panel-in"
       >
-        <div className="flex items-center justify-between gap-3">
-          <p role="status" className="text-base font-semibold">
+        <div className="flex items-center gap-3">
+          <p className="mr-auto text-base font-semibold">
             <StatusText line={ioLine} />
           </p>
           {control.kind === 'stop' ? (
@@ -187,6 +187,7 @@ export function StatusPanel({
               {PANEL_LABELS.resume}
             </Button>
           ) : null}
+          <CloseButton aria-label={PANEL_LABELS.close} onPress={onClose} />
         </div>
         {message === null ? null : (
           <InlineNotice tone="warning" text={message} />

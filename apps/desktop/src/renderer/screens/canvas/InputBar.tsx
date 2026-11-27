@@ -1,5 +1,6 @@
 // 入力バー（UI-02 の試作、ADR 0032）。画面の下の小さな帯。左に入出力の状態の記号、中に 1 行の入力欄、右にキャンバスを
 // 前に出すボタン（4 つの四角の記号）だけを置く。説明文は置かない。
+// 形（ADR 0181 の段階 4）: 小さめはカプセル（完全な丸）、入力中は島の丸み（28px）。窓は透明で、角の外は透ける（U399）。
 // 打てるか（enabled）と内容を出せるか（value は呼び出し側が inputDraftAfter で決める）は別。ロック中・不明は値を描かない。
 // Enter（IME の変換の確定は除く）で発言を送る（desktop.turn_submit。UI-03）。送っている間は記号を回転にし、聞き返し・拒否・
 // 失敗は入力欄の枠（無効の枠）で知らせて文字を残す（説明文は置かない）。入力中は窓が上へ広がり、入力欄を複数行にする（UI-08）。
@@ -66,7 +67,11 @@ export function InputBar({
   return (
     <form
       ref={formRef}
-      className="flex h-screen w-screen flex-col gap-2 border border-separator bg-surface p-2 text-foreground"
+      className={
+        expanded
+          ? 'flex h-screen w-screen flex-col gap-2 rounded-island border border-border bg-surface p-3 text-foreground'
+          : 'flex h-14 w-screen flex-col rounded-full border border-border bg-surface py-2 pr-2.5 pl-5 text-foreground'
+      }
       onSubmit={(event) => {
         event.preventDefault();
         if (!composingRef.current) onSubmit();
@@ -90,7 +95,9 @@ export function InputBar({
           </Alert.Content>
         </Alert>
       ) : null}
-      <div className="flex min-h-0 flex-1 items-end gap-3">
+      <div
+        className={`flex min-h-0 flex-1 gap-3 ${expanded ? 'items-end' : 'items-center'}`}
+      >
         <span className="flex size-5 shrink-0 items-center justify-center">
           {sending ? (
             <Spinner size="sm" color="current" aria-hidden="true" />

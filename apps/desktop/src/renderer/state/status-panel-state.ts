@@ -1,8 +1,10 @@
-// 状態の層のパネルと端のつまみの表示の判定（UI-04、ADR 0032・0014・0024）。React と DOM に依存しない純粋な関数だけを置き、
-// node:test で試験する。受付の規則（役割ごとのチャネル・停止と再開の条件）と、パネルを出す・しまうの正本は main が持つ。
-// - パネルを出しているかは、main が決めた窓の幅で判断する（panelShownFor）。画面は別に状態を持たない。
+// 状態の層のパネルと上の中央の島の表示の判定（UI-04、ADR 0032・0014・0024・0181）。React と DOM に依存しない純粋な
+// 関数だけを置き、node:test で試験する。受付の規則（役割ごとのチャネル・停止と再開の条件）と、パネルを出す・しまうの
+// 正本は main が持つ。
+// - パネルを出しているかは、main が状態の層の窓を表示しているか（文書の表示の状態）で判断する（panelShownFor）。画面は
+//   別に状態を持たない（ADR 0181 の段階 4 で端のつまみをやめ、窓はパネルを出すときだけ表示する）。
 // - 状態の項目（ADR 0014 の 8 項目）は、記号と決まった位置で示し、名前と値はフォーカス・ポインターで出す。
-// - プライバシーと権限に関わる状態（音声を外部へ送っている・記録しないモード・安全停止中）は、つまみの専用の記号で
+// - プライバシーと権限に関わる状態（音声を外部へ送っている・記録しないモード・安全停止中）は、島の専用の記号で
 //   いつも見せる。値がまだない（音声は B05、記録しないモードは UI-05、安全停止は中枢が配るまで）ときは枠だけを出す。
 import type {
   DesktopConnectionView,
@@ -20,11 +22,10 @@ import { hubLine, ioLine } from './status-lines.js';
 
 type Shown = Extract<DesktopStatusBar, { visibility: 'shown' }>;
 
-// 窓の幅がこれ以上ならパネルを描く（つまみだけの窓は 56、パネルは 440。main の status-panel.ts）。
-export const STATUS_PANEL_MIN_WIDTH = 200;
-
-export function panelShownFor(width: number): boolean {
-  return width >= STATUS_PANEL_MIN_WIDTH;
+// 状態の層の窓が表示されているならパネルを描く（document.visibilityState。main は窓を隠してしまい、表示して出す）。
+// 隠している間は描かない（次に出したときに一覧から始め、パネルの滑り込みとフォーカスの移動をやり直す）。
+export function panelShownFor(visibility: string): boolean {
+  return visibility === 'visible';
 }
 
 // ADR 0014 の常に見せる項目（設計 01 いつも見える状態）。並びは固定（位置で覚えられるように）。
@@ -63,7 +64,7 @@ export const STATUS_ITEM_LABELS: Readonly<Record<StatusItemKey, string>> = {
 // 項目の形（色だけに頼らない。UI-04 のレビュー P2-4）。
 // - value: 値がある（実線の枠・項目の記号・状態の記号）。
 // - missing: まだ受け取っていない（点線の枠・薄い記号・状態の記号なし。読み上げは「未受信」）。点線の枠の意味は
-//   つまみの専用の記号と同じ「未受信」だけにする（ロック中は別の形。ItemShape は使わず、パネルが別に描く）。
+//   島の専用の記号と同じ「未受信」だけにする（ロック中は別の形。ItemShape は使わず、パネルが別に描く）。
 // - alert: 本人が気にかけるべき状態（警告・危険）。面を塗り、状態の記号を ⚠ にする。
 // - notice: 権限・プライバシーに関わるが警告ではない状態（記録しないモード）。面を塗る。
 export type ItemShape = 'value' | 'missing' | 'alert' | 'notice';
@@ -173,7 +174,7 @@ export function statusItems(
             text:
               STORAGE_MODE_LABELS[status.storage_mode] ?? status.storage_mode,
           },
-      // 記録しないモードは警告ではないが、権限・プライバシーに関わるので面を塗る（つまみの専用の記号と同じ）。
+      // 記録しないモードは警告ではないが、権限・プライバシーに関わるので面を塗る（島の専用の記号と同じ）。
       status.storage_mode === 'private' ? 'notice' : undefined,
     ),
     item(
@@ -225,7 +226,7 @@ export function voiceSendsExternally(
 // 文言のない音声の状態の表示（列挙の値を画面に出さない）。
 export const UNKNOWN_VOICE_TEXT = '不明';
 
-// つまみの専用の記号（プライバシーと権限）。並びは固定。
+// 島の専用の記号（プライバシーと権限）。並びは固定。
 export type PrivacyMarkKey = 'voice_external' | 'private_mode' | 'safety_stop';
 
 export const PRIVACY_MARK_KEYS: readonly PrivacyMarkKey[] = [

@@ -224,6 +224,13 @@ body {
   line-break: strict;
 }
 
+/* 角の外を透かす窓（上の中央の島・入力バー。ADR 0181 の段階 4・U399 の暫定 (a)）。窓は main が透明で作り、画面は地を
+   描かず、島・カプセルの面（--surface）だけを描く。どの窓かは RoleWindow が html の data-window-surface で決める。 */
+html[data-window-surface='transparent'],
+html[data-window-surface='transparent'] body {
+  background: transparent;
+}
+
 /* 文節で折り返すと右端が凸凹になるため、段落は行末の孤立を減らす折り返しにする（R2 の低 6）。 */
 @layer base {
   p {

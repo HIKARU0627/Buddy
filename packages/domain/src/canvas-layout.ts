@@ -10,14 +10,18 @@ import type {
 } from './canvas.js';
 import { CANVAS_GRID_COLUMNS } from './canvas.js';
 
-// 寸法（CSS ピクセル）。入力バー・端のつまみの大きさ（apps/desktop の INPUT_BAR_SIZE 560 × 56・INPUT_BAR_MARGIN 16・
-// STATUS_TAB_SIZE の幅 56）より広く空ける（一致は apps/desktop の試験で確かめる）。
+// 寸法（CSS ピクセル）。入力バー・上の中央の島の大きさ（apps/desktop の INPUT_BAR_SIZE 560 × 56・INPUT_BAR_MARGIN 16・
+// ISLAND_SIZE 560 × 48・ISLAND_MARGIN 8）より広く空ける（一致は apps/desktop の試験で確かめる）。
+// 右の端の状態の層のつまみ（UI-04 の 56）は ADR 0181 の段階 4 でやめたので、右の端は空けない（パネルは島から出し、
+// 出している間だけカードに重なる。U400）。
 export const CANVAS_LAYOUT = {
   margin: 24,
   gap: 16,
   rowHeight: 72,
-  // 作業領域の右の端に空ける幅（状態の層のつまみ 56 と余白）。
-  statusReserveWidth: 72,
+  // 作業領域の上の中央に空ける場所（小さな島 560 × 48、上の余白 8、左右と下の余白 16。ADR 0181 の U400 の暫定 (a)）。
+  // 広がった島（560 × 104）は一時的にカードに重なってよい。カードは、この場所の下の端より下から置く（上の帯を
+  // 作業領域の幅で空ける。島の左右の細い残りにはカードを置かない）。
+  islandReserve: { width: 592, height: 72 },
   // 作業領域の下の中央に空ける場所（入力バー 560 × 56、下の余白 16、上の余白 16）。
   inputBarReserve: { width: 592, height: 88 },
   shelfHeight: 56,
@@ -27,10 +31,10 @@ export const CANVAS_LAYOUT = {
   // カードを置ける幅がこれ未満なら 1 列にする。
   gridMinWidth: 720,
   maxRows: 48,
-  // 扱う最小の高さ（作業領域）。上の余白 24 ＋ 1 行 72 ＋ 間 16 ＋ 棚 56 ＋ 間 16 ＋ 入力バーの場所 88。これ以上なら、
+  // 扱う最小の高さ（作業領域）。上の島の場所 72 ＋ 1 行 72 ＋ 間 16 ＋ 棚 56 ＋ 間 16 ＋ 入力バーの場所 88。これ以上なら、
   // 少なくとも 1 行（1 列では 1 行分の物 1 つ）を置け、棚と入力バーの場所は重ならず、棚は作業領域の中にある。
-  minHeight: 272,
-  // 最小の高さに満たないときの、小さな棚（作業領域の上の端から 4 下・高さ 32）。
+  minHeight: 320,
+  // 最小の高さに満たないときの、小さな棚（上の島の場所の下の端から 4 下・高さ 32）。
   compactShelfTop: 4,
   compactShelfHeight: 32,
   // 見出しを読める最小のカードの幅（ピクセル）。格子ではこの幅に届く列の数（minSpan）より細くしない
@@ -113,7 +117,8 @@ export interface CanvasLayoutResult {
   };
   readonly reserved: {
     readonly input_bar: CanvasRect;
-    readonly status: CanvasRect;
+    // 上の中央の島（ADR 0181 の段階 4）。
+    readonly island: CanvasRect;
   };
   readonly grid: CanvasLayoutGrid | null;
 }
@@ -213,7 +218,7 @@ class Occupancy {
 
 interface Frame {
   readonly safe: CanvasRect;
-  readonly status: CanvasRect;
+  readonly island: CanvasRect;
   readonly inputBar: CanvasRect;
   readonly shelf: CanvasRect;
   readonly left: number;
@@ -236,12 +241,12 @@ function frameOf(input: CanvasLayoutInput): Frame {
     width: Math.max(0, viewportWidth - left - finite(insets.right)),
     height: Math.max(0, viewportHeight - top - finite(insets.bottom)),
   };
-  const statusWidth = Math.min(L.statusReserveWidth, safe.width);
-  const status: CanvasRect = {
-    x: safe.x + safe.width - statusWidth,
+  const islandWidth = Math.min(L.islandReserve.width, safe.width);
+  const island: CanvasRect = {
+    x: safe.x + Math.round((safe.width - islandWidth) / 2),
     y: safe.y,
-    width: statusWidth,
-    height: safe.height,
+    width: islandWidth,
+    height: Math.min(L.islandReserve.height, safe.height),
   };
   const barWidth = Math.min(L.inputBarReserve.width, safe.width);
   const barHeight = Math.min(L.inputBarReserve.height, safe.height);
@@ -252,7 +257,10 @@ function frameOf(input: CanvasLayoutInput): Frame {
     height: barHeight,
   };
   const contentLeft = safe.x + L.margin;
-  const contentWidth = Math.max(0, status.x - L.margin - contentLeft);
+  const contentWidth = Math.max(
+    0,
+    safe.x + safe.width - L.margin - contentLeft,
+  );
   const leftOfBar = inputBar.x - L.gap - contentLeft;
   let shelf: CanvasRect;
   let bandTop: number;
@@ -277,11 +285,12 @@ function frameOf(input: CanvasLayoutInput): Frame {
   }
   return {
     safe,
-    status,
+    island,
     inputBar,
     shelf,
     left: contentLeft,
-    top: safe.y + L.margin,
+    // 上の余白は、上の中央の島の場所（余白を含む）の下の端より小さくしない。
+    top: safe.y + Math.max(L.margin, island.height),
     width: contentWidth,
     bottom: bandTop - L.gap,
   };
@@ -349,7 +358,7 @@ export function layoutCanvas(input: CanvasLayoutInput): CanvasLayoutResult {
     .map((item) => item.item_id);
   const common = {
     shelf: { rect: frame.shelf, items: shelfItems, compact: false },
-    reserved: { input_bar: frame.inputBar, status: frame.status },
+    reserved: { input_bar: frame.inputBar, island: frame.island },
   };
   const revealed =
     input.revealed === undefined || input.revealed === null
@@ -358,8 +367,8 @@ export function layoutCanvas(input: CanvasLayoutInput): CanvasLayoutResult {
 
   if (frame.safe.height < L.minHeight || frame.width < L.minCardWidth) {
     // 最小の高さに満たない、または置ける幅が見出しを読める最小のカードの幅（minCardWidth）に満たない（1 列でも 160 を
-    // 守れない。UI-07 に持ち越した PR #121 の P3）: 物は置かず、すべて入りきらない物にする。棚は作業領域の上の端の
-    // 小さな帯にする（棚の上の端が作業領域の中にあるように）。
+    // 守れない。UI-07 に持ち越した PR #121 の P3）: 物は置かず、すべて入りきらない物にする。棚は上の島の場所のすぐ下の
+    // 小さな帯にする（棚の上の端が作業領域の中にあるように。島の下に隠れないように）。
     return {
       mode: 'minimal',
       boxes: [],
@@ -369,13 +378,18 @@ export function layoutCanvas(input: CanvasLayoutInput): CanvasLayoutResult {
       shelf: {
         rect: {
           x: frame.left,
-          y: frame.safe.y + Math.min(L.compactShelfTop, frame.safe.height),
+          y:
+            frame.safe.y +
+            Math.min(
+              frame.island.height + L.compactShelfTop,
+              frame.safe.height,
+            ),
           width: frame.width,
           height: Math.max(
             0,
             Math.min(
               L.compactShelfHeight,
-              frame.safe.height - L.compactShelfTop,
+              frame.safe.height - frame.island.height - L.compactShelfTop,
             ),
           ),
         },

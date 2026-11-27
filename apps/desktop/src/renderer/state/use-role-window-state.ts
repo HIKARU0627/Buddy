@@ -192,15 +192,32 @@ export function useCanvasViewport(): CanvasViewport {
   return viewport;
 }
 
-// 窓の幅（状態の層は、main が変えた窓の幅でパネルを描くか決める。UI-04）。
-export function useWindowWidth(): number {
-  const [width, setWidth] = useState(() => window.innerWidth);
+// 窓が表示されているか（状態の層は、main が窓を表示している間だけパネルを描く。ADR 0181 の段階 4。UI-04 の窓の幅による
+// 判定を置き換えた）。shownCount は表示された回数で、出すたびにパネルを描き直すために使う。
+export interface PageVisibility {
+  readonly state: DocumentVisibilityState;
+  readonly shownCount: number;
+}
+
+export function usePageVisibility(): PageVisibility {
+  const [visibility, setVisibility] = useState<PageVisibility>(() => ({
+    state: document.visibilityState,
+    shownCount: 0,
+  }));
   useEffect(() => {
-    const onResize = () => setWidth(window.innerWidth);
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
+    const onChange = () =>
+      setVisibility((previous) => {
+        const state = document.visibilityState;
+        if (state === previous.state) return previous;
+        return {
+          state,
+          shownCount: previous.shownCount + (state === 'visible' ? 1 : 0),
+        };
+      });
+    document.addEventListener('visibilitychange', onChange);
+    return () => document.removeEventListener('visibilitychange', onChange);
   }, []);
-  return width;
+  return visibility;
 }
 
 // 入力バーが広がっているか（UI-08）。main が focus で窓を 176 に広げ、blur で 56 に縮める。画面は高さで判断する。

@@ -1,4 +1,4 @@
-// 3 つの窓（キャンバス・状態の層・入力バー）の画面の状態（UI-02 の試作、ADR 0032）。
+// キャンバス表示の窓（キャンバス・状態の層・入力バー・上の中央の島）の画面の状態（UI-02 の試作、ADR 0032・0181）。
 // React と DOM に依存しない純粋な関数だけを置き、node:test で試験する。受付の規則（役割ごとのチャネル）は main が持ち、
 // ここは画面の切り替え・最初に送る要求・表示の判定だけ。
 import type {
@@ -11,13 +11,15 @@ import type { StatusLine } from '../tones.js';
 import { ioLine } from './status-lines.js';
 import { groupOperations } from './work-state.js';
 
-export type RendererWindowRole = 'legacy' | 'canvas' | 'status' | 'input';
+export type RendererWindowRole =
+  'legacy' | 'canvas' | 'status' | 'input' | 'island';
 
 const ROLES: readonly RendererWindowRole[] = [
   'legacy',
   'canvas',
   'status',
   'input',
+  'island',
 ];
 
 // preload が渡した窓の役割。値がない（古い preload）なら従来の窓、知らない値なら null（何も描かない）。
@@ -27,27 +29,29 @@ export function rendererWindowRole(value: unknown): RendererWindowRole | null {
 }
 
 // 窓を開いたときに送る要求。役割の表（DESKTOP_ROLE_CHANNELS）にあるチャネルだけ（ほかは main が拒否する）。
+// 島（ADR 0181 の段階 4）も、確認が必要な操作の数と専用の記号のために、接続の状態と音声の状態を読む。
 export function initialChannelsFor(
   role: Exclude<RendererWindowRole, 'legacy'>,
 ): readonly DesktopIpcRequest['channel'][] {
-  return role === 'status'
+  return role === 'status' || role === 'island'
     ? ['desktop.get_state', 'desktop.get_connection', 'desktop.get_voice']
     : ['desktop.get_state'];
 }
 
-// 端のつまみに出す記号と数。記号は入出力の状態（tones.ts の対応表）。数は確認が必要な操作（承認待ちと結果不明。
-// 今の画面の「確認が必要な操作」と同じ数え方）。ロック中・不明・受け取る前は数を出さない。
-export interface StatusTabView {
+// 状態の要約: 入出力の記号と、確認が必要な操作の数（上の中央の島の小さい形・入力バーの記号・パネルの先頭の行が使う。
+// UI-04 の端のつまみの記号と数を、ADR 0181 の段階 4 で島へ移した）。記号は入出力の状態（tones.ts の対応表）。数は確認が
+// 必要な操作（承認待ちと結果不明。今の画面の「確認が必要な操作」と同じ数え方）。ロック中・不明・受け取る前は数を出さない。
+export interface StatusSummaryView {
   readonly line: StatusLine;
   readonly pending: number | null;
   // 読み上げの名前（画面には出さない）。
   readonly label: string;
 }
 
-export function statusTabView(
+export function statusSummaryView(
   status: DesktopStatusBar | null,
   connection: DesktopConnectionView | null,
-): StatusTabView {
+): StatusSummaryView {
   if (status === null)
     return {
       line: { tone: 'neutral', mark: 'spinner', text: '確認中' },
@@ -109,4 +113,12 @@ export function inputDraftAfter(
 // キャンバスを前に出す操作を出せるか（ロック解除済み。受付の正本は main）。
 export function canSummonCanvas(status: DesktopStatusBar | null): boolean {
   return contentShown(status);
+}
+
+// 窓の地を透明にする役割（上の中央の島と入力バー。ADR 0181 の段階 4・U399 の暫定 (a)）。main は同じ役割の窓を透明で作り、
+// styles.css が html の data-window-surface で地を消す。キャンバスと状態の層のパネルは地を描く。
+export function transparentSurfaceFor(
+  role: Exclude<RendererWindowRole, 'legacy'>,
+): boolean {
+  return role === 'island' || role === 'input';
 }

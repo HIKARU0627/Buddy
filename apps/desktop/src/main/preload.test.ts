@@ -295,6 +295,15 @@ const EXPECTED_ROLE_CHANNELS: Readonly<Record<string, readonly string[]>> = {
     'desktop.canvas_content',
   ],
   input: ['desktop.get_state', 'desktop.turn_submit', 'desktop.canvas_summon'],
+  // 島（ADR 0181 の段階 4・U391 の暫定 (b)）は状態の取得・停止・パネルを出すだけ。承認・取消・再開・登録・終了・
+  // 発言・キャンバスを前に出すを使えない。
+  island: [
+    'desktop.get_state',
+    'desktop.io_stop',
+    'desktop.get_connection',
+    'desktop.status_panel',
+    'desktop.get_voice',
+  ],
   status: [
     'desktop.get_state',
     'desktop.io_stop',
@@ -366,6 +375,12 @@ const EXPECTED_ROLE_NOTIFICATIONS: Readonly<Record<string, readonly string[]>> =
       'desktop.canvas_work_area',
     ],
     input: ['desktop.state_changed'],
+    // 島は状態欄・接続の状態（確認が必要な操作の数）・音声の状態（外部へ送っている印）だけ。電源とロックの記録は受けない。
+    island: [
+      'desktop.state_changed',
+      'desktop.connection_changed',
+      'desktop.voice_changed',
+    ],
     status: [
       'desktop.state_changed',
       'desktop.power_event',
@@ -376,7 +391,7 @@ const EXPECTED_ROLE_NOTIFICATIONS: Readonly<Record<string, readonly string[]>> =
   };
 
 test('each window role reaches only its own channels from the preload', async () => {
-  for (const role of ['canvas', 'status', 'input'] as const) {
+  for (const role of ['canvas', 'status', 'input', 'island'] as const) {
     const expected = EXPECTED_ROLE_CHANNELS[role] ?? [];
     assert.deepEqual([...DESKTOP_ROLE_CHANNELS[role]], expected, role);
     const loaded = loadPreload([
@@ -404,7 +419,7 @@ test('each window role reaches only its own channels from the preload', async ()
 });
 
 test('each window role listens only to its own notifications', () => {
-  for (const role of ['canvas', 'status', 'input'] as const) {
+  for (const role of ['canvas', 'status', 'input', 'island'] as const) {
     const expected = EXPECTED_ROLE_NOTIFICATIONS[role] ?? [];
     assert.deepEqual([...DESKTOP_ROLE_NOTIFICATIONS[role]], expected, role);
     const loaded = loadPreload([`--buddy-window-role=${role}`]);

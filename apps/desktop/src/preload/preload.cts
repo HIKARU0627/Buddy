@@ -105,6 +105,14 @@ const ROLE_CHANNELS: Readonly<Record<string, readonly string[]>> = {
       channel !== 'desktop.canvas_content',
   ),
   input: ['desktop.get_state', 'desktop.turn_submit', 'desktop.canvas_summon'],
+  // 島（ADR 0181 の段階 4）は状態の取得・停止・パネルを出すだけ（承認・取消・再開・発言・キャンバスを前に出すを使えない）。
+  island: [
+    'desktop.get_state',
+    'desktop.io_stop',
+    'desktop.get_connection',
+    'desktop.status_panel',
+    'desktop.get_voice',
+  ],
 };
 const ROLE_NOTIFICATIONS: Readonly<Record<string, readonly string[]>> = {
   // 従来の窓・状態の層・入力バーはキャンバスの記述を受けない（キャンバスの窓だけ。ADR 0032）。
@@ -126,6 +134,11 @@ const ROLE_NOTIFICATIONS: Readonly<Record<string, readonly string[]>> = {
       channel !== 'desktop.canvas_work_area',
   ),
   input: ['desktop.state_changed'],
+  island: [
+    'desktop.state_changed',
+    'desktop.connection_changed',
+    'desktop.voice_changed',
+  ],
 };
 
 // sandbox の preload の process は一部だけ（argv を読める）。

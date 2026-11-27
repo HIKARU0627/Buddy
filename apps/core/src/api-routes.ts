@@ -294,6 +294,8 @@ export const API_ROUTES: readonly ApiRoute[] = [
     body: 'HouseholdReceiptImageRequest',
     ...SCREEN,
   }),
+  // 記憶の一覧（UI-10、ADR 0183）。処理は api-memory.ts。本文を返すので本人の画面操作だけ（Buddy-Input-Origin を求める）。
+  route('listMemories', 'GET', '/v1/memory/records', SCREEN),
   // 記憶の忘却の計画と実行（B06-07b-2、ADR 0180）。処理は api-forget.ts。忘却の公開ゲートが閉じている間は 503。
   route('createForgetPlan', 'POST', '/v1/memory/forget-plans', {
     body: 'ForgetPlanRequest',

@@ -130,7 +130,14 @@ export type MemoryOp =
       readonly memory_id: string;
       readonly now: number;
     }
-  | { readonly kind: 'directive.revoke'; readonly directive_id: string };
+  | { readonly kind: 'directive.revoke'; readonly directive_id: string }
+  // 記憶の一覧（UI-10 の忘却の画面、ADR 0183）。保存中・見直し待ちの記憶を保存の新しい順に最大 limit 件。削除済みと、削除の
+  // 期限（now 以上）を過ぎた記憶は出さない。本文は封筒のまま返し、Core がデータ鍵で開く。由来は種類ごとの件数だけ。
+  | {
+      readonly kind: 'memory.list';
+      readonly limit: number;
+      readonly now: number;
+    };
 
 export type MemoryOpKind = MemoryOp['kind'];
 
@@ -146,6 +153,33 @@ export interface MemoryScheduleValue {
   readonly status: 'active' | 'review_pending';
   readonly review_at: number;
   readonly delete_at: number | null;
+}
+
+// 記憶の本文の封筒（sealed_blobs の 1 行。Core が owner = memories・memory_id・版 0・用途 memory_text で開く）。
+export interface MemoryBlobOutput {
+  readonly blob_id: string;
+  readonly format_version: number;
+  readonly key_id: string;
+  readonly nonce: Uint8Array;
+  readonly ciphertext: Uint8Array;
+  readonly tag: Uint8Array;
+}
+
+// 記憶の一覧の 1 行。時刻は UTC の Unix ミリ秒。本文の封筒が見つからなければ text は null（Core は一覧全体を 503 にする）。
+export interface MemoryListRow {
+  readonly memory_id: string;
+  readonly origin: 'auto_extraction' | 'explicit_request';
+  readonly kind: (typeof MEMORY_KINDS)[number];
+  readonly status: 'active' | 'review_pending';
+  readonly created_at: number;
+  readonly review_at: number;
+  readonly delete_at: number | null;
+  readonly text: MemoryBlobOutput | null;
+  readonly source_counts: {
+    readonly turn: number;
+    readonly source_item: number;
+    readonly memory: number;
+  };
 }
 
 export interface MemoryOpValues {
@@ -172,6 +206,11 @@ export interface MemoryOpValues {
   'directive.revoke': {
     readonly directive_id: string;
     readonly revoked: boolean;
+  };
+  'memory.list': {
+    readonly rows: readonly MemoryListRow[];
+    // 上限で切った（ほかにも出せる記憶がある）か。
+    readonly truncated: boolean;
   };
 }
 
@@ -214,7 +253,11 @@ const KINDS: ReadonlySet<string> = new Set<MemoryOpKind>([
   'memory.start_review',
   'memory.delete_due',
   'directive.revoke',
+  'memory.list',
 ]);
+
+// 記憶の一覧の上限（契約の MemoryListResponse.items の maxItems）。
+export const MEMORY_LIST_MAX = 1000;
 
 function isTime(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
@@ -330,6 +373,15 @@ export function memoryOpShapeReasons(op: MemoryOp): string[] {
       break;
     case 'directive.revoke':
       if (!isUuid(op.directive_id)) reasons.push('directive_id_invalid');
+      break;
+    case 'memory.list':
+      if (
+        !Number.isSafeInteger(op.limit) ||
+        op.limit < 1 ||
+        op.limit > MEMORY_LIST_MAX
+      )
+        reasons.push('limit_invalid');
+      if (!isTime(op.now)) reasons.push('now_invalid');
       break;
   }
   return reasons;
@@ -727,6 +779,74 @@ function applyWrite(db: SqliteDatabase, op: MemoryOp): MemoryOpValue {
   }
 }
 
+// 記憶の一覧（UI-10、ADR 0183）。削除の期限は掃除（memory.delete_due）と同じ補正（保存した削除日と見直し日＋30 日の小さい方）
+// で判定し、期限ちょうど（now >= 期限）は出さない。保存中の記憶は削除日を持たない（0001 の CHECK）ので、見直し日を過ぎていても
+// 見直し待ちへ移るまでは保存中として出す。
+function listMemories(
+  db: SqliteDatabase,
+  op: Extract<MemoryOp, { kind: 'memory.list' }>,
+): MemoryOpValues['memory.list'] {
+  const rows = db
+    .prepare(
+      "SELECT memory_id, origin, kind, status, created_at, review_at, delete_at, text_blob_id, target_key_blob_id FROM memories WHERE status <> 'deleted' ORDER BY created_at DESC, memory_id",
+    )
+    .all() as (MemoryRow & {
+    origin: MemoryListRow['origin'];
+    kind: MemoryListRow['kind'];
+  })[];
+  const blob = db.prepare(
+    "SELECT blob_id, format_version, key_id, nonce, ciphertext, tag FROM sealed_blobs WHERE blob_id = ? AND purpose = 'memory_text' AND owner_table = 'memories' AND owner_id = ?",
+  );
+  const sources = db.prepare(
+    'SELECT source_kind, count(*) AS n FROM memory_sources WHERE memory_id = ? GROUP BY source_kind',
+  );
+  const shown = rows.filter(
+    (row) => row.status === 'active' || op.now < cappedDeleteAt(row),
+  );
+  const listed: MemoryListRow[] = [];
+  for (const row of shown.slice(0, op.limit)) {
+    const found = blob.get(row.text_blob_id, row.memory_id) as
+      | {
+          blob_id: string;
+          format_version: number;
+          key_id: string;
+          nonce: Buffer;
+          ciphertext: Buffer;
+          tag: Buffer;
+        }
+      | undefined;
+    const counts = { turn: 0, source_item: 0, memory: 0 };
+    for (const item of sources.all(row.memory_id) as {
+      source_kind: keyof typeof counts;
+      n: number;
+    }[])
+      if (Object.hasOwn(counts, item.source_kind))
+        counts[item.source_kind] = item.n;
+    listed.push({
+      memory_id: row.memory_id,
+      origin: row.origin,
+      kind: row.kind,
+      status: row.status === 'review_pending' ? 'review_pending' : 'active',
+      created_at: row.created_at,
+      review_at: row.review_at,
+      delete_at: row.delete_at,
+      text:
+        found === undefined
+          ? null
+          : {
+              blob_id: found.blob_id,
+              format_version: found.format_version,
+              key_id: found.key_id,
+              nonce: new Uint8Array(found.nonce),
+              ciphertext: new Uint8Array(found.ciphertext),
+              tag: new Uint8Array(found.tag),
+            },
+      source_counts: counts,
+    });
+  }
+  return { rows: listed, truncated: shown.length > op.limit };
+}
+
 function readOnly(db: SqliteDatabase, op: MemoryOp): MemoryOpValue {
   switch (op.kind) {
     case 'forget.graph':
@@ -743,6 +863,8 @@ function readOnly(db: SqliteDatabase, op: MemoryOp): MemoryOpValue {
       return db.transaction(() => exportForgetLedger(db))();
     case 'backup.facts':
       return readBackupFacts(db);
+    case 'memory.list':
+      return db.transaction(() => listMemories(db, op))();
     default:
       throw new ForgetRejection(['kind_invalid']);
   }

@@ -542,6 +542,9 @@
       "$ref": "#/$defs/ForgetExecuteResult"
     },
     {
+      "$ref": "#/$defs/MemoryListResponse"
+    },
+    {
       "$ref": "#/$defs/ForgetLedgerSyncRequest"
     },
     {
@@ -14041,9 +14044,12 @@
         "desktop.household_export",
         "desktop.household_receipt_setting",
         "desktop.household_receipt_read",
-        "desktop.household_bill_delete"
+        "desktop.household_bill_delete",
+        "desktop.memories_list",
+        "desktop.forget_plan",
+        "desktop.forget_execute"
       ],
-      "description": "UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014・0025）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。中枢との接続・ペアリングは用途別のチャネルだけで、要求の宛先・本文を Renderer が決められない。音声レンダラーの IPC（B05）は別に定める。 発言・承認表示の準備・承認・取消・照合は用途別のチャネルで、操作は main が持つ参照（ref）で指す（B04-05、ADR 0031）。 キャンバスを前に出す（canvas_summon）は状態の層と入力バーからだけ使う（UI-02、ADR 0032）。状態の層のパネルを出す・しまう（status_panel）は状態の層と島からだけ使う（UI-04、ADR 0032・0181）。 島（画面の上の中央の島の窓。ADR 0181 の段階 4）は、状態の取得（get_state・get_connection・get_voice）・この端末の入出力の停止（io_stop）・パネルを出す（status_panel）だけを使う。承認・取消・再開・登録・終了・発言・キャンバスを前に出すは使えず、島から確認を出さない（確認の入口は状態の層のパネルのまま）。キャンバスのユーザーの操作（canvas_user_op）はキャンバスの窓からだけ、キャンバスが前に出ている間だけ使う（UI-06、ADR 0032）。 予算の確認（超過枠の承認・見送り budget_overage_decide、M 超過の確認 budget_overrun_review、不明な費用の手での精算 budget_manual_settle）は状態の層からだけ使う。承認・確認・精算は main の OS の確認ダイアログを 1 回だけ挟み、画面が持つのは main が作る参照（ref）だけ（B07-05、ADR 0039）。 音声（B05-06、ADR 0050）: 音声の状態の取得（get_voice）・呼びかけなしで音声の会話を始める「続ける」（voice_continue）・外部への送信の同意の取り消し（voice_consent_revoke）は状態の層からだけ使う（音声の状態の取得だけは島も使う。ADR 0181）。外部への送信の同意は main の OS の確認ダイアログで 1 回だけ取り、画面は同意を作れない。音声レンダラーへの IPC は VoiceRendererRequest で、このチャネルとは別。 気づき（B11-05、ADR 0132）: 一覧の取得（candidates_list）と状態の変更（candidate_state。開く・今回は扱わない・再通知）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バーは使えない。候補は main が作る参照（ref）で指し、候補 ID・expected_state・接続範囲は main が持つ。 連携の接続（B08-02 P3・B09-05、ADR 0142）: 一覧の取得（connections_list）と取得範囲の変更（connection_targets_update）は中枢の画面（接続・端末）でだけ使い、キャンバス・入力バーは使えない。接続は main が作る参照（ref）で指し、接続 ID・permission_revision は main が持つ。画面が送れるのは今の保存値と、この世代で中枢から読んだ選べる対象（connection_targets_discover）のうちの選択と、期間・添付の範囲だけ（ADR 0145）。選べる対象の読み取りは提供元への読み取りを伴うので、中枢の画面のロック解除済みの画面操作だけ。 自動実行（B13-05、ADR 0154）: 一覧と安全停止の状態の取得（auto_actions_list）・取り消し（auto_action_undo）・安全停止の解除（safety_resume）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バーは使えない。自動実行した操作と安全停止の状態は main が作る参照（ref）で指し、操作 ID・state_revision・safety_revision・接続範囲は main が持つ。 家計簿（ADR 0162）: 月ごとの合計と 1 か月の記録の取得（household_view）・分類の変更（household_category）・削除（household_delete）・利用通知の取り込みの入・切（household_intake、ADR 0163）・書き出しの取り込み（household_import、ADR 0164。ファイルは main が OS のファイル選択で本人に選ばせ、画面はパスも中身も渡さない）・分類ごとの予算の変更（household_budget、ADR 0166）・記録の手入力（household_add、ADR 0167）・記録の中身の変更（household_edit、ADR 0169）・記録の CSV への書き出し（household_export、ADR 0172。保存先は main が OS の保存先の選択で本人に選ばせ、画面はパスも中身も渡さない）・レシートの写真の読み取りの入・切（household_receipt_setting、ADR 0177。入にするときは main の OS の確認ダイアログを挟む）・レシートの写真の読み取り（household_receipt_read、ADR 0177。写真は main が OS のファイル選択で本人に選ばせ、画面はパスも中身も渡さない。結果は手入力の欄に入れる候補だけ）・請求予定を消す（household_bill_delete、ADR 0179）は従来の窓（標準の端末画面）から使い、キャンバス・入力バーは使えない。記録と請求予定は main が作る参照（ref）で指し、記録・請求予定の ID・内容版・接続範囲は main が持つ。"
+      "description": "UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014・0025）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。中枢との接続・ペアリングは用途別のチャネルだけで、要求の宛先・本文を Renderer が決められない。音声レンダラーの IPC（B05）は別に定める。 発言・承認表示の準備・承認・取消・照合は用途別のチャネルで、操作は main が持つ参照（ref）で指す（B04-05、ADR 0031）。 キャンバスを前に出す（canvas_summon）は状態の層と入力バーからだけ使う（UI-02、ADR 0032）。状態の層のパネルを出す・しまう（status_panel）は状態の層と島からだけ使う（UI-04、ADR 0032・0181）。 島（画面の上の中央の島の窓。ADR 0181 の段階 4）は、状態の取得（get_state・get_connection・get_voice）・この端末の入出力の停止（io_stop）・パネルを出す（status_panel）だけを使う。承認・取消・再開・登録・終了・発言・キャンバスを前に出すは使えず、島から確認を出さない（確認の入口は状態の層のパネルのまま）。キャンバスのユーザーの操作（canvas_user_op）はキャンバスの窓からだけ、キャンバスが前に出ている間だけ使う（UI-06、ADR 0032）。 予算の確認（超過枠の承認・見送り budget_overage_decide、M 超過の確認 budget_overrun_review、不明な費用の手での精算 budget_manual_settle）は状態の層からだけ使う。承認・確認・精算は main の OS の確認ダイアログを 1 回だけ挟み、画面が持つのは main が作る参照（ref）だけ（B07-05、ADR 0039）。 音声（B05-06、ADR 0050）: 音声の状態の取得（get_voice）・呼びかけなしで音声の会話を始める「続ける」（voice_continue）・外部への送信の同意の取り消し（voice_consent_revoke）は状態の層からだけ使う（音声の状態の取得だけは島も使う。ADR 0181）。外部への送信の同意は main の OS の確認ダイアログで 1 回だけ取り、画面は同意を作れない。音声レンダラーへの IPC は VoiceRendererRequest で、このチャネルとは別。 気づき（B11-05、ADR 0132）: 一覧の取得（candidates_list）と状態の変更（candidate_state。開く・今回は扱わない・再通知）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バーは使えない。候補は main が作る参照（ref）で指し、候補 ID・expected_state・接続範囲は main が持つ。 連携の接続（B08-02 P3・B09-05、ADR 0142）: 一覧の取得（connections_list）と取得範囲の変更（connection_targets_update）は中枢の画面（接続・端末）でだけ使い、キャンバス・入力バーは使えない。接続は main が作る参照（ref）で指し、接続 ID・permission_revision は main が持つ。画面が送れるのは今の保存値と、この世代で中枢から読んだ選べる対象（connection_targets_discover）のうちの選択と、期間・添付の範囲だけ（ADR 0145）。選べる対象の読み取りは提供元への読み取りを伴うので、中枢の画面のロック解除済みの画面操作だけ。 自動実行（B13-05、ADR 0154）: 一覧と安全停止の状態の取得（auto_actions_list）・取り消し（auto_action_undo）・安全停止の解除（safety_resume）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バーは使えない。自動実行した操作と安全停止の状態は main が作る参照（ref）で指し、操作 ID・state_revision・safety_revision・接続範囲は main が持つ。 家計簿（ADR 0162）: 月ごとの合計と 1 か月の記録の取得（household_view）・分類の変更（household_category）・削除（household_delete）・利用通知の取り込みの入・切（household_intake、ADR 0163）・書き出しの取り込み（household_import、ADR 0164。ファイルは main が OS のファイル選択で本人に選ばせ、画面はパスも中身も渡さない）・分類ごとの予算の変更（household_budget、ADR 0166）・記録の手入力（household_add、ADR 0167）・記録の中身の変更（household_edit、ADR 0169）・記録の CSV への書き出し（household_export、ADR 0172。保存先は main が OS の保存先の選択で本人に選ばせ、画面はパスも中身も渡さない）・レシートの写真の読み取りの入・切（household_receipt_setting、ADR 0177。入にするときは main の OS の確認ダイアログを挟む）・レシートの写真の読み取り（household_receipt_read、ADR 0177。写真は main が OS のファイル選択で本人に選ばせ、画面はパスも中身も渡さない。結果は手入力の欄に入れる候補だけ）・請求予定を消す（household_bill_delete、ADR 0179）は従来の窓（標準の端末画面）から使い、キャンバス・入力バーは使えない。記録と請求予定は main が作る参照（ref）で指し、記録・請求予定の ID・内容版・接続範囲は main が持つ。 忘却の画面（UI-10、ADR 0183）: 記憶の一覧の取得（memories_list）・忘却の計画を作らせる（forget_plan）・確かめた計画の実行（forget_execute。main の OS の確認ダイアログを 1 回だけ挟む）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バー・島は使えない。記憶と計画は main が作る参照（ref）で指し、記憶 ID・計画 ID・台帳の世代の照合・接続範囲は main が持つ。計画は中枢が作り、承認・実行権限・閉包の判定の正本は中枢にある。"
     },
     "DesktopIpcRequest": {
       "oneOf": [
@@ -15389,6 +15395,74 @@
           "required": ["channel", "request_id", "payload"],
           "additionalProperties": false,
           "description": "請求予定を消す（ADR 0179）。ref は請求予定の行の参照。画面の中で一度確かめてから送る。同じメールからは作り直さない。ロック解除済みの画面操作だけ。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "channel": {
+              "type": "string",
+              "const": "desktop.memories_list"
+            },
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "payload": {
+              "type": "null"
+            }
+          },
+          "required": ["channel", "request_id", "payload"],
+          "additionalProperties": false,
+          "description": "記憶の一覧と忘却の公開ゲートの状態を中枢から読み直す（UI-10、ADR 0183）。ロック解除済みのときだけ（本文なので、ロック中・不明は出さない）。中枢へは本人の画面操作として送る。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "channel": {
+              "type": "string",
+              "const": "desktop.forget_plan"
+            },
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "ref": {
+                  "$ref": "#/$defs/Id"
+                }
+              },
+              "required": ["ref"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["channel", "request_id", "payload"],
+          "additionalProperties": false,
+          "description": "選んだ記憶の忘却の計画を中枢に作らせる（UI-10、ADR 0180・0183）。ref は一覧の行の参照。この時点では何も消さない。中枢が 503 を返したら forget_unavailable。ロック解除済みの画面操作だけ。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "channel": {
+              "type": "string",
+              "const": "desktop.forget_execute"
+            },
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "ref": {
+                  "$ref": "#/$defs/Id"
+                }
+              },
+              "required": ["ref"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["channel", "request_id", "payload"],
+          "additionalProperties": false,
+          "description": "画面に出した忘却の計画を実行する（UI-10、ADR 0180・0183）。ref は計画の参照。main は OS の確認ダイアログを 1 回だけ出し、本人が選んだときだけ、計画の世代を付けて中枢へ送る。計画の後に台帳・系譜が変わった（409）は preview_stale で、自動では計画を作り直さない。結果が分からなければ outcome_unknown で、自動では送り直さない。ロック解除済みの画面操作だけ。"
         }
       ],
       "description": "UI レンダラーから main への要求（設計 10 §1、07 §2、02 停止、ADR 0014）。main は受け取ったら最初にこの定義で検査し、未知のチャネル・未知の項目・型違いは invalid_request で拒否する。引数のない要求の payload は null。端末 ID は名乗れず、送信元は main が webContents から判定する。"
@@ -16770,6 +16844,32 @@
           "type": "object",
           "properties": {
             "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "channel": {
+              "type": "string",
+              "enum": [
+                "desktop.memories_list",
+                "desktop.forget_plan",
+                "desktop.forget_execute"
+              ]
+            },
+            "outcome": {
+              "type": "string",
+              "const": "ok"
+            },
+            "memories": {
+              "$ref": "#/$defs/DesktopMemoryView"
+            }
+          },
+          "required": ["request_id", "channel", "outcome", "memories"],
+          "additionalProperties": false,
+          "description": "受け付けた。忘却の画面の表示用の値を返す（計画の後は計画を載せた値、実行の後は読み直した一覧と結果。UI-10、ADR 0183）。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "request_id": {
               "anyOf": [
                 {
                   "$ref": "#/$defs/Id"
@@ -16821,7 +16921,8 @@
                 "content_unavailable",
                 "canvas_conflict",
                 "voice_unavailable",
-                "undo_target_changed"
+                "undo_target_changed",
+                "forget_unavailable"
               ]
             },
             "list_seq": {
@@ -17947,6 +18048,219 @@
       "required": ["fetch", "fetched_at", "safety", "entries", "list_seq"],
       "additionalProperties": false,
       "description": "自動実行の一覧と安全停止の状態の表示用の値（B13-05、ADR 0154。設計 03 取り消しと安全停止、J12）。"
+    },
+    "DesktopMemoryEntry": {
+      "type": "object",
+      "properties": {
+        "ref": { "$ref": "#/$defs/Id" },
+        "kind": { "$ref": "#/$defs/MemoryKind" },
+        "origin": {
+          "type": "string",
+          "enum": ["auto_extraction", "explicit_request"]
+        },
+        "text": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "status": { "type": "string", "enum": ["active", "review_pending"] },
+        "created_at": { "$ref": "#/$defs/UtcTime" },
+        "review_at": { "$ref": "#/$defs/UtcTime" },
+        "delete_at": {
+          "anyOf": [{ "$ref": "#/$defs/UtcTime" }, { "type": "null" }]
+        },
+        "source_counts": {
+          "type": "object",
+          "properties": {
+            "turn": { "type": "integer", "minimum": 0 },
+            "source_item": { "type": "integer", "minimum": 0 },
+            "memory": { "type": "integer", "minimum": 0 }
+          },
+          "required": ["turn", "source_item", "memory"],
+          "additionalProperties": false,
+          "description": "由来の種類ごとの件数（発言・元情報・別の記憶）。由来の ID・元サービスの生の ID・HMAC は出さない（UI-10、ADR 0183）。"
+        }
+      },
+      "required": [
+        "ref",
+        "kind",
+        "origin",
+        "text",
+        "status",
+        "created_at",
+        "review_at",
+        "delete_at",
+        "source_counts"
+      ],
+      "additionalProperties": false,
+      "description": "忘却の画面の記憶の 1 行（UI-10、ADR 0183）。記憶 ID の代わりに main が作る参照（ref）を持つ。"
+    },
+    "DesktopForgetPlanView": {
+      "type": "object",
+      "properties": {
+        "ref": {
+          "$ref": "#/$defs/Id",
+          "description": "計画の参照（main が作る。計画 ID ではない）。実行の要求に入れる。"
+        },
+        "target_ref": {
+          "$ref": "#/$defs/Id",
+          "description": "忘れる記憶の行の参照。"
+        },
+        "forgetting_generation": {
+          "$ref": "#/$defs/ForgettingGeneration",
+          "description": "計画を作った時点の忘却台帳の世代（それまでに忘れた回数）。画面は確認の帯に出す。"
+        },
+        "expires_at": { "$ref": "#/$defs/UtcTime" },
+        "removed": {
+          "type": "object",
+          "properties": {
+            "counts": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 13,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "kind": { "$ref": "#/$defs/ForgetRemovedKind" },
+                  "count": { "type": "integer", "minimum": 1 }
+                },
+                "required": ["kind", "count"],
+                "additionalProperties": false
+              }
+            },
+            "memory_refs": {
+              "type": "array",
+              "maxItems": 1000,
+              "uniqueItems": true,
+              "items": { "$ref": "#/$defs/Id" },
+              "description": "消える記憶のうち、一覧にある行の参照。"
+            },
+            "unlisted_memory_count": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "消える記憶のうち、一覧にない（上限で切った・一覧の後に増えた）ものの数。"
+            },
+            "directive_count": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "消える本人の指示の数（U112）。指示の本文はこの画面に出さない（U433）。"
+            }
+          },
+          "required": [
+            "counts",
+            "memory_refs",
+            "unlisted_memory_count",
+            "directive_count"
+          ],
+          "additionalProperties": false
+        },
+        "kept": {
+          "type": "object",
+          "properties": {
+            "operation_states": {
+              "type": "array",
+              "maxItems": 1000,
+              "items": {
+                "type": "string",
+                "enum": [
+                  "awaiting_approval",
+                  "approved",
+                  "preparing",
+                  "dispatching",
+                  "reconciling",
+                  "unknown_held",
+                  "not_executed",
+                  "unknown"
+                ]
+              },
+              "description": "残る操作の状態（送出禁止の印だけを付け、状態・承認・試行は変えない）。操作 ID は出さない。"
+            },
+            "lineage_only": { "type": "integer", "minimum": 0 }
+          },
+          "required": ["operation_states", "lineage_only"],
+          "additionalProperties": false
+        },
+        "blocked_source_count": { "type": "integer", "minimum": 0 }
+      },
+      "required": [
+        "ref",
+        "target_ref",
+        "forgetting_generation",
+        "expires_at",
+        "removed",
+        "kept",
+        "blocked_source_count"
+      ],
+      "additionalProperties": false,
+      "description": "忘却の計画の表示用の値（UI-10、ADR 0180・0183）。中枢の ForgetPlanView から、計画 ID・記憶 ID・指示 ID・操作 ID を main の参照・件数に置き換えた形。計画を作ったのは中枢で、画面は見せて確認を返すだけ。"
+    },
+    "DesktopForgetResultView": {
+      "type": "object",
+      "properties": {
+        "outcome": {
+          "type": "string",
+          "enum": ["forgotten", "outcome_unknown"],
+          "description": "forgotten は中枢が忘却を適用した。outcome_unknown は送ったが結果が分からない（消えたかもしれない。自動では送り直さない）。"
+        },
+        "removed_total": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "計画で消える物の件数の合計（見せた計画の値）。"
+        },
+        "at": { "$ref": "#/$defs/UtcTime" }
+      },
+      "required": ["outcome", "removed_total", "at"],
+      "additionalProperties": false,
+      "description": "最後に実行した忘却の結果（UI-10、ADR 0183）。消えた記憶の本文は持たない。"
+    },
+    "DesktopMemoryView": {
+      "type": "object",
+      "properties": {
+        "fetch": {
+          "type": "string",
+          "enum": ["loaded", "stale", "unavailable"],
+          "description": "取得の状態（DesktopAutoActionView と同じ意味。「記憶なし」と区別する）。"
+        },
+        "fetched_at": {
+          "anyOf": [{ "$ref": "#/$defs/UtcTime" }, { "type": "null" }]
+        },
+        "forget": {
+          "type": "string",
+          "enum": ["open", "closed", "unavailable"],
+          "description": "忘却の操作を使えるか。closed は中枢の一覧が公開ゲートの閉を返した、unavailable は中枢が計画・実行に 503 を返した（理由は区別しない）か一覧を読めていない。open 以外の間、画面は計画・実行の操作を無効にする。"
+        },
+        "truncated": { "type": "boolean" },
+        "entries": {
+          "type": "array",
+          "maxItems": 1000,
+          "items": { "$ref": "#/$defs/DesktopMemoryEntry" }
+        },
+        "plan": {
+          "anyOf": [
+            { "$ref": "#/$defs/DesktopForgetPlanView" },
+            { "type": "null" }
+          ]
+        },
+        "result": {
+          "anyOf": [
+            { "$ref": "#/$defs/DesktopForgetResultView" },
+            { "type": "null" }
+          ]
+        },
+        "list_seq": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "main が付ける一覧の通し番号。画面はこれより小さい番号の応答を反映しない。"
+        }
+      },
+      "required": [
+        "fetch",
+        "fetched_at",
+        "forget",
+        "truncated",
+        "entries",
+        "plan",
+        "result",
+        "list_seq"
+      ],
+      "additionalProperties": false,
+      "description": "忘却の画面（UI-10、ADR 0183）の表示用の値。左の記憶の一覧、右の計画、下の確認の帯の材料。"
     },
     "DesktopBudgetEntry": {
       "type": "object",
@@ -20039,6 +20353,71 @@
       "required": ["schema", "plan_id", "forgetting_generation"],
       "additionalProperties": false,
       "description": "忘却を適用した結果（B06-07b-2、ADR 0180）。forgetting_generation は適用で進んだ台帳の世代。同じ計画の実行の再送には、同じ結果を返す（二度は消さない）。"
+    },
+    "MemoryListItem": {
+      "type": "object",
+      "properties": {
+        "memory_id": { "$ref": "#/$defs/Id" },
+        "origin": {
+          "type": "string",
+          "enum": ["auto_extraction", "explicit_request"]
+        },
+        "kind": { "$ref": "#/$defs/MemoryKind" },
+        "text": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "status": { "type": "string", "enum": ["active", "review_pending"] },
+        "created_at": { "$ref": "#/$defs/UtcTime" },
+        "review_at": { "$ref": "#/$defs/UtcTime" },
+        "delete_at": {
+          "anyOf": [{ "$ref": "#/$defs/UtcTime" }, { "type": "null" }]
+        },
+        "source_counts": {
+          "type": "object",
+          "properties": {
+            "turn": { "type": "integer", "minimum": 0 },
+            "source_item": { "type": "integer", "minimum": 0 },
+            "memory": { "type": "integer", "minimum": 0 }
+          },
+          "required": ["turn", "source_item", "memory"],
+          "additionalProperties": false,
+          "description": "由来の種類ごとの件数（発言・元情報・別の記憶）。由来の ID・元サービスの生の ID・HMAC は出さない（UI-10、ADR 0183）。"
+        }
+      },
+      "required": [
+        "memory_id",
+        "origin",
+        "kind",
+        "text",
+        "status",
+        "created_at",
+        "review_at",
+        "delete_at",
+        "source_counts"
+      ],
+      "additionalProperties": false,
+      "description": "記憶の一覧の 1 行（UI-10、ADR 0183）。本文（text）は保存した記憶の要約で、対象キー・内容の HMAC（dedupe_key）・由来の ID は返さない。status は保存中（active）か見直し待ち（review_pending）。削除済み・削除の期限を過ぎた記憶は一覧に出さない。"
+    },
+    "MemoryListResponse": {
+      "type": "object",
+      "properties": {
+        "schema": { "const": "buddy.memory-list.v1" },
+        "forget_gate": {
+          "type": "string",
+          "enum": ["open", "closed"],
+          "description": "忘却の公開ゲート（U112・U382）の今の値。closed の間、中枢は忘却の計画も実行もしない（503）。画面は計画・実行の操作を「まだ使えません」と無効にする。開けるのは中枢のコードの定数だけで、この値は表示のためだけに返す。"
+        },
+        "items": {
+          "type": "array",
+          "maxItems": 1000,
+          "items": { "$ref": "#/$defs/MemoryListItem" }
+        },
+        "truncated": {
+          "type": "boolean",
+          "description": "上限（1000 件）で切った（ほかにも記憶がある）か。"
+        }
+      },
+      "required": ["schema", "forget_gate", "items", "truncated"],
+      "additionalProperties": false,
+      "description": "記憶の一覧（UI-10 の忘却の画面の左の一覧。ADR 0040 U40・0183）。並びは保存の新しい順。本文を返すので、ロック解除済みの本人の画面操作だけに返す。本文の封筒を開けない行があれば一覧全体を 503 にする（黙って落とさない）。"
     },
     "ForgetLedgerSyncRequest": {
       "type": "object",

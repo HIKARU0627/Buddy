@@ -45,6 +45,7 @@ import type {
 } from '@buddy/platform';
 import { createCandidateRoutes } from './api-candidates.js';
 import { createForgetRoutes } from './api-forget.js';
+import { createMemoryRoutes } from './api-memory.js';
 import { createHouseholdRoutes } from './api-household.js';
 import { createCandidateListRefresh } from './candidate-list-refresh.js';
 import {
@@ -1974,6 +1975,17 @@ async function startHttps(
     forgetService === undefined || forgetService === null
       ? null
       : createForgetRoutes({ service: forgetService, store });
+  // 記憶の一覧（UI-10 の忘却の画面、ADR 0183）。データ鍵は保持せず要求ごとに読む。忘却の公開ゲートの値は表示のために読むだけ
+  // （計画・実行のゲートは ForgetService が見る。どちらも同じ定数）。一覧は忘却の経路の有無にかかわらず返す。
+  const memoryRoutes = createMemoryRoutes({
+    store,
+    dataKey: async () => {
+      const result = await keyStore.loadDataKey();
+      return result.ok ? result.dataKey : null;
+    },
+    gate: () => FORGET_PUBLIC_GATE_OPEN,
+    now: () => now().getTime(),
+  });
   // 経路の処理の表は重ならない（同じ operationId を二つの処理が持たない）。重なれば起動しない。
   const handlerKeys = [
     pairing.handlers,
@@ -1987,6 +1999,7 @@ async function startHttps(
     autoActionRoutes.handlers,
     householdRoutes.handlers,
     voiceRoutes.handlers,
+    memoryRoutes.handlers,
     ...(oauthService === undefined ? [] : [oauthService.handlers]),
     ...(forgetRoutes === null ? [] : [forgetRoutes.handlers]),
   ].flatMap((handlers) => Object.keys(handlers));
@@ -2015,6 +2028,7 @@ async function startHttps(
         ...autoActionRoutes.handlers,
         ...householdRoutes.handlers,
         ...voiceRoutes.handlers,
+        ...memoryRoutes.handlers,
         ...(oauthService === undefined ? {} : oauthService.handlers),
         ...(forgetRoutes === null ? {} : forgetRoutes.handlers),
       },

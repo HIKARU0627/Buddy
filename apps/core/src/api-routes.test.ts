@@ -88,8 +88,9 @@ test(
     // 手入力（ADR 0167）で 1 つ、中身の変更（ADR 0169）で 1 つ、
     // レシートの写真の読み取りの入・切と読み取り（ADR 0177）で 2 つ、請求予定を消す操作（ADR 0179）で 1 つ増えた。
     // 忘却の計画・実行と忘却台帳の配信（B06-07b-2、ADR 0180）で 3 つ増えた。
-    assert.equal(operations.length, 66);
-    assert.equal(API_ROUTES.length, 66);
+    // 記憶の一覧（UI-10、ADR 0183）で 1 つ増えた。
+    assert.equal(operations.length, 67);
+    assert.equal(API_ROUTES.length, 67);
     for (const { path, method, operation } of operations) {
       const route = API_ROUTES.find(
         (candidate) => candidate.operationId === operation.operationId,
@@ -182,7 +183,8 @@ test(
     // 家計簿の 4 経路（ADR 0161）で 4 つ、設定の変更（ADR 0163）で 1 つ、取り込み（ADR 0164）で 1 つ、予算の変更（ADR 0166）で 1 つ、手入力（ADR 0167）で 1 つ、中身の変更（ADR 0169）で 1 つ、
     // レシートの写真の読み取りの入・切と読み取り（ADR 0177）で 2 つ、請求予定を消す操作（ADR 0179）で 1 つ増えた。
     // 忘却の計画と実行（B06-07b-2、ADR 0180）で 2 つ増えた（台帳の配信はロック中も返すので宣言しない）。
-    assert.equal(declared.length, 54);
+    // 記憶の一覧（UI-10、ADR 0183）で 1 つ増えた。
+    assert.equal(declared.length, 55);
   },
 );
 

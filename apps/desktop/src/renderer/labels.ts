@@ -63,6 +63,8 @@ export const REJECT_MESSAGES: Readonly<Record<RejectReason, string>> = {
     'その間にキャンバスの配置が変わったため、操作を取りやめました。今の配置を確かめて、もう一度動かしてください。',
   undo_target_changed:
     '対象がその後に変わっていたため、自動では元に戻しませんでした。必要なら、元のアプリで直してください。',
+  forget_unavailable:
+    '中枢が今は忘却を受け付けていません。何も消していません。',
 };
 
 // 操作ごとに言い方を変える拒否（何が拒否されたかと、次の行動）。

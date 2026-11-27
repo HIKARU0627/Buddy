@@ -78,6 +78,8 @@ import type {
 import { BudgetBridge } from './budget-bridge.js';
 import type { BudgetConfirmRequest } from './budget-bridge.js';
 import { AutoActionBridge } from './auto-action-bridge.js';
+import { MemoryBridge } from './memory-bridge.js';
+import type { ForgetConfirmRequest } from './memory-bridge.js';
 import { HouseholdBridge } from './household-bridge.js';
 import type {
   HouseholdExportSaver,
@@ -152,6 +154,14 @@ export const AUTO_ACTION_CHANNELS: readonly DesktopIpcChannel[] = [
   'desktop.auto_actions_list',
   'desktop.auto_action_undo',
   'desktop.safety_resume',
+];
+
+// 忘却の画面のチャネル（UI-10、ADR 0183）。登録済みでロック解除済みの端末なら、中枢の画面の端末でなくても使える
+// （中枢が端末・ロック・画面の操作を確かめる。計画と実行の正本は中枢）。
+export const MEMORY_CHANNELS: readonly DesktopIpcChannel[] = [
+  'desktop.memories_list',
+  'desktop.forget_plan',
+  'desktop.forget_execute',
 ];
 
 // 家計簿の月ごとの合計と 1 か月の記録・分類の変更・削除のチャネル（ADR 0162）。登録済みでロック解除済みの端末なら、
@@ -285,7 +295,8 @@ export type AdminConfirmRequest =
   | DeviceConfirmRequest
   | HomeConfirmRequest
   | OperationConfirmRequest
-  | BudgetConfirmRequest;
+  | BudgetConfirmRequest
+  | ForgetConfirmRequest;
 
 export interface DeviceConfirmRequest {
   readonly action: 'approve' | 'reject' | 'revoke';
@@ -435,6 +446,8 @@ export class DesktopCoreLink {
   readonly #candidates: CandidateBridge;
   // 自動実行の一覧・取り消し・安全停止の解除（参照だけを画面へ渡す。B13-05、ADR 0154）。
   readonly #autoActions: AutoActionBridge;
+  // 忘却の画面の一覧・計画・実行（参照だけを画面へ渡す。UI-10、ADR 0183）。
+  readonly #memories: MemoryBridge;
   readonly #household: HouseholdBridge;
   // 連携の接続の一覧と取得範囲の変更（参照だけを画面へ渡す。B08-02 P3・B09-05、ADR 0142）。
   readonly #connections: ConnectionsBridge;
@@ -484,6 +497,14 @@ export class DesktopCoreLink {
       connection: () => this.#connection,
       newRef: () => options.clock.newRequestId(),
       now: () => options.clock.now(),
+      log: (code) => this.#log(code),
+    });
+    this.#memories = new MemoryBridge({
+      contract: options.contract,
+      connection: () => this.#connection,
+      newRef: () => options.clock.newRequestId(),
+      now: () => options.clock.now(),
+      confirm: (request) => this.#confirm(request),
       log: (code) => this.#log(code),
     });
     this.#household = new HouseholdBridge({
@@ -1338,6 +1359,56 @@ export class DesktopCoreLink {
         raw.channel,
         result,
         (auto_actions) => ({ auto_actions }),
+      ),
+    );
+  }
+
+  // 忘却の画面（UI-10、ADR 0183）。一覧はロック解除済み、計画と実行はロック解除済みの画面操作（前面）。実行は OS の確認
+  // ダイアログを 1 回挟む（#confirm）。どちらも中枢の記録を消すだけで外部へは送らないので、この端末の入出力の停止中も
+  // 受け付ける。ロック・切断をまたいだ値は渡さない。
+  async handleMemoryIpc(
+    ipcChannel: string,
+    raw: unknown,
+    sender: DesktopIpcSender,
+    ioState: DesktopIoState,
+  ): Promise<ConnectionIpcOutcome> {
+    const contract = this.#options.contract;
+    if (
+      !contract.isRequest(raw) ||
+      raw.channel !== ipcChannel ||
+      (raw.channel !== 'desktop.memories_list' &&
+        raw.channel !== 'desktop.forget_plan' &&
+        raw.channel !== 'desktop.forget_execute')
+    )
+      return this.#reject(
+        echoRequestId(raw),
+        echoChannel(raw, ipcChannel),
+        'invalid_request',
+      );
+    const admission = admitDesktopRequest(raw.channel, null, ioState, sender);
+    if (!admission.ok)
+      return this.#reject(raw.request_id, raw.channel, admission.reason);
+    const connection = this.#connection;
+    if (
+      connection === null ||
+      this.#registration !== 'registered' ||
+      connection.state.phase !== 'live'
+    )
+      return this.#reject(raw.request_id, raw.channel, 'not_connected');
+    const generation = this.#viewGeneration;
+    const result =
+      raw.channel === 'desktop.memories_list'
+        ? await this.#memories.list()
+        : raw.channel === 'desktop.forget_plan'
+          ? await this.#memories.plan(raw.payload.ref)
+          : await this.#memories.execute(raw.payload.ref);
+    return this.#withinGeneration(
+      generation,
+      this.#operationOutcome(
+        raw.request_id,
+        raw.channel,
+        result,
+        (memories) => ({ memories }),
       ),
     );
   }
@@ -2397,6 +2468,7 @@ export class DesktopCoreLink {
     this.#cancelBudgetPoll();
     this.#candidates.reset();
     this.#autoActions.reset();
+    this.#memories.reset();
     this.#household.reset();
     this.#connections.reset();
     this.#canvas.reset();

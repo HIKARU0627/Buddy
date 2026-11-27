@@ -172,6 +172,10 @@ test('requests go only to the contract channels', async () => {
       'desktop.household_receipt_read',
       // 請求予定を消す（ADR 0179）。
       'desktop.household_bill_delete',
+      // 忘却の画面の記憶の一覧・計画・実行（UI-10、ADR 0183）。
+      'desktop.memories_list',
+      'desktop.forget_plan',
+      'desktop.forget_execute',
     ],
   );
   // 気づきの一覧・状態の変更（B11-05）は従来の窓（標準の端末画面）でも使う。連携の一覧・取得範囲の変更
@@ -200,6 +204,10 @@ test('requests go only to the contract channels', async () => {
     'desktop.household_receipt_setting',
     'desktop.household_receipt_read',
     'desktop.household_bill_delete',
+    // 忘却の画面の記憶の一覧・計画・実行（UI-10、ADR 0183）も従来の窓で使う。
+    'desktop.memories_list',
+    'desktop.forget_plan',
+    'desktop.forget_execute',
   ];
   for (const channel of legacy) {
     const request = { channel, request_id: 'r', payload: null };
@@ -363,6 +371,10 @@ const EXPECTED_ROLE_CHANNELS: Readonly<Record<string, readonly string[]>> = {
     'desktop.household_receipt_setting',
     'desktop.household_receipt_read',
     'desktop.household_bill_delete',
+    // 忘却の画面の記憶の一覧・計画・実行（UI-10、ADR 0183）。キャンバス・入力バー・島には渡さない。
+    'desktop.memories_list',
+    'desktop.forget_plan',
+    'desktop.forget_execute',
   ],
 };
 const EXPECTED_ROLE_NOTIFICATIONS: Readonly<Record<string, readonly string[]>> =

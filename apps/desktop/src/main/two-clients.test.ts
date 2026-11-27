@@ -820,6 +820,7 @@ test(
       assert.deepEqual(
         a.confirms.flatMap((entry) =>
           entry.action === 'register_home' ||
+          entry.action === 'forget_memory' ||
           'operationKind' in entry ||
           'poolId' in entry
             ? []

@@ -1266,6 +1266,86 @@
         "expected_io_epoch": null,
         "sender": { "trustedSender": false },
         "expected": { "ok": false, "reason": "untrusted_sender" }
+      },
+      {
+        "id": "memories-list-unlocked-unfocused",
+        "refs": ["ADR 0183", "UI-10"],
+        "channel": "desktop.memories_list",
+        "expected_io_epoch": null,
+        "sender": { "windowFocused": false },
+        "expected": { "ok": true }
+      },
+      {
+        "id": "memories-list-while-locked",
+        "channel": "desktop.memories_list",
+        "expected_io_epoch": null,
+        "state": { "lockState": "locked" },
+        "expected": { "ok": false, "reason": "device_locked" }
+      },
+      {
+        "id": "memories-list-while-lock-unknown",
+        "channel": "desktop.memories_list",
+        "expected_io_epoch": null,
+        "state": { "lockState": "unknown" },
+        "expected": { "ok": false, "reason": "device_locked" }
+      },
+      {
+        "id": "memories-list-untrusted",
+        "channel": "desktop.memories_list",
+        "expected_io_epoch": null,
+        "sender": { "trustedSender": false },
+        "expected": { "ok": false, "reason": "untrusted_sender" }
+      },
+      {
+        "id": "forget-plan-from-hidden-window",
+        "refs": ["ADR 0183", "UI-10"],
+        "channel": "desktop.forget_plan",
+        "expected_io_epoch": null,
+        "sender": { "windowFocused": false },
+        "expected": { "ok": false, "reason": "screen_operation_required" }
+      },
+      {
+        "id": "forget-plan-while-locked",
+        "channel": "desktop.forget_plan",
+        "expected_io_epoch": null,
+        "state": { "lockState": "locked" },
+        "expected": { "ok": false, "reason": "device_locked" }
+      },
+      {
+        "id": "forget-plan-by-screen-while-stopped",
+        "channel": "desktop.forget_plan",
+        "expected_io_epoch": null,
+        "state": { "stopScope": "local" },
+        "expected": { "ok": true }
+      },
+      {
+        "id": "forget-execute-from-hidden-window",
+        "refs": ["ADR 0183", "UI-10"],
+        "channel": "desktop.forget_execute",
+        "expected_io_epoch": null,
+        "sender": { "windowFocused": false },
+        "expected": { "ok": false, "reason": "screen_operation_required" }
+      },
+      {
+        "id": "forget-execute-while-lock-unknown",
+        "channel": "desktop.forget_execute",
+        "expected_io_epoch": null,
+        "state": { "lockState": "unknown" },
+        "expected": { "ok": false, "reason": "device_locked" }
+      },
+      {
+        "id": "forget-execute-untrusted",
+        "channel": "desktop.forget_execute",
+        "expected_io_epoch": null,
+        "sender": { "trustedSender": false },
+        "expected": { "ok": false, "reason": "untrusted_sender" }
+      },
+      {
+        "id": "forget-execute-by-screen-while-guest-stopped",
+        "channel": "desktop.forget_execute",
+        "expected_io_epoch": null,
+        "state": { "stopScope": "guest" },
+        "expected": { "ok": true }
       }
     ]
   },

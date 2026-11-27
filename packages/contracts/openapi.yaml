@@ -2389,6 +2389,36 @@ paths:
           $ref: '#/components/responses/RateLimited'
         '503':
           $ref: '#/components/responses/Unavailable'
+  /v1/memory/records:
+    get:
+      operationId: listMemories
+      summary: 記憶の一覧
+      description: 保存中・見直し待ちの記憶を、保存の新しい順に最大 1000 件返す（UI-10 の忘却の画面の左の一覧。ADR 0040 U40・0183）。本文（要約）は封筒を開いて返し、対象キー・内容の HMAC・由来の ID・元サービスの生の ID は返さない（由来は種類ごとの件数だけ）。本文を返すので、ロック解除済みの本人の画面操作（Buddy-Input-Origin が screen）だけに返す。削除済み・削除の期限を過ぎた記憶は出さない。封筒を開けない行・データ鍵がないときは一覧全体を 503 にする（黙って落とさない）。忘却の公開ゲート（U112）の今の値（forget_gate）を添え、閉じている間、画面は計画・実行の操作を無効にする。読み取りだけで、ゲートが閉じていても返す。
+      x-buddy-core-checks:
+        - device_token
+        - home_network
+        - unlocked
+        - screen_operation
+      parameters:
+        - $ref: '#/components/parameters/InputOrigin'
+        - $ref: '#/components/parameters/LockState'
+      responses:
+        '200':
+          description: 記憶の一覧と忘却の公開ゲートの値。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/MemoryListResponse
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
   /v1/memory/forget-plans:
     post:
       operationId: createForgetPlan

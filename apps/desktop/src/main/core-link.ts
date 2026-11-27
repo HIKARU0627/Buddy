@@ -985,7 +985,10 @@ export class DesktopCoreLink {
     // 会話の終了はキャンバスの読み直しへ渡す。画面への表示（本人への知らせ）はしない（U409・U464）。
     connection.onNotice((notice) => {
       if (notice.schema === 'buddy.forget-ledger-notice.v1') {
-        void this.forgetLedgerNotice(notice);
+        // 失敗はログのコードだけ（知らせの ID・台帳の中身・例外の文は出さない）。次の知らせ・次の接続の同期で追いつく。
+        this.forgetLedgerNotice(notice).catch(() => {
+          this.#log('forget_ledger_notice_failed');
+        });
         return;
       }
       // 消えた物は中枢が記述から閉じて版を進める。版の知らせを取り逃しても、知らせで今の記述を取り直す（ロック中・停止中・

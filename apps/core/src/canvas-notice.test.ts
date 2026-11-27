@@ -117,12 +117,17 @@ test('the hub closes items in batches of at most 12 operations, drops relations 
 });
 
 // 流れの経路の偽物の組み立て。次に置く物（pending）を試験が決めてから発言する。
-function rig() {
-  const canvas = new CanvasHub(contract);
+// canvas は試験が差し替えられる（途中の束で当てられない場合）。duringTurn は発言の保存の後・配置の前に呼ぶ（処理中の
+// 発言と知らせの競合）。
+function rig(
+  canvas: CanvasHub = new CanvasHub(contract),
+  duringTurn: ((turnId: string) => void) | null = null,
+) {
   let at = T0;
   let sessions = 0;
   const turnsByRequest = new Map<string, string>();
-  let pending: CanvasItem | null = null;
+  // 置く物、または閉じる物（{ close: 物の ID }。AI の close）。
+  let pending: CanvasItem | { readonly close: string } | null = null;
   // 会話の作成を止めておく口（区切りを作る間に知らせが来る場合）。
   let hold: { entered: () => void; release: Promise<void> } | null = null;
   const routes = createStreamRoutes({
@@ -148,6 +153,7 @@ function rig() {
       const turnId =
         turnsByRequest.get(requestId) ?? ID(0x200 + turnsByRequest.size + 1);
       turnsByRequest.set(requestId, turnId);
+      duringTurn?.(turnId);
       const forget = body['text'] === '忘れて';
       return Promise.resolve({
         status: 200,
@@ -180,6 +186,15 @@ function rig() {
       if (item === null) return null;
       const base = document.canvas_revision;
       const next = (BigInt(base) + 1n).toString();
+      if ('close' in item)
+        return {
+          base_canvas_revision: base,
+          canvas_revision: next,
+          ops: [{ op: 'close', item_id: item.close }],
+          reading_order: document.reading_order.filter(
+            (id) => id !== item.close,
+          ),
+        } as CanvasOpBatch;
       const exists = document.items.some(
         (entry) => entry.item_id === item.item_id,
       );
@@ -216,7 +231,7 @@ function rig() {
   let requests = 0;
   const say = async (
     text: string,
-    placing: CanvasItem | null = null,
+    placing: CanvasItem | { readonly close: string } | null = null,
     requestId: string = ID(0x500 + (requests += 1)),
   ) => {
     pending = placing;
@@ -239,10 +254,34 @@ function rig() {
     assert.equal(response.status, 200, JSON.stringify(response.body));
     return { requestId, body: response.body as unknown as StreamTurnResponse };
   };
+  const userOpHandler = routes.handlers['postCanvasUserOp'];
+  const userOpRoute = API_ROUTES.find(
+    (entry) => entry.operationId === 'postCanvasUserOp',
+  );
+  assert(userOpHandler !== undefined && userOpRoute !== undefined);
+  // ユーザーが物を閉じる（UI-06）。
+  const userClose = async (itemId: string) => {
+    const response = await userOpHandler({
+      route: userOpRoute,
+      device,
+      body: {
+        request_id: ID(0x900 + (requests += 1)),
+        command_scope_id: ID(0x600),
+        expected_canvas_revision: canvas.document.canvas_revision,
+        op: { kind: 'close', item_id: itemId },
+      },
+      params: {},
+      remoteAddress: '127.0.0.1',
+      query: {},
+      declaredLockState: null,
+    });
+    assert.equal(response.status, 200, JSON.stringify(response.body));
+  };
   return {
     canvas,
     routes,
     say,
+    userClose,
     advance: (ms: number) => {
       at += ms;
     },
@@ -454,4 +493,300 @@ test('a forget that arrives while a new segment is being opened keeps the summar
   );
   assert.equal(second.body.segment.open_reason, 'idle_timeout');
   assert.equal(second.body.segment.carried_summary, null);
+});
+
+// ---- 見直しでの修正（ADR 0187 の「見直しでの修正」）----
+
+// 物を 12 個ずつの束で足す（試験の準備。足した後の版は束の数）。
+const addAll = (hub: CanvasHub, items: readonly CanvasItem[]) => {
+  for (let start = 0; start < items.length; start += 12) {
+    const chunk = items.slice(start, start + 12);
+    const base = hub.document.canvas_revision;
+    const next = (BigInt(base) + 1n).toString();
+    const batch = {
+      base_canvas_revision: base,
+      canvas_revision: next,
+      ops: chunk.map((item) => ({ op: 'add' as const, item })),
+      reading_order: [
+        ...hub.document.reading_order,
+        ...chunk.map((item) => item.item_id),
+      ],
+    } as unknown as CanvasOpBatch;
+    assert.deepEqual(hub.apply(batch), { ok: true, revision: next });
+  }
+};
+const x = (n: number) => `x${n}`;
+
+test('closing 13 items where a later one points at an earlier one closes them all across two batches', () => {
+  const hub = new CanvasHub(contract);
+  addAll(hub, [
+    ...Array.from({ length: 12 }, (_, n) => card(x(n))),
+    card('x12', [], [{ kind: 'detail_of', target: 'x0' }]),
+  ]);
+  assert.equal(hub.document.canvas_revision, '2');
+  const revisions: string[] = [];
+  hub.subscribe((revision) => revisions.push(revision));
+
+  // x12 の関係を外す 1 件 + 閉じる 11 件、閉じる 2 件の 2 つの束（版 3・4）。
+  assert.equal(
+    hub.removeItems(new Set(Array.from({ length: 13 }, (_, n) => x(n)))),
+    '4',
+  );
+  assert.deepEqual(revisions, ['3', '4']);
+  assert.deepEqual(hub.document, {
+    canvas_revision: '4',
+    items: [],
+    reading_order: [],
+  });
+  assert.equal(hub.placedAt('x0'), null);
+  assert.equal(hub.placedAt('x12'), null);
+});
+
+test('closing items that point at each other works in one batch and across batches', () => {
+  // 1 つの束に収まる: 互いに指す a・b と、a を指す keep。keep の関係を外して a・b を閉じる（版 1 つ）。
+  const small = new CanvasHub(contract);
+  addAll(small, [
+    card('a', [], [{ kind: 'detail_of', target: 'b' }]),
+    card('b', [], [{ kind: 'detail_of', target: 'a' }]),
+    card('keep', [], [{ kind: 'detail_of', target: 'a' }]),
+  ]);
+  assert.equal(small.removeItems(new Set(['a', 'b'])), '2');
+  assert.deepEqual(small.document, {
+    canvas_revision: '2',
+    items: [card('keep')],
+    reading_order: ['keep'],
+  });
+
+  // 束をまたぐ: 互いに指す x0・x12 と、x5 を指す keep、関係のない other。関係を外す 3 件、閉じる 12 件、閉じる 1 件の
+  // 3 つの束（同じ物の関係の更新と閉じるを 1 つの束に入れない。版 3・4・5）。
+  const hub = new CanvasHub(contract);
+  addAll(hub, [
+    card('x0', [], [{ kind: 'detail_of', target: 'x12' }]),
+    card('x12', [], [{ kind: 'detail_of', target: 'x0' }]),
+    ...Array.from({ length: 11 }, (_, n) => card(x(n + 1))),
+    card('keep', [], [{ kind: 'detail_of', target: 'x5' }]),
+    card('other'),
+  ]);
+  assert.equal(hub.document.canvas_revision, '2');
+  const revisions: string[] = [];
+  hub.subscribe((revision) => revisions.push(revision));
+  assert.equal(
+    hub.removeItems(new Set(Array.from({ length: 13 }, (_, n) => x(n)))),
+    '5',
+  );
+  assert.deepEqual(revisions, ['3', '4', '5']);
+  assert.deepEqual(hub.document, {
+    canvas_revision: '5',
+    items: [card('keep'), card('other')],
+    reading_order: ['keep', 'other'],
+  });
+});
+
+test('closing a chain of items that crosses the batch boundary closes all of them', () => {
+  // x(n) が x(n-1) を指す鎖と、x12 を指す tail。関係を外す 12 件、関係を外す 1 件 + 閉じる 11 件、閉じる 2 件の
+  // 3 つの束（版 3・4・5）。
+  const hub = new CanvasHub(contract);
+  addAll(hub, [
+    card('x0'),
+    ...Array.from({ length: 12 }, (_, n) =>
+      card(x(n + 1), [], [{ kind: 'detail_of', target: x(n) }]),
+    ),
+    card('tail', [], [{ kind: 'detail_of', target: 'x12' }]),
+  ]);
+  assert.equal(hub.document.canvas_revision, '2');
+  assert.equal(
+    hub.removeItems(new Set(Array.from({ length: 13 }, (_, n) => x(n)))),
+    '5',
+  );
+  assert.deepEqual(hub.document, {
+    canvas_revision: '5',
+    items: [card('tail')],
+    reading_order: ['tail'],
+  });
+});
+
+// 指定した回の apply を当てない（途中の束で失敗する場合）。
+class FlakyHub extends CanvasHub {
+  failOn: number | null = null;
+  override apply(batch: CanvasOpBatch) {
+    if (this.failOn !== null) {
+      this.failOn -= 1;
+      if (this.failOn === 0) {
+        this.failOn = null;
+        return { ok: false as const, reason: 'semantic' as const };
+      }
+    }
+    return super.apply(batch);
+  }
+}
+
+test('when a later batch fails, the closed part stays closed and the rest is closed again by the next turn or notice', async () => {
+  for (const retry of ['turn', 'notice'] as const) {
+    const hub = new FlakyHub(contract);
+    const r = rig(hub);
+    const turns: string[] = [];
+    for (let n = 0; n < 13; n += 1)
+      turns.push((await r.say('置いて', card(`c${n}`))).body.turn_id);
+    assert.equal(hub.document.canvas_revision, '13');
+
+    // 13 件を閉じる束（12 件・1 件）の 2 つ目を当てない: 1 つ目の 12 件は閉じたまま（版 14）、c12 が残る。
+    hub.failOn = 2;
+    assert.equal(
+      r.routes.applyNotice(
+        expired(
+          turns.map((id) => ({
+            item_kind: 'turn' as const,
+            item_id: id,
+          })) as RetentionNotice['items'],
+        ),
+      ),
+      false,
+    );
+    assert.equal(hub.document.canvas_revision, '14');
+    assert.deepEqual(
+      hub.document.items.map((item) => item.item_id),
+      ['c12'],
+    );
+    assert.equal(hub.placedAt('c0'), null);
+    assert.equal(hub.placedAt('c11'), null);
+    assert.equal(hub.placedAt('c12'), '13');
+    assert.deepEqual(r.routes.boundItemIds(), ['c12']);
+
+    if (retry === 'turn') {
+      // 次の発言: fresh を置き（版 15）、続けて c12 を閉じ直す（版 16）。
+      const next = await r.say('つぎ', card('fresh'));
+      assert.equal(next.body.canvas?.canvas_revision, '15');
+      assert.equal(hub.document.canvas_revision, '16');
+      assert.deepEqual(
+        hub.document.items.map((item) => item.item_id),
+        ['fresh'],
+      );
+      assert.deepEqual(r.routes.boundItemIds(), ['fresh']);
+    } else {
+      // 次の知らせ（関係のない発言の期限切れ）: c12 を閉じ直す（版 15）。
+      assert.equal(
+        r.routes.applyNotice(
+          expired([{ item_kind: 'turn', item_id: ID(0x999) }]),
+        ),
+        true,
+      );
+      assert.equal(hub.document.canvas_revision, '15');
+      assert.deepEqual(hub.document.items, []);
+      assert.deepEqual(r.routes.boundItemIds(), []);
+    }
+    assert.equal(hub.placedAt('c12'), null);
+  }
+});
+
+test('an item closed by the AI or by the user drops its tie to the turn at once', async () => {
+  const r = rig();
+  await r.say('ひとつめ', card('alpha'));
+  await r.say('ふたつめ', card('beta'));
+  assert.deepEqual(r.routes.boundItemIds(), ['alpha', 'beta']);
+  // AI の close（版 3）。
+  const closed = await r.say('みっつめ', { close: 'alpha' });
+  assert.equal(closed.body.canvas?.canvas_revision, '3');
+  assert.deepEqual(r.routes.boundItemIds(), ['beta']);
+  // ユーザーの閉じる操作（版 4）。
+  await r.userClose('beta');
+  assert.equal(r.canvas.document.canvas_revision, '4');
+  assert.deepEqual(r.canvas.document.items, []);
+  assert.deepEqual(r.routes.boundItemIds(), []);
+});
+
+test('a turn that expires while it is processed places nothing, and items pointing at gone turns or memories are closed at once', async () => {
+  let expireNext = false;
+  const r = rig(new CanvasHub(contract), (turnId) => {
+    if (!expireNext) return;
+    expireNext = false;
+    // 発言の保存の後・配置の前に、その発言の期限切れの知らせが来る。
+    assert.equal(
+      r.routes.applyNotice(expired([{ item_kind: 'turn', item_id: turnId }])),
+      true,
+    );
+  });
+  await r.say('ひとつめ', card('alpha'));
+  assert.equal(r.canvas.document.canvas_revision, '1');
+
+  // 1. 処理中に消えた発言の結果は置かない（版 1 のまま）。同じ要求の再送でも置かない。
+  expireNext = true;
+  const lost = await r.say('ふたつめ', card('beta'));
+  assert.equal(lost.body.canvas, null);
+  assert.equal(r.canvas.document.canvas_revision, '1');
+  assert.deepEqual(
+    r.canvas.document.items.map((item) => item.item_id),
+    ['alpha'],
+  );
+  const again = await r.say('ふたつめ', card('beta'), lost.requestId);
+  assert.equal(again.body.turn_id, lost.body.turn_id);
+  assert.equal(again.body.canvas, null);
+  assert.equal(r.canvas.document.canvas_revision, '1');
+  assert.deepEqual(r.routes.boundItemIds(), ['alpha']);
+
+  // 2. 後の発言が置いた物が消えた発言を参照していたら、置いた直後に閉じる（置いて版 2、閉じて版 3）。
+  const pointing = await r.say(
+    'みっつめ',
+    card('gamma', [{ kind: 'screen_result', id: lost.body.turn_id }]),
+  );
+  assert.equal(pointing.body.canvas?.canvas_revision, '2');
+  assert.equal(r.canvas.document.canvas_revision, '3');
+  assert.deepEqual(
+    r.canvas.document.items.map((item) => item.item_id),
+    ['alpha'],
+  );
+
+  // 3. 忘れた記憶を参照する物も、置いた直後に閉じる（版 4・5）。
+  const memory = ID(0x700);
+  r.routes.applyNotice({
+    ...expired([{ item_kind: 'memory', item_id: memory }]),
+    kind: 'forgotten',
+    reason: 'forgotten',
+    forgetting_generation: '1',
+  });
+  assert.equal(r.canvas.document.canvas_revision, '3');
+  const remembered = await r.say(
+    'よっつめ',
+    card('delta', [{ kind: 'memory', id: memory }]),
+  );
+  assert.equal(remembered.body.canvas?.canvas_revision, '4');
+  assert.equal(r.canvas.document.canvas_revision, '5');
+  assert.deepEqual(
+    r.canvas.document.items.map((item) => item.item_id),
+    ['alpha'],
+  );
+  assert.deepEqual(r.routes.boundItemIds(), ['alpha']);
+});
+
+test('a late result of a gone turn is not placed while the turn is remembered; the list keeps the newest 256 turns', () => {
+  const r = rig();
+  const lateTurn = (turnId: string) =>
+    ({
+      request_id: ID(0x800),
+      turn_id: turnId,
+      input_id: ID(0x802),
+      workflow_id: ID(0x803),
+      status: 'answered',
+      result_view: null,
+      reply_text: '合成の答え',
+    }) as unknown as TurnResponse;
+  const others = (from: number, count: number) =>
+    expired(
+      Array.from({ length: count }, (_, n) => ({
+        item_kind: 'turn' as const,
+        item_id: ID(from + n),
+      })) as RetentionNotice['items'],
+    );
+  // 消えた発言 L1 の後に 255 件: L1 を含めて 256 件なので、L1 の遅着の結果は置かない。
+  r.routes.applyNotice(expired([{ item_kind: 'turn', item_id: ID(0xb01) }]));
+  r.routes.applyNotice(others(0x10000, 255));
+  assert.equal(r.routes.placeLate(lateTurn(ID(0xb01)), null), null);
+  assert.equal(r.canvas.document.canvas_revision, '0');
+  // 消えた発言 L2 の後に 256 件: L2 は一覧から外れているので、遅着の結果を置く（版 1）。
+  r.routes.applyNotice(expired([{ item_kind: 'turn', item_id: ID(0xb02) }]));
+  r.routes.applyNotice(others(0x20000, 256));
+  assert.equal(
+    r.routes.placeLate(lateTurn(ID(0xb02)), null)?.canvas_revision,
+    '1',
+  );
+  assert.equal(r.canvas.document.canvas_revision, '1');
 });

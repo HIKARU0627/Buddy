@@ -129,6 +129,7 @@ const ID = (n: number) =>
   `00000000-0000-4000-8000-${n.toString(16).padStart(12, '0')}`;
 
 // 購読が「接続範囲を確かめて配信を始めた」状態になるまで待つ（その後の知らせだけが届く）。中枢の購読の数で確かめる。
+// 数が揃うまでの肯定の待ちで、届かないことの確かめには使わない（それは後の既知の知らせが届いた時点で確かめる）。
 const subscribed = async (core: EventCore, count: number) => {
   const relay = core.handle.notices as unknown as { listenerCount: number };
   for (let i = 0; i < 200 && relay.listenerCount !== count; i += 1)
@@ -208,8 +209,6 @@ test(
     assert(!text.includes('合成の予定'));
     assert(!text.includes('ev-1'));
 
-    // 閉じた購読には何も届いていない（閉じた後の知らせを溜めない）。
-    assert.deepEqual(noticesOf(gone), []);
     // 記述は版 2 で空（解除してから読む。getCanvas はロック中は出さない）。
     core.env.lock = 'unlocked';
     assert.deepEqual(await canvasOf(core, device), {
@@ -242,7 +241,10 @@ test(
         messages.filter((message) => message.type === 'notice').length === 2,
       'ledger notice on the first stream',
     );
-    assert.deepEqual(noticesOf(open)[1], ledger);
+    assert.deepEqual(noticesOf(open), [notice, ledger]);
+    // 閉じた購読には何も届いていない（閉じた後の知らせを溜めない）。後の既知の知らせ（台帳）が開いている購読へ届いた
+    // 時点で確かめる（時間を置いて待つだけの否定にしない）。
+    assert.deepEqual(noticesOf(gone), []);
     // 台帳の知らせはキャンバスを変えない。
     assert.equal((await canvasOf(core, device)).canvas_revision, '2');
   },
@@ -286,7 +288,6 @@ test(
       ],
     };
     await core.handle.notices.publish(expired);
-    assert.deepEqual(noticesOf(first), []);
     const refused = openStream(t, core, device, cursor);
     assert.deepEqual(await refused.opened, { ok: false, status: 403 });
 
@@ -322,5 +323,8 @@ test(
       },
     ]);
     assert(!JSON.stringify(second.messages).includes('mail-synthetic-raw'));
+    // 閉じた購読には、閉じた後の知らせ（0xf1）も後の知らせも届いていない。後の既知の知らせ（0xf4）が開き直した購読へ
+    // 届いた時点で確かめる。
+    assert.deepEqual(noticesOf(first), []);
   },
 );

@@ -15,8 +15,7 @@ import {
 } from '@buddy/storage';
 import type { SqliteDatabase } from '@buddy/storage';
 import type { CreditObservationInput } from '@buddy/domain';
-import { createApiContract } from './api-contract.js';
-import type { ApiContract } from './api-contract.js';
+import { sharedApiContract } from './api-test-support.js';
 import { checkBudgetConfigText } from './budget-config.js';
 import type {
   CreditObservationSource,
@@ -216,15 +215,6 @@ export function claudeRequest(
   overrides: Partial<PaidRequest> = {},
 ): PaidRequest {
   return textRequest(requestId, { profile_id: CREDIT_PROFILE, ...overrides });
-}
-
-// 契約の検証器は、全 Schema を Ajv で組み立てて検証関数を作る重い処理（1 回あたり CPU 約 0.6〜1 秒）。
-// 検証器は状態を持たない（検証関数の控えだけ）ので、試験ごとに作らず、プロセスで 1 つを共有する。
-// 試験ごとに作ると、CPU の少ない CI（Windows）で試験の 20 秒の上限を超える（予算・音声の試験が約 100 件ある）。
-let sharedContract: ApiContract | null = null;
-export function sharedApiContract(): ApiContract {
-  sharedContract ??= createApiContract();
-  return sharedContract;
 }
 
 export function loadedConfig(

@@ -11,11 +11,14 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
 import { openWriteConnection, storagePlatform } from '@buddy/storage';
-import { createApiContract } from './api-contract.js';
 import { createBudgetRoutes } from './api-budget.js';
 import type { BudgetGate } from './budget-gate.js';
 import { API_ROUTES } from './api-routes.js';
-import { pinnedRequest, tempDir } from './api-test-support.js';
+import {
+  pinnedRequest,
+  sharedApiContract,
+  tempDir,
+} from './api-test-support.js';
 import type { TestDevice } from './api-test-support.js';
 import { BUDGET_CONFIG_FILE } from './budget-config.js';
 import { BUDGET_CREDIT_FILE } from './budget-credit.js';
@@ -40,7 +43,7 @@ import {
 import type { EventCore } from './event-test-support.js';
 import { DB_FILE } from './paths.js';
 
-const contract = createApiContract();
+const contract = sharedApiContract();
 // 応答の JSON（契約の形は contract.valid で確かめた後に、値を手で書いた期待値と比べる）。
 type Json = Record<string, unknown>;
 type Usage = Json & {

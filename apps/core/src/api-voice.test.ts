@@ -8,11 +8,11 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
 import { createMockKeyStore, createMockTlsKeyStore } from '@buddy/platform';
-import { createApiContract } from './api-contract.js';
 import {
   insertDevice,
   onCleanup,
   pinnedRequest,
+  sharedApiContract,
   tempDir,
 } from './api-test-support.js';
 import type { TestDevice } from './api-test-support.js';
@@ -21,7 +21,7 @@ import { getJson, openStream, postJson } from './event-test-support.js';
 import type { EventCore } from './event-test-support.js';
 import { TLS_CERTIFICATE_FILE } from './tls-identity.js';
 
-const contract = createApiContract();
+const contract = sharedApiContract();
 const UNLOCKED = { 'buddy-lock-state': 'unlocked' };
 
 async function startVoiceCore(t: test.TestContext): Promise<EventCore> {

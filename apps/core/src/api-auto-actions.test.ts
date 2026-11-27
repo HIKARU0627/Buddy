@@ -9,7 +9,6 @@ import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import test from 'node:test';
 import { openWriteConnection, storagePlatform } from '@buddy/storage';
-import { createApiContract } from './api-contract.js';
 import {
   bearer,
   bootstrap,
@@ -21,11 +20,11 @@ import {
   submitDurable,
 } from './event-test-support.js';
 import type { EventCore } from './event-test-support.js';
-import { pinnedRequest } from './api-test-support.js';
+import { pinnedRequest, sharedApiContract } from './api-test-support.js';
 import type { ApiResponse, TestDevice } from './api-test-support.js';
 import { DB_FILE } from './paths.js';
 
-const contract = createApiContract();
+const contract = sharedApiContract();
 type Json = Record<string, unknown>;
 const SCREEN = { 'buddy-input-origin': 'screen' } as const;
 const THIRTY_DAYS_MS = 2_592_000_000;

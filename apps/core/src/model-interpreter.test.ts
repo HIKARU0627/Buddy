@@ -7,7 +7,8 @@ import test from 'node:test';
 import type { ModelProfile, ModelUsage } from '@buddy/contracts';
 import { createFakeAdapter, syntheticProfile } from '@buddy/ai/testing';
 import type { FakeAdapterStep } from '@buddy/ai/testing';
-import { createApiContract, loadContractSchema } from './api-contract.js';
+import { loadContractSchema } from './api-contract.js';
+import { sharedApiContract } from './api-test-support.js';
 import { createModelInterpreter } from './model-interpreter.js';
 import type {
   JudgmentDiagnostic,
@@ -29,7 +30,7 @@ import {
 } from './event-test-support.js';
 import type { EventCore } from './event-test-support.js';
 
-const contract = createApiContract();
+const contract = sharedApiContract();
 const schema = loadContractSchema() as Record<string, unknown>;
 const outputSchema = { ...schema, $ref: '#/$defs/WireResponse' };
 const schemaValidator = {

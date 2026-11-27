@@ -4,10 +4,9 @@ import { randomUUID } from 'node:crypto';
 import test from 'node:test';
 import { FaultInjector } from '@buddy/connectors/testing';
 import type { DataKeyProvider } from '@buddy/storage';
-import { createApiContract } from './api-contract.js';
+import { sharedApiContract, withTimeout } from './api-test-support.js';
 import { createOperationRunner } from './operation-runner.js';
 import type { RunnerStore } from './operation-runner.js';
-import { withTimeout } from './api-test-support.js';
 import {
   approve,
   approveBody,
@@ -685,7 +684,7 @@ test(
       provider: null,
       writer: null,
       faults: new FaultInjector(),
-      contract: createApiContract(),
+      contract: sharedApiContract(),
       log: () => undefined,
     });
     const operationId = randomUUID();
@@ -776,7 +775,7 @@ test(
       provider: {} as never,
       writer: {} as never,
       faults: new FaultInjector(),
-      contract: createApiContract(),
+      contract: sharedApiContract(),
       log: (message) => logs.push(message),
       cloudGate: {
         ready: () => {
@@ -833,7 +832,7 @@ test(
       provider: {} as never,
       writer: {} as never,
       faults: new FaultInjector(),
-      contract: createApiContract(),
+      contract: sharedApiContract(),
       log: () => undefined,
       cloudGate: {
         ready: () => Promise.resolve(),

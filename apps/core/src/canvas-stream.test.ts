@@ -15,7 +15,7 @@ import type {
   StorageModeChangeResponse,
   StreamTurnResponse,
 } from '@buddy/contracts';
-import { createApiContract } from './api-contract.js';
+import { sharedApiContract } from './api-test-support.js';
 import type { ApiHandlerRequest, ApiRouteHandler } from './api-server.js';
 import { API_ROUTES } from './api-routes.js';
 import type { DeviceRecord } from '@buddy/storage';
@@ -55,7 +55,7 @@ import type {
 import { parseClockState } from './clock-state.js';
 import { CLOCK_STATE_FILE } from './paths.js';
 
-const contract = createApiContract();
+const contract = sharedApiContract();
 
 // 保存境界の保持者の偽物（保存モードを切り替えない。private へは入れない）。区切りの世代だけを返す。
 const plainStorage = (

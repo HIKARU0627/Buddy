@@ -7,8 +7,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { createApiContract } from './api-contract.js';
-import { onCleanup } from './api-test-support.js';
+import { onCleanup, sharedApiContract } from './api-test-support.js';
 import {
   createClockStateFile,
   parseClockState,
@@ -162,7 +161,7 @@ test('open: a restart while a private segment was open returns to a normal segme
   ]);
   // 契約の Schema に合う。
   assert.equal(
-    createApiContract().valid('StorageBoundaryNotice', sink.boundaryNotices[0]),
+    sharedApiContract().valid('StorageBoundaryNotice', sink.boundaryNotices[0]),
     true,
   );
 });

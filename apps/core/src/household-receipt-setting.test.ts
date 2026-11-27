@@ -22,8 +22,7 @@ import type {
   HouseholdOp,
   SqliteDatabase,
 } from '@buddy/storage';
-import { onCleanup } from './api-test-support.js';
-import { createApiContract } from './api-contract.js';
+import { onCleanup, sharedApiContract } from './api-test-support.js';
 import { createHouseholdRoutes } from './api-household.js';
 import type { ApiRouteHandler } from './api-server.js';
 import { createHouseholdReceiptRoutes } from './household-receipt.js';
@@ -47,7 +46,7 @@ const STORE_GENERATION = '00000000-0000-4000-8000-0000000000aa';
 const NOW = Date.parse('2030-11-26T03:00:00.000Z');
 const ZONE = 'Asia/Tokyo';
 const SCOPE = '00000000-0000-4000-8000-000000009002';
-const contract = createApiContract();
+const contract = sharedApiContract();
 
 const id = (n: number) =>
   `00000000-0000-4000-8000-${n.toString(16).padStart(12, '0')}`;

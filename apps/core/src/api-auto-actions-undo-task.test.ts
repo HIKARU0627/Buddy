@@ -16,7 +16,6 @@ import {
   storagePlatform,
 } from '@buddy/storage';
 import type { CreateOperationCommand } from '@buddy/storage';
-import { createApiContract } from './api-contract.js';
 import { taskCreationOf, undoOperationId } from './api-auto-actions.js';
 import {
   DATA_KEY_MATERIAL,
@@ -27,12 +26,12 @@ import {
   submitDurable,
 } from './event-test-support.js';
 import type { EventCore } from './event-test-support.js';
-import { pinnedRequest } from './api-test-support.js';
+import { pinnedRequest, sharedApiContract } from './api-test-support.js';
 import type { ApiResponse, TestDevice } from './api-test-support.js';
 import { DB_FILE } from './paths.js';
 import type { ProviderReader, ProviderWriter } from './turn-ports.js';
 
-const contract = createApiContract();
+const contract = sharedApiContract();
 type Json = Record<string, unknown>;
 const SCREEN = { 'buddy-input-origin': 'screen' } as const;
 const ACCOUNT = '00000000-0000-4000-8000-000000000002';

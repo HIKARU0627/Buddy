@@ -7,7 +7,8 @@ import test from 'node:test';
 import type { IntentShadowRecord, ModelUsage } from '@buddy/contracts';
 import { createFakeAdapter, syntheticProfile } from '@buddy/ai/testing';
 import type { FakeAdapterStep } from '@buddy/ai/testing';
-import { createApiContract, loadContractSchema } from './api-contract.js';
+import { loadContractSchema } from './api-contract.js';
+import { sharedApiContract } from './api-test-support.js';
 import { createShadowRecorder, SHADOW_MAX_INPUTS } from './shadow-mode.js';
 import type {
   SaveShadowResult,
@@ -28,7 +29,7 @@ import {
   startEventCore,
 } from './event-test-support.js';
 
-const contract = createApiContract();
+const contract = sharedApiContract();
 const schema = loadContractSchema() as Record<string, unknown>;
 const outputSchema = { ...schema, $ref: '#/$defs/WireResponse' };
 const schemaValidator = {

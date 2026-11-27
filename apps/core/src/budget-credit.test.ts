@@ -14,7 +14,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { createApiContract } from './api-contract.js';
+import { sharedApiContract } from './api-test-support.js';
 import {
   MAX_BUDGET_CREDIT_BYTES,
   checkCreditObservationsText,
@@ -31,7 +31,7 @@ import {
   withBudgetStore,
 } from './budget-test-support.js';
 
-const contract = createApiContract();
+const contract = sharedApiContract();
 
 const file = (...observations: unknown[]) =>
   JSON.stringify({

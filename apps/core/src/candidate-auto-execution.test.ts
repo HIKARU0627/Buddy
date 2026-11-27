@@ -29,7 +29,7 @@ import type {
   DbCommandOutcome,
   SqliteDatabase,
 } from '@buddy/storage';
-import { createApiContract } from './api-contract.js';
+import { sharedApiContract } from './api-test-support.js';
 import {
   candidateSafetyTargetKey,
   candidateTaskDue,
@@ -59,7 +59,7 @@ const REQ = '11111111-1111-4111-8111-111111111111';
 const CAND = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const GROUP = 'group-1';
 const HASH = 'd'.repeat(64);
-const CONTRACT = createApiContract();
+const CONTRACT = sharedApiContract();
 const GENERATION = '00000000-0000-4000-8000-0000000000ff';
 
 const POLICY_TASK_ON: AutoExecutionPolicy = {

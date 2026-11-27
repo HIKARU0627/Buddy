@@ -7,8 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { createMockKeyStore } from '@buddy/platform';
-import { createApiContract } from './api-contract.js';
-import { onCleanup } from './api-test-support.js';
+import { onCleanup, sharedApiContract } from './api-test-support.js';
 import { parseClockState } from './clock-state.js';
 import { startCore } from './core.js';
 import type { CoreHandle } from './core.js';
@@ -90,7 +89,7 @@ test('core: a private segment is left open at stop — the next start returns to
   assert.equal(notice?.segment_generation, '3');
   assert.equal(notice?.segment_id, second.storage.origin().segment_id);
   assert.equal(
-    createApiContract().valid('StorageBoundaryNotice', notice),
+    sharedApiContract().valid('StorageBoundaryNotice', notice),
     true,
   );
   // 時計の判定に使う欄は世代の書き込みで動かない（掃除は起動ごとに自分の欄を更新する）。

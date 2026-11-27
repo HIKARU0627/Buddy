@@ -5,7 +5,8 @@
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { sharedApiContract, uuid } from './budget-test-support.js';
+import { sharedApiContract } from './api-test-support.js';
+import { uuid } from './budget-test-support.js';
 import { loadContractSchema } from './api-contract.js';
 import { createFakeAdapter, syntheticProfile } from '@buddy/ai/testing';
 import { createModelInterpreter } from './model-interpreter.js';

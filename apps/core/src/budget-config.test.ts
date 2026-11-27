@@ -17,7 +17,7 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { budgetRuntimeConfigErrors, normalizeTimeZone } from '@buddy/domain';
 import type { BudgetRuntimeConfigInput } from '@buddy/domain';
-import { createApiContract } from './api-contract.js';
+import { sharedApiContract } from './api-test-support.js';
 import {
   MAX_BUDGET_CONFIG_BYTES,
   checkBudgetConfigText,
@@ -25,7 +25,7 @@ import {
 } from './budget-config.js';
 import { syntheticConfig } from './budget-test-support.js';
 
-const contract = createApiContract();
+const contract = sharedApiContract();
 const TOKYO = () => 'Asia/Tokyo';
 
 const check = (

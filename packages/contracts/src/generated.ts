@@ -1039,7 +1039,11 @@ export type EventStreamMessage =
     }
   | {
       type: 'notice';
-      notice: RetentionNotice | ForgetLedgerNotice | StorageBoundaryNotice;
+      notice:
+        | RetentionNotice
+        | ForgetLedgerNotice
+        | StorageBoundaryNotice
+        | StorageModeNotice;
     }
   | {
       type: 'resnapshot_required';
@@ -6818,6 +6822,15 @@ export interface StorageBoundaryNotice {
   segment_id: Id;
   segment_generation: SegmentGeneration;
 }
+/**
+ * 流れの保存モードが変わったことの知らせ（UI-05 の段階 6、ADR 0189、U477）。Core が POST /v1/stream/storage-mode で区切りを開き直したときに、開いている購読へ流す。reason は区切りを開き直した理由（記録しない会話に入った・出た・それ以外の保存モードの変更）、storage_mode は変えた後の保存モード。区切り・会話の ID・世代・本文・要約を入れない。端末は受けたら GET /v1/stream/storage-mode で読み直す（知らせの値をそのまま正本にしない）。
+ */
+export interface StorageModeNotice {
+  schema: 'buddy.storage-mode-notice.v1';
+  occurred_at: UtcTime;
+  storage_mode: StorageMode;
+  reason: 'private_started' | 'private_ended' | 'storage_mode_changed';
+}
 export interface PairingStartRequest {
   request_id: Id;
   command_scope_id: Id;
@@ -7274,6 +7287,10 @@ export interface DesktopTurnResult {
    * status が session_control のときの操作（それ以外は省略か null）。LLM を呼ばずに照合表で決めた値で、画面・端末は同じ操作をボタンと同じ処理で行う。
    */
   session_control?: SessionControlAction | null;
+  /**
+   * 保存モードの食い違いの印（UI-05 の段階 6、ADR 0189、U477）。recorded_while_private_shown は、送る時点で画面が記録しないと表示していたのに、中枢が記録しない区切りでない区切りで受けた（発言は記録された）こと。main が流れへの発言の応答の区切りの保存モードと、送る前の表示の値を比べて付ける。食い違いがなければ省略する。
+   */
+  storage_notice?: 'recorded_while_private_shown';
 }
 /**
  * 承認画面に出す確定した変更の内容（設計 01 承認画面の必須内容。B04-05、ADR 0031）。main が中枢の OperationPreview から作る表示用の値で、preview_id・content_hash・state_revision・アカウント ID・操作 ID を含めない（main が preview_ref の裏に持つ）。service は変更先（buddy は Buddy 内の用事）、target は対象（メールの ID・用事の一覧）。

@@ -13,6 +13,7 @@ import {
   Spinner,
   TextArea,
   TextField,
+  WarningIcon,
 } from '@heroui/react';
 import { CanvasIcon } from '../../components/CanvasIcon.js';
 import { StatusMark } from '../../components/StatusText.js';
@@ -30,6 +31,7 @@ export function InputBar({
   onSummon,
   expanded = false,
   clarification = null,
+  storageNotice = null,
 }: {
   readonly line: StatusLine;
   readonly enabled: boolean;
@@ -44,6 +46,8 @@ export function InputBar({
   readonly expanded?: boolean;
   // 聞き返しの文（UI-08）。広がった領域に出す。説明文ではなく、その回の質問そのもの。
   readonly clarification?: string | null;
+  // 記録しないと表示していたのに発言が記録された旨の 1 文（UI-05 の段階 6、ADR 0189、U477）。広がった領域に出す。
+  readonly storageNotice?: string | null;
 }) {
   // IME・OS の音声入力（AquaVoice・macOS の音声入力・Win+H）の変換中は送らない。composition の間は form の
   // submit も通さず、確定してから Enter で送る。
@@ -83,6 +87,22 @@ export function InputBar({
         composingRef.current = false;
       }}
     >
+      {expanded && storageNotice !== null ? (
+        <Alert
+          status="warning"
+          role="status"
+          aria-live="polite"
+          data-storage-notice=""
+          className="max-h-[72px] shrink-0 overflow-y-auto"
+        >
+          <Alert.Indicator>
+            <WarningIcon aria-hidden="true" />
+          </Alert.Indicator>
+          <Alert.Content>
+            <Alert.Title>{storageNotice}</Alert.Title>
+          </Alert.Content>
+        </Alert>
+      ) : null}
       {expanded && enabled && clarification !== null ? (
         <Alert
           status="accent"

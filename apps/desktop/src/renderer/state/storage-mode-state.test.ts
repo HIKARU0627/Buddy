@@ -5,7 +5,12 @@ import { test } from 'node:test';
 import type { DesktopStatusBar, StorageMode } from '@buddy/contracts';
 import { rejectMessage } from '../labels.js';
 import { deviceActions } from './desktop-state.js';
-import { applyStorageBoundary, INITIAL_WORK_STATE } from './work-state.js';
+import {
+  applyStorageBoundary,
+  applyTurnResponse,
+  INITIAL_WORK_STATE,
+} from './work-state.js';
+import { storageNoticeText, submitResult } from './input-bar-state.js';
 import {
   privateModeOn,
   storageBoundary,
@@ -173,4 +178,49 @@ test('a boundary line is added to the legacy conversation without touching the d
   assert.equal(next.nextId, 6);
   assert.equal(next.draft, '書きかけ');
   assert.equal(next.sending, false);
+});
+
+// U477 の直し: 記録しないと表示していたのに記録された発言は、その旨を 1 文で出す（従来の窓は入力欄の下、キャンバス表示は
+// 入力バー）。発言そのものは受け付けられているので、入力欄は空にする。
+test('a turn recorded while private was shown is reported in one sentence', () => {
+  const recorded = {
+    request_id: '00000000-0000-4000-8000-000000000f81',
+    channel: 'desktop.turn_submit' as const,
+    outcome: 'ok' as const,
+    turn: {
+      status: 'answered' as const,
+      reply_text: '受け付けました。',
+      result: null,
+      storage_notice: 'recorded_while_private_shown' as const,
+    },
+  };
+  const sentence =
+    '記録しないモードは送る前に終わっていたため、この発言は記録されました。';
+  assert.equal(storageNoticeText(recorded), sentence);
+  assert.equal(submitResult(recorded), 'sent');
+  const plain = {
+    ...recorded,
+    turn: { status: 'answered' as const, reply_text: 'はい。', result: null },
+  };
+  assert.equal(storageNoticeText(plain), null);
+  assert.equal(
+    storageNoticeText({
+      request_id: null,
+      channel: 'desktop.turn_submit',
+      outcome: 'rejected',
+      reason: 'core_rejected',
+    }),
+    null,
+  );
+  // 従来の窓: 発言は履歴に入り、入力欄は空になり、入力欄の下に warning の 1 文。
+  const state = {
+    ...INITIAL_WORK_STATE,
+    draft: '今日の予定は？',
+    sending: true,
+  };
+  const after = applyTurnResponse(state, recorded);
+  assert.equal(after.draft, '');
+  assert.equal(after.messages.length, 2);
+  assert.deepEqual(after.turnNotice, { tone: 'warning', text: sentence });
+  assert.equal(applyTurnResponse(state, plain).turnNotice, null);
 });

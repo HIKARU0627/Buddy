@@ -3782,6 +3782,8 @@ test('UI-05 stage 6: the stream storage mode reads the gate first, then the curr
   };
   const storage = new SwitchableStorage();
   let failCreate = false;
+  // 保存モードを切り替えたときの知らせ（U477 の直し）。
+  const announced: unknown[] = [];
   const routes = createStreamRoutes({
     canvas: hub,
     createSession: () =>
@@ -3794,6 +3796,7 @@ test('UI-05 stage 6: the stream storage mode reads the gate first, then the curr
     storage,
     contract,
     now: () => CLOCK.getTime(),
+    announceStorageMode: (notice) => announced.push(notice),
   });
   const read = routes.handlers['getStreamStorageMode'];
   const storageMode = routes.handlers['postStreamStorageMode'];
@@ -3846,4 +3849,51 @@ test('UI-05 stage 6: the stream storage mode reads the gate first, then the curr
   assert.equal((await storageMode(mode('normal'))).status, 200);
   storage.mode = 'private';
   assert.deepEqual((await read(get())).body, { storage_mode: 'private' });
+  // 知らせ（U477 の直し）: 成功した切り替えごとに 1 件。保存モードと理由と時刻だけで、ID・世代を持たない。区切りがまだ
+  // なかったときの継続相談への切り替えも、保存モードが変わるので知らせる。出る途中の失敗（503）では知らせない（作り直せる
+  // まで発言は 503 で保存されない）。作り直した通常への切り替えは storage_mode_changed。
+  const at = '2026-10-05T00:00:00.000Z';
+  assert.deepEqual(announced, [
+    {
+      schema: 'buddy.storage-mode-notice.v1',
+      occurred_at: at,
+      storage_mode: 'extended',
+      reason: 'storage_mode_changed',
+    },
+    {
+      schema: 'buddy.storage-mode-notice.v1',
+      occurred_at: at,
+      storage_mode: 'private',
+      reason: 'private_started',
+    },
+    {
+      schema: 'buddy.storage-mode-notice.v1',
+      occurred_at: at,
+      storage_mode: 'normal',
+      reason: 'storage_mode_changed',
+    },
+  ]);
+  for (const notice of announced)
+    assert(contract.valid('StorageModeNotice', notice));
+  // 同じモードへの切り替え（何も動かさない）では知らせない。
+  storage.mode = 'normal';
+  assert.equal((await storageMode(mode('normal'))).status, 200);
+  assert.equal(announced.length, 3);
+  // 記録しないから出たら private_ended（出た先の保存モード）。
+  assert.equal((await storageMode(mode('private'))).status, 200);
+  assert.equal((await storageMode(mode('extended'))).status, 200);
+  assert.deepEqual(announced.slice(3), [
+    {
+      schema: 'buddy.storage-mode-notice.v1',
+      occurred_at: at,
+      storage_mode: 'private',
+      reason: 'private_started',
+    },
+    {
+      schema: 'buddy.storage-mode-notice.v1',
+      occurred_at: at,
+      storage_mode: 'extended',
+      reason: 'private_ended',
+    },
+  ]);
 });

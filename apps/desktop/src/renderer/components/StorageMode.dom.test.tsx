@@ -15,6 +15,7 @@ import { islandView } from '../state/island-state.js';
 import { privacyMarks } from '../state/status-panel-state.js';
 import { storageModeControlView } from '../state/storage-mode-state.js';
 import { CanvasIsland } from '../screens/canvas/CanvasIsland.js';
+import { InputBar } from '../screens/canvas/InputBar.js';
 import { StatusBand } from './StatusBand.js';
 import { StorageModeControl } from './StorageMode.js';
 
@@ -245,6 +246,43 @@ test('the legacy island shows the private mark next to the hub line only while p
     assert.equal(view.mark(), null);
     await view.draw(band(LOCKED));
     assert.equal(view.mark(), null);
+  } finally {
+    view.cleanup();
+  }
+});
+
+// U477 の直し: キャンバス表示の入力バーは、記録しないと表示していたのに記録された発言の 1 文を、広がった領域に warning の
+// 記号（⚠）と文言で出す（読み上げは status）。広がっていないときは出さない。
+test('the input bar shows the recorded sentence with a warning mark', async () => {
+  const view = mount();
+  const sentence =
+    '記録しないモードは送る前に終わっていたため、この発言は記録されました。';
+  const bar = (expanded: boolean, notice: string | null) => (
+    <InputBar
+      line={{ tone: 'success', mark: 'dot', text: '受付中' }}
+      enabled
+      value=""
+      onChange={() => undefined}
+      onSubmit={() => undefined}
+      sending={false}
+      attention={false}
+      canSummon
+      onSummon={() => undefined}
+      expanded={expanded}
+      storageNotice={notice}
+    />
+  );
+  try {
+    await view.draw(bar(true, sentence));
+    const notice = view.host.querySelector('[data-storage-notice]');
+    assert.ok(notice);
+    assert.equal(notice.getAttribute('role'), 'status');
+    assert.equal(notice.textContent, sentence);
+    assert.ok(notice.querySelector('svg[aria-hidden="true"]'));
+    await view.draw(bar(false, sentence));
+    assert.equal(view.host.querySelector('[data-storage-notice]'), null);
+    await view.draw(bar(true, null));
+    assert.equal(view.host.querySelector('[data-storage-notice]'), null);
   } finally {
     view.cleanup();
   }

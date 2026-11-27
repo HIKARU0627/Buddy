@@ -2,6 +2,7 @@
 // 送れるかの受付の正本は main（ロック・停止・接続・送信元の窓の役割）。画面は押せる状態の判定と、結果で
 // 入力欄をどうするかを決めるだけ。
 import type { DesktopIpcResponse } from '@buddy/contracts';
+import { STORAGE_RECORDED_TEXT } from '../labels.js';
 
 // 送ってよい文字か（空・空白だけは送らない）。送っている間は重ねて送らない。
 export function canSubmit(
@@ -21,6 +22,14 @@ export function submitResult(response: DesktopIpcResponse): SubmitResult {
   if (response.outcome !== 'ok' || !('turn' in response))
     return 'needs_attention';
   return response.turn.status === 'clarification' ? 'needs_attention' : 'sent';
+}
+
+// 記録しないと表示していたのに記録された発言の 1 文（UI-05 の段階 6、ADR 0189、U477）。なければ null。
+export function storageNoticeText(response: DesktopIpcResponse): string | null {
+  if (response.outcome !== 'ok' || !('turn' in response)) return null;
+  return response.turn.storage_notice === 'recorded_while_private_shown'
+    ? STORAGE_RECORDED_TEXT
+    : null;
 }
 
 // 聞き返しの文（UI-08）。入力バーの広がった領域に出す。聞き返しでなければ null。

@@ -30460,5 +30460,60 @@
     "schema": "StreamStorageModeView",
     "valid": false,
     "value": { "storage_mode": "unknown" }
+  },
+  {
+    "id": "storage-mode-notice",
+    "schema": "StorageModeNotice",
+    "valid": true,
+    "value": {
+      "schema": "buddy.storage-mode-notice.v1",
+      "occurred_at": "2030-11-04T09:00:00Z",
+      "storage_mode": "private",
+      "reason": "private_started"
+    }
+  },
+  {
+    "id": "storage-mode-notice-with-generation",
+    "schema": "StorageModeNotice",
+    "valid": false,
+    "value": {
+      "schema": "buddy.storage-mode-notice.v1",
+      "occurred_at": "2030-11-04T09:00:00Z",
+      "storage_mode": "private",
+      "reason": "private_started",
+      "segment_generation": "3"
+    }
+  },
+  {
+    "id": "desktop-ipc-turn-recorded-while-private-shown",
+    "schema": "DesktopIpcResponse",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000f81",
+      "channel": "desktop.turn_submit",
+      "outcome": "ok",
+      "turn": {
+        "status": "answered",
+        "reply_text": "受け付けました。",
+        "result": null,
+        "storage_notice": "recorded_while_private_shown"
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-turn-unknown-storage-notice",
+    "schema": "DesktopIpcResponse",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000f81",
+      "channel": "desktop.turn_submit",
+      "outcome": "ok",
+      "turn": {
+        "status": "answered",
+        "reply_text": "受け付けました。",
+        "result": null,
+        "storage_notice": "not_recorded"
+      }
+    }
   }
 ]

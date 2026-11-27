@@ -133,6 +133,11 @@ export const STORAGE_MODE_CONTROL_LABELS = {
   privateMarkName: '記録しないモード中',
 } as const;
 
+// 記録しないと表示していたのに、発言が記録されたときの 1 文（UI-05 の段階 6、ADR 0189、U477。発言の結果の
+// storage_notice が recorded_while_private_shown のとき）。従来の窓は入力欄の下、キャンバス表示は入力バーに出す。
+export const STORAGE_RECORDED_TEXT =
+  '記録しないモードは送る前に終わっていたため、この発言は記録されました。';
+
 // 区切りの知らせ（島の広がる形・従来の窓の会話の区切りの行）。中枢が区切りを開き直した理由
 // （private_started・private_ended・storage_mode_changed）に当たる。
 export function storageBoundaryText(

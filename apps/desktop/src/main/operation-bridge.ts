@@ -61,6 +61,10 @@ export interface OperationHost {
   // 中枢の流れの今の保存モード（UI-05 の段階 6、ADR 0189）。読めていなければ null。従来の窓の会話を作るときの保存モードと、
   // 記録しない間の発言の経路に使う。省略は通常（試験）。
   readonly storageMode?: () => 'normal' | 'extended' | 'private' | null;
+  // 流れへの発言の応答の区切りの保存モード（記録しない間の従来の窓の発言。中枢の今の値として使う。ADR 0189）。省略は何もしない。
+  readonly observeStorageMode?: (
+    mode: 'normal' | 'extended' | 'private',
+  ) => void;
   // 本人の確認（OS の確認ダイアログ）。世代・接続範囲の照合は呼び出し側が行う。
   readonly confirm: (
     request: OperationConfirmRequest,
@@ -400,20 +404,26 @@ export class OperationBridge {
       !this.#host.contract.valid('StreamTurnResponse', outcome.body)
     )
       return fail('core_rejected');
-    return {
-      ok: true,
-      value: this.#turnResult(outcome.body as StreamTurnResponse),
-    };
+    const turn = outcome.body as StreamTurnResponse;
+    this.#host.observeStorageMode?.(turn.segment.storage_mode);
+    // 送る時点で画面は記録しないと表示していた（この経路はそのときだけ通る）。応答の区切りと比べる（U477）。
+    return { ok: true, value: this.streamTurnResult(turn, true) };
   }
 
   // 流れへの発言の結果（StreamTurnResponse）も、会話への発言と同じ表示用の値にする（UI-03、ADR 0032）。
+  // shownPrivate は送る直前に画面が記録しないと表示していたか。応答の区切りが記録しない区切りでなければ、発言は記録された
+  // ので、その印（storage_notice）を付ける（UI-05 の段階 6、ADR 0189、U477）。画面はその旨を 1 文で出す。
   streamTurnResult(
     turn: Pick<
-      TurnResponse,
-      'status' | 'reply_text' | 'result_view' | 'session_control'
+      StreamTurnResponse,
+      'status' | 'reply_text' | 'result_view' | 'session_control' | 'segment'
     >,
+    shownPrivate = false,
   ): DesktopTurnResult {
-    return this.#turnResult(turn);
+    const result = this.#turnResult(turn);
+    return shownPrivate && turn.segment.storage_mode !== 'private'
+      ? { ...result, storage_notice: 'recorded_while_private_shown' }
+      : result;
   }
 
   #turnResult(

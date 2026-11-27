@@ -495,6 +495,7 @@ export class DesktopCoreLink {
       newRef: () => options.clock.newRequestId(),
       // 従来の窓の会話の保存モード（中枢の流れの今の保存モード。ADR 0189）。
       storageMode: () => this.#storage.mode,
+      observeStorageMode: (mode) => this.#storage.observe(mode),
       confirm: (request) => this.#confirm(request),
       io: () => {
         const state = options.ioState?.() ?? null;
@@ -569,10 +570,12 @@ export class DesktopCoreLink {
       publish: (canvas, withheld) => this.#publishCanvas(canvas, withheld),
       displayHeld: () =>
         this.#display === null || this.#display.state === 'held',
-      turnResult: (turn) => {
-        // 流れへの発言の応答の区切りが今の保存モード（読み直さずに使う。ADR 0189）。
+      // 送る直前に画面（状態欄）が記録しないと表示しているか（U477）。
+      shownPrivate: () => this.#storage.mode === 'private',
+      turnResult: (turn, shownPrivate) => {
+        // 流れへの発言の応答の区切りが今の保存モード（ADR 0189）。
         this.#storage.observe(turn.segment.storage_mode);
-        return this.#operations.streamTurnResult(turn);
+        return this.#operations.streamTurnResult(turn, shownPrivate);
       },
       log: (code) => this.#log(code),
     });
@@ -1062,8 +1065,17 @@ export class DesktopCoreLink {
         });
         return;
       }
+      // 保存モードが変わった知らせ（この端末・ほかの端末の切り替え。UI-05 の段階 6、ADR 0189、U477）。知らせの値を正本にせず、
+      // 中枢の今の値を読み直す。ロック中は読まない（解除したときに読む）。キャンバスは読み直さない（記述は変わっていない）。
+      if (notice.schema === 'buddy.storage-mode-notice.v1') {
+        if (this.#lockState === 'unlocked') void this.#storage.refresh();
+        return;
+      }
       // 記録しない会話が終わった（中枢の再起動で通常の区切りへ戻した）知らせ。保存モードを読み直す（ADR 0189）。
-      if (notice.schema === 'buddy.storage-boundary-notice.v1')
+      if (
+        notice.schema === 'buddy.storage-boundary-notice.v1' &&
+        this.#lockState === 'unlocked'
+      )
         void this.#storage.refresh();
       // 消えた物は中枢が記述から閉じて版を進める。版の知らせを取り逃しても、知らせで今の記述を取り直す（ロック中・停止中・
       // 隠れている間は取らない。CanvasBridge.refresh の判定のまま）。
@@ -1249,13 +1261,18 @@ export class DesktopCoreLink {
         if (result.ok && result.value.session_control != null)
           this.#options.onSessionControl?.(result.value.session_control);
         // 発言の後に保存モードを読み直す（従来の窓の会話の応答は区切りを持たない。流れへの発言が拒否されたときは、記録しない
-        // 区切りに入っている・別の端末が切り替えたことがある。ADR 0189）。流れへの発言が受け付けられたら応答の区切りを使う。
+        // 区切りに入っている・別の端末が切り替えたことがある。ADR 0189）。記録しないと表示していたのに記録された（応答の区切りが
+        // 記録しない区切りでない。U477）ときも、すぐ読み直して表示を中枢にそろえる。
         if (
           result.ok
-            ? this.#options.canvasMode !== true
+            ? this.#options.canvasMode !== true ||
+              result.value.storage_notice === 'recorded_while_private_shown'
             : result.reason !== 'not_connected'
-        )
+        ) {
+          if (result.ok && result.value.storage_notice !== undefined)
+            this.#log('storage_mode_mismatch_on_turn');
           void this.#storage.refresh();
+        }
         outcome = this.#operationOutcome(
           requestId,
           raw.channel,

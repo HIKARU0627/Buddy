@@ -13053,13 +13053,14 @@
               "oneOf": [
                 { "$ref": "#/$defs/RetentionNotice" },
                 { "$ref": "#/$defs/ForgetLedgerNotice" },
-                { "$ref": "#/$defs/StorageBoundaryNotice" }
+                { "$ref": "#/$defs/StorageBoundaryNotice" },
+                { "$ref": "#/$defs/StorageModeNotice" }
               ]
             }
           },
           "required": ["type", "notice"],
           "additionalProperties": false,
-          "description": "期限切れ・忘却・忘却台帳の前進・記録しない会話の終了の知らせ（UI-05 の段階 3、ADR 0187、U40・U168）。Core の NoticeSink に入った知らせを、そのとき開いている購読（接続範囲を確かめた後のもの）にだけ送る。イベントの記録（cursor）に入れず、再送・永続しない。取り逃した端末の表示は canvas の版と getCanvas で収束し、忘却台帳は次の接続の同期で追いつく。ID と理由と番号だけで、本文・要約・検索語・HMAC を含めない。RetentionNotice の source_item（元サービスの生の ID）は Core が除いて送り、除いて空になった知らせは送らない。端末は知らない知らせを無視する。"
+          "description": "期限切れ・忘却・忘却台帳の前進・記録しない会話の終了・保存モードの変更（StorageModeNotice。UI-05 の段階 6、ADR 0189）の知らせ（UI-05 の段階 3、ADR 0187、U40・U168）。Core の NoticeSink に入った知らせを、そのとき開いている購読（接続範囲を確かめた後のもの）にだけ送る。イベントの記録（cursor）に入れず、再送・永続しない。取り逃した端末の表示は canvas の版と getCanvas で収束し、忘却台帳は次の接続の同期で追いつく。ID と理由と番号だけで、本文・要約・検索語・HMAC を含めない。RetentionNotice の source_item（元サービスの生の ID）は Core が除いて送り、除いて空になった知らせは送らない。端末は知らない知らせを無視する。"
         },
         {
           "type": "object",
@@ -18726,6 +18727,11 @@
             }
           ],
           "description": "status が session_control のときの操作（それ以外は省略か null）。LLM を呼ばずに照合表で決めた値で、画面・端末は同じ操作をボタンと同じ処理で行う。"
+        },
+        "storage_notice": {
+          "type": "string",
+          "enum": ["recorded_while_private_shown"],
+          "description": "保存モードの食い違いの印（UI-05 の段階 6、ADR 0189、U477）。recorded_while_private_shown は、送る時点で画面が記録しないと表示していたのに、中枢が記録しない区切りでない区切りで受けた（発言は記録された）こと。main が流れへの発言の応答の区切りの保存モードと、送る前の表示の値を比べて付ける。食い違いがなければ省略する。"
         }
       },
       "required": ["status", "reply_text", "result"],
@@ -21342,6 +21348,27 @@
       ],
       "additionalProperties": false,
       "description": "記録しない会話が終わったことの知らせ（キャンバス向け。UI-05、ADR 0059）。Core が再起動して記録しない区切りの RAM を失ったので、通常の区切りへ戻した。ended_generation は終わった記録しない区切りの世代、segment_id と segment_generation は戻った先の通常の区切り。区切りの本文・発言・要約を入れない。端末は ended_generation 以前の由来の入力・結果を送らない（送っても Core が拒否する）。"
+    },
+    "StorageModeNotice": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "const": "buddy.storage-mode-notice.v1"
+        },
+        "occurred_at": {
+          "$ref": "#/$defs/UtcTime"
+        },
+        "storage_mode": {
+          "$ref": "#/$defs/StorageMode"
+        },
+        "reason": {
+          "type": "string",
+          "enum": ["private_started", "private_ended", "storage_mode_changed"]
+        }
+      },
+      "required": ["schema", "occurred_at", "storage_mode", "reason"],
+      "additionalProperties": false,
+      "description": "流れの保存モードが変わったことの知らせ（UI-05 の段階 6、ADR 0189、U477）。Core が POST /v1/stream/storage-mode で区切りを開き直したときに、開いている購読へ流す。reason は区切りを開き直した理由（記録しない会話に入った・出た・それ以外の保存モードの変更）、storage_mode は変えた後の保存モード。区切り・会話の ID・世代・本文・要約を入れない。端末は受けたら GET /v1/stream/storage-mode で読み直す（知らせの値をそのまま正本にしない）。"
     },
     "StorageModeState": {
       "oneOf": [

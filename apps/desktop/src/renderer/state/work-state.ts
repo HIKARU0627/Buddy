@@ -13,7 +13,7 @@ import type {
 import { readHouseholdUtterance } from '@buddy/domain';
 import type { HouseholdUtteranceReading } from '@buddy/domain';
 import { request } from '../desktop-api.js';
-import { REJECT_MESSAGES } from '../labels.js';
+import { REJECT_MESSAGES, STORAGE_RECORDED_TEXT } from '../labels.js';
 import type { StatusLine } from '../tones.js';
 import {
   householdCandidateFrom,
@@ -535,7 +535,11 @@ export function applyTurnResponse(
     nextId: state.nextId + 2,
     draft: '',
     sending: false,
-    turnNotice: null,
+    // 記録しないと表示していたのに記録された（U477）ときは、その旨を入力欄の下に 1 文で出す。
+    turnNotice:
+      turn.storage_notice === 'recorded_while_private_shown'
+        ? warn(STORAGE_RECORDED_TEXT)
+        : null,
     householdCandidate: householdCandidateFrom(household),
   };
 }

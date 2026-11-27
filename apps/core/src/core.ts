@@ -1916,6 +1916,10 @@ async function startHttps(
     now: () => now().getTime(),
     // 自動の区切りの日付は、発言の解釈と同じ本人の時間帯で判定する（UI-05、ADR 0068）。
     utcOffset: turnOptions.utcOffset ?? '+09:00',
+    // 保存モードを切り替えたら、開いている購読（ほかの端末を含む）へ知らせる（UI-05 の段階 6、ADR 0189、U477）。
+    announceStorageMode: (notice) => {
+      void Promise.resolve(notices.publish(notice)).catch(() => undefined);
+    },
   });
   // 保存した発言の期限を、流れの区切りへ渡す口をつなぐ（UI-05）。
   streamRecordTurn = stream.recordTurn;

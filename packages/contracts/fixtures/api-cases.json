@@ -395,6 +395,18 @@
         }
       ]
     },
+    "getStreamStorageMode": {
+      "response": {
+        "storage_mode": "private"
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"],
+        ["locked", 403, "device_locked"],
+        ["lock_unknown", 403, "device_locked"]
+      ]
+    },
     "postStreamStorageMode": {
       "request": {
         "request_id": "00000000-0000-4000-8000-000000009001",
@@ -421,7 +433,8 @@
         ["stale_scope", 410, "expired_scope"],
         ["locked", 403, "device_locked"],
         ["lock_unknown", 403, "device_locked"],
-        ["too_large", 413, "payload_too_large"]
+        ["too_large", 413, "payload_too_large"],
+        ["voice_origin", 403, "screen_operation_required"]
       ],
       "invalid_bodies": [
         {
@@ -1043,11 +1056,49 @@
           }
         },
         {
+          "type": "notice",
+          "notice": {
+            "schema": "buddy.storage-mode-notice.v1",
+            "occurred_at": "2030-01-01T00:00:32Z",
+            "storage_mode": "normal",
+            "reason": "private_ended"
+          }
+        },
+        {
           "type": "resnapshot_required",
           "reason": "store_generation_changed"
         }
       ],
       "invalid_messages": [
+        {
+          "type": "notice",
+          "notice": {
+            "schema": "buddy.storage-mode-notice.v1",
+            "occurred_at": "2030-01-01T00:00:32Z",
+            "storage_mode": "private",
+            "reason": "private_started",
+            "segment_id": "00000000-0000-4000-8000-000000000041"
+          }
+        },
+        {
+          "type": "notice",
+          "notice": {
+            "schema": "buddy.storage-mode-notice.v1",
+            "occurred_at": "2030-01-01T00:00:32Z",
+            "storage_mode": "normal",
+            "reason": "idle_timeout"
+          }
+        },
+        {
+          "type": "notice",
+          "notice": {
+            "schema": "buddy.storage-mode-notice.v1",
+            "occurred_at": "2030-01-01T00:00:32Z",
+            "storage_mode": "normal",
+            "reason": "private_ended",
+            "text": "記録しない会話の本文"
+          }
+        },
         {
           "type": "event",
           "event": {

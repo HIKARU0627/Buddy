@@ -4,9 +4,9 @@
 // hub_screen）なら、端末の画面の本体を「端末の登録」「登録済みの端末」「自宅のネットワーク」「このマシンの接続」の Tabs にする。
 // ロック中・ロック状態不明では main が接続の内容を隠すので、端末の画面（内容を隠した状態帯）になる。
 // 画面を足すときは screens/<名前>/ に置き、ここで切り替える。
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Alert } from '@heroui/react';
-import type { DesktopOperationEntry } from '@buddy/contracts';
+import type { DesktopOperationEntry, StorageMode } from '@buddy/contracts';
 import { AlertIcon } from './components/AlertIcon.js';
 import { AppShell } from './app/AppShell.js';
 import { desktopApi } from './desktop-api.js';
@@ -42,6 +42,13 @@ import { HouseholdPanel } from './screens/household/HouseholdPanel.js';
 import { MemoryPanel } from './screens/memory/MemoryPanel.js';
 import { WorkPanel } from './screens/work/WorkPanel.js';
 import { StopShortcutMark } from './components/StopShortcutMark.js';
+import { StorageModeControl } from './components/StorageMode.js';
+import { messageFor } from './state/desktop-state.js';
+import {
+  storageBoundary,
+  storageModeControlView,
+  storageModeOf,
+} from './state/storage-mode-state.js';
 import {
   stopShortcutKeys,
   stopShortcutMark,
@@ -99,11 +106,26 @@ function ConnectedApp({ api }: { readonly api: BuddyDesktopApi }) {
   );
   // 上の中央の島を広げるきっかけ（ADR 0181 の段階 2）。確認が必要な操作が増えた・操作の結果が届いた。会話と同じく、
   // ロック解除済みで中枢に接続している間だけ数える（ロック・切断で忘れる）。
+  // 保存モード（UI-05 の段階 6、ADR 0189）。会話と同じく、ロック解除済みで中枢に接続している間だけ見る。変わったら島を
+  // 区切りの知らせで広げ、会話の履歴に区切りの行を足す（受け取っていなかった値からの変化は区切りにしない）。
+  const storageMode = workLive ? storageModeOf(state.status) : null;
   const island = useIslandSignals(
     workLive,
     connection?.operations ?? NO_OPERATIONS,
     work.state.notices,
+    storageMode,
   );
+  const seenStorageMode = useRef<StorageMode | null>(null);
+  const markBoundary = work.actions.markBoundary;
+  useEffect(() => {
+    const boundary = storageBoundary(seenStorageMode.current, storageMode);
+    seenStorageMode.current = storageMode;
+    if (boundary !== null && boundary.line.mark !== 'none')
+      markBoundary({
+        text: boundary.line.text,
+        mark: boundary.line.mark === 'square' ? 'square' : 'dot',
+      });
+  }, [storageMode, markBoundary]);
   // 気づき（B11-05、ADR 0132）。会話と同じく、ロック解除済みで中枢に接続している間だけ内容を持つ（切断・ロックで捨てる）。
   const candidates = useCandidateState(api, workLive);
   // 自動実行の一覧・安全停止・取り消し（B13-05、ADR 0154）。気づきと同じく、ロック解除済みで中枢に接続している間だけ
@@ -157,6 +179,13 @@ function ConnectedApp({ api }: { readonly api: BuddyDesktopApi }) {
               stopped={stopped}
               // 会話の一言からの家計の記録の候補を、家計簿の欄の手入力の欄に入れて開く（ADR 0171）。開けたら候補をしまう
               // （同じ候補から二度開かない）。記録は本人が欄で「足す」を押したときだけ作る。
+              storage={
+                <StorageModeControl
+                  view={storageModeControlView(state.status)}
+                  message={messageFor(state, ['desktop.storage_mode_change'])}
+                  onChange={actions.changeStorageMode}
+                />
+              }
               household={{
                 canOpen: canStartAddFrom(household.state),
                 open: (draft) => {

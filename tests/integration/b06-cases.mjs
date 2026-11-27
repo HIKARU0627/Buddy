@@ -1129,11 +1129,11 @@ async function privateConversation(seed, round) {
     assert.equal(boot.status, 200, boot.text);
     const scope = String(boot.json?.['command_scope_id']);
     const responses = [];
-    const post = async (path, body) => {
+    const post = async (path, body, extraHeaders = {}) => {
       const response = await pinnedRequest(target, {
         method: 'POST',
         path,
-        headers,
+        headers: { ...headers, ...extraHeaders },
         body: JSON.stringify(body),
       });
       responses.push(response.text);
@@ -1147,12 +1147,17 @@ async function privateConversation(seed, round) {
         input_kind: 'text',
         expected_canvas_revision: '0',
       });
+    // 保存モードの切り替えは本人の画面操作だけ（UI-05 の段階 6、ADR 0189）。
     const mode = (storageMode) =>
-      post('/v1/stream/storage-mode', {
-        request_id: randomUUID(),
-        command_scope_id: scope,
-        storage_mode: storageMode,
-      });
+      post(
+        '/v1/stream/storage-mode',
+        {
+          request_id: randomUUID(),
+          command_scope_id: scope,
+          storage_mode: storageMode,
+        },
+        { 'buddy-input-origin': 'screen' },
+      );
     const turnCount = async () => {
       const db = openWriteConnection(join(dataDir, DB_FILE), {
         platform: storagePlatform(process.platform),

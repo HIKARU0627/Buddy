@@ -7,6 +7,7 @@
 // 2. ADR 0014 の常に見せる 8 項目。記号と決まった位置（4 × 2 の格子）で示し、名前と値はフォーカス・ポインターで出す。
 //    値のない項目は点線の枠（未受信）、警告は塗りと ⚠ の形。ロック中・不明は、位置だけを灰色の面で残して値を隠す。
 //    停止のボタンの横に、全体の停止のショートカットのキーの形（登録できなければ打ち消しの線と ⚠）を置く。
+// 2.5 保存モードの切り替え（UI-05 の段階 6、ADR 0189）: 通常・継続相談・記録しない。本人の画面操作だけ（パネルは前面の窓）。
 // 3. 確認が必要な操作の一覧と確認の欄（従来の窓の WorkPanel と同じ部品 WorkOperations）。承認・取消・再試行・照合は、
 //    ボタンを押すと main が OS の確認ダイアログを 1 回だけ出す（パネルはその入口で、承認そのものではない）。
 // ボタンは main が渡した操作の一覧（connection.operations）からだけ作る。キャンバスの記述・外部の内容からは作らない
@@ -127,6 +128,7 @@ export function StatusPanel({
   stopKeys = '',
   operations,
   voice = null,
+  storage = null,
 }: {
   // パネルをしまう（desktop.status_panel の open: false。Esc・外へのクリックと同じ）。
   readonly onClose: () => void;
@@ -146,6 +148,8 @@ export function StatusPanel({
   readonly operations: ReactNode;
   // 音声の段（B05-06。音声を使わない組み立て・従来の試験では null）。
   readonly voice?: ReactNode;
+  // 保存モードの切り替えの欄（UI-05 の段階 6。出せないとき・従来の試験では null）。
+  readonly storage?: ReactNode;
 }) {
   const control = stopControl(status);
   const regionRef = useRef<HTMLElement>(null);
@@ -200,6 +204,7 @@ export function StatusPanel({
               ))
             : items.map((entry) => <ItemTile key={entry.key} item={entry} />)}
         </div>
+        {storage}
         {operations}
       </section>
     </div>

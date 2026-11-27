@@ -39,8 +39,11 @@ export const ROUTE_CHECKS: Readonly<Record<string, readonly CoreCheck[]>> = {
   postTurn: COMMAND,
   // 流れへの発言（ADR 0032）。会話への発言と同じ検査。区切りは Core が選ぶ。
   postStreamTurn: COMMAND,
-  // 保存モードの切り替え（U170、ADR 0060）。流れの経路なので発言と同じ検査。入口・出口はこの経路だけ。
-  postStreamStorageMode: COMMAND,
+  // 保存モードの切り替え（U170、ADR 0060）。入口・出口はこの経路だけ。本人の画面操作だけで受ける（音声・チャット・
+  // システムの起点では切り替えない。UI-05 の段階 6、ADR 0189）。
+  postStreamStorageMode: SCREEN,
+  // 流れの今の保存モード（UI-05 の段階 6、ADR 0189）。状態欄に出す値なので、ロック中・不明は出さない。読み取りだけ。
+  getStreamStorageMode: [...READ, 'unlocked'],
   // キャンバスの今の記述（ADR 0032）。内容なので、ロック中・不明は出さない。読み取りなので接続範囲は求めない。
   getCanvas: [...READ, 'unlocked'],
   // キャンバスのユーザーの操作の記録（UI-06、ADR 0032）。本人の画面操作。版の照合は経路の処理が物ごとに行う。

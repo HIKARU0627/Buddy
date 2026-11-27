@@ -31,6 +31,7 @@ const NO_ACTIONS: WorkActions = {
   retry: () => undefined,
   check: () => undefined,
   dismissHouseholdCandidate: () => undefined,
+  markBoundary: () => undefined,
 };
 
 const entry = (
@@ -570,4 +571,59 @@ test('the schedule answer says what was counted and what this screen cannot show
     /取得した予定は3\u00a0件です。この画面では、予定の件名と時刻はまだ表示できません。/u,
   );
   assert.doesNotMatch(html, /ここには出していません/u);
+});
+
+// UI-05 の段階 6（ADR 0189）: 保存モードが変わった区切りの行は、発言と別の形（区切り線と記号と文言）で履歴に入り、
+// 「最新の回答」の読み上げに数えない。保存モードの欄は会話の欄の中（入力の上）に置かれ、primary は「送る」の 1 つのまま。
+test('storage boundaries appear as separator rows, not as replies, and the mode control sits in the conversation', () => {
+  const state: WorkViewState = {
+    ...INITIAL_WORK_STATE,
+    messages: [
+      { id: 1, role: 'user', text: '今日の予定は？', clarification: false },
+      {
+        id: 2,
+        role: 'buddy',
+        text: '予定は 2\u00a0件です。',
+        clarification: false,
+      },
+      {
+        id: 3,
+        role: 'boundary',
+        text: 'ここから記録しない会話です。',
+        clarification: false,
+        mark: 'square',
+      },
+    ],
+    nextId: 4,
+  };
+  const html = renderToStaticMarkup(
+    <AppProviders>
+      <WorkPanel
+        state={state}
+        actions={NO_ACTIONS}
+        operations={[]}
+        link="connected"
+        stopped={false}
+        storage={<div data-testid="storage-slot">保存モードの欄</div>}
+      />
+    </AppProviders>,
+  );
+  const boundary = /<li[^>]*data-boundary="square"[^>]*>(.*?)<\/li>/u.exec(
+    html,
+  );
+  assert.ok(boundary);
+  assert.match(boundary[1] ?? '', /■/u);
+  assert.match(boundary[1] ?? '', /ここから記録しない会話です。/u);
+  // 区切りの行には「あなた」「Buddy」の名札を付けない。
+  assert.doesNotMatch(boundary[1] ?? '', /あなた|Buddy/u);
+  // 最新の回答の読み上げは Buddy の発言のまま（区切りの行を読ませない）。
+  assert.match(
+    html,
+    /<p role="status" aria-live="polite" class="sr-only">予定は 2\u00a0件です。<\/p>/u,
+  );
+  // 保存モードの欄は会話の欄の中で、入力欄より前。
+  const slot = html.indexOf('data-testid="storage-slot"');
+  assert(slot > html.indexOf('>会話</h2>'));
+  assert(slot < html.indexOf('<textarea'));
+  assert.equal([...html.matchAll(/button--primary/gu)].length, 1);
 });

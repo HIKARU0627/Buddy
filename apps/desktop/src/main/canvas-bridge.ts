@@ -59,8 +59,14 @@ export interface CanvasHost {
   ) => void;
   // 表示のリースを持っているか（ADR 0188）。省略は持っている（リースを使わない組み立て・試験）。
   readonly displayHeld?: () => boolean;
-  // 発言の文字の結果を画面に出す値にする（OperationBridge と同じ規則）。
-  readonly turnResult: (turn: StreamTurnResponse) => DesktopTurnResult;
+  // 発言の文字の結果を画面に出す値にする（OperationBridge と同じ規則）。shownPrivate は送る直前に画面が記録しないと表示して
+  // いたか（UI-05 の段階 6、ADR 0189、U477。応答の区切りの保存モードと比べる）。
+  readonly turnResult: (
+    turn: StreamTurnResponse,
+    shownPrivate: boolean,
+  ) => DesktopTurnResult;
+  // 送る直前に画面が記録しないと表示しているか（状態欄の保存モード）。省略は表示していない。
+  readonly shownPrivate?: () => boolean;
   readonly log: (code: string) => void;
 }
 
@@ -474,6 +480,8 @@ export class CanvasBridge {
     if (connection === null || scope === null) return fail('not_connected');
     const io = this.#host.io();
     if (!io.permitted) return fail('input_stopped');
+    // 送る直前の表示（記録しないか）を控え、応答の区切りの保存モードと比べる（U477）。
+    const shownPrivate = this.#host.shownPrivate?.() ?? false;
     const outcome = await connection.request({
       method: 'POST',
       path: '/v1/stream/turns',
@@ -500,6 +508,6 @@ export class CanvasBridge {
     const turn = outcome.body as StreamTurnResponse;
     // 中枢が記述を変えた（版の知らせも届くが、先に取る）。
     if (turn.canvas !== null) void this.refresh();
-    return { ok: true, value: this.#host.turnResult(turn) };
+    return { ok: true, value: this.#host.turnResult(turn, shownPrivate) };
   }
 }

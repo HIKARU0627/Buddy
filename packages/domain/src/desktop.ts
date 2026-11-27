@@ -87,6 +87,8 @@ export const DESKTOP_IPC_CHANNELS = [
   'desktop.memories_list',
   'desktop.forget_plan',
   'desktop.forget_execute',
+  // UI-05 の段階 6（ADR 0189）: 保存モードの切り替え（記録しないモードに入る・出る、通常と継続相談）。従来の窓と状態の層から。
+  'desktop.storage_mode_change',
 ] as const;
 
 export type DesktopIpcChannel = (typeof DESKTOP_IPC_CHANNELS)[number];
@@ -260,6 +262,10 @@ export const DESKTOP_PAIRING_SCREEN_CHANNELS: readonly DesktopIpcChannel[] = [
   // ので、この端末の入出力の停止中も受け付ける（停止の検査はしない）。実行は main が OS の確認ダイアログを 1 回挟む。
   'desktop.forget_plan',
   'desktop.forget_execute',
+  // 保存モードの切り替え（UI-05 の段階 6、ADR 0189）も本人の画面操作。音声・チャット・発言・島・キャンバスからは切り替えない。
+  // 中枢の保存の範囲を変えるだけで外部へは送らないので、この端末の入出力の停止中も受け付ける（記録しないモードに入るのを
+  // 止めない）。
+  'desktop.storage_mode_change',
 ];
 
 // 外部へ送る画面操作（ADR 0177）。この端末の入出力の停止中は受け付けない（停止は外部への送信を止める操作なので）。
@@ -429,6 +435,10 @@ export const DESKTOP_ROLE_CHANNELS: Readonly<
     'desktop.memories_list',
     'desktop.forget_plan',
     'desktop.forget_execute',
+    // 保存モードの切り替え（UI-05 の段階 6、ADR 0189）。パネル（と従来の窓）だけ。キャンバスの部品が記録しないモードの
+    // 出入りに見せかけられないよう、キャンバス・入力バーには渡さない。島は記録しないモードの印を出すだけで、切り替えない
+    // （U391 の島の最小のチャネルのまま）。
+    'desktop.storage_mode_change',
   ],
   input: ['desktop.get_state', 'desktop.turn_submit', 'desktop.canvas_summon'],
   island: [

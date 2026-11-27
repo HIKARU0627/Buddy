@@ -78,6 +78,13 @@ export function rejectMessage(
     if (reason === 'device_locked')
       return '再開できませんでした。ロックを解除してから、もう一度押してください。';
   }
+  // 保存モードの切り替え（UI-05 の段階 6、ADR 0189）。何が起きたかと、表示の確かめ方。
+  if (channel === 'desktop.storage_mode_change') {
+    if (reason === 'core_rejected')
+      return '保存モードを切り替えられませんでした。中枢が受け付けなかったため、保存モードは変わっていません。少し待ってから、もう一度押してください。';
+    if (reason === 'outcome_unknown')
+      return '保存モードが切り替わったか確かめられませんでした。自動では送り直しません。上の島と「保存モード」の表示を確かめてから、必要ならもう一度押してください。';
+  }
   return REJECT_MESSAGES[reason];
 }
 
@@ -114,6 +121,36 @@ export const STORAGE_MODE_LABELS: Readonly<Record<string, string>> = {
   extended: '継続相談（30\u00a0日）',
   private: '記録しない',
 };
+
+// 保存モードの切り替えと、記録しない間の印（UI-05 の段階 6、ADR 0189）。
+export const STORAGE_MODE_CONTROL_LABELS = {
+  // 切り替えの欄の見出し（読み上げの名前にも使う）。
+  title: '保存モード',
+  // 今の保存モードを中枢から受け取っていない。
+  unknown: '今の保存モードを中枢から受け取っていません。',
+  // 記録しない間の島の印（記号と一緒に出す。色だけに頼らない）。
+  privateMark: '記録しない',
+  privateMarkName: '記録しないモード中',
+} as const;
+
+// 記録しないと表示していたのに、発言が記録されたときの 1 文（UI-05 の段階 6、ADR 0189、U477。発言の結果の
+// storage_notice が recorded_while_private_shown のとき）。従来の窓は入力欄の下、キャンバス表示は入力バーに出す。
+export const STORAGE_RECORDED_TEXT =
+  '記録しないモードは送る前に終わっていたため、この発言は記録されました。';
+
+// 区切りの知らせ（島の広がる形・従来の窓の会話の区切りの行）。中枢が区切りを開き直した理由
+// （private_started・private_ended・storage_mode_changed）に当たる。
+export function storageBoundaryText(
+  before: string,
+  after: string,
+): string | null {
+  if (before === after) return null;
+  if (after === 'private') return 'ここから記録しない会話です。';
+  const label = STORAGE_MODE_LABELS[after] ?? after;
+  if (before === 'private')
+    return `記録しない会話を終えました。ここから保存モードは「${label}」です。`;
+  return `ここから保存モードは「${label}」です。`;
+}
 
 export const VOICE_STATE_LABELS: Readonly<Record<string, string>> = {
   waiting_wake_word: '呼びかけ待ち',

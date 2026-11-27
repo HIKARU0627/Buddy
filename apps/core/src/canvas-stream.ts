@@ -37,6 +37,7 @@ import type {
   StreamSegment,
   StreamTurnResponse,
   StorageModeChangeRequest,
+  StorageModeNotice,
   TurnResponse,
 } from '@buddy/contracts';
 import {
@@ -552,6 +553,9 @@ export interface StreamRoutesOptions {
   readonly utcOffset?: string;
   // 模擬の配置者の差し替え（試験用。検査に反する束を当てようとしても前の版が残ることを確かめる）。
   readonly place?: typeof placeCanvasForTurn;
+  // 保存モードを切り替えて区切りを開き直したことを知らせる口（UI-05 の段階 6、ADR 0189、U477）。Core は NoticeRelay へつなぎ、
+  // 開いている購読（ほかの端末を含む）へ流す。保存モードと理由だけで、区切り・会話の ID・世代を入れない。省略は知らせない。
+  readonly announceStorageMode?: (notice: StorageModeNotice) => void;
 }
 
 // 保存モードの切り替えの結果（Core では storage-gate.ts の StorageGateResult がこの形を満たす）。
@@ -1358,6 +1362,25 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
     return { ok: true, sessionId: body.session_id };
   };
 
+  // 保存モードを切り替えたことを購読へ知らせる（UI-05 の段階 6、ADR 0189、U477）。理由は記録しないに入った・出た・それ以外の
+  // 保存モードの変更（区切りがまだなかった・作り直し待ちだったときの区切りの理由は stream_started でも、保存モードは変わり得るので
+  // 知らせる）。知らせの失敗は切り替えの失敗にしない（端末は接続・ロック解除・発言の後にも読み直す）。
+  const announce = (
+    segment: StreamSegment,
+    reason: StorageModeNotice['reason'],
+  ): void => {
+    try {
+      options.announceStorageMode?.({
+        schema: 'buddy.storage-mode-notice.v1',
+        occurred_at: segment.opened_at,
+        storage_mode: segment.storage_mode,
+        reason,
+      });
+    } catch {
+      // 知らせを渡せなくても、切り替えは確定している。
+    }
+  };
+
   // 保存モードを切り替える（U170、ADR 0060）。流れの経路を保存モードの唯一の入口・出口にし、private の出入りも
   // ここへ寄せる。端末は会話・区切りの ID を送らない（UI-01）。成功したら区切りを開き直す。
   // - private へ入る: ゲートの enterPrivate。書けなければ入れない（503）。区切りは要約をつながない private_started。
@@ -1392,6 +1415,7 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
       reopenPending = false;
       // 区切りが変わったので、忘却の印は残さない（古い区切りを指したままにしない）。
       afterForget = null;
+      announce(segment, 'private_started');
       return { status: 200, body: { request_id: requestId, segment } };
     }
     // 記録しない区切りから出るときは、会話を作る前にゲートを出る（記録しない区切りの間は会話の作成が拒否される）。
@@ -1474,6 +1498,7 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
     reopenPending = false;
     // 区切りが変わったので、忘却の印は残さない（古い区切りを指したままにしない）。
     afterForget = null;
+    announce(segment, leftPrivate ? 'private_ended' : 'storage_mode_changed');
     return { status: 200, body: { request_id: requestId, segment } };
   };
 
@@ -1525,6 +1550,25 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
           if (value.expires_at <= at) modeOps.delete(old);
       return response;
     });
+  };
+
+  // 流れの今の保存モード（GET /v1/stream/storage-mode。UI-05 の段階 6、ADR 0189）。端末が状態欄に出すために読む。
+  // 記録しない区切りが開いていれば private（区切りを開き直せずに 503 を返した後も、保存境界の保持者が正本）。そうでなければ
+  // 今の区切りの保存モード、まだ区切りがなければ保存境界の保持者のモード（再起動の後は通常）。区切り・会話の ID・世代は返さない。
+  const getStreamStorageMode: ApiRouteHandler = (request) => {
+    if (request.device === null)
+      return Promise.resolve(apiErrorResponse(401, 'unauthenticated'));
+    const body = {
+      storage_mode:
+        options.storage.mode === 'private'
+          ? 'private'
+          : (current?.segment.storage_mode ?? options.storage.mode),
+    };
+    return Promise.resolve(
+      contract.valid('StreamStorageModeView', body)
+        ? { status: 200, body }
+        : apiErrorResponse(503, 'dependency_unavailable'),
+    );
   };
 
   const getCanvas: ApiRouteHandler = (request) =>
@@ -1640,6 +1684,7 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
     handlers: {
       postStreamTurn,
       postStreamStorageMode,
+      getStreamStorageMode,
       getCanvas,
       postCanvasUserOp,
       postCanvasContent,

@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type {
+  StorageModeNotice,
   ForgetLedgerNotice,
   RetentionNotice,
   StorageBoundaryNotice,
@@ -16,6 +17,9 @@ import type { Notice } from './notice-sink.js';
 import { RecordingNoticeSink } from './notice-sink.js';
 
 const contract = sharedApiContract();
+// 知らせの見分け（保存モードの知らせは ID を持たないので、種類の名前で見分ける。UI-05 の段階 6、ADR 0189）。
+const idOf = (notice: Notice): string =>
+  'notice_id' in notice ? notice.notice_id : notice.schema;
 const ID = (n: number) =>
   `00000000-0000-4000-8000-${n.toString(16).padStart(12, '0')}`;
 
@@ -91,20 +95,20 @@ test('the relay tidies the display first, then the open streams, then the config
     contract,
     downstream: {
       publish: (notice) => {
-        order.push(`sink:${notice.notice_id}`);
+        order.push(`sink:${idOf(notice)}`);
         downstream.publish(notice);
       },
     },
   });
   relay.attachDisplay((notice) => {
-    order.push(`display:${notice.notice_id}`);
+    order.push(`display:${idOf(notice)}`);
     return true;
   });
   // 購読がない間の知らせは、表示と受け取り口だけに渡り、後から購読しても届かない。
   await relay.publish(LEDGER);
   const received: StreamNoticeMessage[] = [];
   const off = relay.subscribe((message) => {
-    order.push(`stream:${message.notice.notice_id}`);
+    order.push(`stream:${idOf(message.notice)}`);
     received.push(message);
   });
   assert.equal(relay.listenerCount, 1);
@@ -118,7 +122,7 @@ test('the relay tidies the display first, then the open streams, then the config
   ]);
   // 購読へは source_item を除いた形。受け取り口へは元の知らせのまま。
   assert.deepEqual(
-    received.map((message) => message.notice.notice_id),
+    received.map((message) => idOf(message.notice)),
     [ID(1)],
   );
   assert(!JSON.stringify(received).includes('mail-synthetic-raw'));
@@ -141,7 +145,7 @@ test('a notice that breaks the contract is not sent; a failing display or listen
     first.push('called');
     throw new Error('listener');
   });
-  relay.subscribe((message) => second.push(message.notice.notice_id));
+  relay.subscribe((message) => second.push(idOf(message.notice)));
   relay.attachDisplay(() => {
     throw new Error('display');
   });
@@ -168,4 +172,29 @@ test('a notice that breaks the contract is not sent; a failing display or listen
     downstream: { publish: () => Promise.reject(new Error('sink')) },
   });
   await assert.rejects(Promise.resolve(rejecting.publish(LEDGER)), /sink/u);
+});
+
+// U477 の直し（UI-05 の段階 6、ADR 0189）: 保存モードの知らせは、保存モードと理由だけで開いている購読へそのまま届き、
+// 受け取り口では保存モードの知らせとして分けて持つ。区切り・会話の ID・世代の欄を足した知らせは送らない。
+test('a storage mode notice reaches the open streams as it is, and one with a segment ID is not sent', async () => {
+  const downstream = new RecordingNoticeSink();
+  const relay = new NoticeRelay({ contract, downstream });
+  const received: StreamNoticeMessage[] = [];
+  relay.subscribe((message) => received.push(message));
+  const mode: StorageModeNotice = {
+    schema: 'buddy.storage-mode-notice.v1',
+    occurred_at: '2030-01-01T00:00:40Z',
+    storage_mode: 'private',
+    reason: 'private_started',
+  };
+  await relay.publish(mode);
+  assert.deepEqual(received, [{ type: 'notice', notice: mode }]);
+  assert.deepEqual(downstream.modeNotices, [mode]);
+  assert.deepEqual(downstream.notices, []);
+  assert.deepEqual(downstream.boundaryNotices, []);
+  await relay.publish({
+    ...mode,
+    segment_id: ID(41),
+  } as unknown as Notice);
+  assert.equal(received.length, 1);
 });

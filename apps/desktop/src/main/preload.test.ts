@@ -176,6 +176,8 @@ test('requests go only to the contract channels', async () => {
       'desktop.memories_list',
       'desktop.forget_plan',
       'desktop.forget_execute',
+      // 保存モードの切り替え（UI-05 の段階 6、ADR 0189。従来の窓と状態の層。キャンバス・入力バー・島には渡さない）。
+      'desktop.storage_mode_change',
     ],
   );
   // 気づきの一覧・状態の変更（B11-05）は従来の窓（標準の端末画面）でも使う。連携の一覧・取得範囲の変更
@@ -208,6 +210,8 @@ test('requests go only to the contract channels', async () => {
     'desktop.memories_list',
     'desktop.forget_plan',
     'desktop.forget_execute',
+    // 保存モードの切り替え（UI-05 の段階 6、ADR 0189。従来の窓と状態の層。キャンバス・入力バー・島には渡さない）。
+    'desktop.storage_mode_change',
   ];
   for (const channel of legacy) {
     const request = { channel, request_id: 'r', payload: null };
@@ -375,6 +379,8 @@ const EXPECTED_ROLE_CHANNELS: Readonly<Record<string, readonly string[]>> = {
     'desktop.memories_list',
     'desktop.forget_plan',
     'desktop.forget_execute',
+    // 保存モードの切り替え（UI-05 の段階 6、ADR 0189。従来の窓と状態の層。キャンバス・入力バー・島には渡さない）。
+    'desktop.storage_mode_change',
   ],
 };
 const EXPECTED_ROLE_NOTIFICATIONS: Readonly<Record<string, readonly string[]>> =

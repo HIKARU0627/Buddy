@@ -105,6 +105,7 @@ const actions: WorkActions = {
   retry: noop,
   check: noop,
   dismissHouseholdCandidate: noop,
+  markBoundary: noop,
 };
 
 const render = (node: ReactNode) =>

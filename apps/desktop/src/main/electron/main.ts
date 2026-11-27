@@ -53,6 +53,7 @@ import {
   CONNECTION_CHANNELS,
   CONNECTIONS_CHANNELS,
   OPERATION_CHANNELS,
+  STORAGE_MODE_CHANNELS,
   DesktopCoreLink,
   type AdminConfirmRequest,
 } from '../core-link.js';
@@ -730,6 +731,11 @@ function registerIpc(): void {
       if (MEMORY_CHANNELS.includes(channel))
         return link
           .handleMemoryIpc(channel, raw, sender, controller.state)
+          .then((outcome) => outcome.response);
+      // 保存モードの切り替え（UI-05 の段階 6、ADR 0189）。本人の画面操作だけ。中枢へは画面操作として送る。
+      if (STORAGE_MODE_CHANNELS.includes(channel))
+        return link
+          .handleStorageModeIpc(channel, raw, sender, controller.state)
           .then((outcome) => outcome.response);
       // 家計簿の月ごとの合計・1 か月の記録・分類の変更・削除（ADR 0162）。記録の ID・内容版は main が持ち、画面は参照だけ。
       if (HOUSEHOLD_CHANNELS.includes(channel))

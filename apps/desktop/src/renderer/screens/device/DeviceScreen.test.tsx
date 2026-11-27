@@ -72,6 +72,7 @@ const noop: DeviceActions = {
   resume: null,
   hideWindow: () => undefined,
   quit: () => undefined,
+  changeStorageMode: () => undefined,
 };
 
 function render(state: DesktopViewState, actions?: DeviceActions): string {

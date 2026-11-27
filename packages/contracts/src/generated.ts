@@ -163,6 +163,7 @@ export type BuddyContract =
   | StreamTurnResponse
   | StorageModeChangeRequest
   | StorageModeChangeResponse
+  | StreamStorageModeView
   | CanvasUserOpRequest
   | CanvasUserOpResponse
   | CanvasContent
@@ -1038,7 +1039,11 @@ export type EventStreamMessage =
     }
   | {
       type: 'notice';
-      notice: RetentionNotice | ForgetLedgerNotice | StorageBoundaryNotice;
+      notice:
+        | RetentionNotice
+        | ForgetLedgerNotice
+        | StorageBoundaryNotice
+        | StorageModeNotice;
     }
   | {
       type: 'resnapshot_required';
@@ -1725,6 +1730,13 @@ export type DesktopIpcRequest =
       payload: {
         ref: Id;
       };
+    }
+  | {
+      channel: 'desktop.storage_mode_change';
+      request_id: Id;
+      payload: {
+        storage_mode: StorageMode;
+      };
     };
 export type DesktopHubHost = string;
 export type DesktopHubHost1 = string;
@@ -1938,6 +1950,12 @@ export type DesktopIpcResponse =
         | 'desktop.forget_execute';
       outcome: 'ok';
       memories: DesktopMemoryView;
+    }
+  | {
+      request_id: Id;
+      channel: 'desktop.storage_mode_change';
+      outcome: 'ok';
+      storage_mode: StorageMode;
     }
   | {
       request_id: Id | null;
@@ -2197,7 +2215,7 @@ export type ForgetRemovedKind =
   | 'source_item'
   | 'operation_content';
 /**
- * UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014・0025）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。中枢との接続・ペアリングは用途別のチャネルだけで、要求の宛先・本文を Renderer が決められない。音声レンダラーの IPC（B05）は別に定める。 発言・承認表示の準備・承認・取消・照合は用途別のチャネルで、操作は main が持つ参照（ref）で指す（B04-05、ADR 0031）。 キャンバスを前に出す（canvas_summon）は状態の層と入力バーからだけ使う（UI-02、ADR 0032）。状態の層のパネルを出す・しまう（status_panel）は状態の層と島からだけ使う（UI-04、ADR 0032・0181）。 島（画面の上の中央の島の窓。ADR 0181 の段階 4）は、状態の取得（get_state・get_connection・get_voice）・この端末の入出力の停止（io_stop）・パネルを出す（status_panel）だけを使う。承認・取消・再開・登録・終了・発言・キャンバスを前に出すは使えず、島から確認を出さない（確認の入口は状態の層のパネルのまま）。キャンバスのユーザーの操作（canvas_user_op）はキャンバスの窓からだけ、キャンバスが前に出ている間だけ使う（UI-06、ADR 0032）。 予算の確認（超過枠の承認・見送り budget_overage_decide、M 超過の確認 budget_overrun_review、不明な費用の手での精算 budget_manual_settle）は状態の層からだけ使う。承認・確認・精算は main の OS の確認ダイアログを 1 回だけ挟み、画面が持つのは main が作る参照（ref）だけ（B07-05、ADR 0039）。 音声（B05-06、ADR 0050）: 音声の状態の取得（get_voice）・呼びかけなしで音声の会話を始める「続ける」（voice_continue）・外部への送信の同意の取り消し（voice_consent_revoke）は状態の層からだけ使う（音声の状態の取得だけは島も使う。ADR 0181）。外部への送信の同意は main の OS の確認ダイアログで 1 回だけ取り、画面は同意を作れない。音声レンダラーへの IPC は VoiceRendererRequest で、このチャネルとは別。 気づき（B11-05、ADR 0132）: 一覧の取得（candidates_list）と状態の変更（candidate_state。開く・今回は扱わない・再通知）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バーは使えない。候補は main が作る参照（ref）で指し、候補 ID・expected_state・接続範囲は main が持つ。 連携の接続（B08-02 P3・B09-05、ADR 0142）: 一覧の取得（connections_list）と取得範囲の変更（connection_targets_update）は中枢の画面（接続・端末）でだけ使い、キャンバス・入力バーは使えない。接続は main が作る参照（ref）で指し、接続 ID・permission_revision は main が持つ。画面が送れるのは今の保存値と、この世代で中枢から読んだ選べる対象（connection_targets_discover）のうちの選択と、期間・添付の範囲だけ（ADR 0145）。選べる対象の読み取りは提供元への読み取りを伴うので、中枢の画面のロック解除済みの画面操作だけ。 自動実行（B13-05、ADR 0154）: 一覧と安全停止の状態の取得（auto_actions_list）・取り消し（auto_action_undo）・安全停止の解除（safety_resume）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バーは使えない。自動実行した操作と安全停止の状態は main が作る参照（ref）で指し、操作 ID・state_revision・safety_revision・接続範囲は main が持つ。 家計簿（ADR 0162）: 月ごとの合計と 1 か月の記録の取得（household_view）・分類の変更（household_category）・削除（household_delete）・利用通知の取り込みの入・切（household_intake、ADR 0163）・書き出しの取り込み（household_import、ADR 0164。ファイルは main が OS のファイル選択で本人に選ばせ、画面はパスも中身も渡さない）・分類ごとの予算の変更（household_budget、ADR 0166）・記録の手入力（household_add、ADR 0167）・記録の中身の変更（household_edit、ADR 0169）・記録の CSV への書き出し（household_export、ADR 0172。保存先は main が OS の保存先の選択で本人に選ばせ、画面はパスも中身も渡さない）・レシートの写真の読み取りの入・切（household_receipt_setting、ADR 0177。入にするときは main の OS の確認ダイアログを挟む）・レシートの写真の読み取り（household_receipt_read、ADR 0177。写真は main が OS のファイル選択で本人に選ばせ、画面はパスも中身も渡さない。結果は手入力の欄に入れる候補だけ）・請求予定を消す（household_bill_delete、ADR 0179）は従来の窓（標準の端末画面）から使い、キャンバス・入力バーは使えない。記録と請求予定は main が作る参照（ref）で指し、記録・請求予定の ID・内容版・接続範囲は main が持つ。 忘却の画面（UI-10、ADR 0183）: 記憶の一覧の取得（memories_list）・忘却の計画を作らせる（forget_plan）・確かめた計画の実行（forget_execute。main の OS の確認ダイアログを 1 回だけ挟む）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バー・島は使えない。記憶と計画は main が作る参照（ref）で指し、記憶 ID・計画 ID・台帳の世代の照合・接続範囲は main が持つ。計画は中枢が作り、承認・実行権限・閉包の判定の正本は中枢にある。
+ * UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014・0025）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。中枢との接続・ペアリングは用途別のチャネルだけで、要求の宛先・本文を Renderer が決められない。音声レンダラーの IPC（B05）は別に定める。 発言・承認表示の準備・承認・取消・照合は用途別のチャネルで、操作は main が持つ参照（ref）で指す（B04-05、ADR 0031）。 キャンバスを前に出す（canvas_summon）は状態の層と入力バーからだけ使う（UI-02、ADR 0032）。状態の層のパネルを出す・しまう（status_panel）は状態の層と島からだけ使う（UI-04、ADR 0032・0181）。 島（画面の上の中央の島の窓。ADR 0181 の段階 4）は、状態の取得（get_state・get_connection・get_voice）・この端末の入出力の停止（io_stop）・パネルを出す（status_panel）だけを使う。承認・取消・再開・登録・終了・発言・キャンバスを前に出すは使えず、島から確認を出さない（確認の入口は状態の層のパネルのまま）。キャンバスのユーザーの操作（canvas_user_op）はキャンバスの窓からだけ、キャンバスが前に出ている間だけ使う（UI-06、ADR 0032）。 予算の確認（超過枠の承認・見送り budget_overage_decide、M 超過の確認 budget_overrun_review、不明な費用の手での精算 budget_manual_settle）は状態の層からだけ使う。承認・確認・精算は main の OS の確認ダイアログを 1 回だけ挟み、画面が持つのは main が作る参照（ref）だけ（B07-05、ADR 0039）。 音声（B05-06、ADR 0050）: 音声の状態の取得（get_voice）・呼びかけなしで音声の会話を始める「続ける」（voice_continue）・外部への送信の同意の取り消し（voice_consent_revoke）は状態の層からだけ使う（音声の状態の取得だけは島も使う。ADR 0181）。外部への送信の同意は main の OS の確認ダイアログで 1 回だけ取り、画面は同意を作れない。音声レンダラーへの IPC は VoiceRendererRequest で、このチャネルとは別。 気づき（B11-05、ADR 0132）: 一覧の取得（candidates_list）と状態の変更（candidate_state。開く・今回は扱わない・再通知）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バーは使えない。候補は main が作る参照（ref）で指し、候補 ID・expected_state・接続範囲は main が持つ。 連携の接続（B08-02 P3・B09-05、ADR 0142）: 一覧の取得（connections_list）と取得範囲の変更（connection_targets_update）は中枢の画面（接続・端末）でだけ使い、キャンバス・入力バーは使えない。接続は main が作る参照（ref）で指し、接続 ID・permission_revision は main が持つ。画面が送れるのは今の保存値と、この世代で中枢から読んだ選べる対象（connection_targets_discover）のうちの選択と、期間・添付の範囲だけ（ADR 0145）。選べる対象の読み取りは提供元への読み取りを伴うので、中枢の画面のロック解除済みの画面操作だけ。 自動実行（B13-05、ADR 0154）: 一覧と安全停止の状態の取得（auto_actions_list）・取り消し（auto_action_undo）・安全停止の解除（safety_resume）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バーは使えない。自動実行した操作と安全停止の状態は main が作る参照（ref）で指し、操作 ID・state_revision・safety_revision・接続範囲は main が持つ。 家計簿（ADR 0162）: 月ごとの合計と 1 か月の記録の取得（household_view）・分類の変更（household_category）・削除（household_delete）・利用通知の取り込みの入・切（household_intake、ADR 0163）・書き出しの取り込み（household_import、ADR 0164。ファイルは main が OS のファイル選択で本人に選ばせ、画面はパスも中身も渡さない）・分類ごとの予算の変更（household_budget、ADR 0166）・記録の手入力（household_add、ADR 0167）・記録の中身の変更（household_edit、ADR 0169）・記録の CSV への書き出し（household_export、ADR 0172。保存先は main が OS の保存先の選択で本人に選ばせ、画面はパスも中身も渡さない）・レシートの写真の読み取りの入・切（household_receipt_setting、ADR 0177。入にするときは main の OS の確認ダイアログを挟む）・レシートの写真の読み取り（household_receipt_read、ADR 0177。写真は main が OS のファイル選択で本人に選ばせ、画面はパスも中身も渡さない。結果は手入力の欄に入れる候補だけ）・請求予定を消す（household_bill_delete、ADR 0179）は従来の窓（標準の端末画面）から使い、キャンバス・入力バーは使えない。記録と請求予定は main が作る参照（ref）で指し、記録・請求予定の ID・内容版・接続範囲は main が持つ。 忘却の画面（UI-10、ADR 0183）: 記憶の一覧の取得（memories_list）・忘却の計画を作らせる（forget_plan）・確かめた計画の実行（forget_execute。main の OS の確認ダイアログを 1 回だけ挟む）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バー・島は使えない。記憶と計画は main が作る参照（ref）で指し、記憶 ID・計画 ID・台帳の世代の照合・接続範囲は main が持つ。計画は中枢が作り、承認・実行権限・閉包の判定の正本は中枢にある。 保存モードの切り替え（UI-05 の段階 6、ADR 0189）: 記録しないモードに入る・出る、通常（7 日）と継続相談（30 日）の切り替え（storage_mode_change）は、従来の窓（標準の端末画面）と状態の層のパネルから、ロック解除済みの画面操作（前面）でだけ使う。キャンバス・入力バー・島は使えない（島は記録しないモードの印を出すだけ）。音声・チャット・文字の発言からは切り替えない。main は中枢の流れの経路（POST /v1/stream/storage-mode）へ画面操作として送り、結果が分からなければ送り直さずに今の保存モードを読み直す。
  */
 export type DesktopIpcChannel =
   | 'desktop.get_state'
@@ -2257,7 +2275,8 @@ export type DesktopIpcChannel =
   | 'desktop.household_bill_delete'
   | 'desktop.memories_list'
   | 'desktop.forget_plan'
-  | 'desktop.forget_execute';
+  | 'desktop.forget_execute'
+  | 'desktop.storage_mode_change';
 /**
  * main から UI レンダラーへの通知（設計 10 §1、07 §2、ADR 0014）。本文・端末 ID・認証情報を含めない。
  */
@@ -6803,6 +6822,15 @@ export interface StorageBoundaryNotice {
   segment_id: Id;
   segment_generation: SegmentGeneration;
 }
+/**
+ * 流れの保存モードが変わったことの知らせ（UI-05 の段階 6、ADR 0189、U477）。Core が POST /v1/stream/storage-mode で区切りを開き直したときに、開いている購読へ流す。reason は区切りを開き直した理由（記録しない会話に入った・出た・それ以外の保存モードの変更）、storage_mode は変えた後の保存モード。区切り・会話の ID・世代・本文・要約を入れない。端末は受けたら GET /v1/stream/storage-mode で読み直す（知らせの値をそのまま正本にしない）。
+ */
+export interface StorageModeNotice {
+  schema: 'buddy.storage-mode-notice.v1';
+  occurred_at: UtcTime;
+  storage_mode: StorageMode;
+  reason: 'private_started' | 'private_ended' | 'storage_mode_changed';
+}
 export interface PairingStartRequest {
   request_id: Id;
   command_scope_id: Id;
@@ -7259,6 +7287,10 @@ export interface DesktopTurnResult {
    * status が session_control のときの操作（それ以外は省略か null）。LLM を呼ばずに照合表で決めた値で、画面・端末は同じ操作をボタンと同じ処理で行う。
    */
   session_control?: SessionControlAction | null;
+  /**
+   * 保存モードの食い違いの印（UI-05 の段階 6、ADR 0189、U477）。recorded_while_private_shown は、送る時点で画面が記録しないと表示していたのに、中枢が記録しない区切りでない区切りで受けた（発言は記録された）こと。main が流れへの発言の応答の区切りの保存モードと、送る前の表示の値を比べて付ける。食い違いがなければ省略する。
+   */
+  storage_notice?: 'recorded_while_private_shown';
 }
 /**
  * 承認画面に出す確定した変更の内容（設計 01 承認画面の必須内容。B04-05、ADR 0031）。main が中枢の OperationPreview から作る表示用の値で、preview_id・content_hash・state_revision・アカウント ID・操作 ID を含めない（main が preview_ref の裏に持つ）。service は変更先（buddy は Buddy 内の用事）、target は対象（メールの ID・用事の一覧）。
@@ -9285,6 +9317,12 @@ export interface StorageModeChangeRequest {
 export interface StorageModeChangeResponse {
   request_id: Id;
   segment: StreamSegment;
+}
+/**
+ * 流れの今の保存モードの読み取り（GET /v1/stream/storage-mode。UI-05 の段階 6、ADR 0189）。端末が状態欄・島・パネルに保存モードを出すために読む。記録しない区切りが開いていれば private、そうでなければ今の区切りの保存モード（まだ区切りがなければ保存境界の保持者のモード）。区切り・会話の ID・世代・発言・要約を入れない。
+ */
+export interface StreamStorageModeView {
+  storage_mode: StorageMode;
 }
 /**
  * ユーザーのキャンバスの操作の記録（UI-06、ADR 0032）。expected_canvas_revision は端末が描いている版。版が今と同じか、古くてもその物の置き場所・存在がその版より後に変わっていなければ当てる。それ以外は 409（conflict）で捨てる（自動では送り直さない）。

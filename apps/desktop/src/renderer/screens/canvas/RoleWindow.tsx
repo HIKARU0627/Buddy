@@ -28,6 +28,12 @@ import {
 } from '../../state/status-panel-state.js';
 import { useNow } from '../../state/use-desktop-state.js';
 import { islandView } from '../../state/island-state.js';
+import {
+  privateModeOn,
+  storageModeControlView,
+  storageModeOf,
+} from '../../state/storage-mode-state.js';
+import { StorageModeControl } from '../../components/StorageMode.js';
 import { useIslandSignals } from '../../state/use-island-signals.js';
 import type { Notice } from '../../state/work-state.js';
 import {
@@ -55,6 +61,7 @@ import type { RendererWindowRole } from '../../state/window-role-state.js';
 import {
   canSubmit,
   clarificationAfter,
+  storageNoticeText,
   submitResult,
 } from '../../state/input-bar-state.js';
 import { CanvasBoard } from './CanvasBoard.js';
@@ -106,7 +113,13 @@ function IslandWindow({ api }: { readonly api: BuddyDesktopApi }) {
   // 確認が必要な操作の数と結果は、パネルと同じ条件（ロック解除済み・登録済み・中枢に接続中）で数える。
   const live = operationsShown(state.status, connection);
   const operations = connection?.operations ?? NO_OPERATIONS;
-  const signals = useIslandSignals(live, operations, NO_NOTICES);
+  // 保存モードが変わったら区切りの知らせで広げる（UI-05 の段階 6、ADR 0189）。
+  const signals = useIslandSignals(
+    live,
+    operations,
+    NO_NOTICES,
+    storageModeOf(state.status),
+  );
   const [holdingSince, onHoldChange] = useIslandHold();
   const summary = statusSummaryView(state.status, state.connection);
   return (
@@ -121,6 +134,7 @@ function IslandWindow({ api }: { readonly api: BuddyDesktopApi }) {
       pending={summary.pending}
       summaryLabel={summary.label}
       privacy={privacyMarks(state.status, state.voice)}
+      privateMode={privateModeOn(state.status)}
       onStop={stop}
       onOpenPanel={() => setPanel(true)}
       onHoldChange={onHoldChange}
@@ -138,6 +152,7 @@ function StatusWindow({ api }: { readonly api: BuddyDesktopApi }) {
     continueVoice,
     revokeVoiceConsent,
     controlVoice,
+    changeStorageMode,
   } = useRoleWindowState(api, 'status');
   const now = useNow();
   const visibility = usePageVisibility();
@@ -210,6 +225,13 @@ function StatusWindow({ api }: { readonly api: BuddyDesktopApi }) {
           onEndConversation={() => controlVoice('end_conversation')}
         />
       }
+      storage={
+        <StorageModeControl
+          view={storageModeControlView(state.status)}
+          message={messageFor(state, ['desktop.storage_mode_change'])}
+          onChange={changeStorageMode}
+        />
+      }
       operations={
         live ? (
           <>
@@ -243,6 +265,8 @@ function InputWindow({ api }: { readonly api: BuddyDesktopApi }) {
   const [attention, setAttention] = useState(false);
   // 聞き返しの文（UI-08）。送信の結果が聞き返しのときだけ、広がった入力バーに出す。
   const [clarification, setClarification] = useState<string | null>(null);
+  // 記録しないと表示していたのに記録された発言の 1 文（U477）。次に打ち始めるまで出す。
+  const [storageNotice, setStorageNotice] = useState<string | null>(null);
   // 送った文字が今の下書きと同じときだけ空にする（送っている間に打ち足した文字を消さない）。
   const draftRef = useRef(draft);
   draftRef.current = draft;
@@ -257,6 +281,7 @@ function InputWindow({ api }: { readonly api: BuddyDesktopApi }) {
       draftVersion.current += 1;
       setAttention(false);
       setClarification(null);
+      setStorageNotice(null);
     }
   }, [state.status]);
   const enabled = inputBarEnabled(state.status);
@@ -268,9 +293,13 @@ function InputWindow({ api }: { readonly api: BuddyDesktopApi }) {
     setSending(true);
     setAttention(false);
     setClarification(null);
+    setStorageNotice(null);
     api
       .invoke(request('desktop.turn_submit', { text }))
       .then((response) => {
+        // 記録されたことは、下書きが変わっていても出す（送った発言の扱いの知らせなので）。ロック中・不明は出さない。
+        if (contentShown(statusRef.current))
+          setStorageNotice(storageNoticeText(response));
         // 送信の後に下書きが変わった・ロック中・不明なら、古い依頼の結果を今の入力欄に反映しない。
         if (
           version !== draftVersion.current ||
@@ -297,6 +326,7 @@ function InputWindow({ api }: { readonly api: BuddyDesktopApi }) {
         draftVersion.current += 1;
         setAttention(false);
         setClarification(null);
+        setStorageNotice(null);
         setDraft(next);
       }}
       onSubmit={submit}
@@ -306,6 +336,7 @@ function InputWindow({ api }: { readonly api: BuddyDesktopApi }) {
       onSummon={summonCanvas}
       expanded={expanded}
       clarification={contentShown(state.status) ? clarification : null}
+      storageNotice={contentShown(state.status) ? storageNotice : null}
     />
   );
 }

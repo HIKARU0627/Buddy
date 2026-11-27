@@ -102,6 +102,7 @@ import type {
   OperationConfirmRequest,
 } from './operation-bridge.js';
 import { PairingFlow } from './pairing-flow.js';
+import { StorageModeBridge } from './storage-mode-bridge.js';
 import {
   createReplicaFileStore,
   sha256Hex,
@@ -198,6 +199,12 @@ export const CONNECTIONS_CHANNELS: readonly DesktopIpcChannel[] = [
   'desktop.connection_targets_discover',
 ];
 
+// 保存モードの切り替えのチャネル（UI-05 の段階 6、ADR 0189）。登録済みでロック解除済みの端末の本人の画面操作（前面）。
+// 状態の層のパネルと従来の窓から（役割の表）。中枢の画面の端末でなくても使える（保存モードは流れの経路の値）。
+export const STORAGE_MODE_CHANNELS: readonly DesktopIpcChannel[] = [
+  'desktop.storage_mode_change',
+];
+
 // 中枢の画面のこのマシンの指紋の読み取り（main だけが持つ。画面へは伏せた表示だけを出す）。
 interface HubHomeReading {
   readonly fingerprint: HomeFingerprint;
@@ -216,6 +223,8 @@ export interface HubStatus {
   readonly lastConfirmedAt: string | null;
   // 中枢のスナップショットの予算保留（budget_hold.held）。不明は null。
   readonly budgetHeld: boolean | null;
+  // 中枢の流れの今の保存モード（GET /v1/stream/storage-mode。UI-05 の段階 6、ADR 0189）。不明は null。
+  readonly storageMode: 'normal' | 'extended' | 'private' | null;
 }
 
 export interface DesktopCoreLinkOptions {
@@ -469,13 +478,24 @@ export class DesktopCoreLink {
   readonly #ledger: ForgetLedgerSync | null;
   // 表示のリース（キャンバスのモードだけ。ADR 0188）。取らない組み立てでは null。
   readonly #display: DisplayLeaseKeeper | null;
+  // 中枢の流れの今の保存モードと切り替え（UI-05 の段階 6、ADR 0189）。
+  readonly #storage: StorageModeBridge;
 
   constructor(options: DesktopCoreLinkOptions) {
     this.#options = options;
+    this.#storage = new StorageModeBridge({
+      contract: options.contract,
+      connection: () => this.#connection,
+      changed: () => options.onChange(),
+      log: (code) => this.#log(code),
+    });
     this.#operations = new OperationBridge({
       contract: options.contract,
       connection: () => this.#connection,
       newRef: () => options.clock.newRequestId(),
+      // 従来の窓の会話の保存モード（中枢の流れの今の保存モード。ADR 0189）。
+      storageMode: () => this.#storage.mode,
+      observeStorageMode: (mode) => this.#storage.observe(mode),
       confirm: (request) => this.#confirm(request),
       io: () => {
         const state = options.ioState?.() ?? null;
@@ -550,7 +570,13 @@ export class DesktopCoreLink {
       publish: (canvas, withheld) => this.#publishCanvas(canvas, withheld),
       displayHeld: () =>
         this.#display === null || this.#display.state === 'held',
-      turnResult: (turn) => this.#operations.streamTurnResult(turn),
+      // 送る直前に画面（状態欄）が記録しないと表示しているか（U477）。
+      shownPrivate: () => this.#storage.mode === 'private',
+      turnResult: (turn, shownPrivate) => {
+        // 流れへの発言の応答の区切りが今の保存モード（ADR 0189）。
+        this.#storage.observe(turn.segment.storage_mode);
+        return this.#operations.streamTurnResult(turn, shownPrivate);
+      },
       log: (code) => this.#log(code),
     });
     const leaseOption = options.displayLease;
@@ -672,6 +698,8 @@ export class DesktopCoreLink {
       if (this.#options.budgetAuto !== false) void this.refreshBudget();
       // ロック中に捨てた記述を、解除したら中枢から取り直す（ロック中に届いた版の知らせは取っていない）。
       if (this.#options.canvasMode === true) void this.#canvas.refresh();
+      // ロック中に捨てた保存モードを読み直す（ADR 0189）。
+      void this.#storage.refresh();
     }
     // ロックした・不明になったら、自宅の登録の参照を捨てる（解除の後に読み取り直して確かめ直す。B03-08）。
     else this.#homeRef = null;
@@ -693,6 +721,7 @@ export class DesktopCoreLink {
         connection: 'not_connected',
         lastConfirmedAt: null,
         budgetHeld: null,
+        storageMode: null,
       };
     const connection = hubConnectionOf(state);
     return {
@@ -702,6 +731,8 @@ export class DesktopCoreLink {
         connection === 'not_connected' ? null : iso(state.lastConfirmedAt),
       // 予算保留は中枢のスナップショットの値。接続している間だけ（読めていなければ不明）。
       budgetHeld: connection === 'connected' ? this.#budget.hold : null,
+      // 保存モードも中枢の値。接続している間だけ（読めていなければ不明。ADR 0189）。
+      storageMode: connection === 'connected' ? this.#storage.mode : null,
     };
   }
 
@@ -992,6 +1023,8 @@ export class DesktopCoreLink {
         if (this.#options.budgetAuto !== false) void this.refreshBudget();
         // 接続するたびに、中枢のキャンバスの今の記述を取る（捨てた記述の復元。UI-03）。
         if (this.#options.canvasMode === true) void this.#canvas.refresh();
+        // 接続するたびに、流れの今の保存モードを読む（状態欄・島・パネルの記録しないモードの印。ADR 0189）。
+        void this.#storage.refresh();
         // 接続するたびに、忘却台帳の複製の head を送って追いつく（B06-07b-3、ADR 0182）。ロック中でも送る（台帳は
         // 本文を持たない）。復元で DB の世代（store_generation）が変わったときも、bootstrap をやり直して live に
         // なるので、ここで中枢の台帳と照らし合わせ直す。
@@ -1032,6 +1065,18 @@ export class DesktopCoreLink {
         });
         return;
       }
+      // 保存モードが変わった知らせ（この端末・ほかの端末の切り替え。UI-05 の段階 6、ADR 0189、U477）。知らせの値を正本にせず、
+      // 中枢の今の値を読み直す。ロック中は読まない（解除したときに読む）。キャンバスは読み直さない（記述は変わっていない）。
+      if (notice.schema === 'buddy.storage-mode-notice.v1') {
+        if (this.#lockState === 'unlocked') void this.#storage.refresh();
+        return;
+      }
+      // 記録しない会話が終わった（中枢の再起動で通常の区切りへ戻した）知らせ。保存モードを読み直す（ADR 0189）。
+      if (
+        notice.schema === 'buddy.storage-boundary-notice.v1' &&
+        this.#lockState === 'unlocked'
+      )
+        void this.#storage.refresh();
       // 消えた物は中枢が記述から閉じて版を進める。版の知らせを取り逃しても、知らせで今の記述を取り直す（ロック中・停止中・
       // 隠れている間は取らない。CanvasBridge.refresh の判定のまま）。
       if (this.#options.canvasMode === true) void this.#canvas.refresh();
@@ -1215,6 +1260,19 @@ export class DesktopCoreLink {
             : await this.#operations.submitTurn(raw.payload.text);
         if (result.ok && result.value.session_control != null)
           this.#options.onSessionControl?.(result.value.session_control);
+        // 発言の後に保存モードを読み直す（従来の窓の会話の応答は区切りを持たない。流れへの発言が拒否されたときは、記録しない
+        // 区切りに入っている・別の端末が切り替えたことがある。ADR 0189）。記録しないと表示していたのに記録された（応答の区切りが
+        // 記録しない区切りでない。U477）ときも、すぐ読み直して表示を中枢にそろえる。
+        if (
+          result.ok
+            ? this.#options.canvasMode !== true ||
+              result.value.storage_notice === 'recorded_while_private_shown'
+            : result.reason !== 'not_connected'
+        ) {
+          if (result.ok && result.value.storage_notice !== undefined)
+            this.#log('storage_mode_mismatch_on_turn');
+          void this.#storage.refresh();
+        }
         outcome = this.#operationOutcome(
           requestId,
           raw.channel,
@@ -1464,6 +1522,51 @@ export class DesktopCoreLink {
         raw.channel,
         result,
         (memories) => ({ memories }),
+      ),
+    );
+  }
+
+  // 保存モードの切り替え（UI-05 の段階 6、ADR 0189）。ロック解除済みの本人の画面操作（前面）だけ。中枢の保存の範囲を
+  // 変えるだけで外部へは送らないので、この端末の入出力の停止中も受け付ける（記録しないモードに入るのを止めない）。
+  // 中枢へは画面操作として送る。結果が分からなければ送り直さずに読み直す。受け付けたら、従来の窓の会話を次の発言で
+  // 作り直す（区切りの世代が進むため。OperationBridge が保存モードの違いで作り直す）。ロック・切断をまたいだ結果は渡さない。
+  async handleStorageModeIpc(
+    ipcChannel: string,
+    raw: unknown,
+    sender: DesktopIpcSender,
+    ioState: DesktopIoState,
+  ): Promise<ConnectionIpcOutcome> {
+    const contract = this.#options.contract;
+    if (
+      !contract.isRequest(raw) ||
+      raw.channel !== ipcChannel ||
+      raw.channel !== 'desktop.storage_mode_change'
+    )
+      return this.#reject(
+        echoRequestId(raw),
+        echoChannel(raw, ipcChannel),
+        'invalid_request',
+      );
+    const admission = admitDesktopRequest(raw.channel, null, ioState, sender);
+    if (!admission.ok)
+      return this.#reject(raw.request_id, raw.channel, admission.reason);
+    const connection = this.#connection;
+    if (
+      connection === null ||
+      this.#registration !== 'registered' ||
+      connection.state.phase !== 'live'
+    )
+      return this.#reject(raw.request_id, raw.channel, 'not_connected');
+    const generation = this.#viewGeneration;
+    const result = await this.#storage.change(raw.payload.storage_mode);
+    if (result.ok) this.#operations.resetSession();
+    return this.#withinGeneration(
+      generation,
+      this.#operationOutcome(
+        raw.request_id,
+        raw.channel,
+        result,
+        (storage_mode) => ({ storage_mode }),
       ),
     );
   }
@@ -2618,6 +2721,7 @@ export class DesktopCoreLink {
     this.#household.reset();
     this.#connections.reset();
     this.#canvas.reset();
+    this.#storage.reset();
     this.#confirmAbort?.abort();
     this.#confirmAbort = null;
   }

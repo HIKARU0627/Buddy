@@ -8,12 +8,15 @@
 // - 広がる形（本人の決定 4）: 確認が必要な操作が増えたときと、操作の結果が届いたときだけ、区切り線の下に 1 行を足す。
 //   確認が必要な操作のときは「確認が必要な操作を見る」で状態のパネルを出す（確認の入口はパネルのまま。島から確認・承認は
 //   しない）。行が長いときは 1 行で切る（全文は読み上げとパネルで分かる）。
+// - 記録しない間（UI-05 の段階 6、ADR 0189）: 入出力の 1 行の右に「記録しない」の札（記号と文言）をいつも出す（専用の記号の
+//   塗った面に加えて、文字でも示す）。島からは切り替えない（切り替えはパネル。島の役割のチャネルは U391 のまま）。
 // - 島の窓はキー入力を受けない（main が focusable: false で作る）。押しても前面の窓（パネル・入力バー）を外さない。
 //   キーボードからは全体のショートカット（停止・パネル）で同じ操作ができる。
 // - 動きを減らす設定では、広がった行を滑り込ませない（motion-safe。--motion-island も 0s）。窓の大きさは main が一度に変える。
 import { useCallback, useState } from 'react';
 import { Button, Chip, InfoIcon, WarningIcon } from '@heroui/react';
 import { PanelIcon, PrivacyIcon } from '../../components/StatusIcons.js';
+import { PrivateModeMark } from '../../components/StorageMode.js';
 import { StatusMark, StatusText } from '../../components/StatusText.js';
 import { ISLAND_LABELS } from '../../state/island-state.js';
 import type { IslandExpanded, IslandView } from '../../state/island-state.js';
@@ -114,8 +117,11 @@ export function CanvasIsland({
   onStop,
   onOpenPanel,
   onHoldChange = () => undefined,
+  privateMode = false,
 }: {
   readonly view: IslandView;
+  // 記録しない間か（ADR 0189）。内容を出している間だけ札を出す。
+  readonly privateMode?: boolean;
   // 確認が必要な操作の数（ロック中・未登録・受け取る前は null で、数を出さない）。
   readonly pending: number | null;
   // 状態の要約の読み上げの名前（statusSummaryView の label）。
@@ -177,6 +183,7 @@ export function CanvasIsland({
               <StatusText line={view.io} />
             </p>
           )}
+          {!hidden && privateMode ? <PrivateModeMark /> : null}
           <Button
             variant="ghost"
             size="sm"

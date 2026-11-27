@@ -30137,12 +30137,132 @@
             ],
             "memory_refs": ["00000000-0000-4000-8000-000000000e01"],
             "unlisted_memory_count": 0,
-            "directive_count": 1
+            "directives": [
+              {
+                "ref": "00000000-0000-4000-8000-000000000e20",
+                "scope": "from_now_on",
+                "text": "今後は返信を短めにして"
+              }
+            ]
           },
           "kept": {
             "operation_states": ["awaiting_approval"],
             "lineage_only": 0
           },
+          "blocked_source_count": 1
+        },
+        "result": null,
+        "list_seq": 2
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-memories-view-plan-unreadable-directive",
+    "schema": "DesktopIpcResponse",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000e80",
+      "channel": "desktop.forget_plan",
+      "outcome": "ok",
+      "memories": {
+        "fetch": "loaded",
+        "fetched_at": "2030-11-04T08:59:00.000Z",
+        "forget": "open",
+        "truncated": false,
+        "entries": [
+          {
+            "ref": "00000000-0000-4000-8000-000000000e01",
+            "kind": "preference",
+            "origin": "explicit_request",
+            "text": "返信は短めが好み",
+            "status": "active",
+            "created_at": "2030-10-01T00:00:00.000Z",
+            "review_at": "2030-12-30T00:00:00.000Z",
+            "delete_at": null,
+            "source_counts": { "turn": 1, "source_item": 0, "memory": 0 }
+          }
+        ],
+        "plan": {
+          "ref": "00000000-0000-4000-8000-000000000e10",
+          "target_ref": "00000000-0000-4000-8000-000000000e01",
+          "forgetting_generation": "3",
+          "expires_at": "2030-11-04T09:10:00.000Z",
+          "removed": {
+            "counts": [
+              { "kind": "memory", "count": 1 },
+              { "kind": "user_directive", "count": 2 }
+            ],
+            "memory_refs": ["00000000-0000-4000-8000-000000000e01"],
+            "unlisted_memory_count": 0,
+            "directives": [
+              {
+                "ref": "00000000-0000-4000-8000-000000000e20",
+                "scope": "this_time",
+                "text": "この会話では敬語をやめて"
+              },
+              {
+                "ref": "00000000-0000-4000-8000-000000000e21",
+                "scope": "from_now_on",
+                "text": null
+              }
+            ]
+          },
+          "kept": { "operation_states": [], "lineage_only": 0 },
+          "blocked_source_count": 1
+        },
+        "result": null,
+        "list_seq": 2
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-memories-view-plan-with-directive-id",
+    "schema": "DesktopIpcResponse",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000e80",
+      "channel": "desktop.forget_plan",
+      "outcome": "ok",
+      "memories": {
+        "fetch": "loaded",
+        "fetched_at": "2030-11-04T08:59:00.000Z",
+        "forget": "open",
+        "truncated": false,
+        "entries": [
+          {
+            "ref": "00000000-0000-4000-8000-000000000e01",
+            "kind": "preference",
+            "origin": "explicit_request",
+            "text": "返信は短めが好み",
+            "status": "active",
+            "created_at": "2030-10-01T00:00:00.000Z",
+            "review_at": "2030-12-30T00:00:00.000Z",
+            "delete_at": null,
+            "source_counts": { "turn": 1, "source_item": 0, "memory": 0 }
+          }
+        ],
+        "plan": {
+          "ref": "00000000-0000-4000-8000-000000000e10",
+          "target_ref": "00000000-0000-4000-8000-000000000e01",
+          "forgetting_generation": "3",
+          "expires_at": "2030-11-04T09:10:00.000Z",
+          "removed": {
+            "counts": [
+              { "kind": "memory", "count": 1 },
+              { "kind": "user_directive", "count": 2 }
+            ],
+            "memory_refs": ["00000000-0000-4000-8000-000000000e01"],
+            "unlisted_memory_count": 0,
+            "directives": [
+              {
+                "ref": "00000000-0000-4000-8000-000000000e20",
+                "directive_id": "00000000-0000-4000-8000-0000000f0004",
+                "scope": "from_now_on",
+                "text": "今後は返信を短めにして"
+              }
+            ]
+          },
+          "kept": { "operation_states": [], "lineage_only": 0 },
           "blocked_source_count": 1
         },
         "result": null,

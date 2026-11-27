@@ -297,7 +297,8 @@ export function budgetConfirmText(
 }
 
 // 忘却の実行の確認（UI-10、ADR 0183）。値は main が中枢から読んだ一覧と計画の値だけ。忘れる記憶の本文・消える物と残る物の
-// 件数・元に戻せないことを書く。本文は制御文字を除いて 60 文字で切る。
+// 件数・元に戻せないことを書く。本文は制御文字を除いて 60 文字で切る。消える指示の本文は画面の「消える指示」に出し、ここには
+// 数と、本文を読めない指示の数だけを書く（U433、ADR 0185）。
 export function forgetConfirmText(
   request: ForgetConfirmRequest,
 ): AdminConfirmText {
@@ -305,6 +306,9 @@ export function forgetConfirmText(
   const lines = [
     `忘れる記憶: ${displayText(request.memoryText) || '（本文なし）'}`,
     `消える物: 合計${nb}${request.removedTotal}${nb}件（記憶${nb}${request.memoryCount}${nb}件・本人の指示${nb}${request.directiveCount}${nb}件を含む）`,
+    request.unreadableDirectiveCount === 0
+      ? null
+      : `本文を読めない指示: ${request.unreadableDirectiveCount}${nb}件（これも一緒に消えます）`,
     request.keptOperations === 0
       ? null
       : `残る操作: ${request.keptOperations}${nb}件（外部への送出だけを止めます）`,

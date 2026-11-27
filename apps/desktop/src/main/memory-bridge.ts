@@ -1,9 +1,10 @@
 // デスクトップの main の忘却の画面の経路（UI-10、Issue #180。設計 03 忘却と再取り込み、ADR 0040・0044・0054・0180・0183）。
 //
 // - 計画は中枢が作る。画面は計画を見せて確認を返すだけ。承認・実行権限・閉包の判定の正本は中枢にある。
-// - 画面へ渡すのは参照（ref）と表示用の値（記憶の本文・種類・期限・由来の件数、計画の件数と行の参照）だけ。記憶 ID・計画 ID・
-//   本人の指示の ID・操作 ID・接続範囲は main の中に持ち、画面へも IPC へもログへも出さない（画面から送られた ref を main が
-//   解決する。解決できなければ entry_not_found）。
+// - 画面へ渡すのは参照（ref）と表示用の値（記憶の本文・種類・期限・由来の件数、計画の件数と行の参照、消える指示の本文と
+//   範囲）だけ。記憶 ID・計画 ID・本人の指示の ID・操作 ID・接続範囲は main の中に持ち、画面へも IPC へもログへも出さない
+//   （画面から送られた ref を main が解決する。解決できなければ entry_not_found）。消える指示は、計画ごとに main が参照を
+//   作り、中枢の本文（読めない指示は null）と範囲を写す（U433、ADR 0185）。
 // - 一覧は中枢の GET /v1/memory/records を本人の画面操作として読む。読めなかったとき（接続の失敗・503・形の違う応答）は
 //   前の値のまま、取得の状態を stale（読めたことがなければ unavailable）にする。読めなかったことを「記憶なし」にしない。
 // - 忘却の公開ゲート（U112）は中枢の一覧が返す値を写す。計画・実行に中枢が 503 を返したら、理由を区別せずに忘却を
@@ -25,6 +26,7 @@ import type {
 } from '@buddy/contracts';
 import type { ClientConnection } from '@buddy/client';
 import type { DesktopIpcRejectReason } from '@buddy/domain';
+import { displayText } from './admin-confirm.js';
 import type { DesktopContract } from './contract.js';
 
 // 忘却の実行の前の OS の確認（admin-confirm.ts の forgetConfirmText が文言にする）。値は main が中枢から読んだ一覧と計画の
@@ -37,6 +39,8 @@ export interface ForgetConfirmRequest {
   readonly removedTotal: number;
   readonly memoryCount: number;
   readonly directiveCount: number;
+  // 消える本人の指示のうち、中枢が本文を読めなかった数（U433、ADR 0185）。
+  readonly unreadableDirectiveCount: number;
   readonly keptOperations: number;
 }
 
@@ -76,6 +80,8 @@ interface HeldPlan {
   readonly planId: string;
   readonly memoryId: string;
   readonly view: ForgetPlanView;
+  // 消える指示の参照（view.removed.directives と同じ順）。指示 ID の代わりに画面へ渡す。
+  readonly directiveRefs: readonly string[];
 }
 
 export class MemoryBridge {
@@ -151,7 +157,16 @@ export class MemoryBridge {
         })) as DesktopForgetPlanView['removed']['counts'],
         memory_refs: memoryRefs,
         unlisted_memory_count: unlisted,
-        directive_count: plan.view.removed.directive_ids.length,
+        // 本文は、確認のダイアログと同じく制御文字・書字方向の制御文字・ゼロ幅の文字を除き、空白を 1 つにまとめて
+        // 渡す（見かけを紛らわしくしない。長さは中枢が 200 文字までにしている）。除いて空になれば読めない指示と同じ扱い。
+        directives: plan.view.removed.directives.map((directive, index) => ({
+          ref: plan.directiveRefs[index] as string,
+          scope: directive.scope,
+          text:
+            directive.text === null
+              ? null
+              : displayText(directive.text, 200) || null,
+        })),
       },
       kept: {
         operation_states: plan.view.kept.operations.map(
@@ -331,6 +346,7 @@ export class MemoryBridge {
         planId: view.plan_id,
         memoryId,
         view,
+        directiveRefs: view.removed.directives.map(() => this.#host.newRef()),
       };
       this.#result = null;
       this.#listSeq += 1;
@@ -409,7 +425,10 @@ export class MemoryBridge {
       memoryText: memory.text,
       removedTotal: this.#removedTotal(plan),
       memoryCount: plan.view.removed.memory_ids.length,
-      directiveCount: plan.view.removed.directive_ids.length,
+      directiveCount: plan.view.removed.directives.length,
+      unreadableDirectiveCount: plan.view.removed.directives.filter(
+        (directive) => directive.text === null,
+      ).length,
       keptOperations: plan.view.kept.operations.length,
     });
     if (typeof confirmed === 'string') return fail(confirmed);

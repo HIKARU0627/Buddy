@@ -80,7 +80,13 @@ const PLAN: DesktopMemoryView['plan'] = {
     ],
     memory_refs: [ROW_1, ROW_2],
     unlisted_memory_count: 0,
-    directive_count: 1,
+    directives: [
+      {
+        ref: uuid(0x301),
+        scope: 'from_now_on',
+        text: '今後は返信を短めにして',
+      },
+    ],
   },
   kept: { operation_states: ['awaiting_approval'], lineage_only: 0 },
   blocked_source_count: 1,
@@ -355,6 +361,108 @@ test('a 503 from the hub to the plan disables forgetting on the screen until the
   assert.equal(
     buttons(screen.container, /忘却の計画を作る/u)[0]?.disabled,
     false,
+  );
+  await screen.close();
+});
+
+// ---- 消える指示の本文（U433、ADR 0185） ----
+
+const LONG = `${'返信の書き方の指示'.repeat(10)}${'a'.repeat(110)}`;
+
+const DIRECTIVE_PLAN: DesktopMemoryView['plan'] = {
+  ...(PLAN as NonNullable<DesktopMemoryView['plan']>),
+  removed: {
+    counts: [
+      { kind: 'memory', count: 2 },
+      { kind: 'user_directive', count: 3 },
+    ],
+    memory_refs: [ROW_1, ROW_2],
+    unlisted_memory_count: 0,
+    directives: [
+      {
+        ref: uuid(0x301),
+        scope: 'from_now_on',
+        text: '今後は返信を短めにして',
+      },
+      { ref: uuid(0x302), scope: 'this_time', text: LONG },
+      { ref: uuid(0x303), scope: 'from_now_on', text: null },
+    ],
+  },
+};
+
+test('the disappearing directives are listed with their full text and scope, and an unreadable one has a warning row', async () => {
+  // 200 文字ちょうど（日本語 90 文字と空白のない英字 110 文字）。
+  assert.equal([...LONG].length, 200);
+  const f = fake((request) => okWith(request, view({ plan: DIRECTIVE_PLAN })));
+  const screen = await render(f.api);
+  const part = [
+    ...screen.container.querySelectorAll('[data-plan] section'),
+  ].find((section) =>
+    section.querySelector('h4')?.textContent.startsWith('消える指示'),
+  );
+  assert(part !== undefined);
+  assert.match(part.querySelector('h4')?.textContent ?? '', /3\u00a0件$/u);
+  assert.match(
+    part.textContent,
+    /この記憶の元の発言から作った、本人の指示です/u,
+  );
+  // 件数だけの文と「まだ見られません」の注記は出さない。
+  assert.doesNotMatch(screen.container.textContent, /まだ見られません/u);
+  const list = part.querySelector('ul[aria-label="消える指示"]');
+  assert(list !== null);
+  // 共通の枠（箱の丸み）で囲む。
+  assert.match(list.className, /rounded-box border border-separator/u);
+  const rows = [...list.querySelectorAll('li')];
+  assert.deepEqual(
+    rows.map((row) => row.getAttribute('data-directive')),
+    ['text', 'text', 'unreadable'],
+  );
+  assert.equal(
+    rows[0]?.textContent,
+    '今後は返信を短めにして今後ずっと守る指示',
+  );
+  // 長い本文は省略せずに全部出し、空白のない英字も枠の中で折り返す。
+  const long = rows[1]?.querySelector('p');
+  assert.equal(long?.textContent, LONG);
+  assert.match(long?.className ?? '', /break-words/u);
+  assert.match(rows[1]?.textContent ?? '', /この会話の間だけの指示$/u);
+  // 読めない指示は ⚠（読み上げない記号）と文言で示し、一緒に消えることを書く。
+  const unreadable = rows[2] as Element;
+  assert.match(unreadable.textContent, /本文を読めない指示/u);
+  assert.match(unreadable.textContent, /この指示も一緒に消えます/u);
+  assert.match(unreadable.textContent, /今後ずっと守る指示/u);
+  const mark = unreadable.querySelector('svg');
+  assert(mark !== null);
+  assert.equal(mark.getAttribute('aria-hidden'), 'true');
+  assert.match(
+    mark.getAttribute('class') ?? '',
+    /text-warning-soft-foreground/u,
+  );
+  // 確認の帯の指示の数は、読めない指示も数える。
+  const band = screen.container.querySelector('[data-band="confirm"]');
+  assert.match(
+    band?.textContent ?? '',
+    /消える物 合計\u00a05\u00a0件（記憶\u00a02\u00a0件・指示\u00a03\u00a0件）/u,
+  );
+  await screen.close();
+});
+
+test('a plan without disappearing directives says so', async () => {
+  const none: DesktopMemoryView['plan'] = {
+    ...(PLAN as NonNullable<DesktopMemoryView['plan']>),
+    removed: {
+      counts: [{ kind: 'memory', count: 1 }],
+      memory_refs: [ROW_1],
+      unlisted_memory_count: 0,
+      directives: [],
+    },
+  };
+  const f = fake((request) => okWith(request, view({ plan: none })));
+  const screen = await render(f.api);
+  assert.match(screen.container.textContent, /消える指示はありません。/u);
+  assert.equal(
+    screen.container.querySelector('ul[aria-label="消える指示"]'),
+    null,
   );
   await screen.close();
 });

@@ -49,8 +49,11 @@ export const MEMORY_LABELS = {
   planNone:
     '左の一覧で記憶を選び、「忘却の計画を作る」を押すと、ここに消える物と残る物が出ます。計画を作っても、まだ何も消えません。',
   noDirectives: '消える指示はありません。',
-  directivesHidden:
-    '指示の本文は、この画面ではまだ見られません。件数だけを出しています。',
+  directivesLead:
+    'この記憶の元の発言から作った、本人の指示です。忘れると、これらの指示も消えます。',
+  directiveUnreadable: '本文を読めない指示',
+  directiveUnreadableBody:
+    '中枢がこの指示の本文を開けませんでした。忘れると、この指示も一緒に消えます。',
   noKept: '残る物はありません。',
   truncated: '記憶が多いため、新しい順に 1000 件だけを出しています。',
   closed:
@@ -109,6 +112,16 @@ export const REMOVED_KIND_LABELS: Readonly<Record<RemovedKind, string>> = {
   source_item: '元の情報（メールなど）',
   operation_content: '操作の確定内容',
 };
+
+type DirectiveScope =
+  DesktopForgetPlanView['removed']['directives'][number]['scope'];
+
+// 消える指示の範囲（U433、ADR 0185）。
+export const DIRECTIVE_SCOPE_LABELS: Readonly<Record<DirectiveScope, string>> =
+  {
+    from_now_on: '今後ずっと守る指示',
+    this_time: 'この会話の間だけの指示',
+  };
 
 type KeptState = DesktopForgetPlanView['kept']['operation_states'][number];
 
@@ -198,7 +211,7 @@ export function keptLines(plan: DesktopForgetPlanView): string[] {
 export function bandSummary(plan: DesktopForgetPlanView): string {
   const memories =
     plan.removed.memory_refs.length + plan.removed.unlisted_memory_count;
-  return `消える物 合計${NB}${count(removedTotal(plan))}（記憶${NB}${count(memories)}・指示${NB}${count(plan.removed.directive_count)}）`;
+  return `消える物 合計${NB}${count(removedTotal(plan))}（記憶${NB}${count(memories)}・指示${NB}${count(plan.removed.directives.length)}）`;
 }
 
 // 計画の時点の忘却の記録の数（台帳の世代。画面では「世代」と言わない）。

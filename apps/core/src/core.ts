@@ -1256,6 +1256,11 @@ export async function startCore(
           );
           return key.ok ? restoreSourceHmac(key.key.key) : null;
         },
+        // 消える指示の本文を開くデータ鍵（U433、ADR 0185）。保持せず計画のたびに読む。
+        dataKey: async () => {
+          const result = await options.keyStore.loadDataKey();
+          return result.ok ? result.dataKey : null;
+        },
         ...(options.retention?.notices === undefined
           ? {}
           : { notices: options.retention.notices }),

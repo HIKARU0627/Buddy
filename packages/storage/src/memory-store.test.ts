@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import test from 'node:test';
 import { executeRetentionOp } from './index.js';
 import type {
+  ForgetGraphValue,
   MemoryOp,
   RetentionOp,
   RetentionOpResult,
@@ -18,7 +19,10 @@ import {
   M_OTHER,
   OP_DONE,
   OP_RET,
+  S_INST,
+  T_INST,
   T_OTHER,
+  blob,
   count,
   memoryOp,
   reasons,
@@ -276,6 +280,69 @@ test('directive.revoke deletes the directive and its sealed text once', async ()
         revoked: false,
       },
     );
+  });
+});
+
+// 忘却の計画に出す「消える指示」の本文の封筒（U433、ADR 0185）。系譜と同じ読み取りで、系譜の辺にある指示の封筒を返す。
+test('forget.graph returns the envelope of each directive in the lineage, and null when the envelope belongs to another owner', async () => {
+  await withWorld((db) => {
+    const D2 = 'f0000000-0000-4000-8000-000000000002';
+    const D3 = 'f0000000-0000-4000-8000-000000000003';
+    // D2 は忘却の指示の発言 T_INST から作った「今回は」の指示で、封筒の行の所有者が別の ID（この指示の封筒として読めない）。
+    db.prepare(
+      "INSERT INTO user_directives (directive_id, text_blob_id, scope, session_id, turn_id, active, created_at) VALUES (?, ?, 'this_time', ?, ?, 1, 1000)",
+    ).run(
+      D2,
+      blob(db, 'directive_text', 'user_directives', randomUUID()),
+      S_INST,
+      T_INST,
+    );
+    // D3 は発言に結び付かない指示（系譜にない）。
+    db.prepare(
+      "INSERT INTO user_directives (directive_id, text_blob_id, scope, session_id, turn_id, active, created_at) VALUES (?, ?, 'from_now_on', NULL, NULL, 1, 1000)",
+    ).run(D3, blob(db, 'directive_text', 'user_directives', D3));
+    const stored = db
+      .prepare(
+        'SELECT b.blob_id, b.format_version, b.key_id, b.nonce, b.ciphertext, b.tag FROM user_directives d JOIN sealed_blobs b ON b.blob_id = d.text_blob_id WHERE d.directive_id = ?',
+      )
+      .get(DIRECTIVE) as {
+      blob_id: string;
+      format_version: number;
+      key_id: string;
+      nonce: Buffer;
+      ciphertext: Buffer;
+      tag: Buffer;
+    };
+    const read = value<ForgetGraphValue>(
+      memoryOp(db, {
+        kind: 'forget.graph',
+        target: { source_kind: 'memory', source_id: M },
+        instruction_turn_id: T_INST,
+      }),
+    );
+    assert.deepEqual(read.directives, [
+      {
+        directive_id: DIRECTIVE,
+        scope: 'from_now_on',
+        text: {
+          blob_id: stored.blob_id,
+          format_version: stored.format_version,
+          key_id: stored.key_id,
+          nonce: new Uint8Array(stored.nonce),
+          ciphertext: new Uint8Array(stored.ciphertext),
+          tag: new Uint8Array(stored.tag),
+        },
+      },
+      { directive_id: D2, scope: 'this_time', text: null },
+    ]);
+    // 忘却の指示の発言を含めない計画では、T_INST から作った指示は系譜にない。
+    const withoutInstruction = value<ForgetGraphValue>(
+      memoryOp(db, {
+        kind: 'forget.graph',
+        target: { source_kind: 'memory', source_id: M },
+      }),
+    );
+    assert.deepEqual(withoutInstruction.directives, []);
   });
 });
 

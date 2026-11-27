@@ -96,6 +96,9 @@ export class MemoryBridge {
   #listSeq = 1;
   #running: Promise<void> | null = null;
   #again = false;
+  // 実行の旗。確認の前に立て、結果が出るか失敗したら下ろす。立っている間の 2 回目の実行は、確認も送信もせずに断る
+  // （同じ計画の確認が 2 回通り、実行が 2 回送られて、結果不明の「送り直さない」が破れるのを防ぐ）。
+  #executing = false;
 
   constructor(host: MemoryHost) {
     this.#host = host;
@@ -115,6 +118,7 @@ export class MemoryBridge {
     this.#failed = false;
     this.#listSeq += 1;
   }
+  // 実行の旗は reset では下ろさない（古い世代の実行が終わるときに、その実行の finally が下ろす）。
 
   // 計画を持っているか（試験用）。
   hasPlan(): boolean {
@@ -371,6 +375,17 @@ export class MemoryBridge {
   }
 
   async execute(ref: string): Promise<MemoryOutcome<DesktopMemoryView>> {
+    // 実行が進んでいる間の 2 回目は、確認ダイアログも送信も出さずに断る。
+    if (this.#executing) return fail('confirmation_pending');
+    this.#executing = true;
+    try {
+      return await this.#execute(ref);
+    } finally {
+      this.#executing = false;
+    }
+  }
+
+  async #execute(ref: string): Promise<MemoryOutcome<DesktopMemoryView>> {
     const gen = this.#gen;
     const connection = this.#host.connection();
     if (connection === null || connection.state.commandScopeId === null)

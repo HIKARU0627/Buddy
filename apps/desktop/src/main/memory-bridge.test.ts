@@ -100,6 +100,8 @@ interface Rig {
   execute: () => Outcome;
   confirm: () => Promise<{ scope: string } | DesktopIpcRejectReason>;
   now: number;
+  // 実行の送信の応答を、これが解けるまで待たせる（null なら待たせない）。
+  executeGate: Promise<void> | null;
   executes(): Call[];
 }
 
@@ -122,6 +124,7 @@ function rig(): Rig {
     }),
     confirm: () => Promise.resolve({ scope: SCOPE }),
     now: NOW,
+    executeGate: null,
     executes: () => calls.filter((call) => call.path.endsWith('/execute')),
     bridge: undefined as unknown as MemoryBridge,
   };
@@ -134,6 +137,8 @@ function rig(): Rig {
       if (call.method === 'GET') return Promise.resolve(state.list());
       if (call.path === '/v1/memory/forget-plans')
         return Promise.resolve(state.plan());
+      const gate = state.executeGate;
+      if (gate !== null) return gate.then(() => state.execute());
       return Promise.resolve(state.execute());
     },
   } as unknown as ClientConnection;
@@ -481,4 +486,56 @@ test('a lock or disconnect during the confirmation sends nothing; a reset drops 
   assert.equal(view.entries.length, 0);
   assert.equal(view.plan, null);
   assert.equal(view.fetch, 'unavailable');
+});
+
+test('a second execute of the same ref while the first is confirming or awaiting the response is refused without a dialog or a send', async () => {
+  // 確認の待ちの間。
+  const r = rig();
+  const listed = ok(await r.bridge.list());
+  const planned = ok(await r.bridge.plan(listed.entries[0]?.ref as string));
+  const planRef = planned.plan?.ref as string;
+  let answer: (value: { scope: string }) => void = () => undefined;
+  r.confirm = () =>
+    new Promise((resolve) => {
+      answer = resolve;
+    });
+  const first = r.bridge.execute(planRef);
+  assert.deepEqual(await r.bridge.execute(planRef), {
+    ok: false,
+    reason: 'confirmation_pending',
+  });
+  assert.equal(r.confirms.length, 1);
+  answer({ scope: SCOPE });
+  assert.equal((await first).ok, true);
+  assert.equal(r.confirms.length, 1);
+  assert.equal(r.executes().length, 1);
+
+  // 送信の応答の待ちの間（結果不明になっても、2 回目は送られない）。
+  const q = rig();
+  const listedQ = ok(await q.bridge.list());
+  const plannedQ = ok(await q.bridge.plan(listedQ.entries[0]?.ref as string));
+  const refQ = plannedQ.plan?.ref as string;
+  let release: () => void = () => undefined;
+  q.executeGate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  q.execute = () => ({ kind: 'unknown' }) as Outcome;
+  const firstQ = q.bridge.execute(refQ);
+  for (let i = 0; i < 10; i += 1) await Promise.resolve();
+  assert.equal(q.executes().length, 1);
+  assert.deepEqual(await q.bridge.execute(refQ), {
+    ok: false,
+    reason: 'confirmation_pending',
+  });
+  assert.equal(q.confirms.length, 1);
+  assert.equal(q.executes().length, 1);
+  release();
+  assert.deepEqual(await firstQ, { ok: false, reason: 'outcome_unknown' });
+  assert.equal(q.executes().length, 1);
+  assert.equal(q.confirms.length, 1);
+  // 終わった後は旗が下りている（計画は捨てたので entry_not_found）。
+  assert.deepEqual(await q.bridge.execute(refQ), {
+    ok: false,
+    reason: 'entry_not_found',
+  });
 });

@@ -44,6 +44,11 @@ export const ROUTE_CHECKS: Readonly<Record<string, readonly CoreCheck[]>> = {
   postStreamStorageMode: SCREEN,
   // 流れの今の保存モード（UI-05 の段階 6、ADR 0189）。状態欄に出す値なので、ロック中・不明は出さない。読み取りだけ。
   getStreamStorageMode: [...READ, 'unlocked'],
+  // 流れの表示先の移動（UI-05 の段階 5、ADR 0193）。本人の画面操作だけ。版の照合（expected_route_revision）は経路の処理が
+  // 流れの表示先の版で行うので、expected_revision の検査は付けない。
+  postStreamHandoff: SCREEN,
+  // 流れの今の表示先（ADR 0193）。表示先の内容（どの端末か）なので、ロック中・不明は出さない。読み取りだけ。
+  getStreamHandoff: [...READ, 'unlocked'],
   // キャンバスの今の記述（ADR 0032）。内容なので、ロック中・不明は出さない。読み取りなので接続範囲は求めない。
   getCanvas: [...READ, 'unlocked'],
   // キャンバスのユーザーの操作の記録（UI-06、ADR 0032）。本人の画面操作。版の照合は経路の処理が物ごとに行う。

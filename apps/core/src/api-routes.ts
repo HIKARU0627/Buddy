@@ -74,6 +74,12 @@ export const API_ROUTES: readonly ApiRoute[] = [
   }),
   // 流れの今の保存モードの読み取り（UI-05 の段階 6、ADR 0189）。端末の状態欄に出す。
   route('getStreamStorageMode', 'GET', '/v1/stream/storage-mode'),
+  // 流れの表示先の移動と今の表示先の読み取り（UI-05 の段階 5、ADR 0193）。端末は会話の ID を送らない。本人の画面操作だけ。
+  route('postStreamHandoff', 'POST', '/v1/stream/handoff', {
+    body: 'HandoffRequest',
+    ...SCREEN,
+  }),
+  route('getStreamHandoff', 'GET', '/v1/stream/handoff'),
   // キャンバスの今の記述の読み取り（ADR 0032）。イベントの canvas の知らせ（版だけ）を受けた端末が取る。
   route('getCanvas', 'GET', '/v1/canvas'),
   // キャンバスのユーザーの操作の記録（UI-06、ADR 0032）。本人の画面操作。

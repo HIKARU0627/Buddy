@@ -454,6 +454,65 @@
         }
       ]
     },
+    "getStreamHandoff": {
+      "response": {
+        "session_id": "00000000-0000-4000-8000-000000000000",
+        "route_revision": "2",
+        "display_device_id": "00000000-0000-4000-8000-000000000007",
+        "state": "completed"
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"],
+        ["locked", 403, "device_locked"],
+        ["lock_unknown", 403, "device_locked"]
+      ]
+    },
+    "postStreamHandoff": {
+      "request": {
+        "request_id": "00000000-0000-4000-8000-000000009001",
+        "command_scope_id": "00000000-0000-4000-8000-000000009002",
+        "target_device_id": "00000000-0000-4000-8000-000000000007",
+        "expected_route_revision": "1"
+      },
+      "response": {
+        "session_id": "00000000-0000-4000-8000-000000000000",
+        "route_revision": "2",
+        "display_device_id": "00000000-0000-4000-8000-000000000007",
+        "state": "moving"
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"],
+        ["stale_scope", 410, "expired_scope"],
+        ["locked", 403, "device_locked"],
+        ["lock_unknown", 403, "device_locked"],
+        ["too_large", 413, "payload_too_large"],
+        ["voice_origin", 403, "screen_operation_required"]
+      ],
+      "invalid_bodies": [
+        {
+          "request_id": "00000000-0000-4000-8000-000000009001",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "target_device_id": "00000000-0000-4000-8000-000000000007"
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-000000009001",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "target_device_id": "00000000-0000-4000-8000-000000000007",
+          "expected_route_revision": "1",
+          "session_id": "00000000-0000-4000-8000-000000000003"
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-000000009001",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "target_device_id": "00000000-0000-4000-8000-000000000007",
+          "expected_route_revision": "01"
+        }
+      ]
+    },
     "handoffSession": {
       "params": {
         "session_id": "00000000-0000-4000-8000-000000000003"

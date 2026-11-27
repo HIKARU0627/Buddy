@@ -10,7 +10,7 @@ import test from 'node:test';
 import { sealOperationIntent } from '@buddy/storage';
 import type { ReviseContentCommand } from '@buddy/storage';
 import { sharedApiContract } from './api-test-support.js';
-import { isRealLocalDateTime } from '@buddy/domain';
+import { isRealLocalDateTime, responsePlanErrors } from '@buddy/domain';
 import type { DbCommand } from '@buddy/storage';
 import type { RequestEnvironment } from './api-environment.js';
 import { createOperationRoutes } from './api-operations.js';
@@ -42,6 +42,7 @@ import type { TestDevice } from './api-test-support.js';
 import type {
   BackgroundJobAcceptance,
   BackgroundJobAcceptor,
+  ConsultJobAcceptance,
   Interpreter,
   ProviderConnection,
   ProviderEvent,
@@ -1631,8 +1632,20 @@ const RESEARCH_TEXT = '合成の話題について調べて';
 // 偽の受付器。dedupe_key ごとに最初の受付の ID を覚え、同じ鍵の再呼び出しには新しいジョブを作らずその ID を返す。
 class FakeAcceptor implements BackgroundJobAcceptor {
   readonly calls: BackgroundJobAcceptance[] = [];
+  // 相談の受付の呼び出し（調査の呼び出しとは別に数える。U561）。
+  readonly consultCalls: ConsultJobAcceptance[] = [];
   readonly jobs = new Map<string, string>();
   mode: 'accept' | 'unavailable' | 'throw' = 'accept';
+  acceptConsult(job: ConsultJobAcceptance) {
+    this.consultCalls.push({ ...job });
+    if (this.mode === 'throw')
+      return Promise.reject(new Error('synthetic failure'));
+    if (this.mode === 'unavailable')
+      return Promise.resolve({ kind: 'unavailable' as const });
+    const first = this.jobs.get(job.dedupe_key) ?? job.workflow_id;
+    this.jobs.set(job.dedupe_key, first);
+    return Promise.resolve({ kind: 'accepted' as const, workflow_id: first });
+  }
   acceptResearch(job: BackgroundJobAcceptance) {
     this.calls.push({ ...job });
     if (this.mode === 'throw')
@@ -1655,6 +1668,8 @@ async function withResearchRoutes(
   options: {
     readonly acceptor?: BackgroundJobAcceptor;
     readonly interpreter?: Interpreter;
+    // 保存期限の掃除のゲート（省略は掃除なし）。
+    readonly retention?: Parameters<typeof createTurnRoutes>[0]['retention'];
   },
   body: (rig: ResearchRig) => Promise<void>,
 ): Promise<void> {
@@ -1684,6 +1699,9 @@ async function withResearchRoutes(
       ...(options.acceptor === undefined
         ? {}
         : { backgroundJobs: options.acceptor }),
+      ...(options.retention === undefined
+        ? {}
+        : { retention: options.retention }),
     });
     const route = API_ROUTES.find(
       (entry) => entry.operationId === 'createSession',
@@ -1923,5 +1941,275 @@ test(
         assert(workflowRows(rig).every((row) => row.state === 'clarifying'));
       },
     );
+  },
+);
+
+// ---- 相談（consult）を最初から裏のジョブへ回す（U254・U560〜U563。ADR 0195） --------------------------------------------
+//
+// 調査と同じ口の形（受付器・冪等・受け付けたときだけ受付の文）。相談の受付の口（acceptConsult）があるときだけ受け付け、
+// 調査の口しかない受付器・受付器なしでは従来どおり「未対応」。期待値（文・状態・件数）は手で書いた値。模擬だけで、
+// 実行器（B12）・実 API・実請求・実機は未実施。
+
+const CONSULT_TEXT = '合成の悩みについて相談したい';
+
+test(
+  'U560: with a consult acceptor, a consult is accepted in the background with the fixed acceptance sentence and saved as an executing workflow, never as research',
+  { timeout: 60_000 },
+  async () => {
+    const acceptor = new FakeAcceptor();
+    await withResearchRoutes({ acceptor }, async (rig) => {
+      const body = await researchTurn(rig, CONSULT_TEXT);
+      assert.equal(body['status'], 'background');
+      assert.equal(body['reply_text'], ACCEPTED_SENTENCE);
+      // 結果の種類は意図の表（consult は speech_bubble）のまま。受け付けただけなので状態は preparing（U563）。
+      const view = body['result_view'] as Record<string, unknown>;
+      assert.equal(view['kind'], 'speech_bubble');
+      assert.equal(view['status'], 'preparing');
+      assert.equal(view['intent'], 'consult');
+      assert.deepEqual(view['item_refs'], []);
+      assert.equal(view['more_count'], 0);
+      // 調査の口は呼ばない。相談の口へ渡したのは 5 つの項目だけ（発言の全文は渡さない）。
+      assert.equal(acceptor.calls.length, 0);
+      assert.equal(acceptor.consultCalls.length, 1);
+      const call = acceptor.consultCalls[0] as ConsultJobAcceptance;
+      assert.deepEqual(Object.keys(call).sort(), [
+        'dedupe_key',
+        'intent',
+        'query',
+        'session_id',
+        'workflow_id',
+      ]);
+      assert.equal(call.intent, 'consult');
+      assert.equal(call.query, '合成の悩み');
+      assert.equal(call.session_id, rig.sessionId);
+      assert.equal(body['workflow_id'], call.workflow_id);
+      assert.deepEqual(workflowRows(rig), [
+        { workflow_id: call.workflow_id, state: 'executing' },
+      ]);
+      assert.equal(operationCount(rig), 0);
+      // 表示の計画の意味検査（意図と結果の種類の表）とも食い違わない。
+      assert.deepEqual(
+        responsePlanErrors({
+          workflow_id: call.workflow_id,
+          request_revision: '1',
+          intent: 'consult',
+          outcome: 'done',
+          view: {
+            workflow_id: String(view['workflow_id']),
+            request_revision: String(view['request_revision']),
+            intent: 'consult',
+            kind: view['kind'] as 'speech_bubble',
+          },
+        }),
+        [],
+      );
+    });
+  },
+);
+
+test(
+  'U560: a resend of the same consult request returns the same stored response without calling the acceptor again',
+  { timeout: 60_000 },
+  async () => {
+    const acceptor = new FakeAcceptor();
+    await withResearchRoutes({ acceptor }, async (rig) => {
+      const requestId = randomUUID();
+      const first = await researchTurn(rig, CONSULT_TEXT, requestId);
+      const again = await researchTurn(rig, CONSULT_TEXT, requestId);
+      assert.deepEqual(again, first);
+      assert.equal(acceptor.consultCalls.length, 1);
+      assert.deepEqual(
+        workflowRows(rig).map((row) => row.state),
+        ['executing'],
+      );
+    });
+  },
+);
+
+test(
+  'U560: when the consult acceptor is unavailable, throws or answers a malformed id, the consult is a "cannot proceed now" clarification with no acceptance sentence or executing workflow',
+  { timeout: 60_000 },
+  async () => {
+    const acceptor = new FakeAcceptor();
+    await withResearchRoutes({ acceptor }, async (rig) => {
+      for (const mode of ['unavailable', 'throw'] as const) {
+        acceptor.mode = mode;
+        const body = await researchTurn(rig, CONSULT_TEXT);
+        assert.equal(body['status'], 'clarification', mode);
+        assert.equal(body['reply_text'], BLOCKED_SENTENCE, mode);
+        assert(!JSON.stringify(body).includes(ACCEPTED_SENTENCE), mode);
+      }
+      assert.deepEqual(
+        workflowRows(rig).map((row) => row.state),
+        ['clarifying', 'clarifying'],
+      );
+    });
+    const malformed: BackgroundJobAcceptor = {
+      acceptResearch: () => Promise.resolve({ kind: 'unavailable' }),
+      acceptConsult: () =>
+        Promise.resolve({ kind: 'accepted', workflow_id: 'not-a-uuid' }),
+    };
+    await withResearchRoutes({ acceptor: malformed }, async (rig) => {
+      const body = await researchTurn(rig, CONSULT_TEXT);
+      assert.equal(body['status'], 'clarification');
+      assert.equal(body['reply_text'], BLOCKED_SENTENCE);
+      assert.deepEqual(
+        workflowRows(rig).map((row) => row.state),
+        ['clarifying'],
+      );
+      assert.equal(operationCount(rig), 0);
+    });
+  },
+);
+
+test(
+  'U561: an acceptor with only the research port (the product wiring today) and no acceptor leave a consult "not supported", and the research port is never given a consult',
+  { timeout: 60_000 },
+  async () => {
+    const researchCalls: BackgroundJobAcceptance[] = [];
+    const researchOnly: BackgroundJobAcceptor = {
+      acceptResearch: (job) => {
+        researchCalls.push(job);
+        return Promise.resolve({
+          kind: 'accepted',
+          workflow_id: job.workflow_id,
+        });
+      },
+    };
+    for (const acceptor of [researchOnly, undefined]) {
+      await withResearchRoutes(
+        acceptor === undefined ? {} : { acceptor },
+        async (rig) => {
+          const body = await researchTurn(rig, CONSULT_TEXT);
+          assert.equal(body['status'], 'clarification');
+          assert.equal(body['reply_text'], UNSUPPORTED_SENTENCE);
+          assert.deepEqual(
+            workflowRows(rig).map((row) => row.state),
+            ['clarifying'],
+          );
+        },
+      );
+    }
+    assert.deepEqual(researchCalls, []);
+  },
+);
+
+test(
+  'U562: a consult without a query asks for the missing information and never calls the acceptor',
+  { timeout: 60_000 },
+  async () => {
+    const acceptor = new FakeAcceptor();
+    const state = {
+      intent: 'consult',
+      reply_text: undefined as string | null | undefined,
+      args: { query: null } as Record<string, unknown>,
+    };
+    await withResearchRoutes(
+      { acceptor, interpreter: replyingInterpreter(state) },
+      async (rig) => {
+        for (const query of [null, '   ']) {
+          state.args = { query };
+          const body = await researchTurn(rig, '合成の発言');
+          assert.equal(body['status'], 'clarification', String(query));
+          assert.equal(
+            body['reply_text'],
+            MISSING_OTHER_SENTENCE,
+            String(query),
+          );
+        }
+        assert.equal(acceptor.consultCalls.length, 0);
+        assert(workflowRows(rig).every((row) => row.state === 'clarifying'));
+      },
+    );
+  },
+);
+
+test(
+  'U561: a consult without a port stays "not supported" even when its query is blank (the product response is unchanged), while a research without a port and without a query still asks for the missing information',
+  { timeout: 60_000 },
+  async () => {
+    const researchOnly: BackgroundJobAcceptor = {
+      acceptResearch: () => Promise.resolve({ kind: 'unavailable' }),
+    };
+    const state = {
+      intent: 'consult',
+      reply_text: undefined as string | null | undefined,
+      args: { query: null } as Record<string, unknown>,
+    };
+    for (const acceptor of [researchOnly, undefined]) {
+      await withResearchRoutes(
+        {
+          ...(acceptor === undefined ? {} : { acceptor }),
+          interpreter: replyingInterpreter(state),
+        },
+        async (rig) => {
+          state.intent = 'consult';
+          // 主題が null のときは意図表の必須の不足で、口の有無より前に聞き返す（以前と同じ）。空白だけが受付の判定に届く。
+          {
+            const query = '   ';
+            state.args = { query };
+            const body = await researchTurn(rig, '合成の発言');
+            assert.equal(body['status'], 'clarification', String(query));
+            assert.equal(body['reply_text'], UNSUPPORTED_SENTENCE);
+          }
+          // 調査は従来の順（主題の確認が先）のまま。
+          state.intent = 'research';
+          state.args = { query: null };
+          const research = await researchTurn(rig, '合成の発言');
+          assert.equal(research['reply_text'], MISSING_OTHER_SENTENCE);
+        },
+      );
+    }
+  },
+);
+
+test(
+  'U217/U560: the model reply text is never used for a consult; the accepted consult says only the fixed acceptance sentence',
+  { timeout: 60_000 },
+  async () => {
+    const acceptor = new FakeAcceptor();
+    const state = {
+      intent: 'consult',
+      reply_text: '合成のモデルの自由文' as string | null | undefined,
+      args: { query: '合成の悩み' } as Record<string, unknown>,
+    };
+    await withResearchRoutes(
+      { acceptor, interpreter: replyingInterpreter(state) },
+      async (rig) => {
+        const body = await researchTurn(rig, '合成の発言');
+        assert.equal(body['status'], 'background');
+        assert.equal(body['reply_text'], ACCEPTED_SENTENCE);
+        assert(!JSON.stringify(body).includes('モデルの自由文'));
+      },
+    );
+  },
+);
+
+test(
+  'U562: while the retention gate is closed a consult is not accepted (cannot proceed now), and it is accepted again when the gate opens',
+  { timeout: 60_000 },
+  async () => {
+    const acceptor = new FakeAcceptor();
+    const open = { search: true, cloud_send: true, auto_use: true };
+    const gateState = { current: { ...open, cloud_send: false } };
+    const retention = {
+      ready: () => Promise.resolve(),
+      gate: () => ({
+        ...gateState.current,
+        reasons: [],
+        use_blocked: [],
+      }),
+      lease: () => () => undefined,
+    };
+    await withResearchRoutes({ acceptor, retention }, async (rig) => {
+      const closed = await researchTurn(rig, CONSULT_TEXT);
+      assert.equal(closed['status'], 'clarification');
+      assert.equal(closed['reply_text'], BLOCKED_SENTENCE);
+      assert.equal(acceptor.consultCalls.length, 0);
+      gateState.current = open;
+      const opened = await researchTurn(rig, CONSULT_TEXT);
+      assert.equal(opened['status'], 'background');
+      assert.equal(acceptor.consultCalls.length, 1);
+    });
   },
 );

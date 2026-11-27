@@ -21,6 +21,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import {
   INTENT_NAMES,
   INTENT_POLICIES,
+  RESULT_VIEW_BY_INTENT,
   RETENTION_RULES,
   SESSION_CONTROL_TABLE,
   acceptedCommentary,
@@ -77,6 +78,7 @@ import { PrivateConversationRam } from './private-turns.js';
 import type { PrivateDiscardReason, PrivateHeld } from './private-turns.js';
 import { canRead, canWrite, replyFields } from './turn-ports.js';
 import type {
+  BackgroundJobAcceptance,
   BackgroundJobAcceptor,
   CandidateSource,
   InterpretationContext,
@@ -375,7 +377,7 @@ export type TurnPlan =
   // 実行・承認の対象は作らない。結果は後続（B12 の実行器・B11 の気づき）が届ける。
   | {
       readonly kind: 'accepted';
-      readonly intent: 'research';
+      readonly intent: 'research' | 'consult';
       readonly workflow_id: string;
     }
   // 本人の明示の依頼の記憶（ADR 0191）。発言を保存する直前（発言の ID が決まった後）に判定し、memory_done にする。
@@ -1026,38 +1028,57 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
   // input: 発言を受けた時点（解釈の前）に控えた口座と許可の版。解釈の間に許可の版が変わっても、確定の直前の
   // 読み直しとの比較で気づける。evidence は入力の確かさ（文字入力は submitted_text、Live の方式 C は
   // live_policy_observed）。方式 C の入力は 4 操作でも readiness が全文の確定へ戻す。
-  // 調査（research）を裏のジョブへ回す（U254、ADR 0135）。受付器が受け付けたときだけ accepted にする。受付器がない
-  // 製品の起動では従来どおり「未対応」。確定前の入力（unverified）からは受け付けない（費用のかかる裏のジョブを、確定して
+  // 調査（research）・相談（consult）を最初から裏のジョブへ回す（U254、ADR 0135・0195）。受付器が受け付けたときだけ
+  // accepted にする。相談は意図そのものが思考レベル high の相談なので、信号を足さず最初から裏へ回す（U560）。受付器がない
+  // （相談は acceptConsult がない）製品の起動では従来どおり「未対応」。確定前の入力（unverified）からは受け付けない（費用のかかる裏のジョブを、確定して
   // いない文字起こしから始めない）。保存期限の掃除のゲートが閉じている間も受け付けない（検索の入口。ADR 0053）。
-  const planResearch = async (
+  const planBackground = async (
+    intent: 'research' | 'consult',
     args: ArgValues,
     evidence: InputEvidence,
     intake: IntakeContext,
   ): Promise<TurnPlan> => {
     const query = typeof args.query === 'string' ? args.query.trim() : '';
-    if (query.length === 0) return clarify('missing_other', 'research');
     const acceptor = options.backgroundJobs;
-    if (acceptor === undefined) return clarify('unsupported', 'research');
-    if (evidence === 'unverified') return clarify('blocked', 'research');
+    // 相談は、受付器が相談の口（acceptConsult）を持つときだけ受け付ける。調査の口しかない受付器（今の製品）では
+    // 相談を調査として渡さず、従来どおり「未対応」にする（U561、ADR 0195）。
+    const accept:
+      | ((job: Omit<BackgroundJobAcceptance, 'intent'>) => Promise<unknown>)
+      | undefined =
+      acceptor === undefined
+        ? undefined
+        : intent === 'research'
+          ? (job) => acceptor.acceptResearch({ ...job, intent: 'research' })
+          : acceptor.acceptConsult === undefined
+            ? undefined
+            : (job) =>
+                acceptor.acceptConsult?.({ ...job, intent: 'consult' }) ??
+                Promise.resolve({ kind: 'unavailable' });
+    // 相談は口がなければ主題の有無にかかわらず、以前と同じ「未対応」にする（製品の応答を変えない）。調査は従来の
+    // 順（主題の確認が先）のまま。
+    if (intent === 'consult' && accept === undefined)
+      return clarify('unsupported', intent);
+    if (query.length === 0) return clarify('missing_other', intent);
+    if (accept === undefined) return clarify('unsupported', intent);
+    if (evidence === 'unverified') return clarify('blocked', intent);
     if (options.retention !== undefined) {
       await options.retention.ready();
       const gate = options.retention.gate();
       if (!gate.search || !gate.cloud_send || !gate.auto_use)
-        return clarify('blocked', 'research');
+        return clarify('blocked', intent);
     }
     // 受付器の返す値は差し込み口の値なので、形を確かめるまで信用しない。
     let reply: unknown;
     try {
-      reply = await acceptor.acceptResearch({
+      reply = await accept({
         workflow_id: intake.workflow_id,
-        intent: 'research',
         query,
         session_id: intake.session_id,
         dedupe_key: intake.dedupe_key,
       });
     } catch {
       // 例外は受け付けていない側に倒す（受付の文を出さない。自動で再送しない）。
-      return clarify('blocked', 'research');
+      return clarify('blocked', intent);
     }
     // accepted で、ID が契約の Id の形のときだけ受け付けたと扱う。
     const acceptedId =
@@ -1067,8 +1088,8 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
         ? (reply as { readonly workflow_id?: unknown }).workflow_id
         : null;
     if (typeof acceptedId !== 'string' || !UUID_FORM.test(acceptedId))
-      return clarify('blocked', 'research');
-    return { kind: 'accepted', intent: 'research', workflow_id: acceptedId };
+      return clarify('blocked', intent);
+    return { kind: 'accepted', intent, workflow_id: acceptedId };
   };
 
   const planFrom = async (
@@ -1132,10 +1153,10 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
         permissionAtInput: null,
       };
     }
-    // 調査は参照（route: read）なので、上の方式 C の全文の確定の判定には当たらない。
-    if (intent === 'research')
+    // 調査・相談は参照（route: read）なので、上の方式 C の全文の確定の判定には当たらない。
+    if (intent === 'research' || intent === 'consult')
       return {
-        plan: await planResearch(args, evidence, intake),
+        plan: await planBackground(intent, args, evidence, intake),
         permissionAtInput: null,
       };
     if (!PROVIDER_INTENTS.includes(intent))
@@ -1457,7 +1478,12 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
           : plan.kind === 'accepted'
             ? responseOf(
                 'background',
-                view(plan.intent, 'accepted_line', 'preparing', []),
+                view(
+                  plan.intent,
+                  RESULT_VIEW_BY_INTENT[plan.intent],
+                  'preparing',
+                  [],
+                ),
                 ACCEPTED_TEXT,
               )
             : plan.kind === 'memory' || plan.kind === 'memory_done'
@@ -1762,7 +1788,9 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     const refused = (intent: IntentName | null): boolean =>
       intent !== null &&
       !privateConfirmable(intent) &&
-      (intent === 'research' || INTENT_POLICIES[intent].route !== 'read');
+      (intent === 'research' ||
+        intent === 'consult' ||
+        INTENT_POLICIES[intent].route !== 'read');
     // 解釈の段階の聞き返し（対象・題名の不足など）でも、保存を伴う依頼なら聞き返さずに断る（答えても進められない）。
     if (interpreted.kind === 'plan')
       return interpreted.plan.kind === 'clarify' &&

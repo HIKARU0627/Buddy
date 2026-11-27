@@ -323,6 +323,20 @@ export interface BackgroundJobAcceptor {
   acceptResearch(
     job: BackgroundJobAcceptance,
   ): Promise<BackgroundJobAcceptResult>;
+  // 相談（consult）の受付（U254・U560〜U563、ADR 0195）。調査の受付とは別の口で、実装がなければ相談は従来どおり
+  // 「未対応」のまま（調査の受付器が相談を調査として受け取らない）。契約は acceptResearch と同じ（冪等・受け付けて
+  // いないのに accepted を返さない・例外は unavailable と同じ）。
+  acceptConsult?(job: ConsultJobAcceptance): Promise<BackgroundJobAcceptResult>;
+}
+
+// 相談の受付の項目。調査と同じ 5 つだけで、発言の全文・本人の情報・端末の情報は渡さない（query は解釈が抜き出した
+// 相談の主題だけ）。
+export interface ConsultJobAcceptance {
+  readonly workflow_id: string;
+  readonly intent: 'consult';
+  readonly query: string;
+  readonly session_id: string;
+  readonly dedupe_key: string;
 }
 
 // --- 試験用の方針表 ---
@@ -371,6 +385,7 @@ const EMPTY_ARGS = {
 // - 「mail-001 に「本文」と返信の下書きを保存して」→ draft_reply（対象は候補の対応から、本文つき。B04-07）
 // - 「mail-001 に返信の下書きを保存して」→ draft_reply（本文なし。聞き返し）
 // - 「<query>について調べて」→ research（query つき。裏のジョブの受付、ADR 0135）
+// - 「<query>について相談したい」→ consult（query つき。裏のジョブの受付、ADR 0195）
 export function createMockInterpreter(): Interpreter {
   return {
     interpret(context) {
@@ -424,6 +439,13 @@ export function createMockInterpreter(): Interpreter {
           kind: 'intent',
           intent: 'create_task',
           args: { ...EMPTY_ARGS },
+        });
+      const consult = /^(.+)について相談したい$/u.exec(text);
+      if (consult !== null)
+        return Promise.resolve({
+          kind: 'intent',
+          intent: 'consult',
+          args: { ...EMPTY_ARGS, query: consult[1] as string },
         });
       const research = /^(.+)について調べて$/u.exec(text);
       if (research !== null)

@@ -25,6 +25,7 @@ import { PreviewRegistry } from './previews.js';
 import { TEST_TURN_POLICY, createMockInterpreter } from './turn-ports.js';
 import type {
   BackgroundJobAcceptance,
+  ConsultJobAcceptance,
   BackgroundJobAcceptor,
   Interpreter,
   InterpretationContext,
@@ -971,6 +972,56 @@ test(
       assert.deepEqual(turnsOf(c.rig), [{ input_kind: 'text', role: 'user' }]);
       assert.deepEqual(c.sb.commentary, []);
     });
+  },
+);
+
+test(
+  'X49/QA34: a slow typed request and a typed consult accepted in the background are never bridged, backgrounded or announced on an open voice connection',
+  TIMEOUT,
+  async () => {
+    const slow = gate();
+    const acceptor = new FakeAcceptor();
+    await withConversation(
+      async (c) => {
+        const handler = c.turns.handlers['postTurn'];
+        assert(handler !== undefined);
+        // 1.5 秒・8 秒を過ぎても、文字の依頼にはつなぎも背景化の文も声で言わない。
+        const pending = handler(
+          typedRequest('今日の予定を見せて', 'text', c.typedSessionId),
+        );
+        await beat(c, 10_000);
+        assert.deepEqual(c.sb.commentary, []);
+        slow.release();
+        const typed = await pending;
+        assert.equal(typed.status, 200, JSON.stringify(typed.body));
+        assert.equal(
+          (typed.body as Record<string, unknown>)['status'],
+          'answered',
+        );
+        await c.rig.wait();
+        assert.deepEqual(c.sb.commentary, []);
+        assert.deepEqual(c.shown, []);
+        // 文字の相談を裏のジョブが受け付けても、受付の文を声に載せない（文字の応答にだけ載せる）。
+        const consult = await handler(
+          typedRequest(CONSULT_SPOKEN, 'text', c.typedSessionId),
+        );
+        assert.equal(consult.status, 200, JSON.stringify(consult.body));
+        const consulted = consult.body as Record<string, unknown>;
+        assert.equal(consulted['status'], 'background');
+        assert.equal(consulted['reply_text'], ACCEPTED_SENTENCE);
+        await beat(c, 10_000);
+        assert.equal(acceptor.consultCalls.length, 1);
+        assert.deepEqual(c.sb.commentary, []);
+        assert.deepEqual(c.shown, []);
+        assert.deepEqual(c.sb.instructions, []);
+      },
+      {
+        backgroundJobs: acceptor,
+        prepare: (script) => {
+          script.gates.set('今日の予定を見せて', slow.promise);
+        },
+      },
+    );
   },
 );
 
@@ -3796,7 +3847,14 @@ const ACCEPTED_SENTENCE = '受け付けました。終わったら知らせま�
 // 偽の受付器。dedupe_key ごとに最初の受付の ID を返す（同じ鍵では新しいジョブを作らない）。
 class FakeAcceptor implements BackgroundJobAcceptor {
   readonly calls: BackgroundJobAcceptance[] = [];
+  readonly consultCalls: ConsultJobAcceptance[] = [];
   readonly jobs = new Map<string, string>();
+  acceptConsult(job: ConsultJobAcceptance) {
+    this.consultCalls.push({ ...job });
+    const first = this.jobs.get(job.dedupe_key) ?? job.workflow_id;
+    this.jobs.set(job.dedupe_key, first);
+    return Promise.resolve({ kind: 'accepted' as const, workflow_id: first });
+  }
   acceptResearch(job: BackgroundJobAcceptance) {
     this.calls.push({ ...job });
     const first = this.jobs.get(job.dedupe_key) ?? job.workflow_id;
@@ -3948,5 +4006,226 @@ test(
       assert.deepEqual(workflowStates(c.rig), ['clarifying']);
       assert.deepEqual(c.shown, []);
     });
+  },
+);
+
+// ---- 相談（consult）を最初から裏のジョブへ回す（U254・U560〜U563。ADR 0195） ------------------------------------------
+//
+// 調査と同じ経路（受付の文は 1 回・つなぎと背景化を重ねない・結果の画面回しを作らない・閉じた接続へ追記 0・確定前の入力
+// からは受け付けない）を、相談の口（acceptConsult）で確かめる。期待値は手で書いた値。模擬だけで、実行器（B12）・実音声・
+// 実 API・実機は未実施。
+
+const CONSULT_SPOKEN = '合成の悩みについて相談したい';
+
+test(
+  'U560/X33: a delegated consult accepted by the consult port is answered once with the acceptance sentence, with no bridge, no background notice and no screen result',
+  TIMEOUT,
+  async () => {
+    const acceptor = new FakeAcceptor();
+    await withConversation(
+      async (c) => {
+        await speak(c, { text: CONSULT_SPOKEN });
+        await delegate(c, 'd1', 800);
+        await c.rig.clock.advance(500);
+        await waitUntil(
+          c.rig,
+          'the acceptance',
+          () => c.sb.commentary.length === 1,
+        );
+        assert.deepEqual(c.sb.commentary, [[ACCEPTED_SENTENCE]]);
+        await beat(c, 10_000);
+        assert.deepEqual(c.sb.commentary, [[ACCEPTED_SENTENCE]]);
+        assert.deepEqual(c.shown, []);
+        assert.equal(c.conversation.pendingCount, 0);
+        assert.equal(acceptor.calls.length, 0);
+        assert.equal(acceptor.consultCalls.length, 1);
+        const call = acceptor.consultCalls[0] as ConsultJobAcceptance;
+        assert.equal(call.intent, 'consult');
+        assert.equal(call.query, '合成の悩み');
+        assert.equal(call.session_id, SESSION);
+        assert.deepEqual(workflowRowsOf(c.rig), [
+          { workflow_id: call.workflow_id, state: 'executing' },
+        ]);
+        assert.deepEqual(operations(c.rig), []);
+        // 同じ委譲の再送は、もう一度扱わない。
+        await delegate(c, 'd1', 800);
+        await beat(c, 2000);
+        assert.equal(acceptor.consultCalls.length, 1);
+        assert.deepEqual(c.sb.commentary, [[ACCEPTED_SENTENCE]]);
+      },
+      { backgroundJobs: acceptor },
+    );
+  },
+);
+
+test(
+  'U560/X29: a consult accepted after the live was closed appends nothing to the closed live and makes no screen result; the job stays accepted',
+  TIMEOUT,
+  async () => {
+    const acceptor = new FakeAcceptor();
+    const slow = gate();
+    await withConversation(
+      async (c) => {
+        await speak(c, { text: CONSULT_SPOKEN });
+        await delegate(c, 'd1', 800);
+        await c.rig.clock.advance(400);
+        await waitUntil(
+          c.rig,
+          'the interpretation',
+          () => c.script.calls.length === 1,
+        );
+        const closed = await c.rig.voice.closeLiveSession(A, c.liveId, {
+          request_id: uuid(0x7c),
+          command_scope_id: SCOPE_A,
+          reason: 'silence',
+          audio_epoch: c.rig.voice.liveRecord(c.liveId)?.audio_epoch as string,
+        });
+        assert.equal(closed.status, 202);
+        slow.release();
+        await waitUntil(c.rig, 'the commit', () => c.commits.length === 1);
+        await c.rig.clock.advance(10_000);
+        await c.rig.wait();
+        assert.deepEqual(c.sb.commentary, []);
+        assert.deepEqual(c.shown, []);
+        assert.equal(acceptor.consultCalls.length, 1);
+        assert.deepEqual(
+          workflowRowsOf(c.rig).map((row) => row.state),
+          ['executing'],
+        );
+      },
+      {
+        backgroundJobs: acceptor,
+        prepare: (script) => {
+          script.gates.set(CONSULT_SPOKEN, slow.promise);
+        },
+      },
+    );
+  },
+);
+
+test(
+  'U562/X51: a consult from an utterance that is never confirmed is not accepted: the acceptor is not called and no job is saved',
+  TIMEOUT,
+  async () => {
+    const acceptor = new FakeAcceptor();
+    await withConversation(
+      async (c) => {
+        await speak(c, { text: CONSULT_SPOKEN, end: false });
+        await delegate(c, 'd1', 800);
+        await beat(c, 5200);
+        await c.rig.wait();
+        assert.equal(acceptor.consultCalls.length, 0);
+        assert.equal(acceptor.calls.length, 0);
+        assert(
+          !c.sb.commentary.some((parts) => parts[0] === ACCEPTED_SENTENCE),
+        );
+        assert(!workflowStates(c.rig).includes('executing'));
+        assert.deepEqual(operations(c.rig), []);
+      },
+      { backgroundJobs: acceptor },
+    );
+  },
+);
+
+test(
+  'U561: with an acceptor that has only the research port a delegated consult is still answered "not supported" and nothing is accepted',
+  TIMEOUT,
+  async () => {
+    const researchCalls: BackgroundJobAcceptance[] = [];
+    const researchOnly: BackgroundJobAcceptor = {
+      acceptResearch: (job) => {
+        researchCalls.push(job);
+        return Promise.resolve({
+          kind: 'accepted',
+          workflow_id: job.workflow_id,
+        });
+      },
+    };
+    await withConversation(
+      async (c) => {
+        await speak(c, { text: CONSULT_SPOKEN });
+        await delegate(c, 'd1', 800);
+        await c.rig.clock.advance(500);
+        await waitUntil(
+          c.rig,
+          'the answer',
+          () => c.sb.commentary.length === 1,
+        );
+        assert.deepEqual(c.sb.commentary, [
+          ['その依頼にはまだ対応していません。'],
+        ]);
+        assert.deepEqual(workflowStates(c.rig), ['clarifying']);
+        assert.deepEqual(researchCalls, []);
+      },
+      { backgroundJobs: researchOnly },
+    );
+  },
+);
+
+// ---- X36: 同じ session_id で会話が続く -------------------------------------------------------------------------------
+//
+// 前の依頼に答えた後の新しい発話も、同じ Live・同じ session_id に結び付く（別の会話にならない）。記録しない会話での
+// 永続保存 0 件・Live 接続 0 回は private-conversation.test.ts と voice-private.test.ts で確かめている。直前のやりとりを
+// 次の解釈へ渡す文脈の要約は B10-06 の対象で、ここでは確かめない。
+
+test(
+  'X36: two requests in one live conversation are both saved under the same session id, as two user turns of that one session',
+  TIMEOUT,
+  async () => {
+    await withConversation(async (c) => {
+      await speak(c, { text: SCHEDULE_TEXT });
+      await delegate(c, 'd1', 800);
+      await c.rig.clock.advance(500);
+      await waitUntil(c.rig, 'the first answer', () =>
+        c.sb.commentary.some((parts) => parts[0] === '予定は2件です。'),
+      );
+      await speak(c, { text: '今日の用事を見せて' });
+      await delegate(c, 'd2', c.next.start - 400);
+      await c.rig.clock.advance(500);
+      await waitUntil(c.rig, 'the second answer', () => c.commits.length === 2);
+      await c.rig.wait();
+      assert.deepEqual(rows(c.rig, 'SELECT DISTINCT session_id FROM turns'), [
+        { session_id: SESSION },
+      ]);
+      assert.deepEqual(
+        rows(
+          c.rig,
+          "SELECT count(*) AS n FROM turns WHERE role = 'user' AND input_kind = 'voice_live'",
+        ),
+        [{ n: 2 }],
+      );
+      assert.deepEqual(c.shown, []);
+    });
+  },
+);
+
+test(
+  'U561: a delegated consult without a port stays "not supported" even when the interpretation query is only blank',
+  TIMEOUT,
+  async () => {
+    await withConversation(
+      async (c) => {
+        await speak(c, { text: CONSULT_SPOKEN });
+        await delegate(c, 'd1', 800);
+        await c.rig.clock.advance(500);
+        await waitUntil(
+          c.rig,
+          'the answer',
+          () => c.sb.commentary.length === 1,
+        );
+        assert.deepEqual(c.sb.commentary, [
+          ['その依頼にはまだ対応していません。'],
+        ]);
+        assert.deepEqual(workflowStates(c.rig), ['clarifying']);
+      },
+      {
+        prepare: (script) => {
+          script.replies.set(
+            CONSULT_SPOKEN,
+            intentReply('consult', { query: '   ' }),
+          );
+        },
+      },
+    );
   },
 );

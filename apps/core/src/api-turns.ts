@@ -71,6 +71,8 @@ import type { PreviewRegistry } from './previews.js';
 import type { JsonObject } from './strict-json.js';
 import { planExplicitMemory, storageRejectionReason } from './memory-save.js';
 import type { MemoryNotSavedReason } from './memory-save.js';
+import { PRIVATE_CONFIRMABLE_KINDS } from './private-confirmations.js';
+import type { PrivateConfirmationDesk } from './private-confirmations.js';
 import { PrivateConversationRam } from './private-turns.js';
 import type { PrivateDiscardReason, PrivateHeld } from './private-turns.js';
 import { canRead, canWrite, replyFields } from './turn-ports.js';
@@ -171,6 +173,13 @@ export interface TurnRoutesOptions {
   readonly backgroundJobs?: BackgroundJobAcceptor;
   // 本人の明示の依頼の記憶（ADR 0191）。
   readonly memory?: TurnMemoryOptions;
+  // 記録しない会話の独立した確認（B06-07a-2 の 2d、ADR 0192）。open が true のときだけ、記録しない間のラベルの変更を
+  // 決まった文で断る代わりに独立した確認へ切り出す。製品は PRIVATE_CONFIRMATION_SCREEN_OPEN（false）を読む関数を渡す
+  // （確認を画面に出して承認を受ける経路がまだない。U503）。省略は閉じているのと同じ。
+  readonly privateConfirmations?: {
+    readonly open: () => boolean;
+    readonly desk: Pick<PrivateConfirmationDesk, 'request' | 'decline'>;
+  };
 }
 
 const stringOf = (body: JsonObject | null, key: string): string => {
@@ -232,6 +241,11 @@ const CLARIFY = {
   private_unsupported:
     '記録しない会話では、この依頼はまだ受け付けられません。記録しない会話を終えてから、もう一度お願いします。',
 } as const;
+
+// 記録しない会話の外部変更を独立した確認へ切り出したときの文（決まった文。ADR 0192）。会話の内容は保存しないことと、
+// 確認の画面で一度承認してから行うこと。
+const PRIVATE_CONFIRMATION_TEXT =
+  '記録しない会話なので、この変更は確認の画面で一度承認してから行います。会話の内容は保存しません。';
 
 type ClarifyReason = keyof typeof CLARIFY;
 
@@ -370,6 +384,12 @@ export type TurnPlan =
       readonly intent: 'memory_save' | 'memory_correct';
       readonly memory_kind: MemoryKindName | null;
       readonly body: string;
+    }
+  // 記録しない会話の外部変更を切り出した独立した確認（ADR 0192）。確認は Core の RAM にあり、DB には書かない。
+  | {
+      readonly kind: 'private_confirmation';
+      readonly intent: IntentName;
+      readonly confirmation_id: string;
     }
   // 記憶の判定の結果（保存した・保存しなかった理由）。応答は決まった文。
   | {
@@ -1314,7 +1334,8 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
       plan.kind === 'memory_done'
     )
       return 'done';
-    if (plan.kind === 'operation') return 'ready';
+    if (plan.kind === 'operation' || plan.kind === 'private_confirmation')
+      return 'ready';
     // 裏のジョブが受け付けた依頼は実行中（表の executing。ADR 0135）。
     if (plan.kind === 'accepted') return 'executing';
     return plan.intent === null ? null : 'clarifying';
@@ -1441,25 +1462,36 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
               )
             : plan.kind === 'memory' || plan.kind === 'memory_done'
               ? memoryResponse(plan)
-              : plan.kind === 'read'
+              : plan.kind === 'private_confirmation'
                 ? responseOf(
                     'answered',
-                    view(
-                      plan.intent,
-                      'schedule_cards',
-                      plan.overlaps ? 'needs_review' : 'ready',
-                      plan.items,
-                      plan.more,
-                    ),
-                    null,
-                  )
-                : responseOf(
-                    'answered',
                     view(plan.intent, 'approval_link', 'needs_review', [
-                      { kind: 'operation', id: plan.operation_id },
+                      {
+                        kind: 'private_confirmation',
+                        id: plan.confirmation_id,
+                      },
                     ]),
-                    null,
-                  );
+                    PRIVATE_CONFIRMATION_TEXT,
+                  )
+                : plan.kind === 'read'
+                  ? responseOf(
+                      'answered',
+                      view(
+                        plan.intent,
+                        'schedule_cards',
+                        plan.overlaps ? 'needs_review' : 'ready',
+                        plan.items,
+                        plan.more,
+                      ),
+                      null,
+                    )
+                  : responseOf(
+                      'answered',
+                      view(plan.intent, 'approval_link', 'needs_review', [
+                        { kind: 'operation', id: plan.operation_id },
+                      ]),
+                      null,
+                    );
   };
 
   // 保存した応答を返す（同じ要求の再送）。読めなければ中枢側の保留。
@@ -1714,13 +1746,22 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
 
   // 記録しない区切りの計画。参照（予定の照会など）・雑談の返事・聞き返しだけを作る。保存を伴う依頼（用事・記憶・承認待ちの
   // 外部の変更・裏の調査）は作らず、決まった文で断る（許可表の persist_workflow・save_memory・record_full_operation は
-  // 禁止。外部の変更の独立した確認は 2d）。外部へは、意図の解釈と参照の読み取りだけを送る（通常の会話と同じ）。
+  // 禁止）。外部へは、意図の解釈と参照の読み取りだけを送る（通常の会話と同じ）。
+  // 独立した確認の口が開いているとき（B06-07a-2 の 2d、ADR 0192）は、ラベルの変更だけを確定済みの変更まで作り（対象と
+  // 許可の版は通常と同じく provider の読み取りで確かめる）、呼び出し側が独立した確認へ切り出す。
+  const privateConfirmable = (intent: IntentName | null): boolean =>
+    intent === 'label_mail' &&
+    options.privateConfirmations !== undefined &&
+    options.privateConfirmations.open();
   const privatePlan = async (
     interpreted: InterpretedTurn,
     intake: IntakeContext,
+    // 入力の時点の口座と許可の版（発言を受けた時点、最初の await より前に控えた値。通常の経路と同じ。PR #107・ADR 0192）。
+    input: InputPermission,
   ): Promise<TurnPlan> => {
     const refused = (intent: IntentName | null): boolean =>
       intent !== null &&
+      !privateConfirmable(intent) &&
       (intent === 'research' || INTENT_POLICIES[intent].route !== 'read');
     // 解釈の段階の聞き返し（対象・題名の不足など）でも、保存を伴う依頼なら聞き返さずに断る（答えても進められない）。
     if (interpreted.kind === 'plan')
@@ -1732,10 +1773,18 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
       return clarify('private_unsupported', null);
     const planned = await planFrom(
       interpreted,
-      observedPermission,
+      input,
       'submitted_text',
       intake,
     );
+    // 切り出せる外部変更（ラベルの変更）の確定済みの変更は、呼び出し側が独立した確認へ切り出す。
+    if (
+      planned.plan.kind === 'operation' &&
+      planned.plan.route === 'remote_mutation' &&
+      PRIVATE_CONFIRMABLE_KINDS.includes(planned.plan.operation_kind) &&
+      privateConfirmable(planned.plan.intent)
+    )
+      return planned.plan;
     // 参照の経路から操作・裏の受付は作られないが、作られた場合も RAM の経路では持たない（安全側）。
     return planned.plan.kind === 'operation' ||
       planned.plan.kind === 'accepted' ||
@@ -1749,6 +1798,9 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     request: ApiHandlerRequest,
     device: NonNullable<ApiHandlerRequest['device']>,
   ): Promise<{ status: number; body: object }> => {
+    // 入力の時点の口座と許可の版は、最初の await より前に Core のメモリーから控える（解釈を待つ間に別の要求が値を更新しても、
+    // 発言を受けた時点の値で比べる。通常の経路の postTurn と同じ。10 §5A・ADR 0029・0192）。
+    const input = observedPermission;
     const body = request.body as JsonObject;
     const requestId = stringOf(body, 'request_id');
     // 端末内の音声認識・Live の文字起こしは、通常の区切りと同じくこの経路では受けない。
@@ -1796,6 +1848,7 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
       segment,
       epoch,
       ref,
+      input,
     });
     privateRam.track(ref.command_id, ref.request_hash, processing);
     return processing;
@@ -1812,6 +1865,7 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     };
     readonly epoch: number;
     readonly ref: ConversationRequestRef;
+    readonly input: InputPermission;
   }): Promise<{ status: number; body: object }> => {
     const { request, device, requestId, sessionId, segment, epoch, ref } = args;
     const body = request.body as JsonObject;
@@ -1832,20 +1886,48 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
         },
         {},
       );
-      plan = await privatePlan(interpreted, {
-        dedupe_key: ref.command_id,
-        session_id: sessionId,
-        workflow_id: randomUUID(),
-      });
+      plan = await privatePlan(
+        interpreted,
+        {
+          dedupe_key: ref.command_id,
+          session_id: sessionId,
+          workflow_id: randomUUID(),
+        },
+        args.input,
+      );
     }
     // 処理の間に記録しない区切りを出た・入り直した・RAM を捨てた（ロック・忘却）なら、結果を持たずに断る（遅れて届いた結果を
     // 次の区切りへ持ち込まない。ADR 0045 の origin_private）。
-    if (
-      options.storage.mode !== 'private' ||
-      !originCurrent(segment) ||
-      privateRam.epoch !== epoch
-    )
-      return apiErrorResponse(409, 'conflict', requestId);
+    const stillCurrent = () =>
+      options.storage.mode === 'private' &&
+      originCurrent(segment) &&
+      privateRam.epoch === epoch;
+    if (!stillCurrent()) return apiErrorResponse(409, 'conflict', requestId);
+    // 確定済みの外部変更は、独立した確認へ切り出す（ADR 0192）。確認は保存境界の保持者が処理を始めた区切りと照合して出し、
+    // RAM にだけ持つ。出せなければ（口が閉じた・確認の中身の検査に通らない・区切りが変わった）決まった文で断る。
+    if (plan.kind === 'operation') {
+      const confirmations = options.privateConfirmations;
+      const requested =
+        confirmations === undefined || !privateConfirmable(plan.intent)
+          ? null
+          : await confirmations.desk.request(plan.content, {
+              segment_id: segment.segment_id,
+              segment_generation: segment.segment_generation,
+              storage_mode: 'private',
+            });
+      if (requested === null || !requested.ok)
+        plan = clarify('private_unsupported', null);
+      else if (!stillCurrent()) {
+        // 確認を出す間にロック・忘却・終える・入り直すがあった: 出した確認を取り下げ、結果を持たない。
+        await confirmations?.desk.decline(requested.confirmation_id);
+        return apiErrorResponse(409, 'conflict', requestId);
+      } else
+        plan = {
+          kind: 'private_confirmation',
+          intent: plan.intent,
+          confirmation_id: requested.confirmation_id,
+        };
+    }
     const state = workflowState(plan);
     const response = turnResponseBody({
       requestId,
@@ -1865,7 +1947,12 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
       buddy_text: response.reply_text,
       at: utcTime(now()),
     });
-    if (!held) return apiErrorResponse(409, 'conflict', requestId);
+    if (!held) {
+      // 応答を持てなかった確認は、本人に示せないので取り下げる（承認できる確認を残さない）。
+      if (plan.kind === 'private_confirmation')
+        await options.privateConfirmations?.desk.decline(plan.confirmation_id);
+      return apiErrorResponse(409, 'conflict', requestId);
+    }
     // 会話の操作は、その端末の開いている Live へも行う（記録しない間は Live を開かないので、多くは何もしない）。
     if (control !== null)
       options.onSessionControl?.({

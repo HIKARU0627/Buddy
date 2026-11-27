@@ -37,7 +37,12 @@ import type {
   TestDevice,
 } from './api-test-support.js';
 import { startCore } from './core.js';
-import type { CoreHandle, CoreTurnOptions, StartCoreOptions } from './core.js';
+import type {
+  CoreHandle,
+  CoreHouseholdOptions,
+  CoreTurnOptions,
+  StartCoreOptions,
+} from './core.js';
 import { TLS_CERTIFICATE_FILE } from './tls-identity.js';
 
 // 合成のデータ鍵（値に意味はない）。
@@ -94,6 +99,8 @@ export async function startEventCore(
     readonly research?: StartCoreOptions['research'];
     // 同期の設定（トークンの出所。ADR 0145 の選べる取得対象の試験で使う）。
     readonly sync?: StartCoreOptions['sync'];
+    // 家計簿（レシートの写真の読み取りの口。ADR 0177・0178）。
+    readonly household?: CoreHouseholdOptions;
   } = {},
 ): Promise<EventCore> {
   const dataDir =
@@ -127,6 +134,9 @@ export async function startEventCore(
         ? {}
         : { eventStream: { pingIntervalMs: options.pingIntervalMs } }),
       ...(options.turns === undefined ? {} : { turns: options.turns }),
+      ...(options.household === undefined
+        ? {}
+        : { household: options.household }),
     },
     ...(options.events === undefined ? {} : { events: options.events }),
     ...(options.now === undefined ? {} : { now: options.now }),

@@ -27,7 +27,7 @@
 // - 設定（入・切）は中枢のメモリーにだけ持つ。既定は切で、中枢を起動し直すと切に戻る（U364）。
 
 import type { ModelProfile, ModelUsage } from '@buddy/contracts';
-import type { AdapterResult, Cancellation } from '@buddy/ai';
+import type { AdapterResult } from '@buddy/ai';
 import {
   RECEIPT_HUB_PRE_DISPATCH_MS,
   RECEIPT_READER_RETURN_GRACE_MS,
@@ -78,7 +78,7 @@ export interface ReceiptReadCommand {
   };
 }
 
-// 外部のモデルの画像の読み取りの口（provider ごとの実装は後で足す。試験は模擬で行う）。1 回の read で送るのは 1 回だけで、
+// 外部のモデルの画像の読み取りの口（Gemini の実装は household-receipt-reader.ts。ADR 0178）。1 回の read で送るのは 1 回だけで、
 // timeout・利用不可・壊れた応答の後に自動で送り直さない（LlmAdapter と同じ。結果の形も AdapterResult と同じ）。
 // cancellation が中断されたら、すぐに送るのをやめて返すこと（返すまで画像のバイト列を 0 で埋めず、掃除の貸し出しも返さず、
 // 次の読み取りも受けない）。command.image.bytes は返すまで読んでよく、返した後は 0 で埋められる。ただし、送り始めてから
@@ -87,7 +87,8 @@ export interface ReceiptReadCommand {
 export interface ReceiptImageReader {
   read(
     command: ReceiptReadCommand,
-    cancellation: Cancellation,
+    // 予算の門の中断（時間切れ・端末の切断・設定を切にした）。送っている途中の HTTPS の要求を切るのに使う。
+    cancellation: AbortSignal,
   ): Promise<AdapterResult>;
 }
 
@@ -239,7 +240,7 @@ function decodeBase64(text: string): Uint8Array | null {
 function readWithin(
   reader: ReceiptImageReader,
   command: ReceiptReadCommand,
-  cancellation: Cancellation,
+  cancellation: AbortSignal,
   limitMs: number,
   overdue: () => void,
 ): Promise<AdapterResult> {

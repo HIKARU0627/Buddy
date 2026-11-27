@@ -39,6 +39,7 @@ import { runRestoreLedgerRepair } from './restore-repair.js';
 import { runRestoreRun } from './restore-run.js';
 import { readRecoveryKeyFromTty, stderrPrompt } from './restore-tty.js';
 import { CoreStartError, startCore } from './core.js';
+import { receiptApiKeyFromEnv } from './household-receipt-reader.js';
 import type { CoreHandle, CoreHttpsOptions } from './core.js';
 import { parseLockRecord } from './lock.js';
 import { LOCK_FILE, controlEndpoint, defaultDataDir } from './paths.js';
@@ -486,6 +487,18 @@ async function start(
                   tailscale: createTailscaleStatusSource({
                     runner: createNodeCommandRunner(),
                   }),
+                }
+              : {}),
+            // レシートの写真の読み取りの鍵（ADR 0178）。起動の環境変数 BUDDY_GEMINI_API_KEY からだけ受け取り、DB・
+            // KeyStore・ファイル・ログには出さない。模擬の起動では外部のモデルへ送らない（鍵を渡さない）。鍵がなければ
+            // 読み取りは unavailable のまま。
+            ...(mode === 'os'
+              ? {
+                  household: {
+                    receiptProvider: {
+                      apiKey: receiptApiKeyFromEnv(process.env),
+                    },
+                  },
                 }
               : {}),
           };

@@ -93,6 +93,9 @@ import {
   receiptBudgetOf,
 } from './household-receipt.js';
 import type { ReceiptReadingSetup } from './household-receipt.js';
+import { householdReceiptSetup } from './household-receipt-reader.js';
+import type { ReceiptHttpTransport } from './household-receipt-reader.js';
+import { createModelHttpsTransport } from './model-https.js';
 import {
   TaskMigrationError,
   migrateTaskContents,
@@ -300,8 +303,19 @@ export interface CoreHttpsOptions {
 }
 
 export interface CoreHouseholdOptions {
-  // レシートの写真の読み取りの口と profile（実際の provider の実装は後で足す。今は試験の模擬だけ）。
+  // レシートの写真の読み取りの口と profile をそのまま渡す（試験の模擬）。渡せば receiptProvider より優先する。
   readonly receiptReading?: ReceiptReadingSetup;
+  // 外部のモデル（Gemini）で読み取るときの鍵と送信の口（ADR 0178）。CLI が起動の環境変数 BUDDY_GEMINI_API_KEY から
+  // 鍵を渡す。鍵がない・予算の設定に確認済みの単価の版がないときは、読み取りは unavailable のまま。
+  readonly receiptProvider?: CoreReceiptProviderOptions;
+}
+
+export interface CoreReceiptProviderOptions {
+  readonly apiKey: string | null;
+  // 省略すると node:https の送信（createModelHttpsTransport）。試験は模擬に差し替える。
+  readonly transport?: ReceiptHttpTransport;
+  // 試験だけ: endpoint の差し替え。
+  readonly endpoint?: string;
 }
 
 export interface CoreVoiceOptions {
@@ -1658,7 +1672,22 @@ async function startHttps(
   // 途中なら送らずに 503 not_sent。端末が待つのをやめた後に送らないため。ADR 0177 の追補）。https.limits で
   // requestTimeout・確かめる間隔を上書きして、端末の時間切れ（150 秒）との関係が破れるなら、読み取りを使わない
   // （unavailable。ADR 0177 の追補 2）。
-  const receiptSetup = https.household?.receiptReading ?? null;
+  // 外部のモデルの鍵が起動の設定にあれば、Gemini の読み取りの口と profile を作る（ADR 0178）。単価の版は予算の設定から
+  // 今の時刻で見積もれるものだけ（なければ unavailable）。
+  const receiptProvider = https.household?.receiptProvider;
+  const receiptSetup =
+    https.household?.receiptReading ??
+    (receiptProvider === undefined
+      ? null
+      : householdReceiptSetup({
+          apiKey: receiptProvider.apiKey,
+          transport: receiptProvider.transport ?? createModelHttpsTransport(),
+          priceVersionFor: (request) => budget.priceVersionFor(request),
+          ...(receiptProvider.endpoint === undefined
+            ? {}
+            : { endpoint: receiptProvider.endpoint }),
+          log,
+        }));
   const apiLimits: ApiLimits = { ...DEFAULT_API_LIMITS, ...https.limits };
   const householdReceipt = createHouseholdReceiptRoutes({
     setup: receiptSetup,

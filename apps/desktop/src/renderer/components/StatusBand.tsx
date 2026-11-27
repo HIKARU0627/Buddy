@@ -8,6 +8,8 @@
 //   入口は今までどおり「確認が必要な操作」の行）。
 // - 項目の行: 中枢が正本の項目（表示先・音声・保存モード・予算保留・安全停止）を島の下に 1 行で小さく並べ、値がないものは
 //   「—」にする（ADR 0014 が常に見せる項目として定めているため畳まない。U397）。
+// - 記録しない間（UI-05 の段階 6、ADR 0189）: 島の小さい形に「記録しない」の札（記号と文言）をいつも出す。保存モードが
+//   変わったら、区切りの知らせで島を 1 行広げる（何を出すかは islandView と nextIslandMemory）。
 //
 // 停止のボタンは、main が止まっていることを確かめた後（停止の範囲が none でない）は出さない。止まっている端末で押しても
 // 何も変わらず（domain の stopLocally）、主状態の「■ 停止中」と取り違えるため（UI レビュー 2 回目 R1-M3）。
@@ -24,6 +26,8 @@ import type {
   IslandView,
 } from '../state/island-state.js';
 import { detailItems } from '../state/status-lines.js';
+import { privateModeOn } from '../state/storage-mode-state.js';
+import { PrivateModeMark } from './StorageMode.js';
 import { StatusText } from './StatusText.js';
 
 export const STOP_LABEL = '■ 入出力を停止';
@@ -65,9 +69,12 @@ export function StatusIsland({
   stopShortcut = null,
   onHoldChange = () => undefined,
   onOpenAttention = openAttention,
+  privateMode = false,
 }: {
   readonly view: IslandView;
   readonly onStop: () => void;
+  // 記録しない間か（UI-05 の段階 6、ADR 0189）。内容を出している間だけ札を出す。
+  readonly privateMode?: boolean;
   readonly stopShortcut?: ReactNode;
   // ポインター・キーボードのフォーカスが島に入った（true）・出た（false）。広がった島を畳まないために使う。
   readonly onHoldChange?: (source: HoldSource, holding: boolean) => void;
@@ -130,6 +137,7 @@ export function StatusIsland({
                 </span>
                 <StatusText line={view.hub} className="tabular-nums" />
               </p>
+              {privateMode ? <PrivateModeMark /> : null}
               {view.stop ? stop : null}
             </>
           )}
@@ -214,6 +222,7 @@ export function StatusBand({
         view={view}
         onStop={onStop}
         stopShortcut={stopShortcut}
+        privateMode={privateModeOn(status)}
         onHoldChange={(source, holding) => {
           setHold((previous) => {
             const next = { ...previous, [source]: holding };

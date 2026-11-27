@@ -9,6 +9,7 @@ import type {
   DesktopIpcResponse,
   DesktopStatusBar,
   DesktopVoiceView,
+  StorageMode,
 } from '@buddy/contracts';
 import { request } from '../desktop-api.js';
 import { rejectMessage } from '../labels.js';
@@ -255,6 +256,8 @@ export interface DeviceActions {
   readonly resume: (() => void) | null;
   readonly hideWindow: () => void;
   readonly quit: () => void;
+  // 保存モードを切り替える（UI-05 の段階 6、ADR 0189）。受け付けるかは main と中枢が決め、表示は状態欄の通知で変わる。
+  readonly changeStorageMode: (mode: StorageMode) => void;
 }
 
 // 操作から送る要求を組み立てる。再開は画面が表示している世代を expected_io_epoch として送り、
@@ -277,5 +280,7 @@ export function deviceActions(
         : null,
     hideWindow: () => send(request('desktop.window_hide', null)),
     quit: () => send(request('desktop.client_quit', null)),
+    changeStorageMode: (mode) =>
+      send(request('desktop.storage_mode_change', { storage_mode: mode })),
   };
 }

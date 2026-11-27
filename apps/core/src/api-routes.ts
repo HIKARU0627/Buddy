@@ -67,9 +67,13 @@ export const API_ROUTES: readonly ApiRoute[] = [
     body: 'StreamTurnRequest',
   }),
   // 保存モードの切り替え（U170、ADR 0060）。流れの経路を唯一の入口・出口にし、端末は会話の ID を送らない。
+  // 本人の画面操作だけ（UI-05 の段階 6、ADR 0189）。
   route('postStreamStorageMode', 'POST', '/v1/stream/storage-mode', {
     body: 'StorageModeChangeRequest',
+    ...SCREEN,
   }),
+  // 流れの今の保存モードの読み取り（UI-05 の段階 6、ADR 0189）。端末の状態欄に出す。
+  route('getStreamStorageMode', 'GET', '/v1/stream/storage-mode'),
   // キャンバスの今の記述の読み取り（ADR 0032）。イベントの canvas の知らせ（版だけ）を受けた端末が取る。
   route('getCanvas', 'GET', '/v1/canvas'),
   // キャンバスのユーザーの操作の記録（UI-06、ADR 0032）。本人の画面操作。

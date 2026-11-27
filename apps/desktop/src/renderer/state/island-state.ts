@@ -10,7 +10,8 @@
 //   1. 内容を隠している（未受信・ロック中・ロック状態不明）なら、広げない。
 //   2. 失敗の結果（承認・取消・照合・再試行・状態の確認が拒否された、結果が確認できなかった）。ISLAND_RESULT_MS の間。
 //   3. 確認が必要な操作が増えた。ISLAND_ATTENTION_MS の間。件数が減ったら畳む（減ったことは読み上げない）。
-//   4. 成功・中立の結果（承認を送った、完了した、実行されなかった、取り消した）。ISLAND_RESULT_MS の間。
+//   4. 成功・中立の結果（承認を送った、完了した、実行されなかった、取り消した）と、保存モードが変わった区切り（記録しない
+//      会話を始めた・終えた、保存モードを変えた。UI-05 の段階 6、ADR 0189）。ISLAND_RESULT_MS の間。
 //   5. どれもなければ小さい形のまま。
 // 時間が過ぎても、本人がポインター・キーボードのフォーカスを島に置いている間は畳まない（置いた時点で広がっていたものだけ。
 // WCAG 2.2.1。U395）。
@@ -22,9 +23,11 @@ import type {
   DesktopConnectionView,
   DesktopOperationEntry,
   DesktopStatusBar,
+  StorageMode,
 } from '@buddy/contracts';
 import type { StatusLine } from '../tones.js';
 import { hubLine, ioLine } from './status-lines.js';
+import { storageBoundary } from './storage-mode-state.js';
 import type { Notice } from './work-state.js';
 import { groupOperations, operationStatus, rowTitle } from './work-state.js';
 
@@ -201,12 +204,15 @@ export interface IslandMemory {
   readonly states: ReadonlyMap<string, OperationState | 'delivery_unknown'>;
   // 前に見た行の知らせ（同じ物なら新しい結果ではない）。
   readonly notices: Readonly<Record<string, Notice>>;
+  // 前に見た保存モード（中枢の値。受け取っていなければ null。ADR 0189）。
+  readonly storageMode: StorageMode | null;
 }
 
 export const EMPTY_ISLAND_MEMORY: IslandMemory = {
   signals: NO_ISLAND_SIGNALS,
   states: new Map(),
   notices: {},
+  storageMode: null,
 };
 
 // 新しい結果のうち、島に出す 1 つを選ぶ。失敗を先に、同じ重さなら島で読むもの（行で読んでいない）を先にする。
@@ -224,6 +230,8 @@ export function nextIslandMemory(
     readonly operations: readonly DesktopOperationEntry[];
     // 行のすぐ下の知らせ（WorkPanel。参照 → 知らせ）。
     readonly notices: Readonly<Record<string, Notice>>;
+    // 状態欄の保存モード（中枢の値。受け取っていなければ null。省略は null。ADR 0189）。
+    readonly storageMode?: StorageMode | null;
   },
   at: number,
 ): IslandMemory {
@@ -274,6 +282,19 @@ export function nextIslandMemory(
     };
     if (moreImportant(candidate, found)) found = candidate;
   }
+  // 保存モードが変わった（記録しない会話を始めた・終えた、保存モードを変えた。ADR 0189）。区切りは島で読む（切り替えの欄は
+  // 押しただけで、結果を読み上げない）。受け取っていなかった値からの変化（接続・ロック解除の直後）は区切りにしない。
+  const storageMode = input.storageMode ?? null;
+  const boundary = storageBoundary(previous.storageMode, storageMode);
+  if (boundary !== null) {
+    const candidate: IslandResult = {
+      line: boundary.line,
+      failure: false,
+      at,
+      announcedNearby: false,
+    };
+    if (moreImportant(candidate, found)) found = candidate;
+  }
   const count = groupOperations(input.operations).attention.length;
   const before = previous.signals;
   const raised =
@@ -293,5 +314,6 @@ export function nextIslandMemory(
     },
     states,
     notices: input.notices,
+    storageMode,
   };
 }

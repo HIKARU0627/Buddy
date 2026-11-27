@@ -1527,6 +1527,25 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
     });
   };
 
+  // 流れの今の保存モード（GET /v1/stream/storage-mode。UI-05 の段階 6、ADR 0189）。端末が状態欄に出すために読む。
+  // 記録しない区切りが開いていれば private（区切りを開き直せずに 503 を返した後も、保存境界の保持者が正本）。そうでなければ
+  // 今の区切りの保存モード、まだ区切りがなければ保存境界の保持者のモード（再起動の後は通常）。区切り・会話の ID・世代は返さない。
+  const getStreamStorageMode: ApiRouteHandler = (request) => {
+    if (request.device === null)
+      return Promise.resolve(apiErrorResponse(401, 'unauthenticated'));
+    const body = {
+      storage_mode:
+        options.storage.mode === 'private'
+          ? 'private'
+          : (current?.segment.storage_mode ?? options.storage.mode),
+    };
+    return Promise.resolve(
+      contract.valid('StreamStorageModeView', body)
+        ? { status: 200, body }
+        : apiErrorResponse(503, 'dependency_unavailable'),
+    );
+  };
+
   const getCanvas: ApiRouteHandler = (request) =>
     Promise.resolve(
       request.device === null
@@ -1640,6 +1659,7 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
     handlers: {
       postStreamTurn,
       postStreamStorageMode,
+      getStreamStorageMode,
       getCanvas,
       postCanvasUserOp,
       postCanvasContent,

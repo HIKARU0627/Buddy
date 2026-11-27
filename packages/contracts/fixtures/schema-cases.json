@@ -30373,5 +30373,92 @@
       ],
       "truncated": false
     }
+  },
+  {
+    "id": "desktop-ipc-storage-mode-change",
+    "schema": "DesktopIpcRequest",
+    "valid": true,
+    "value": {
+      "channel": "desktop.storage_mode_change",
+      "request_id": "00000000-0000-4000-8000-000000000f80",
+      "payload": { "storage_mode": "private" }
+    }
+  },
+  {
+    "id": "desktop-ipc-storage-mode-change-unknown-mode",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.storage_mode_change",
+      "request_id": "00000000-0000-4000-8000-000000000f80",
+      "payload": { "storage_mode": "forever" }
+    }
+  },
+  {
+    "id": "desktop-ipc-storage-mode-change-with-segment",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.storage_mode_change",
+      "request_id": "00000000-0000-4000-8000-000000000f80",
+      "payload": {
+        "storage_mode": "normal",
+        "segment_id": "00000000-0000-4000-8000-000000000041"
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-storage-mode-change-without-payload",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.storage_mode_change",
+      "request_id": "00000000-0000-4000-8000-000000000f80",
+      "payload": null
+    }
+  },
+  {
+    "id": "desktop-ipc-storage-mode-changed",
+    "schema": "DesktopIpcResponse",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000f80",
+      "channel": "desktop.storage_mode_change",
+      "outcome": "ok",
+      "storage_mode": "extended"
+    }
+  },
+  {
+    "id": "desktop-ipc-storage-mode-changed-with-reason",
+    "schema": "DesktopIpcResponse",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000f80",
+      "channel": "desktop.storage_mode_change",
+      "outcome": "ok",
+      "storage_mode": "private",
+      "open_reason": "private_started"
+    }
+  },
+  {
+    "id": "stream-storage-mode-view",
+    "schema": "StreamStorageModeView",
+    "valid": true,
+    "value": { "storage_mode": "normal" }
+  },
+  {
+    "id": "stream-storage-mode-view-with-segment-id",
+    "schema": "StreamStorageModeView",
+    "valid": false,
+    "value": {
+      "storage_mode": "private",
+      "segment_id": "00000000-0000-4000-8000-000000000041"
+    }
+  },
+  {
+    "id": "stream-storage-mode-view-unknown-mode",
+    "schema": "StreamStorageModeView",
+    "valid": false,
+    "value": { "storage_mode": "unknown" }
   }
 ]

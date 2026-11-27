@@ -21,6 +21,7 @@ import type {
   OperationDisplay,
   OperationPreview,
   OperationSnapshot,
+  StreamTurnResponse,
   TurnResponse,
 } from '@buddy/contracts';
 import type { ClientConnection } from '@buddy/client';
@@ -57,6 +58,9 @@ export interface OperationHost {
   readonly contract: DesktopContract;
   readonly connection: () => ClientConnection | null;
   readonly newRef: () => string;
+  // 中枢の流れの今の保存モード（UI-05 の段階 6、ADR 0189）。読めていなければ null。従来の窓の会話を作るときの保存モードと、
+  // 記録しない間の発言の経路に使う。省略は通常（試験）。
+  readonly storageMode?: () => 'normal' | 'extended' | 'private' | null;
   // 本人の確認（OS の確認ダイアログ）。世代・接続範囲の照合は呼び出し側が行う。
   readonly confirm: (
     request: OperationConfirmRequest,
@@ -136,10 +140,12 @@ export class OperationBridge {
   // 表示の権限の世代。reset で進める。
   #gen = 0;
   // 会話（接続範囲ごとに 1 つ。発言のたびに作らない）。区切りの世代は会話の作成の応答から持ち、発言の由来に使う。
+  // 保存モードは会話を作ったときの値（中枢の流れの保存モードが変わったら作り直す。ADR 0189）。
   #session: {
     readonly scope: string;
     readonly sessionId: string;
     readonly segmentGeneration: string;
+    readonly storageMode: 'normal' | 'extended';
   } | null = null;
 
   constructor(host: OperationHost) {
@@ -158,6 +164,12 @@ export class OperationBridge {
     this.#prefetched.clear();
     this.#queues.clear();
     this.#previewSeq.clear();
+    this.#session = null;
+  }
+
+  // 保存モードを切り替えた（UI-05 の段階 6、ADR 0189）: 従来の窓の会話を次の発言で作り直す（区切りの世代が進み、前の会話の
+  // 由来は 409 になるため）。参照・確認の内容は捨てない。
+  resetSession(): void {
     this.#session = null;
   }
 
@@ -289,12 +301,21 @@ export class OperationBridge {
     if (connection === null || scope === null) return fail('not_connected');
     const io = this.#host.io();
     if (!io.permitted) return fail('input_stopped');
+    const mode = this.#host.storageMode?.() ?? null;
+    // 記録しない間は会話を作らない（記録しない会話の会話 ID は作らない。ADR 0060）。流れの経路へ送り、区切りは中枢が選ぶ
+    // （B06-07a-2 の 2c までは中枢が 503 で断り、何も保存しない）。
+    if (mode === 'private') return this.#submitStreamTurn(text, scope, gen);
+    const sessionMode = mode === 'extended' ? 'extended' : 'normal';
     let session = this.#session;
-    if (session === null || session.scope !== scope) {
+    if (
+      session === null ||
+      session.scope !== scope ||
+      session.storageMode !== sessionMode
+    ) {
       const created = await connection.request({
         method: 'POST',
         path: '/v1/sessions',
-        body: { storage_mode: 'normal' },
+        body: { storage_mode: sessionMode },
         scoped: true,
         expectedScopeId: scope,
       });
@@ -315,6 +336,7 @@ export class OperationBridge {
         scope,
         sessionId: body.session_id,
         segmentGeneration: body.segment_generation,
+        storageMode: sessionMode,
       };
       this.#session = session;
       // 会話を作っている間に停止した: 発言を送らない。
@@ -352,6 +374,36 @@ export class OperationBridge {
       return fail('core_rejected');
     }
     return { ok: true, value: this.#turnResult(outcome.body as TurnResponse) };
+  }
+
+  // 記録しない間の従来の窓の発言（UI-05 の段階 6、ADR 0189）。流れの経路（POST /v1/stream/turns）へ送る（キャンバスは
+  // 描かない）。結果の扱いは会話への発言と同じ（結果が分からなければ自動で送り直さない）。
+  async #submitStreamTurn(
+    text: string,
+    scope: string,
+    gen: number,
+  ): Promise<BridgeOutcome<DesktopTurnResult>> {
+    const connection = this.#host.connection();
+    if (connection === null) return fail('not_connected');
+    const outcome = await connection.request({
+      method: 'POST',
+      path: '/v1/stream/turns',
+      body: { text, input_kind: 'text', expected_canvas_revision: '0' },
+      scoped: true,
+      expectedScopeId: scope,
+    });
+    if (outcome.kind === 'not_sent') return fail('not_connected');
+    if (gen !== this.#gen) return fail('outcome_unknown');
+    if (outcome.kind === 'unknown') return fail('outcome_unknown');
+    if (
+      outcome.status !== 200 ||
+      !this.#host.contract.valid('StreamTurnResponse', outcome.body)
+    )
+      return fail('core_rejected');
+    return {
+      ok: true,
+      value: this.#turnResult(outcome.body as StreamTurnResponse),
+    };
   }
 
   // 流れへの発言の結果（StreamTurnResponse）も、会話への発言と同じ表示用の値にする（UI-03、ADR 0032）。

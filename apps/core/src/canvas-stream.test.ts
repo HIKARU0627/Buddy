@@ -2610,11 +2610,18 @@ const postStorageMode = async (
   storageMode: 'normal' | 'extended' | 'private',
   requestId = randomUUID(),
 ) => {
-  const response = await postJson(core, device, '/v1/stream/storage-mode', {
-    request_id: requestId,
-    command_scope_id: scope,
-    storage_mode: storageMode,
-  });
+  // 本人の画面操作だけ（UI-05 の段階 6、ADR 0189）。
+  const response = await postJson(
+    core,
+    device,
+    '/v1/stream/storage-mode',
+    {
+      request_id: requestId,
+      command_scope_id: scope,
+      storage_mode: storageMode,
+    },
+    { 'buddy-input-origin': 'screen' },
+  );
   if (response.status === 200)
     assert(
       contract.valid('StorageModeChangeResponse', response.json),
@@ -2664,6 +2671,11 @@ test('U170: the stream route enters private without a conversation, writes priva
   );
   assert.equal(privateTurn.status, 503, privateTurn.text);
 
+  // 流れの今の保存モードは private（UI-05 の段階 6、ADR 0189。端末の状態欄に出す値。ID・世代を返さない）。
+  const reading = await getJson(core, device, '/v1/stream/storage-mode');
+  assert.equal(reading.status, 200, reading.text);
+  assert.deepEqual(reading.json, { storage_mode: 'private' });
+
   // 出る。区切りは private_ended で、要約はつながない。
   const exited = await postStorageMode(core, device, scope, 'extended');
   assert.equal(exited.status, 200, exited.text);
@@ -2675,6 +2687,11 @@ test('U170: the stream route enters private without a conversation, writes priva
     segment_generation: '3',
     private_open: false,
   });
+
+  assert.deepEqual(
+    (await getJson(core, device, '/v1/stream/storage-mode')).json,
+    { storage_mode: 'extended' },
+  );
 
   // 出た後の発言は、新しく作った会話で保存される。
   const after = await postStream(core, device, scope, '今日の用事を見せて');
@@ -2815,14 +2832,47 @@ test('U170: POST /v1/sessions still refuses private, and the stream route refuse
   assert.equal(normal.status, 201, normal.text);
 
   // 端末は会話の ID を送らない（送れば契約の形式の検査で 422）。
-  const withSession = await postJson(core, device, '/v1/stream/storage-mode', {
-    request_id: randomUUID(),
-    command_scope_id: scope,
-    storage_mode: 'private',
-    session_id: randomUUID(),
-  });
+  const withSession = await postJson(
+    core,
+    device,
+    '/v1/stream/storage-mode',
+    {
+      request_id: randomUUID(),
+      command_scope_id: scope,
+      storage_mode: 'private',
+      session_id: randomUUID(),
+    },
+    { 'buddy-input-origin': 'screen' },
+  );
   assert.equal(withSession.status, 422, withSession.text);
   assert.equal((withSession.json as { code?: string }).code, 'invalid_input');
+
+  // 画面操作でない起点（音声・チャット・起点なし）では切り替えない（UI-05 の段階 6、ADR 0189）。保存境界も動かない。
+  const before = await boundaryOf(core);
+  for (const origin of ['voice', 'chat', 'system', null]) {
+    const refused = await postJson(
+      core,
+      device,
+      '/v1/stream/storage-mode',
+      {
+        request_id: randomUUID(),
+        command_scope_id: scope,
+        storage_mode: 'private',
+      },
+      origin === null ? {} : { 'buddy-input-origin': origin },
+    );
+    if (origin === null) {
+      // 起点のヘッダーがなければ形式の検査で 422。
+      assert.equal(refused.status, 422, refused.text);
+    } else {
+      assert.equal(refused.status, 403, refused.text);
+      assert.equal(
+        (refused.json as { code?: string }).code,
+        'screen_operation_required',
+      );
+    }
+  }
+  assert.deepEqual(await boundaryOf(core), before);
 });
 
 // 保存モードを切り替えられる偽のゲート（書込みの失敗と規則の拒否を作る）。
@@ -3718,4 +3768,82 @@ test('U170: a mode-change retry after a restart makes its own conversation, so t
     segment_id: retriedSegment.segment_id,
     segment_generation: '1',
   });
+});
+
+test('UI-05 stage 6: the stream storage mode reads the gate first, then the current segment, and hides IDs', async () => {
+  const hub = new CanvasHub(contract);
+  const device = { device_id: randomUUID() } as unknown as NonNullable<
+    ApiHandlerRequest['device']
+  >;
+  const route = (operationId: string) => {
+    const found = API_ROUTES.find((entry) => entry.operationId === operationId);
+    assert(found !== undefined);
+    return found;
+  };
+  const storage = new SwitchableStorage();
+  let failCreate = false;
+  const routes = createStreamRoutes({
+    canvas: hub,
+    createSession: () =>
+      Promise.resolve(
+        failCreate
+          ? { status: 503, body: { code: 'dependency_unavailable' } }
+          : { status: 201, body: { session_id: randomUUID() } },
+      ),
+    postTurn: () => Promise.resolve({ status: 503, body: {} }),
+    storage,
+    contract,
+    now: () => CLOCK.getTime(),
+  });
+  const read = routes.handlers['getStreamStorageMode'];
+  const storageMode = routes.handlers['postStreamStorageMode'];
+  assert(read !== undefined);
+  assert(storageMode !== undefined);
+  const get = (withDevice = true): ApiHandlerRequest => ({
+    route: route('getStreamStorageMode'),
+    device: withDevice ? device : null,
+    params: {},
+    remoteAddress: '127.0.0.1',
+    query: {},
+    declaredLockState: null,
+    body: null,
+  });
+  const mode = (value: string): ApiHandlerRequest => ({
+    route: route('postStreamStorageMode'),
+    device,
+    params: {},
+    remoteAddress: '127.0.0.1',
+    query: {},
+    declaredLockState: null,
+    body: {
+      request_id: randomUUID(),
+      command_scope_id: randomUUID(),
+      storage_mode: value,
+    },
+  });
+  // 区切りがまだなければ、保存境界の保持者のモード（通常）。
+  assert.deepEqual(await read(get()), {
+    status: 200,
+    body: { storage_mode: 'normal' },
+  });
+  // 端末トークンがなければ 401。
+  assert.equal((await read(get(false))).status, 401);
+  // 継続相談へ切り替えたら、今の区切りの保存モード。
+  assert.equal((await storageMode(mode('extended'))).status, 200);
+  assert.deepEqual((await read(get())).body, { storage_mode: 'extended' });
+  // 記録しないへ入ったら private。応答は保存モードだけ（区切り・会話の ID・世代を入れない）。
+  assert.equal((await storageMode(mode('private'))).status, 200);
+  const inPrivate = await read(get());
+  assert.deepEqual(inPrivate.body, { storage_mode: 'private' });
+  assert.deepEqual(Object.keys(inPrivate.body), ['storage_mode']);
+  // 出る途中で会話を作れず 503 になっても、保存境界の保持者はもう出ている（出た先のモードを出す。private のままにしない）。
+  failCreate = true;
+  assert.equal((await storageMode(mode('normal'))).status, 503);
+  assert.equal(storage.mode, 'normal');
+  assert.deepEqual((await read(get())).body, { storage_mode: 'normal' });
+  // 保存境界の保持者が private なら、今の区切りが通常のままでも private を出す（入った後に区切りを開けなかったとき）。
+  failCreate = false;
+  assert.equal((await storageMode(mode('normal'))).status, 200);
+  storage.mode = 'private';
+  assert.deepEqual((await read(get())).body, { storage_mode: 'private' });
 });

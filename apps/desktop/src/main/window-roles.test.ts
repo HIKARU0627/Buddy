@@ -106,6 +106,8 @@ const AUTO_ACTIONS = [
   'desktop.memories_list',
   'desktop.forget_plan',
   'desktop.forget_execute',
+  // 保存モードの切り替え（UI-05 の段階 6、ADR 0189。従来の窓と状態の層。キャンバス・入力バー・島は使わない）。
+  'desktop.storage_mode_change',
 ];
 const ALL_CHANNELS = [
   ...LEGACY_CHANNELS,
@@ -1162,4 +1164,68 @@ test('forget screen channels: only the legacy window and the status panel reach 
       { ok: true },
       channel,
     );
+});
+
+// 保存モードの切り替え（UI-05 の段階 6、ADR 0189）: 従来の窓と状態の層のパネルだけが、前面の本人の画面操作で使える。
+// キャンバス・入力バー・島（記録しないモードの印を出すだけ）からは、前面でもロック解除済みでも untrusted_sender。
+// 期待値は手で書いた。
+test('storage mode change: only the legacy window and the status panel switch it, by a screen operation', () => {
+  const registry = new UiWindowRegistry<FakeWindow>();
+  registry.register(31, 'legacy', { name: 'legacy' });
+  registry.register(32, 'status', { name: 'status' });
+  registry.register(33, 'canvas', { name: 'canvas' });
+  registry.register(34, 'input', { name: 'input' });
+  registry.register(35, 'island', { name: 'island' });
+  const channel = 'desktop.storage_mode_change';
+  const admit = (
+    id: number,
+    focused: boolean,
+    state: {
+      readonly lockState?: 'unlocked' | 'locked' | 'unknown';
+      readonly stopScope?: 'none' | 'local' | 'guest' | 'global';
+    } = {},
+  ) =>
+    admitDesktopRequest(
+      channel,
+      null,
+      { ...UNLOCKED, ...state },
+      senderFor(registry, id, channel, { focused }),
+    );
+  assert.deepEqual(admit(31, true), { ok: true });
+  assert.deepEqual(admit(32, true), { ok: true });
+  assert.equal(channelAllowedForWindow('legacy', channel), true);
+  assert.equal(channelAllowedForWindow('status', channel), true);
+  for (const [id, role] of [
+    [33, 'canvas'],
+    [34, 'input'],
+    [35, 'island'],
+  ] as const) {
+    assert.equal(channelAllowedForWindow(role, channel), false, role);
+    assert.deepEqual(
+      admit(id, true),
+      { ok: false, reason: 'untrusted_sender' },
+      role,
+    );
+  }
+  // 前面でない窓（後ろにある従来の窓・パネル）からは受け付けない。
+  assert.deepEqual(admit(31, false), {
+    ok: false,
+    reason: 'screen_operation_required',
+  });
+  assert.deepEqual(admit(32, false), {
+    ok: false,
+    reason: 'screen_operation_required',
+  });
+  // ロック中・不明は拒否。
+  assert.deepEqual(admit(32, true, { lockState: 'locked' }), {
+    ok: false,
+    reason: 'device_locked',
+  });
+  assert.deepEqual(admit(31, true, { lockState: 'unknown' }), {
+    ok: false,
+    reason: 'device_locked',
+  });
+  // 入出力の停止中（この端末・来客・全体）も受け付ける（外部へは送らない。記録しないモードに入るのを止めない）。
+  for (const stopScope of ['local', 'guest', 'global'] as const)
+    assert.deepEqual(admit(32, true, { stopScope }), { ok: true }, stopScope);
 });

@@ -396,3 +396,84 @@ test('when several results arrive together, a failure wins, then the one read on
   assert.equal(withFailure.signals.result?.failure, true);
   assert.equal(withFailure.signals.result?.announcedNearby, true);
 });
+
+// UI-05 の段階 6（ADR 0189）: 保存モードが変わった区切りで島を広げる。期待値の文言・記号・時間は手で書いた。
+test('a storage mode change opens the island with the boundary line for 6 seconds, read politely', () => {
+  const at = (
+    previous: typeof EMPTY_ISLAND_MEMORY,
+    storageMode: 'normal' | 'extended' | 'private' | null,
+    time: number,
+    shownNow = true,
+  ) =>
+    nextIslandMemory(
+      previous,
+      { shown: shownNow, operations: [], notices: {}, storageMode },
+      time,
+    );
+  // 接続・ロック解除の直後の最初の値（前の値が分からない）は区切りにしない。
+  const first = at(EMPTY_ISLAND_MEMORY, 'normal', NOW);
+  assert.equal(first.signals.result, null);
+  assert.equal(first.storageMode, 'normal');
+  // 記録しないへ入った。
+  const entered = at(first, 'private', NOW + 10);
+  assert.deepEqual(entered.signals.result, {
+    line: {
+      tone: 'neutral',
+      mark: 'square',
+      text: 'ここから記録しない会話です。',
+    },
+    failure: false,
+    at: NOW + 10,
+    announcedNearby: false,
+  });
+  const view = (signals: IslandSignals, now: number) =>
+    islandView({
+      status: shown('none', {
+        hub_connection: 'connected',
+        storage_mode: 'private',
+      }),
+      connection: null,
+      now,
+      signals,
+      holdingSince: null,
+    });
+  const open = view(entered.signals, NOW + 10 + 5_999);
+  assert.equal(open.kind, 'shown');
+  assert.deepEqual(open.kind === 'shown' ? open.expanded : null, {
+    reason: 'result',
+    line: {
+      tone: 'neutral',
+      mark: 'square',
+      text: 'ここから記録しない会話です。',
+    },
+    live: 'status',
+    openAttention: false,
+  });
+  const closed = view(entered.signals, NOW + 10 + 6_000);
+  assert.equal(closed.kind === 'shown' ? closed.expanded : 'x', null);
+  // 同じ値のままなら新しい区切りではない（前の知らせの時刻のまま）。
+  const same = at(entered, 'private', NOW + 20);
+  assert.equal(same.signals.result?.at, NOW + 10);
+  // 記録しないから継続相談へ出た。
+  const exited = at(same, 'extended', NOW + 30);
+  assert.deepEqual(exited.signals.result?.line, {
+    tone: 'neutral',
+    mark: 'dot',
+    text: '記録しない会話を終えました。ここから保存モードは「継続相談（30\u00a0日）」です。',
+  });
+  // 継続相談から通常へ。
+  const changed = at(exited, 'normal', NOW + 40);
+  assert.equal(
+    changed.signals.result?.line.text,
+    'ここから保存モードは「通常（7\u00a0日）」です。',
+  );
+  // 値を受け取れなくなった（null）・見せられない間は区切りにせず、戻った後の最初の値も区切りにしない。
+  const lost = at(changed, null, NOW + 50);
+  assert.equal(lost.signals.result?.at, NOW + 40);
+  const back = at(lost, 'private', NOW + 60);
+  assert.equal(back.signals.result?.at, NOW + 40);
+  const hidden = at(back, 'normal', NOW + 70, false);
+  assert.deepEqual(hidden, EMPTY_ISLAND_MEMORY);
+  const again = at(hidden, 'private', NOW + 80);
+  assert.equal(again.signals.result, null);
+});

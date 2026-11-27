@@ -252,6 +252,18 @@ const PAIRS = [
     4.5,
   ],
   [
+    'outline ボタン（保存モードの選んでいない選択肢。パネルの面）--default-foreground / --surface',
+    '--default-foreground',
+    ['--surface'],
+    4.5,
+  ],
+  [
+    '記録しないモードの札の文字（島・パネルの面）--accent-soft-foreground / --accent-soft（--surface の上）',
+    '--accent-soft-foreground',
+    ['--accent-soft', '--surface'],
+    4.5,
+  ],
+  [
     'danger-soft ボタン（停止）--danger-soft-foreground / --danger-soft（カード）',
     '--danger-soft-foreground',
     ['--danger-soft', '--surface'],
@@ -372,6 +384,12 @@ const PAIRS = [
     4.5,
   ],
   // 文字でないもの（3:1）
+  [
+    '記録しないモードの札の縁 --accent-soft-foreground / --surface（島の面）',
+    '--accent-soft-foreground',
+    ['--surface'],
+    3,
+  ],
   [
     '確認のダイアログの accent のアイコン --accent-soft-foreground / --accent-soft',
     '--accent-soft-foreground',

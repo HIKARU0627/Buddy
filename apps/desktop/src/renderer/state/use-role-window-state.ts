@@ -1,7 +1,11 @@
 // 3 つの窓（UI-02 の試作）の画面と限定 API をつなぐフック。窓の役割の表にあるチャネルだけを送る（ADR 0032）。
 // 画面の部品はこのフックが返す値と操作だけを使い、限定 API を直接呼ばない。
 import { useCallback, useEffect, useState } from 'react';
-import type { CanvasUserOp, DesktopIpcRequest } from '@buddy/contracts';
+import type {
+  CanvasUserOp,
+  DesktopIpcRequest,
+  StorageMode,
+} from '@buddy/contracts';
 import type { CanvasInsets } from '@buddy/domain';
 import { canvasInsetsFrom } from './canvas-layout-state.js';
 import type { BuddyDesktopApi } from '../desktop-api.js';
@@ -33,6 +37,8 @@ export interface RoleWindowHandle {
     action:
       'stop_playback' | 'end_conversation' | 'reply_in_voice' | 'reply_in_text',
   ) => void;
+  // 保存モードを切り替える（状態の層のパネルだけ。UI-05 の段階 6、ADR 0189）。表示は状態欄の通知で変わる。
+  readonly changeStorageMode: (mode: StorageMode) => void;
   // キャンバスの物のユーザーの操作（キャンバスの窓だけ。UI-06）。受け付けたら中枢が当てた後の版、拒否・失敗は null
   // （記述は main が取り直す）。
   readonly canvasUserOp: (
@@ -120,6 +126,11 @@ export function useRoleWindowState(
     ) => send(request('desktop.voice_control', { action })),
     [send],
   );
+  const changeStorageMode = useCallback(
+    (mode: StorageMode) =>
+      send(request('desktop.storage_mode_change', { storage_mode: mode })),
+    [send],
+  );
   const canvasUserOp = useCallback(
     (op: CanvasUserOp, expectedRevision: string) =>
       api
@@ -166,6 +177,7 @@ export function useRoleWindowState(
     continueVoice,
     revokeVoiceConsent,
     controlVoice,
+    changeStorageMode,
     canvasUserOp,
     canvasContent,
   };

@@ -28,6 +28,12 @@ import {
 } from '../../state/status-panel-state.js';
 import { useNow } from '../../state/use-desktop-state.js';
 import { islandView } from '../../state/island-state.js';
+import {
+  privateModeOn,
+  storageModeControlView,
+  storageModeOf,
+} from '../../state/storage-mode-state.js';
+import { StorageModeControl } from '../../components/StorageMode.js';
 import { useIslandSignals } from '../../state/use-island-signals.js';
 import type { Notice } from '../../state/work-state.js';
 import {
@@ -106,7 +112,13 @@ function IslandWindow({ api }: { readonly api: BuddyDesktopApi }) {
   // 確認が必要な操作の数と結果は、パネルと同じ条件（ロック解除済み・登録済み・中枢に接続中）で数える。
   const live = operationsShown(state.status, connection);
   const operations = connection?.operations ?? NO_OPERATIONS;
-  const signals = useIslandSignals(live, operations, NO_NOTICES);
+  // 保存モードが変わったら区切りの知らせで広げる（UI-05 の段階 6、ADR 0189）。
+  const signals = useIslandSignals(
+    live,
+    operations,
+    NO_NOTICES,
+    storageModeOf(state.status),
+  );
   const [holdingSince, onHoldChange] = useIslandHold();
   const summary = statusSummaryView(state.status, state.connection);
   return (
@@ -121,6 +133,7 @@ function IslandWindow({ api }: { readonly api: BuddyDesktopApi }) {
       pending={summary.pending}
       summaryLabel={summary.label}
       privacy={privacyMarks(state.status, state.voice)}
+      privateMode={privateModeOn(state.status)}
       onStop={stop}
       onOpenPanel={() => setPanel(true)}
       onHoldChange={onHoldChange}
@@ -138,6 +151,7 @@ function StatusWindow({ api }: { readonly api: BuddyDesktopApi }) {
     continueVoice,
     revokeVoiceConsent,
     controlVoice,
+    changeStorageMode,
   } = useRoleWindowState(api, 'status');
   const now = useNow();
   const visibility = usePageVisibility();
@@ -208,6 +222,13 @@ function StatusWindow({ api }: { readonly api: BuddyDesktopApi }) {
           }
           onStopPlayback={() => controlVoice('stop_playback')}
           onEndConversation={() => controlVoice('end_conversation')}
+        />
+      }
+      storage={
+        <StorageModeControl
+          view={storageModeControlView(state.status)}
+          message={messageFor(state, ['desktop.storage_mode_change'])}
+          onChange={changeStorageMode}
         />
       }
       operations={

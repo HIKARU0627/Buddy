@@ -7,7 +7,10 @@
 // 行の見出しは操作の内容（用事の題名・メールの件名）で、操作の種類は補足。ボタンの読み上げの名前に対象を含める。
 // 確認を開いたら見出しへフォーカスを移し、閉じたら元の行のボタン（なければ「確認が必要な操作」の見出し）へ戻す。
 // 状態と操作は引数で受け取り、限定 API を直接呼ばない。画面に来るのは main の参照と表示用の値だけ。
+// 保存モード（UI-05 の段階 6、ADR 0189）: 会話の欄の入力の上に、保存モードの切り替えの欄（通常・継続相談・記録しない）を
+// 置き、保存モードが変わったら会話の履歴に区切りの行（記号と文言）を足す（発言ではないので読み上げの最新の回答に数えない）。
 import { useEffect, useRef } from 'react';
+import type { ReactNode } from 'react';
 import {
   Button,
   Description,
@@ -189,6 +192,7 @@ function Conversation({
   blocked,
   previewOpen,
   household,
+  storage,
 }: {
   readonly state: WorkViewState;
   readonly actions: WorkActions;
@@ -196,6 +200,8 @@ function Conversation({
   readonly blocked: string | null;
   readonly previewOpen: boolean;
   readonly household: HouseholdCandidateLink | null;
+  // 保存モードの切り替えの欄（ADR 0189。出さないときは null）。
+  readonly storage: ReactNode;
 }) {
   const latest = [...state.messages]
     .reverse()
@@ -210,20 +216,39 @@ function Conversation({
           aria-label="会話の履歴"
           className="flex flex-col gap-4 text-sm leading-6"
         >
-          {state.messages.map((message) => (
-            <li key={message.id} className="flex flex-col gap-0.5">
-              <span className="text-xs text-muted">
-                {message.role === 'user'
-                  ? WORK_LABELS.you
-                  : message.clarification
-                    ? `${WORK_LABELS.buddy}（${WORK_LABELS.clarification}）`
-                    : WORK_LABELS.buddy}
-              </span>
-              <span className="max-w-prose whitespace-pre-wrap break-words">
-                {message.text}
-              </span>
-            </li>
-          ))}
+          {state.messages.map((message) =>
+            message.role === 'boundary' ? (
+              <li
+                key={message.id}
+                data-boundary={message.mark ?? 'dot'}
+                className="flex items-center gap-3 text-xs text-muted"
+              >
+                <span aria-hidden="true" className="h-px flex-1 bg-separator" />
+                <StatusText
+                  line={{
+                    tone: 'neutral',
+                    mark: message.mark ?? 'dot',
+                    text: message.text,
+                  }}
+                  className="text-foreground"
+                />
+                <span aria-hidden="true" className="h-px flex-1 bg-separator" />
+              </li>
+            ) : (
+              <li key={message.id} className="flex flex-col gap-0.5">
+                <span className="text-xs text-muted">
+                  {message.role === 'user'
+                    ? WORK_LABELS.you
+                    : message.clarification
+                      ? `${WORK_LABELS.buddy}（${WORK_LABELS.clarification}）`
+                      : WORK_LABELS.buddy}
+                </span>
+                <span className="max-w-prose whitespace-pre-wrap break-words">
+                  {message.text}
+                </span>
+              </li>
+            ),
+          )}
         </ol>
       )}
       <HouseholdCandidateCard
@@ -231,6 +256,7 @@ function Conversation({
         actions={actions}
         link={household}
       />
+      {storage}
       {/* 新しい回答・聞き返しを、最新の追加分だけ控えめに読み上げる（履歴全体は読み上げない）。 */}
       <p role="status" aria-live="polite" className="sr-only">
         {latest === undefined ? '' : latest.text}
@@ -791,6 +817,7 @@ export function WorkPanel({
   link,
   stopped,
   household = null,
+  storage = null,
 }: {
   readonly state: WorkViewState;
   readonly actions: WorkActions;
@@ -801,6 +828,8 @@ export function WorkPanel({
   readonly stopped: boolean;
   // 家計の記録の候補を家計簿の入力欄で開く口（ADR 0171）。null なら候補を出さない。
   readonly household?: HouseholdCandidateLink | null;
+  // 保存モードの切り替えの欄（UI-05 の段階 6、ADR 0189）。null なら出さない。
+  readonly storage?: ReactNode;
 }) {
   const connected = link === 'connected';
   const blocked = !connected
@@ -819,6 +848,7 @@ export function WorkPanel({
         blocked={blocked}
         previewOpen={previewOpen && state.preview?.preview?.approvable === true}
         household={household}
+        storage={storage}
       />
       {connected ? (
         <WorkOperations

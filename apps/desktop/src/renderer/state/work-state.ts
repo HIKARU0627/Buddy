@@ -345,10 +345,14 @@ export function turnText(turn: DesktopTurnResult): string {
 
 export interface Message {
   readonly id: number;
-  readonly role: 'user' | 'buddy';
+  // boundary は保存モードが変わった区切りの行（記録しない会話を始めた・終えた、保存モードを変えた。UI-05 の段階 6、
+  // ADR 0189）。発言ではない（読み上げの「最新の回答」に数えない）。
+  readonly role: 'user' | 'buddy' | 'boundary';
   readonly text: string;
   // 聞き返し（本人の答えを待つ）か。
   readonly clarification: boolean;
+  // 区切りの行の記号（記録しないは ■、それ以外は ●）。発言では null。
+  readonly mark?: 'square' | 'dot' | null;
 }
 
 export interface PreviewState {
@@ -533,6 +537,25 @@ export function applyTurnResponse(
     sending: false,
     turnNotice: null,
     householdCandidate: householdCandidateFrom(household),
+  };
+}
+
+// 保存モードが変わった区切りの行を会話の履歴に足す（UI-05 の段階 6、ADR 0189）。入力・送信中の状態は変えない。
+export function applyStorageBoundary(
+  state: WorkViewState,
+  boundary: { readonly text: string; readonly mark: 'square' | 'dot' },
+): WorkViewState {
+  const line: Message = {
+    id: state.nextId,
+    role: 'boundary',
+    text: boundary.text,
+    clarification: false,
+    mark: boundary.mark,
+  };
+  return {
+    ...state,
+    messages: [...state.messages, line],
+    nextId: state.nextId + 1,
   };
 }
 
@@ -762,6 +785,11 @@ export interface WorkActions {
   readonly check: (ref: string) => void;
   // 家計の記録の候補をしまう（閉じた・家計簿の入力欄で開いた。ADR 0171）。
   readonly dismissHouseholdCandidate: () => void;
+  // 保存モードが変わった区切りの行を足す（UI-05 の段階 6、ADR 0189）。
+  readonly markBoundary: (boundary: {
+    readonly text: string;
+    readonly mark: 'square' | 'dot';
+  }) => void;
 }
 
 export interface WorkSink {
@@ -854,6 +882,8 @@ export function workActions(sink: WorkSink): WorkActions {
           ? state
           : { ...state, householdCandidate: null },
       ),
+    markBoundary: (boundary) =>
+      sink.update((state) => applyStorageBoundary(state, boundary)),
   };
 }
 

@@ -537,6 +537,8 @@ test(
           '/v1/pairing/claims',
           '/v1/home-network/reports',
           '/v1/home-network/registration',
+          // 接続したら流れの今の保存モードを読む（状態欄の保存モード。UI-05 の段階 6、ADR 0189）。
+          '/v1/stream/storage-mode',
         ].includes(request.path),
         request.path,
       );

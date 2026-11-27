@@ -183,7 +183,8 @@ export class DesktopDeviceController {
     if (
       hub.connection === this.#hub.connection &&
       hub.lastConfirmedAt === this.#hub.lastConfirmedAt &&
-      (hub.budgetHeld ?? null) === (this.#hub.budgetHeld ?? null)
+      (hub.budgetHeld ?? null) === (this.#hub.budgetHeld ?? null) &&
+      (hub.storageMode ?? null) === (this.#hub.storageMode ?? null)
     )
       return;
     this.#hub = hub;

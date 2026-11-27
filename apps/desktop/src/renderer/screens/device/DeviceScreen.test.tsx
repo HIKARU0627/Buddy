@@ -25,6 +25,7 @@ import type {
   DeviceActions,
   ShownStatus,
 } from '../../state/desktop-state.js';
+import type { IslandSignals } from '../../state/island-state.js';
 import { DeviceScreen } from './DeviceScreen.js';
 import { StopBanner } from './StopBanner.js';
 
@@ -375,4 +376,136 @@ test('the screen draws with given actions without calling them', () => {
   };
   render(view(shown('local')), spy);
   assert.equal(called, false);
+});
+
+// --- 上の中央の島（ADR 0181 の段階 2） ---
+
+const OPEN_ATTENTION = '確認が必要な操作を見る';
+
+function renderIsland(state: DesktopViewState, island: IslandSignals): string {
+  return renderToStaticMarkup(
+    <AppProviders>
+      <DeviceScreen
+        state={state}
+        now={NOW}
+        actions={deviceActions(state.status, () => undefined)}
+        island={island}
+      />
+    </AppProviders>,
+  );
+}
+
+const island = (extra: Partial<IslandSignals>): IslandSignals => ({
+  attentionCount: 0,
+  attentionRaisedAt: null,
+  attentionRaisedCount: 0,
+  result: null,
+  ...extra,
+});
+
+test('the io line is read from the island only, and the island stays small without news', () => {
+  const html = render(view(shown('none')));
+  assert.match(html, /<section aria-label="状態の島" data-island="compact"/u);
+  // 入出力の 1 行のライブ領域は島の中の 1 つだけ（状態帯から島へ移した。同じ文を 2 か所で読ませない）。
+  assert.equal(html.match(/入出力:<\/span>/gu)?.length, 1);
+  assert.match(
+    html,
+    /<section aria-label="状態の島"[^>]*>(?:(?!<\/section>).)*role="status"[^>]*><span[^>]*>入出力:<\/span>/su,
+  );
+  // 広がる形のライブ領域は空で置いてある。alert は出していない。
+  assert.match(html, /<div role="status" data-island-live="status"><\/div>/u);
+  assert.doesNotMatch(html, /role="alert"/u);
+});
+
+test('a new attention count opens the island with a polite line and a way to the list', () => {
+  const html = renderIsland(
+    view(shown('none')),
+    island({
+      attentionCount: 2,
+      attentionRaisedAt: NOW,
+      attentionRaisedCount: 2,
+    }),
+  );
+  assert.match(html, /data-island="expanded"/u);
+  assert.match(
+    html,
+    /<div role="status" data-island-live="status"><p data-island-line="attention"[^>]*>(?:<[^>]+>|○)*確認が必要な操作が2\u00a0件あります。/u,
+  );
+  // 島には一覧へ移るボタンだけを置き、承認・取消のボタンは置かない（確認は一覧の行から OS の確認ダイアログで行う）。
+  assert.deepEqual(buttonLabels(html), [STOP, OPEN_ATTENTION, HIDE, QUIT]);
+});
+
+test('a failed result is an alert on the island; a result read beside its row is not read again', () => {
+  const failure = renderIsland(
+    view(shown('none')),
+    island({
+      result: {
+        line: {
+          tone: 'danger',
+          mark: 'warning',
+          text: '用事の登録: 結果を確認できませんでした',
+        },
+        failure: true,
+        at: NOW,
+        announcedNearby: false,
+      },
+    }),
+  );
+  assert.match(
+    failure,
+    /<div role="alert" data-island-live="alert"><p data-island-line="result"[^>]*>.*用事の登録: 結果を確認できませんでした/u,
+  );
+  const nearby = renderIsland(
+    view(shown('none')),
+    island({
+      result: {
+        line: {
+          tone: 'success',
+          mark: 'dot',
+          text: '用事の登録: 承認を送りました。',
+        },
+        failure: false,
+        at: NOW,
+        announcedNearby: true,
+      },
+    }),
+  );
+  assert.match(nearby, /data-island="expanded"/u);
+  assert.match(nearby, /<div role="status" data-island-live="status"><\/div>/u);
+  assert.match(
+    nearby,
+    /<p data-island-line="result"[^>]*>.*用事の登録: 承認を送りました。/u,
+  );
+  assert.doesNotMatch(nearby, /role="alert"/u);
+});
+
+test('while locked the island does not open even with news, and stop stays', () => {
+  const html = renderIsland(
+    view({ visibility: 'hidden', lock_state: 'locked' }),
+    island({
+      attentionCount: 1,
+      attentionRaisedAt: NOW,
+      attentionRaisedCount: 1,
+      result: {
+        line: {
+          tone: 'danger',
+          mark: 'warning',
+          text: '用事の登録: 結果を確認できませんでした',
+        },
+        failure: true,
+        at: NOW,
+        announcedNearby: false,
+      },
+    }),
+  );
+  assert.match(html, /data-island="compact"/u);
+  assert.doesNotMatch(html, /確認が必要な操作が|用事の登録|role="alert"/u);
+  assert.deepEqual(buttonLabels(html), [STOP, HIDE, QUIT]);
+});
+
+test('when stopped the island has no stop button and the banner keeps resume', () => {
+  const html = renderIsland(view(shown('local')), island({}));
+  assert.match(html, /data-island="compact"/u);
+  assert.match(html, /停止中/u);
+  assert.deepEqual(buttonLabels(html), [RESUME, HIDE, QUIT]);
 });

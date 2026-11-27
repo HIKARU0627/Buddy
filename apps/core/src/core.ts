@@ -1732,6 +1732,8 @@ async function startHttps(
           },
         }),
   });
+  // 読み取りの口がなく保存した値が入なら、切に倒して保存する（口が戻っても入で始まらないように。ADR 0179）。
+  await householdReceipt.closeWhenUnavailable();
   const householdRoutes = createHouseholdRoutes({
     store,
     dataKey: async () => {

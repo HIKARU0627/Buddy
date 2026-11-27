@@ -276,7 +276,7 @@ test(
 );
 
 test(
-  '入にして起動し直すと入のままで、鍵を外して起動し直すと保存した値によらず unavailable で送らない',
+  '入にして起動し直すと入のままで、鍵を外して起動し直すと切に倒して保存し、鍵を戻しても切のまま（403 で送らない）',
   { timeout: 60_000 },
   async (t) => {
     const first = await startWith(t, KEY, true);
@@ -292,26 +292,60 @@ test(
     assert.equal(again.transport.requests.length, 1);
     await again.core.handle.stop('restart');
 
-    // 鍵を外して起動し直す: 保存した値は入のままだが、読み取りの口がないので送らない。入にする要求は 503 で保存しない。
+    // 鍵を外して起動し直す: 読み取りの口がないので、保存した値が入だったのを切に倒して保存する（版は 1 進む）。送らない。
     const keyless = await startWith(t, null, true, undefined, first);
-    assert.deepEqual(await keyless.stored(), ['on', '1']);
+    assert.deepEqual(await keyless.stored(), ['off', '2']);
     const notSent = await keyless.read();
     assert.equal(notSent.status, 503, notSent.text);
     assert.equal(notSent.json?.['code'], 'not_sent');
-    const refused = await keyless.turnOn('1');
+    // 入にする要求は 503 で保存しない。
+    const refused = await keyless.turnOn('2');
     assert.equal(refused.status, 503, refused.text);
-    assert.deepEqual(await keyless.stored(), ['on', '1']);
-    // 切にする要求は保存する（見せる値は unavailable のまま）。
-    const off = await keyless.turnOff('1');
-    assert.equal(off.status, 200, off.text);
-    assert.deepEqual(off.json, {
-      receipt_reading: 'unavailable',
-      settings_revision: '2',
-    });
+    assert.deepEqual(await keyless.stored(), ['off', '2']);
     assert.equal(keyless.transport.requests.length, 0);
     await keyless.core.handle.stop('restart');
 
-    // 鍵を戻して起動し直す: 切にした後なので切のままで、送らない。
+    // 鍵を戻して起動し直す: 切のままで、確認ダイアログを経る入にする要求まで送らない（403）。
+    const back = await startWith(t, KEY, true, undefined, first);
+    assert.deepEqual(await back.stored(), ['off', '2']);
+    const consent = await back.read();
+    assert.equal(consent.status, 403, consent.text);
+    assert.equal(consent.json?.['code'], 'external_send_consent_required');
+    assert.equal(back.transport.requests.length, 0);
+    // 古い表示（版 1）から入にする要求は、版の違いで 409。今の版（2）で入にすると送れる。
+    const stale = await back.turnOn('1');
+    assert.equal(stale.status, 409, stale.text);
+    const onAgain = await back.turnOn('2');
+    assert.equal(onAgain.status, 200, onAgain.text);
+    assert.deepEqual(await back.stored(), ['on', '3']);
+  },
+);
+
+test(
+  '入にして、確認済みの単価の版がない状態で起動し直すと切に倒して保存し、単価の版を戻しても切のまま（403 で送らない）',
+  { timeout: 60_000 },
+  async (t) => {
+    const first = await startWith(t, KEY, true);
+    const on = await first.turnOn();
+    assert.equal(on.status, 200, on.text);
+    await first.core.handle.stop('restart');
+
+    // 予算の設定から Gemini の単価の版を外して起動し直す。
+    const configPath = join(first.core.dataDir, BUDGET_CONFIG_FILE);
+    await writeFile(configPath, JSON.stringify(geminiConfig(false)), {
+      mode: 0o600,
+    });
+    const noPrice = await startWith(t, KEY, false, undefined, first);
+    assert.deepEqual(await noPrice.stored(), ['off', '2']);
+    const notSent = await noPrice.read();
+    assert.equal(notSent.status, 503, notSent.text);
+    assert.equal(noPrice.transport.requests.length, 0);
+    await noPrice.core.handle.stop('restart');
+
+    // 単価の版を戻して起動し直す: 切のままで送らない。
+    await writeFile(configPath, JSON.stringify(geminiConfig(true)), {
+      mode: 0o600,
+    });
     const back = await startWith(t, KEY, true, undefined, first);
     assert.deepEqual(await back.stored(), ['off', '2']);
     const consent = await back.read();

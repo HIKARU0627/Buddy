@@ -825,12 +825,17 @@ function applySettings(
 
 // レシートの写真の読み取りの入・切を保存する（ADR 0179）。版は利用通知の取り込みの入・切と同じ行の版で照合し、同じ値でも
 // 版を進める（同じ要求の再送は版の違いで拒否される）。行がなければ、利用通知の取り込みは行がないときの値（入）で作る。
+// 切にする要求だけは、版が違っても保存する（安全な向きなので。今の版から 1 進める。ADR 0179 の追補）。入にする要求は版を
+// 照合する。
 function applyReceiptSetting(
   db: SqliteDatabase,
   op: Extract<HouseholdOp, { kind: 'household.receipt_setting_set' }>,
 ): HouseholdSettingsValue {
   const current = readSettings(db);
-  if (current.settings_revision !== op.expected_revision)
+  if (
+    op.receipt_reading === 'on' &&
+    current.settings_revision !== op.expected_revision
+  )
     throw new HouseholdRejection(['revision_mismatch']);
   const now = Date.parse(op.now);
   const next = Number(current.settings_revision) + 1;

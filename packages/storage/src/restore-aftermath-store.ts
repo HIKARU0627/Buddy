@@ -69,6 +69,8 @@ export interface RestoreAftermathValue {
   readonly live_sessions_closed_count: number;
   readonly connections_reauth_count: number;
   readonly sync_scopes_reset_count: number;
+  // 入だったレシートの写真の読み取りの設定を切にした数（0 か 1。ADR 0038・0179）。
+  readonly receipt_settings_closed_count: number;
   readonly safety_revision: string;
 }
 
@@ -439,6 +441,21 @@ function writeAftermath(
     )
     .run().changes;
 
+  // 7b. 外部への送信の同意の取り直し（ADR 0038）。レシートの写真の読み取りが入なら切にする（版は 1 進める。切にしても
+  // 本人が OS の確認ダイアログを経れば入にできる）。0022 より前の版のバックアップには列がないので、列があるときだけ。
+  const receiptClosed =
+    db
+      .prepare(
+        "SELECT 1 FROM pragma_table_info('household_settings') WHERE name = 'receipt_reading'",
+      )
+      .get() === undefined
+      ? 0
+      : db
+          .prepare(
+            "UPDATE household_settings SET receipt_reading = 'off', settings_revision = settings_revision + 1, updated_at = ? WHERE setting_id = 1 AND receipt_reading = 'on'",
+          )
+          .run(input.restored_at).changes;
+
   // 8. DB の世代と、効いている復元の時刻（予算の保留・付帯クレジット・候補起点の自動実行の検査が読む）。
   const setMeta = db.prepare(
     'INSERT INTO schema_meta (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value',
@@ -471,6 +488,7 @@ function writeAftermath(
     live_sessions_closed_count: voice.live_sessions.length,
     connections_reauth_count: reauth,
     sync_scopes_reset_count: syncReset,
+    receipt_settings_closed_count: receiptClosed,
     safety_revision: safety.safety_revision,
   };
 }

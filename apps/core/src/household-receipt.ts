@@ -233,6 +233,10 @@ export interface HouseholdReceiptRoutes {
   readonly stateOf: (stored: ReceiptReadingSetting) => ReceiptReadingState;
   // 保存した入・切を読み、画面に見せる設定を返す（読めなければ切として扱う）。
   readonly state: () => Promise<ReceiptReadingState>;
+  // 中枢の起動のときに呼ぶ。読み取りの口がなく、保存した値が入なら、切に倒して保存する（理由の名前だけを記録する）。
+  // 口が戻っても切のままにし、入にするには OS の確認ダイアログを経させるため（ADR 0179 の追補）。口があるときと、
+  // 保存した値が読めないときは何もしない。保存できなければ false を返す（読み取りは unavailable のまま止まる）。
+  readonly closeWhenUnavailable: () => Promise<boolean>;
   readonly handlers: {
     readonly changeHouseholdReceiptSetting: ApiRouteHandler;
     readonly readHouseholdReceipt: ApiRouteHandler;
@@ -330,6 +334,20 @@ export function createHouseholdReceiptRoutes(
     !available ? 'unavailable' : stored;
   const state = async (): Promise<ReceiptReadingState> =>
     stateOf((await settings.read())?.receipt_reading ?? 'off');
+
+  const closeWhenUnavailable = async (): Promise<boolean> => {
+    if (available) return true;
+    const stored = await settings.read();
+    if (stored === null || stored.receipt_reading !== 'on') return true;
+    // 版は今の版から 1 進める（切にする要求は版を照合しない）。古い表示から入にする要求は、版の違いで 409 になる。
+    const written = await settings.write(stored.settings_revision, 'off');
+    log(
+      written.kind === 'written'
+        ? '家計簿のレシートの写真の読み取りの設定を切にしました（receipt_reader_unavailable_at_start）。'
+        : '家計簿のレシートの写真の読み取りの設定を切にできませんでした（receipt_setting_close_failed）。',
+    );
+    return written.kind === 'written';
+  };
 
   const remember = (requestId: string): void => {
     seen.add(requestId);
@@ -550,6 +568,7 @@ export function createHouseholdReceiptRoutes(
   return {
     stateOf,
     state,
+    closeWhenUnavailable,
     handlers: { changeHouseholdReceiptSetting, readHouseholdReceipt },
   };
 }

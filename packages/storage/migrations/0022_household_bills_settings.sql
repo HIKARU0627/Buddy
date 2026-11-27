@@ -41,6 +41,16 @@ BEGIN
   SELECT RAISE(ABORT, 'household_bill_insert_active');
 END;
 
+-- 同じ ID・同じ出所の鍵の行が既にあれば作らない。SQLite は INSERT OR REPLACE で衝突した行を削除してから入れるが、
+-- recursive_triggers が 0 のとき削除の trigger は動かないので、消した印の行（出所の鍵）が置き換えられてしまう。
+-- sealed_blobs_no_replace と同じ形で、作る前に拒む。
+CREATE TRIGGER household_bills_no_replace BEFORE INSERT ON household_bills
+  WHEN EXISTS (SELECT 1 FROM household_bills WHERE bill_id = NEW.bill_id)
+    OR EXISTS (SELECT 1 FROM household_bills WHERE source_key = NEW.source_key)
+BEGIN
+  SELECT RAISE(ABORT, 'household_bill_no_replace');
+END;
+
 -- 暗号文は自分の中身（用途 household_bill・持ち主は同じ請求予定・版は 1）だけを指す（0021 と同じ。暗号文のない行は
 -- 上の trigger と表の CHECK が拒否する）。
 CREATE TRIGGER household_bills_blob_owner BEFORE INSERT ON household_bills

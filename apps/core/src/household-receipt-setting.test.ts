@@ -22,6 +22,7 @@ import type {
   HouseholdOp,
   SqliteDatabase,
 } from '@buddy/storage';
+import { onCleanup } from './api-test-support.js';
 import { createApiContract } from './api-contract.js';
 import { createHouseholdRoutes } from './api-household.js';
 import type { ApiRouteHandler } from './api-server.js';
@@ -53,7 +54,8 @@ const id = (n: number) =>
 
 function tempDir(t: test.TestContext): string {
   const dir = mkdtempSync(join(tmpdir(), 'buddy-receipt-setting-'));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  // 後入れ先出し: DB を閉じる後始末（後に登録）が、フォルダを消す後始末（先に登録）より先に動く（Windows は開いたままでは消せない）。
+  onCleanup(t, () => rmSync(dir, { recursive: true, force: true }));
   return join(dir, 'buddy.db');
 }
 
@@ -174,6 +176,7 @@ function hub(
   store: Store,
   reader: ReceiptImageReader | null,
   settings: ReceiptSettingStore = receiptSettingStoreOf(store, () => NOW),
+  log?: (message: string) => void,
 ) {
   const receipt = createHouseholdReceiptRoutes({
     setup: reader === null ? null : setupOf(reader),
@@ -181,14 +184,19 @@ function hub(
     zone: () => ZONE,
     now: () => NOW,
     settings,
+    ...(log === undefined ? {} : { log }),
   });
-  return createHouseholdRoutes({
+  const routes = createHouseholdRoutes({
     store,
     dataKey: () => Promise.resolve({ keyId: 'k-test', key: randomBytes(32) }),
     zone: () => ZONE,
     now: () => NOW,
     receipt,
   }).handlers;
+  return {
+    ...routes,
+    closeWhenUnavailable: receipt.closeWhenUnavailable,
+  };
 }
 
 const call = async (
@@ -315,7 +323,7 @@ test('既定は切。入にすると DB に保存し、中枢を起動し直し�
 
 test('版の照合: 古い版・同じ要求の再送・取り込みの入・切を変えた後の古い版は 409。形の誤りは 422', async (t) => {
   const { db, store } = openDb(tempDir(t));
-  t.after(() => db.close());
+  onCleanup(t, () => db.close());
   const handlers = hub(store, new CountingReader());
   assert.equal(
     (await call(handlers.changeHouseholdReceiptSetting, settingBody('on', '0')))
@@ -339,23 +347,33 @@ test('版の照合: 古い版・同じ要求の再送・取り込みの入・切
   });
   assert.deepEqual(intake.body, { mail_intake: 'off', settings_revision: '2' });
   assert(contract.valid('HouseholdSettings', intake.body));
-  assert.equal(
-    (
-      await call(
-        handlers.changeHouseholdReceiptSetting,
-        settingBody('off', '1', id(802)),
-      )
-    ).status,
-    409,
+  // 入にする要求は版を照合するので、古い版（1）からは 409 で、保存した値は入のまま（取り込みの切は残る）。
+  const staleOn = await call(
+    handlers.changeHouseholdReceiptSetting,
+    settingBody('on', '1', id(801)),
   );
-  // 409 のあいだも保存した値は入のまま（取り込みの切は残る）。
+  assert.equal(staleOn.status, 409);
   assert.deepEqual(await overview(handlers), {
     receipt: 'on',
     settings: { mail_intake: 'off', settings_revision: '2' },
   });
+  // 切にする要求は安全な向きなので、版が違っても保存する（今の版 2 から 1 進めて 3）。
+  const staleOff = await call(
+    handlers.changeHouseholdReceiptSetting,
+    settingBody('off', '1', id(802)),
+  );
+  assert.equal(staleOff.status, 200);
+  assert.deepEqual(staleOff.body, {
+    receipt_reading: 'off',
+    settings_revision: '3',
+  });
+  assert.deepEqual(await overview(handlers), {
+    receipt: 'off',
+    settings: { mail_intake: 'off', settings_revision: '3' },
+  });
   // 形の誤り（値・版の形・版がない）は 422 で、保存しない。
   for (const body of [
-    settingBody('unavailable', '2', id(803)),
+    settingBody('unavailable', '3', id(803)),
     settingBody('off', '02', id(804)),
     settingBody('off', '-1', id(805)),
     { request_id: id(806), command_scope_id: SCOPE, receipt_reading: 'off' },
@@ -366,12 +384,12 @@ test('版の照合: 古い版・同じ要求の再送・取り込みの入・切
     );
     assert.equal(bad.status, 422, JSON.stringify(body));
   }
-  assert.equal((await overview(handlers)).receipt, 'on');
+  assert.equal((await overview(handlers)).receipt, 'off');
 });
 
 test('読み取りの口が使えないときは、保存が入でも unavailable。入にする要求は 503、切にする要求は保存する', async (t) => {
   const { db, store } = openDb(tempDir(t));
-  t.after(() => db.close());
+  onCleanup(t, () => db.close());
   // 読み取りの口があるときに入にしておく。
   assert.equal(
     (
@@ -417,7 +435,7 @@ test('読み取りの口が使えないときは、保存が入でも unavailabl
 
 test('保存を読めなければ送らず、変更の成否が分からなければ 503（成功にも競合にも見せない）', async (t) => {
   const { db, store } = openDb(tempDir(t));
-  t.after(() => db.close());
+  onCleanup(t, () => db.close());
   const reader = new CountingReader();
   assert.equal(
     (
@@ -460,7 +478,7 @@ test('保存を読めなければ送らず、変更の成否が分からなけ�
 
 test('保存した値を読む間に切にされた読み取りは送らない', async (t) => {
   const { db, store } = openDb(tempDir(t));
-  t.after(() => db.close());
+  onCleanup(t, () => db.close());
   const reader = new CountingReader();
   const real = receiptSettingStoreOf(store, () => NOW);
   assert.equal((await real.write('0', 'on')).kind, 'written');
@@ -504,9 +522,53 @@ test('中枢のメモリーにだけ持つ口（試験用）も版を照合す�
     settings_revision: '0',
   });
   assert.deepEqual(await memory.write('1', 'on'), { kind: 'conflict' });
-  assert.deepEqual(await memory.write('x', 'on'), { kind: 'invalid' });
-  assert.deepEqual(await memory.write('0', 'on'), {
+  // 切にする要求は版が違っても保存する。
+  assert.deepEqual(await memory.write('7', 'off'), {
     kind: 'written',
-    stored: { receipt_reading: 'on', settings_revision: '1' },
+    stored: { receipt_reading: 'off', settings_revision: '1' },
   });
+  assert.deepEqual(await memory.write('x', 'on'), { kind: 'invalid' });
+  assert.deepEqual(await memory.write('1', 'on'), {
+    kind: 'written',
+    stored: { receipt_reading: 'on', settings_revision: '2' },
+  });
+});
+
+test('起動のとき読み取りの口がなければ、保存した入を切に倒して版を進める。口があるとき・切のときは何もしない', async (t) => {
+  const { db, store } = openDb(tempDir(t));
+  onCleanup(t, () => db.close());
+  assert.equal(
+    (
+      await call(
+        hub(store, new CountingReader()).changeHouseholdReceiptSetting,
+        settingBody('on', '0'),
+      )
+    ).status,
+    200,
+  );
+  // 口があるなら、入のまま。
+  const present = hub(store, new CountingReader());
+  assert.equal(await present.closeWhenUnavailable(), true);
+  assert.deepEqual(await overview(present), {
+    receipt: 'on',
+    settings: { mail_intake: 'on', settings_revision: '1' },
+  });
+  // 口がないなら、切に倒して保存する（版は 1 進む）。口が戻っても切のまま。
+  const logs: string[] = [];
+  const missing = hub(store, null, undefined, (message) => logs.push(message));
+  assert.equal(await missing.closeWhenUnavailable(), true);
+  assert.deepEqual(logs, [
+    '家計簿のレシートの写真の読み取りの設定を切にしました（receipt_reader_unavailable_at_start）。',
+  ]);
+  assert.deepEqual(await overview(hub(store, new CountingReader())), {
+    receipt: 'off',
+    settings: { mail_intake: 'on', settings_revision: '2' },
+  });
+  // もう切なので、何も書かず版も進めない。
+  assert.equal(await missing.closeWhenUnavailable(), true);
+  assert.deepEqual(await overview(hub(store, new CountingReader())), {
+    receipt: 'off',
+    settings: { mail_intake: 'on', settings_revision: '2' },
+  });
+  assert.equal(logs.length, 1);
 });

@@ -1719,6 +1719,46 @@ test('receipt setting: without a reader on the hub it cannot be turned on', asyn
   assert.deepEqual(r.posts(), []);
 });
 
+test('receipt setting: after the hub restarts without a reader and gets it back, the setting stays off until the OS confirmation is accepted', async () => {
+  const r = await receiptRig('on');
+  const codec = new MockCodec();
+  const setOverview = (reading: 'on' | 'off' | 'unavailable') => {
+    r.overview = () => ({
+      kind: 'response',
+      status: 200,
+      body: { ...overview(), receipt_reading: reading },
+    });
+  };
+  // 読み取りの口がない状態で中枢が起動し直した（保存した入は切に倒された。ADR 0179）: 画面は unavailable で、選ばせず送らない。
+  setOverview('unavailable');
+  ok(await r.bridge.show(null));
+  let picked = 0;
+  const pick = () => {
+    picked += 1;
+    return Promise.resolve(syntheticJpeg(3024, 4032));
+  };
+  assert.deepEqual(ok(await r.bridge.readReceipt(pick, codec, () => true)), {
+    outcome: 'setting_off',
+    candidate: null,
+    reasons: [],
+  });
+  // 口が戻って起動し直した: 入のままには戻らず切。選ばせず送らない。
+  setOverview('off');
+  ok(await r.bridge.show(null));
+  assert.deepEqual(ok(await r.bridge.readReceipt(pick, codec, () => true)), {
+    outcome: 'setting_off',
+    candidate: null,
+    reasons: [],
+  });
+  assert.equal(picked, 0);
+  // 入にするには OS の確認ダイアログが要る。「やめる」なら送らない。
+  assert.deepEqual(
+    await r.bridge.receiptSetting('on', () => Promise.resolve(false)),
+    { ok: false, reason: 'confirmation_declined' },
+  );
+  assert.deepEqual(r.posts(), []);
+});
+
 test('receipt read: nothing is picked or sent while the setting is off, or when the owner closes the picker', async () => {
   const off = await receiptRig('off');
   let picked = 0;

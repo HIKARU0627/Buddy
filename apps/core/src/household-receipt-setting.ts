@@ -28,7 +28,7 @@ export type ReceiptSettingWrite =
 export interface ReceiptSettingStore {
   // 保存した入・切と版。読めなければ null（入とみなさない）。
   read(): Promise<ReceiptSettingStored | null>;
-  // 版を照合して保存する。同じ値でも版を進める。
+  // 入にするときは版を照合して保存する。切にするときは、版が違っても保存する（安全な向き）。同じ値でも版を進める。
   write(
     expectedRevision: string,
     value: ReceiptReadingSetting,
@@ -99,8 +99,8 @@ export function receiptSettingStoreOf(
 }
 
 /**
- * 中枢のメモリーにだけ持つ口（試験と、保存先を渡さない組み立て）。中枢を起動し直すと切・版 0 に戻る。版の照合は DB の口と
- * 同じ。
+ * 中枢のメモリーにだけ持つ口（試験と、保存先を渡さない組み立て）。中枢を起動し直すと切・版 0 に戻る。版の照合（入にするときだけ）は
+ * DB の口と同じ。
  */
 export function memoryReceiptSettingStore(): ReceiptSettingStore {
   let stored: ReceiptSettingStored = {
@@ -112,7 +112,7 @@ export function memoryReceiptSettingStore(): ReceiptSettingStore {
     write(expectedRevision, value) {
       if (!RECEIPT_SETTING_REVISION.test(expectedRevision))
         return Promise.resolve({ kind: 'invalid' });
-      if (expectedRevision !== stored.settings_revision)
+      if (value === 'on' && expectedRevision !== stored.settings_revision)
         return Promise.resolve({ kind: 'conflict' });
       stored = {
         receipt_reading: value,

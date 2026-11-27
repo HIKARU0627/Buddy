@@ -1384,6 +1384,43 @@ test('DB の trigger（0022）: 請求予定の変更は有効から消したへ
   });
 });
 
+test('DB の trigger（0022）: 同じ ID・同じ出所の鍵の INSERT OR REPLACE は、消した印の行を置き換えられない', async () => {
+  await withDb((db) => {
+    const id = randomUUID();
+    const key = 'c'.repeat(64);
+    value(run(db, billOp(id, { source_key: key })));
+    value(deleteBill(db, id, '1'));
+    const before = db
+      .prepare('SELECT * FROM household_bills WHERE bill_id = ?')
+      .get(id);
+    const replace =
+      "INSERT OR REPLACE INTO household_bills (bill_id, source_kind, source_key, state, month, content_revision, content_blob_id, created_at, deleted_at) VALUES (?, 'mail_bill', ?, 'active', '2030-12', 1, NULL, 1, NULL)";
+    // 同じ出所の鍵で別の ID。
+    assert.throws(
+      () => db.prepare(replace).run(randomUUID(), key),
+      /household_bill_no_replace/u,
+    );
+    // 同じ ID で別の出所の鍵。
+    assert.throws(
+      () => db.prepare(replace).run(id, 'd'.repeat(64)),
+      /household_bill_no_replace/u,
+    );
+    // 消した印の行は変わらない。
+    assert.deepEqual(
+      db.prepare('SELECT * FROM household_bills WHERE bill_id = ?').get(id),
+      before,
+    );
+    assert.equal(
+      (
+        db
+          .prepare('SELECT state FROM household_bills WHERE source_key = ?')
+          .get(key) as { state: string }
+      ).state,
+      'deleted',
+    );
+  });
+});
+
 const setReceipt = (
   db: SqliteDatabase,
   expected: string,
@@ -1409,33 +1446,37 @@ test('household.receipt_setting_set: 既定は切。版を照合して保存し�
       receipt_reading: 'on',
       settings_revision: '1',
     });
-    // 古い版では変えない。
-    assert.deepEqual(reasons(setReceipt(db, '0', 'off')), [
-      'revision_mismatch',
-    ]);
+    // 入にする要求は古い版では変えない。
+    assert.deepEqual(reasons(setReceipt(db, '0', 'on')), ['revision_mismatch']);
     assert.equal(settings(db).receipt_reading, 'on');
-    // 利用通知の取り込みを変えても、レシートの設定は入のまま。版は共通に進む。
-    assert.deepEqual(value(setIntake(db, '1', 'off')), {
-      mail_intake: 'off',
-      receipt_reading: 'on',
+    // 切にする要求は安全な向きなので、版が違っても保存する（今の版 1 から 1 進めて 2）。
+    assert.deepEqual(value(setReceipt(db, '0', 'off')), {
+      mail_intake: 'on',
+      receipt_reading: 'off',
       settings_revision: '2',
     });
-    // 取り込みの入・切を変えた後に、前の版でレシートの設定を変えようとすると拒否する。
-    assert.deepEqual(reasons(setReceipt(db, '1', 'off')), [
-      'revision_mismatch',
-    ]);
-    // 同じ値でも版は進む（同じ要求の再送は版の違いで拒否される）。
+    // 同じ値でも版は進む。
     assert.deepEqual(value(setReceipt(db, '2', 'on')), {
-      mail_intake: 'off',
+      mail_intake: 'on',
       receipt_reading: 'on',
       settings_revision: '3',
     });
     assert.deepEqual(reasons(setReceipt(db, '2', 'on')), ['revision_mismatch']);
+    // 利用通知の取り込みを変えても、レシートの設定は入のまま。版は共通に進む。
+    assert.deepEqual(value(setIntake(db, '3', 'off')), {
+      mail_intake: 'off',
+      receipt_reading: 'on',
+      settings_revision: '4',
+    });
+    // 取り込みの入・切を変えた後に、前の版（3）で切にしても保存する（版は 5）。取り込みの切は残る。
     assert.deepEqual(value(setReceipt(db, '3', 'off')), {
       mail_intake: 'off',
       receipt_reading: 'off',
-      settings_revision: '4',
+      settings_revision: '5',
     });
+    // 前の版で入にする要求は拒否する。
+    assert.deepEqual(reasons(setReceipt(db, '3', 'on')), ['revision_mismatch']);
+    assert.equal(settings(db).receipt_reading, 'off');
     // 形の誤り。DB の CHECK は on・off 以外を拒否する。
     assert.deepEqual(
       reasons(
@@ -1561,6 +1602,7 @@ test('マイグレーション 0022: 版 21 の DB の請求予定は有効・�
           'household_bills_insert_active',
           'household_bills_month',
           'household_bills_no_delete',
+          'household_bills_no_replace',
         ],
       );
     } finally {

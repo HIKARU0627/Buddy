@@ -544,7 +544,8 @@ export const RESTORE_RESETS = [
   'revoke_all_approvals',
   // 外部変更の 7 状態に印を付け、進行中の 4 つを結果不明へ。
   'quarantine_operations',
-  // 外部への送信の同意を取り直す（ADR 0038。RestoreAftermath.consents_reset）。
+  // 外部への送信の同意を取り直す（ADR 0038。RestoreAftermath.consents_reset）。中身は、レシートの写真の読み取りの設定
+  // （household_settings.receipt_reading。ADR 0179）を切にすること。入にするには本人が OS の確認ダイアログを経る。
   'reset_send_consents',
   // DB の世代を新しくする（イベントのカーソル・端末の snapshot を取り直させる）。
   'renew_store_generation',

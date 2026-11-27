@@ -131,6 +131,10 @@ function seedApprovedOperation(dataDir: string): SeededOperations {
       `INSERT INTO operation_versions (operation_id, content_version, content_hash, intent_blob_id, created_at)
        VALUES (?, 1, ?, ?, ?)`,
     ).run(memoryOperationId, hash, memoryBlob, T0);
+    // レシートの写真の読み取りが入の設定（入で取ったバックアップから戻すと切になることを確かめる。ADR 0038・0179）。
+    db.prepare(
+      "INSERT INTO household_settings (setting_id, mail_intake, receipt_reading, settings_revision, updated_at) VALUES (1, 'on', 'on', 2, ?)",
+    ).run(T0);
     return { operationId, memoryOperationId };
   } finally {
     db.close();
@@ -284,6 +288,15 @@ test('復元の実行: 段階 1〜6 を通り、承認をすべて失効させ�
         .pluck()
         .get(r.memoryOperationId),
       'cancelled',
+    );
+    // 入で取ったバックアップから戻すと、レシートの写真の読み取りは切になる（版は 1 進む。取り込みの入・切は戻したまま）。
+    assert.deepEqual(
+      db
+        .prepare(
+          'SELECT mail_intake, receipt_reading, settings_revision FROM household_settings WHERE setting_id = 1',
+        )
+        .get(),
+      { mail_intake: 'on', receipt_reading: 'off', settings_revision: 3 },
     );
     assert.notEqual(readStoreGeneration(db), backupGeneration);
     assert.equal(

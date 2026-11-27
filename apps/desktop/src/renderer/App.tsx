@@ -40,6 +40,7 @@ import { CandidatesPanel } from './screens/candidates/CandidatesPanel.js';
 import { AutoActionsPanel } from './screens/auto-actions/AutoActionsPanel.js';
 import { HouseholdPanel } from './screens/household/HouseholdPanel.js';
 import { MemoryPanel } from './screens/memory/MemoryPanel.js';
+import { MemorySettingsPanel } from './screens/memory/MemorySettingsPanel.js';
 import { WorkPanel } from './screens/work/WorkPanel.js';
 import { StopShortcutMark } from './components/StopShortcutMark.js';
 import { StorageModeControl } from './components/StorageMode.js';
@@ -211,6 +212,11 @@ function ConnectedApp({ api }: { readonly api: BuddyDesktopApi }) {
               state={household.state}
               actions={household.actions}
               now={now}
+            />
+            {/* 保存してよい記憶の種類（ADR 0191）。忘却の欄の上。読めていない間は選択を置かない。 */}
+            <MemorySettingsPanel
+              state={memories.state}
+              actions={memories.actions}
             />
             {/* 切断中も欄を出し、取得できていないことを示す（「記憶はありません」と言わない）。 */}
             <MemoryPanel

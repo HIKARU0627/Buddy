@@ -15,6 +15,7 @@ import {
   forgetAvailability,
   groupByKind,
   keptLines,
+  nextAllowedKinds,
   removedLines,
   shownPlan,
   sourceText,
@@ -22,6 +23,9 @@ import {
 
 const uuid = (n: number) =>
   `00000000-0000-4000-8000-${n.toString(16).padStart(12, '0')}`;
+// main が付ける設定の参照（合成）。
+const SETTINGS_REF = uuid(0x5e1);
+const SETTINGS_REF_2 = uuid(0x5e2);
 
 const entry = (ref: string, kind: string, fields = {}) =>
   ({
@@ -74,6 +78,7 @@ const view = (fields: Partial<DesktopMemoryView> = {}): DesktopMemoryView => ({
   plan: PLAN,
   result: null,
   list_seq: 2,
+  settings: { ref: SETTINGS_REF, allowed_kinds: [] },
   ...fields,
 });
 
@@ -223,4 +228,231 @@ test('the store never sends a plan or an execute while forgetting is closed, and
   release();
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(slow.snapshot().view, null);
+});
+
+// ---- 保存してよい記憶の種類の設定（ADR 0191） ----
+
+test('ADR 0191: a kind change sends every allowed kind in the fixed order, once, and nothing while another action runs', async () => {
+  assert.deepEqual(nextAllowedKinds(['routine'], 'preference', true), [
+    'preference',
+    'routine',
+  ]);
+  assert.deepEqual(
+    nextAllowedKinds(['preference', 'routine'], 'routine', false),
+    ['preference'],
+  );
+  const sent: DesktopIpcRequest[] = [];
+  let release: () => void = () => undefined;
+  const pending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let holdSettings = false;
+  const store = new MemoryStore({
+    invoke: async (request) => {
+      sent.push(request);
+      if (request.channel === 'desktop.memory_settings_change' && holdSettings)
+        await pending;
+      return {
+        request_id: request.request_id,
+        channel: request.channel,
+        outcome: 'ok',
+        memories: view({
+          list_seq: 3 + sent.length,
+          settings: {
+            ref:
+              request.channel === 'desktop.memory_settings_change'
+                ? SETTINGS_REF_2
+                : SETTINGS_REF,
+            allowed_kinds:
+              request.channel === 'desktop.memory_settings_change'
+                ? (request.payload.allowed_kinds as never)
+                : ['goal'],
+          },
+        }),
+      } as DesktopIpcResponse;
+    },
+  });
+  store.open();
+  await new Promise((resolve) => setImmediate(resolve));
+  // 同じ値への変更は送らない。
+  store.actions.setKind('goal', true);
+  assert.equal(sent.length, 1);
+  holdSettings = true;
+  store.actions.setKind('preference', true);
+  // 送っている間は、ほかの種類の変更も計画も送らない。
+  store.actions.setKind('person', true);
+  store.actions.plan(uuid(0x101));
+  assert.deepEqual(
+    sent.map((request) => [request.channel, request.payload]),
+    [
+      ['desktop.memories_list', null],
+      [
+        'desktop.memory_settings_change',
+        { settings_ref: SETTINGS_REF, allowed_kinds: ['preference', 'goal'] },
+      ],
+    ],
+  );
+  release();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(store.snapshot().busy, null);
+  assert.deepEqual(store.snapshot().view?.settings, {
+    ref: SETTINGS_REF_2,
+    allowed_kinds: ['preference', 'goal'],
+  });
+});
+
+test('ADR 0191: a stale or unknown settings change is not re-sent, says so in the settings section and the list is read again', async () => {
+  const sent: DesktopIpcRequest[] = [];
+  let reject: 'preview_stale' | 'outcome_unknown' = 'preview_stale';
+  const store = new MemoryStore({
+    invoke: (request) => {
+      sent.push(request);
+      return Promise.resolve(
+        (request.channel === 'desktop.memory_settings_change'
+          ? {
+              request_id: request.request_id,
+              channel: request.channel,
+              outcome: 'rejected',
+              reason: reject,
+            }
+          : {
+              request_id: request.request_id,
+              channel: request.channel,
+              outcome: 'ok',
+              memories: view({
+                list_seq: 3 + sent.length,
+                settings: { ref: SETTINGS_REF, allowed_kinds: ['person'] },
+              }),
+            }) as DesktopIpcResponse,
+      );
+    },
+  });
+  store.open();
+  await new Promise((resolve) => setImmediate(resolve));
+  for (const [reason, text] of [
+    [
+      'preview_stale',
+      '設定がほかの画面で変わりました。今の設定を読み直したので、もう一度選んでください。',
+    ],
+    [
+      'outcome_unknown',
+      '設定を変えられたか確かめられませんでした。自動では送り直しません。今の設定を読み直しているので、表示を確かめてください。',
+    ],
+  ] as const) {
+    reject = reason;
+    const before = sent.length;
+    store.actions.setKind('goal', true);
+    await new Promise((resolve) => setImmediate(resolve));
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(store.snapshot().notice, {
+      tone: 'warning',
+      text,
+      place: 'settings',
+    });
+    // 送ったのは 1 回だけ。その後は一覧（と設定）の読み直しだけ。
+    assert.deepEqual(
+      sent.slice(before).map((request) => request.channel),
+      ['desktop.memory_settings_change', 'desktop.memories_list'],
+    );
+    assert.equal(store.snapshot().busy, null);
+  }
+});
+
+test('ADR 0191: settings that were not read cannot be changed from the screen', async () => {
+  const sent: DesktopIpcRequest[] = [];
+  const store = new MemoryStore({
+    invoke: (request) => {
+      sent.push(request);
+      return Promise.resolve({
+        request_id: request.request_id,
+        channel: request.channel,
+        outcome: 'ok',
+        memories: view({ settings: null }),
+      } as DesktopIpcResponse);
+    },
+  });
+  store.open();
+  await new Promise((resolve) => setImmediate(resolve));
+  store.actions.setKind('goal', true);
+  assert.deepEqual(
+    sent.map((request) => request.channel),
+    ['desktop.memories_list'],
+  );
+});
+
+test('ADR 0191 review: after a stale or unknown change the choices stay pressed until the reread finishes, so the old screen cannot send again', async () => {
+  const sent: DesktopIpcRequest[] = [];
+  let releaseList: () => void = () => undefined;
+  let holdList = false;
+  let reason: 'preview_stale' | 'outcome_unknown' = 'preview_stale';
+  const store = new MemoryStore({
+    invoke: async (request) => {
+      sent.push(request);
+      if (request.channel === 'desktop.memory_settings_change')
+        return {
+          request_id: request.request_id,
+          channel: request.channel,
+          outcome: 'rejected',
+          reason,
+        } as DesktopIpcResponse;
+      const reread = holdList;
+      if (reread)
+        await new Promise<void>((resolve) => {
+          releaseList = resolve;
+        });
+      return {
+        request_id: request.request_id,
+        channel: request.channel,
+        outcome: 'ok',
+        memories: view({
+          list_seq: 3 + sent.length,
+          // 読み直した後の新しい版の参照と、別の画面の変更（人）。
+          settings: reread
+            ? { ref: SETTINGS_REF_2, allowed_kinds: ['goal', 'person'] }
+            : { ref: SETTINGS_REF, allowed_kinds: ['goal'] },
+        }),
+      } as DesktopIpcResponse;
+    },
+  });
+  store.open();
+  await new Promise((resolve) => setImmediate(resolve));
+  for (const next of ['preview_stale', 'outcome_unknown'] as const) {
+    reason = next;
+    holdList = true;
+    const before = sent.length;
+    store.actions.setKind('preference', true);
+    await new Promise((resolve) => setImmediate(resolve));
+    await new Promise((resolve) => setImmediate(resolve));
+    // 断られた後、読み直しを待っている間は押せない（古い表示から作った全部を送らない）。
+    assert.equal(store.snapshot().busy, 'settings');
+    store.actions.setKind('lexicon', true);
+    store.actions.plan(uuid(0x101));
+    assert.deepEqual(
+      sent.slice(before).map((request) => request.channel),
+      ['desktop.memory_settings_change', 'desktop.memories_list'],
+    );
+    holdList = false;
+    releaseList();
+    await new Promise((resolve) => setImmediate(resolve));
+    await new Promise((resolve) => setImmediate(resolve));
+    // 読み直しが終わってから外す。表示は読み直した値で、文言は残す。
+    assert.equal(store.snapshot().busy, null);
+    assert.deepEqual(store.snapshot().view?.settings, {
+      ref: SETTINGS_REF_2,
+      allowed_kinds: ['goal', 'person'],
+    });
+    assert.equal(store.snapshot().notice?.place, 'settings');
+    // 次の操作は新しい参照で送る。
+    store.actions.setKind('routine', true);
+    await new Promise((resolve) => setImmediate(resolve));
+    const last = sent.findLast(
+      (request) => request.channel === 'desktop.memory_settings_change',
+    );
+    assert.deepEqual(last?.payload, {
+      settings_ref: SETTINGS_REF_2,
+      allowed_kinds: ['goal', 'person', 'routine'],
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    await new Promise((resolve) => setImmediate(resolve));
+  }
 });

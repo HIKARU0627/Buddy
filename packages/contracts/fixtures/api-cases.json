@@ -4045,6 +4045,68 @@
       ],
       "accepted_contexts": ["stale_scope", "remote_device"]
     },
+    "getMemorySettings": {
+      "response": {
+        "schema": "buddy.memory-settings.v1",
+        "allowed_kinds": [],
+        "memory_settings_revision": "0"
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"],
+        ["locked", 403, "device_locked"],
+        ["lock_unknown", 403, "device_locked"],
+        ["voice_origin", 403, "screen_operation_required"],
+        ["chat_origin", 403, "screen_operation_required"],
+        ["system_origin", 403, "screen_operation_required"]
+      ],
+      "accepted_contexts": ["stale_scope", "remote_device"]
+    },
+    "changeMemorySettings": {
+      "request": {
+        "request_id": "00000000-0000-4000-8000-0000000f0201",
+        "command_scope_id": "00000000-0000-4000-8000-000000009002",
+        "expected_memory_settings_revision": "0",
+        "allowed_kinds": ["preference", "goal"]
+      },
+      "response": {
+        "schema": "buddy.memory-settings.v1",
+        "allowed_kinds": ["preference", "goal"],
+        "memory_settings_revision": "1"
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"],
+        ["stale_scope", 410, "expired_scope"],
+        ["locked", 403, "device_locked"],
+        ["lock_unknown", 403, "device_locked"],
+        ["too_large", 413, "payload_too_large"],
+        ["voice_origin", 403, "screen_operation_required"],
+        ["chat_origin", 403, "screen_operation_required"],
+        ["system_origin", 403, "screen_operation_required"]
+      ],
+      "invalid_bodies": [
+        {
+          "request_id": "00000000-0000-4000-8000-0000000f0201",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "expected_memory_settings_revision": "0",
+          "allowed_kinds": ["health"]
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-0000000f0201",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "allowed_kinds": ["goal"]
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-0000000f0201",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "expected_memory_settings_revision": "0",
+          "allowed_kinds": ["goal", "goal"]
+        }
+      ]
+    },
     "createForgetPlan": {
       "request": {
         "request_id": "00000000-0000-4000-8000-0000000f0101",

@@ -134,6 +134,11 @@ function seedApprovedOperation(dataDir: string): SeededOperations {
     db.prepare(
       "INSERT INTO household_settings (setting_id, mail_intake, receipt_reading, settings_revision, updated_at) VALUES (1, 'on', 'on', 2, ?)",
     ).run(T0);
+    // 保存してよい記憶の種類に好みを許可した設定（バックアップの後に取り消しても、復元で許可が戻らないことを確かめる。
+    // ADR 0191 の見直し、U494）。
+    db.prepare(
+      "INSERT INTO memory_settings (setting_id, preference, goal, person, routine, lexicon, progress, settings_revision, updated_at) VALUES (1, 'on', 'off', 'off', 'off', 'off', 'off', 1, ?)",
+    ).run(T0);
     return { operationId, memoryOperationId };
   } finally {
     db.close();
@@ -296,6 +301,23 @@ test('復元の実行: 段階 1〜6 を通り、承認をすべて失効させ�
         )
         .get(),
       { mail_intake: 'on', receipt_reading: 'off', settings_revision: 3 },
+    );
+    // 許可した記憶の種類は戻さず、全部 off にして版を 1 進める（U494）。
+    assert.deepEqual(
+      db
+        .prepare(
+          'SELECT preference, goal, person, routine, lexicon, progress, settings_revision FROM memory_settings WHERE setting_id = 1',
+        )
+        .get(),
+      {
+        preference: 'off',
+        goal: 'off',
+        person: 'off',
+        routine: 'off',
+        lexicon: 'off',
+        progress: 'off',
+        settings_revision: 2,
+      },
     );
     assert.notEqual(readStoreGeneration(db), backupGeneration);
     assert.equal(

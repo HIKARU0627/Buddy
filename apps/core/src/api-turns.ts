@@ -8,6 +8,9 @@
 //   - LocalCommand・RemoteMutation: assessReadiness を通し、確定 intent を暗号化して operation.create へ進む。
 //     外部への変更はここでは行わない（実行は B04-04）。自動実行は試験用の方針表ですべて off。
 //   - 知らない文・必須の不足・意味検証の失敗は聞き返し（操作を作らない）。
+//   - 本人の明示の依頼の記憶（memory_save・memory_correct。ADR 0191）: 保存してよい種類の設定・台帳・今ある記憶で判定し
+//     （memory-save.ts）、保存するなら発言と同じ transaction（turn.record の memory）で保存する。保存した・保存しなかった
+//     （理由）を決まった文で返す。承認・操作は作らない（意図表の approval は none）。
 // - 発言・依頼・入力スナップショット・受付は DB worker の turn.record で一つの transaction に書く。同じ request_id の
 //   再送は保存済みの ID を返し、依頼に操作がまだなければ作り直す（再開）。照合値が違えば 409。
 // - preview: 承認待ちの操作の確定 intent を復号し、hash を照合して返す。端末・接続範囲・内容版・hash（外部変更は
@@ -50,7 +53,9 @@ import type {
   DbCommand,
   DbSubmission,
   DbWorkerClient,
+  MemoryKindName,
   TurnInputRecord,
+  TurnMemoryInput,
   TurnOperationInput,
   WorkflowState,
 } from '@buddy/storage';
@@ -64,6 +69,8 @@ import type { ApiHandlerRequest, ApiRouteHandler } from './api-server.js';
 import type { EventQueryStore } from './event-feed.js';
 import type { PreviewRegistry } from './previews.js';
 import type { JsonObject } from './strict-json.js';
+import { planExplicitMemory, storageRejectionReason } from './memory-save.js';
+import type { MemoryNotSavedReason } from './memory-save.js';
 import { PrivateConversationRam } from './private-turns.js';
 import type { PrivateDiscardReason, PrivateHeld } from './private-turns.js';
 import { canRead, canWrite, replyFields } from './turn-ports.js';
@@ -82,6 +89,17 @@ import type {
 export interface TurnRouteStore extends EventQueryStore {
   submit(command: DbCommand): DbSubmission;
   conversation: DbWorkerClient['conversation'];
+  // 記憶の保存の前の検査の材料を読む（memory.admission_facts。ADR 0191）。記憶の口（options.memory）を渡すときだけ使う。
+  memory?: DbWorkerClient['memory'];
+}
+
+// 本人の明示の依頼の記憶の口（ADR 0191）。省略すると memory_save・memory_correct は「未対応」の聞き返しのまま。
+export interface TurnMemoryOptions {
+  // 台帳の HMAC の鍵（32 バイト）。バックアップの設定の前・読めなければ null（保存しない）。
+  readonly ledgerKey: () => Promise<Uint8Array | null>;
+  // 忘却の公開ゲート（memory_correct・食い違いの返事で、古い記憶を忘れる手順へ導けるかを言い分ける。読むだけ）。
+  readonly forgetGate: () => boolean;
+  readonly newId?: () => string;
 }
 
 // 今の区切りの世代を読む口（StorageModeGate.origin）。発言の由来の照合に使う（ADR 0045・0059）。
@@ -151,6 +169,8 @@ export interface TurnRoutesOptions {
   // 裏のジョブの受付（調査を最初から裏へ回す口。U254、ADR 0135）。省略は受付なしで、調査は従来どおり「未対応」の
   // 聞き返しになる。製品の起動（core.ts）は、検索・取得・要約の口が渡されたときだけ受付器をつなぐ（B12-05、ADR 0141）。
   readonly backgroundJobs?: BackgroundJobAcceptor;
+  // 本人の明示の依頼の記憶（ADR 0191）。
+  readonly memory?: TurnMemoryOptions;
 }
 
 const stringOf = (body: JsonObject | null, key: string): string => {
@@ -214,6 +234,60 @@ const CLARIFY = {
 } as const;
 
 type ClarifyReason = keyof typeof CLARIFY;
+
+// 記憶の種類の言い方（画面の忘却の欄と同じ）。
+const MEMORY_KIND_LABELS: Readonly<Record<MemoryKindName, string>> = {
+  preference: '好み',
+  goal: '目標',
+  person: '人',
+  routine: '習慣',
+  lexicon: '言葉の使い方',
+  progress: '進み具合',
+};
+
+// 記憶の判定の結果の文（決まった文。モデルに作らせない。記憶の本文は入れない。ADR 0191）。gateOpen は忘却の公開ゲート。
+// memory_correct（古い記憶を直す）と、同じ対象の食い違い（U111）は、古い記憶を忘れる手順へ導く。ゲートが閉じている間は、
+// 忘れる操作がまだ使えないことを言う（本人の決定 Q3: 訂正も忘却の確認の画面を使う）。
+export function memoryReplyText(
+  plan: Extract<TurnPlan, { kind: 'memory_done' }>,
+  gateOpen: boolean,
+): string {
+  const label =
+    plan.memory_kind === null ? null : MEMORY_KIND_LABELS[plan.memory_kind];
+  const oldMemory = gateOpen
+    ? '古い記憶は「記憶と忘却」の欄で選び、忘却の計画を確かめてから忘れてください。'
+    : '古い記憶を忘れる操作は、まだ使えません（「記憶と忘却」の欄で記憶を見ることはできます）。';
+  switch (plan.outcome) {
+    case 'saved':
+      return plan.intent === 'memory_correct'
+        ? `新しい内容を「${label ?? ''}」の記憶として覚えました。古い記憶は残っています。${oldMemory}`
+        : `「${label ?? ''}」の記憶として覚えました。「記憶と忘却」の欄で確かめられます。`;
+    case 'duplicate':
+      return '同じ内容をすでに覚えています。新しくは保存しませんでした。';
+    case 'conflict':
+      return `覚えませんでした。同じことについて、内容の違う記憶がすでにあります。${oldMemory}`;
+    case 'kind_not_allowed':
+      return `覚えませんでした。「${label ?? ''}」の記憶は、保存してよい記憶の種類で許可されていません。「保存してよい記憶の種類」の欄で変えられます。`;
+    case 'kind_missing':
+      return '覚えませんでした。どの種類の記憶か分かりませんでした。好み・目標・人・習慣・言葉の使い方・進み具合のどれに当たるかが分かるように、言い換えてください。';
+    case 'text_empty':
+      return '覚えませんでした。覚える内容が分かりませんでした。';
+    case 'text_too_long':
+      return '覚えませんでした。覚える内容は 80 文字までにしてください。';
+    case 'text_control_character':
+      return '覚えませんでした。覚える内容に、画面に見えない文字が含まれています。';
+    case 'text_not_in_utterance':
+      return '覚えませんでした。覚える内容を、言ったとおりの言葉で受け取れませんでした。覚えてほしい言葉をそのまま入れて、言い換えてください。';
+    case 'settings_changed':
+      return '覚えませんでした。保存してよい記憶の種類の設定が、受け付けている間に変わりました。もう一度お願いします。';
+    case 'private_conversation':
+      return '覚えませんでした。記録しない会話では記憶を保存しません。';
+    case 'forgotten':
+      return '覚えませんでした。忘却の記録と照らし合わせられませんでした。少し待ってから、もう一度お願いします。';
+    case 'not_ready':
+      return '覚えませんでした。中枢が今は記憶を保存できません（バックアップの設定がまだのときも保存しません）。';
+  }
+}
 
 interface ScheduleItem {
   readonly id: string;
@@ -289,6 +363,20 @@ export type TurnPlan =
       readonly kind: 'accepted';
       readonly intent: 'research';
       readonly workflow_id: string;
+    }
+  // 本人の明示の依頼の記憶（ADR 0191）。発言を保存する直前（発言の ID が決まった後）に判定し、memory_done にする。
+  | {
+      readonly kind: 'memory';
+      readonly intent: 'memory_save' | 'memory_correct';
+      readonly memory_kind: MemoryKindName | null;
+      readonly body: string;
+    }
+  // 記憶の判定の結果（保存した・保存しなかった理由）。応答は決まった文。
+  | {
+      readonly kind: 'memory_done';
+      readonly intent: 'memory_save' | 'memory_correct';
+      readonly memory_kind: MemoryKindName | null;
+      readonly outcome: 'saved' | MemoryNotSavedReason;
     };
 
 // 裏のジョブの受付の文脈（planFrom に渡す）。dedupe_key は要求の command_id、workflow_id は Core が提案する依頼の ID。
@@ -1000,6 +1088,30 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
           permissionAtInput: null,
         };
     }
+    // 本人の明示の依頼の記憶（ADR 0191）。記憶の口がなければ従来どおり「未対応」。文字で確定した入力（submitted_text）だけ
+    // 進める（memory_save・memory_correct は方式 C の対象外。確定前の入力からは保存しない）。保存の判定は発言の ID が決まる
+    // recordTurn で行う。
+    if (intent === 'memory_save' || intent === 'memory_correct') {
+      if (options.memory === undefined || options.store.memory === undefined)
+        return {
+          plan: clarify('unsupported', intent),
+          permissionAtInput: null,
+        };
+      if (evidence !== 'submitted_text')
+        return { plan: clarify('full_text', intent), permissionAtInput: null };
+      return {
+        plan: {
+          kind: 'memory',
+          intent,
+          memory_kind:
+            typeof args.memory_kind === 'string'
+              ? (args.memory_kind as MemoryKindName)
+              : null,
+          body: typeof args.body === 'string' ? args.body : '',
+        },
+        permissionAtInput: null,
+      };
+    }
     // 調査は参照（route: read）なので、上の方式 C の全文の確定の判定には当たらない。
     if (intent === 'research')
       return {
@@ -1195,7 +1307,13 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
   const workflowState = (plan: TurnPlan): WorkflowState | null => {
     // 会話の操作は依頼ではない（workflow を作らない）。
     if (plan.kind === 'session_control') return null;
-    if (plan.kind === 'read' || plan.kind === 'reply') return 'done';
+    if (
+      plan.kind === 'read' ||
+      plan.kind === 'reply' ||
+      plan.kind === 'memory' ||
+      plan.kind === 'memory_done'
+    )
+      return 'done';
     if (plan.kind === 'operation') return 'ready';
     // 裏のジョブが受け付けた依頼は実行中（表の executing。ADR 0135）。
     if (plan.kind === 'accepted') return 'executing';
@@ -1270,6 +1388,33 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
       // 会話の操作のときだけ（それ以外は項目を持たない）。
       ...(sessionControl === null ? {} : { session_control: sessionControl }),
     });
+    // 記憶の判定の結果（ADR 0191）。文は決まった文で、記憶の本文・ID を含めない（応答は平文の列に残る）。保存した・同じ内容が
+    // あったは ready、保存しなかった（本人の対応が要る）は needs_review。判定の前の計画（memory）が届いたら保存していない。
+    const memoryResponse = (
+      memoryPlan: Extract<TurnPlan, { kind: 'memory' | 'memory_done' }>,
+    ) => {
+      const done: Extract<TurnPlan, { kind: 'memory_done' }> =
+        memoryPlan.kind === 'memory_done'
+          ? memoryPlan
+          : {
+              kind: 'memory_done',
+              intent: memoryPlan.intent,
+              memory_kind: memoryPlan.memory_kind,
+              outcome: 'not_ready',
+            };
+      return responseOf(
+        'answered',
+        view(
+          done.intent,
+          'completion_line',
+          done.outcome === 'saved' || done.outcome === 'duplicate'
+            ? 'ready'
+            : 'needs_review',
+          [],
+        ),
+        memoryReplyText(done, options.memory?.forgetGate() ?? false),
+      );
+    };
     // 受け付けた調査の受付の文はコードの定型文（acceptedCommentary と同じ文）で、モデルの文ではないので、保存する応答にも
     // 残す（同じ要求の再送でも同じ応答）。
     return plan.kind === 'session_control'
@@ -1294,25 +1439,27 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
                 view(plan.intent, 'accepted_line', 'preparing', []),
                 ACCEPTED_TEXT,
               )
-            : plan.kind === 'read'
-              ? responseOf(
-                  'answered',
-                  view(
-                    plan.intent,
-                    'schedule_cards',
-                    plan.overlaps ? 'needs_review' : 'ready',
-                    plan.items,
-                    plan.more,
-                  ),
-                  null,
-                )
-              : responseOf(
-                  'answered',
-                  view(plan.intent, 'approval_link', 'needs_review', [
-                    { kind: 'operation', id: plan.operation_id },
-                  ]),
-                  null,
-                );
+            : plan.kind === 'memory' || plan.kind === 'memory_done'
+              ? memoryResponse(plan)
+              : plan.kind === 'read'
+                ? responseOf(
+                    'answered',
+                    view(
+                      plan.intent,
+                      'schedule_cards',
+                      plan.overlaps ? 'needs_review' : 'ready',
+                      plan.items,
+                      plan.more,
+                    ),
+                    null,
+                  )
+                : responseOf(
+                    'answered',
+                    view(plan.intent, 'approval_link', 'needs_review', [
+                      { kind: 'operation', id: plan.operation_id },
+                    ]),
+                    null,
+                  );
   };
 
   // 保存した応答を返す（同じ要求の再送）。読めなければ中枢側の保留。
@@ -1412,6 +1559,41 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
       created_at: utcTime(createdAt),
       expires_at: utcTime(expiresAt),
     };
+    // 本人の明示の依頼の記憶（ADR 0191）。発言の ID が決まったここで判定し、保存するなら発言と同じ transaction へ渡す。
+    let memory: TurnMemoryInput | undefined;
+    if (plan.kind === 'memory') {
+      const memoryOptions = options.memory;
+      // 保存層の口は this を保ったまま渡す（DbWorkerClient のメソッドは私的なフィールドを使う）。
+      const memoryStore = options.store.memory?.bind(options.store);
+      if (memoryOptions === undefined || memoryStore === undefined)
+        plan = clarify('unsupported', plan.intent);
+      else {
+        const decided = await planExplicitMemory(
+          {
+            store: { memory: memoryStore },
+            ledgerKey: memoryOptions.ledgerKey,
+            ...(memoryOptions.newId === undefined
+              ? {}
+              : { newId: memoryOptions.newId }),
+          },
+          {
+            body: plan.body,
+            utterance: text,
+            memory_kind: plan.memory_kind,
+            turn_id: turnId,
+            private_conversation: options.storage.mode === 'private',
+            data_key: key,
+          },
+        );
+        if (decided.kind === 'save') memory = decided.memory;
+        plan = {
+          kind: 'memory_done',
+          intent: plan.intent,
+          memory_kind: plan.memory_kind,
+          outcome: decided.kind === 'save' ? 'saved' : decided.reason,
+        };
+      }
+    }
     const state = workflowState(plan);
     // 受け付けた調査は、受付器が返した ID で依頼を記録する（受付器と Core の依頼の ID を一致させる）。Live では提案した
     // ID（args.workflowId）と同じ値が返る想定だが、受付器の返した ID を正とする（同じ dedupe_key の最初の受付の ID）。
@@ -1421,7 +1603,7 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
         : plan.kind === 'accepted'
           ? plan.workflow_id
           : (args.workflowId ?? randomUUID());
-    const responseBody = turnResponseBody({
+    let responseBody = turnResponseBody({
       requestId,
       sessionId,
       turnId,
@@ -1439,36 +1621,63 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
       const response = apiErrorResponse(409, 'conflict', requestId);
       return fail(response.status, response.body);
     }
-    const recorded = await store.conversation({
-      kind: 'turn.record',
-      session_id: sessionId,
-      turn_id: turnId,
-      input_id: inputId,
-      text: {
-        blob_id: randomUUID(),
-        format_version: sealed.envelope.formatVersion,
-        key_id: sealed.envelope.keyId,
-        nonce: sealed.envelope.nonce,
-        ciphertext: sealed.envelope.ciphertext,
-        tag: sealed.envelope.tag,
-      },
-      created_at: createdAt,
-      expires_at: createdAt + rule.ms,
-      workflow:
-        state === null || workflowId === null
-          ? null
-          : { workflow_id: workflowId, state },
-      permission_revision: args.permissionAtInput ?? '0',
-      request: ref,
-      ...(args.input === undefined ? {} : { input: args.input }),
-      operation,
-      // 返答文はモデルの文なので、平文の列には残さない（再送の応答は返答文なしの同じ結果になる）。
-      response_json: JSON.stringify(
-        plan.kind === 'reply'
-          ? { ...responseBody, reply_text: null }
-          : responseBody,
-      ),
-    });
+    const record = (body: object, saving: TurnMemoryInput | undefined) =>
+      store.conversation({
+        kind: 'turn.record',
+        session_id: sessionId,
+        turn_id: turnId,
+        input_id: inputId,
+        text: {
+          blob_id: randomUUID(),
+          format_version: sealed.envelope.formatVersion,
+          key_id: sealed.envelope.keyId,
+          nonce: sealed.envelope.nonce,
+          ciphertext: sealed.envelope.ciphertext,
+          tag: sealed.envelope.tag,
+        },
+        created_at: createdAt,
+        expires_at: createdAt + rule.ms,
+        workflow:
+          state === null || workflowId === null
+            ? null
+            : { workflow_id: workflowId, state },
+        permission_revision: args.permissionAtInput ?? '0',
+        request: ref,
+        ...(args.input === undefined ? {} : { input: args.input }),
+        operation,
+        // 返答文はモデルの文なので、平文の列には残さない（再送の応答は返答文なしの同じ結果になる）。
+        response_json: JSON.stringify(
+          plan.kind === 'reply' ? { ...body, reply_text: null } : body,
+        ),
+        ...(saving === undefined ? {} : { memory: saving }),
+      });
+    let recorded = await record(responseBody, memory);
+    // 保存層が記憶を拒否した（処理の間に設定・台帳・記憶が変わった。最後の保証）: 発言も書かれていないので、保存しなかった
+    // 理由の応答で発言だけを記録し直す（記憶は保存しない）。
+    if (
+      !recorded.ok &&
+      recorded.outcome === 'rejected' &&
+      recorded.reasons[0] === 'memory_rejected' &&
+      plan.kind === 'memory_done'
+    ) {
+      plan = {
+        ...plan,
+        outcome: storageRejectionReason(recorded.reasons.slice(1)),
+      };
+      responseBody = turnResponseBody({
+        requestId,
+        sessionId,
+        turnId,
+        inputId,
+        workflowId,
+        plan,
+      });
+      if (args.origin !== undefined && !originCurrent(args.origin)) {
+        const response = apiErrorResponse(409, 'conflict', requestId);
+        return fail(response.status, response.body);
+      }
+      recorded = await record(responseBody, undefined);
+    }
     if (!recorded.ok) {
       const response = conversationError(recorded, requestId);
       return fail(response.status, response.body);
@@ -1528,7 +1737,10 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
       intake,
     );
     // 参照の経路から操作・裏の受付は作られないが、作られた場合も RAM の経路では持たない（安全側）。
-    return planned.plan.kind === 'operation' || planned.plan.kind === 'accepted'
+    return planned.plan.kind === 'operation' ||
+      planned.plan.kind === 'accepted' ||
+      planned.plan.kind === 'memory' ||
+      planned.plan.kind === 'memory_done'
       ? clarify('private_unsupported', null)
       : planned.plan;
   };

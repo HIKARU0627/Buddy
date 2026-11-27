@@ -110,6 +110,14 @@ test(
       response_json: '{}',
     });
     assert(turn.ok, JSON.stringify(turn));
+    // 保存してよい種類（ADR 0191）: 好みを許可する（版 0 → 1）。
+    const allowed = await core.handle.store.memory({
+      kind: 'memory.settings_set',
+      expected_revision: '0',
+      allowed_kinds: ['preference'],
+      now,
+    });
+    assert(allowed.ok, JSON.stringify(allowed));
     const save: MemoryOp = {
       kind: 'memory.save',
       memory_id: MEMORY,
@@ -124,6 +132,7 @@ test(
         { source_kind: 'turn', source_id: TURN, hmac: 'a1'.repeat(32) },
       ],
       forgetting_generation: '0',
+      settings_revision: '1',
       now,
     };
     const saved = await core.handle.store.memory(save);
@@ -195,5 +204,82 @@ test(
       SCREEN,
     );
     assert.equal(planned.status, 503, planned.text);
+  },
+);
+
+test(
+  'ADR 0191: the product Core keeps the allowed memory kinds empty by default and changes them only by an unlocked screen operation with the current revision',
+  { timeout: 30_000 },
+  async (t) => {
+    const core = await startEventCore(t);
+    const device = await insertDevice(core.handle.store);
+    const scope = await bootstrap(core, device);
+    const read = (headers: Record<string, string>) =>
+      pinnedRequest(core.target, {
+        method: 'GET',
+        path: '/v1/memory/settings',
+        headers: { authorization: `Bearer ${device.token}`, ...headers },
+      });
+    const change = (
+      expected: string,
+      kinds: readonly string[],
+      headers: Record<string, string> = SCREEN,
+    ) =>
+      postJson(
+        core,
+        device,
+        '/v1/memory/settings',
+        {
+          request_id: randomUUID(),
+          command_scope_id: scope,
+          expected_memory_settings_revision: expected,
+          allowed_kinds: kinds,
+        },
+        headers,
+      );
+
+    // 既定は空（何も保存しない）・版 0。
+    const initial = await read(SCREEN);
+    assert.equal(initial.status, 200, initial.text);
+    assert.deepEqual(initial.json, {
+      schema: 'buddy.memory-settings.v1',
+      allowed_kinds: [],
+      memory_settings_revision: '0',
+    });
+    // 音声・チャット・中枢の自動の処理の起源からは変えられない（読むこともできない）。
+    for (const origin of ['voice', 'chat', 'system']) {
+      const refused = await change('0', ['preference'], {
+        'buddy-input-origin': origin,
+      });
+      assert.equal(refused.status, 403, origin);
+      assert.equal(refused.json?.['code'], 'screen_operation_required');
+      const unread = await read({ 'buddy-input-origin': origin });
+      assert.equal(unread.status, 403, origin);
+    }
+    // ロック中は変えられない。
+    core.env.lock = 'locked';
+    assert.equal((await change('0', ['preference'])).status, 403);
+    core.env.lock = 'unlocked';
+    // 知らない種類・重なりは 422。
+    assert.equal((await change('0', ['health'])).status, 422);
+    assert.equal((await change('0', ['goal', 'goal'])).status, 422);
+    assert.deepEqual(
+      (await read(SCREEN)).json?.['memory_settings_revision'],
+      '0',
+    );
+
+    // 本人の画面操作で変える。並びは種類の決まった順。
+    const changed = await change('0', ['goal', 'preference']);
+    assert.equal(changed.status, 200, changed.text);
+    assert(contract.valid('MemorySettings', changed.json));
+    assert.deepEqual(changed.json, {
+      schema: 'buddy.memory-settings.v1',
+      allowed_kinds: ['preference', 'goal'],
+      memory_settings_revision: '1',
+    });
+    // 古い版からの変更（別の画面・再送）は 409 で、設定は変わらない。
+    const stale = await change('0', []);
+    assert.equal(stale.status, 409, stale.text);
+    assert.deepEqual((await read(SCREEN)).json, changed.json);
   },
 );

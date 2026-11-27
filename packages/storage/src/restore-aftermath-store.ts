@@ -71,6 +71,8 @@ export interface RestoreAftermathValue {
   readonly sync_scopes_reset_count: number;
   // 入だったレシートの写真の読み取りの設定を切にした数（0 か 1。ADR 0038・0179）。
   readonly receipt_settings_closed_count: number;
+  // 保存してよい記憶の種類の設定に許可があったので、全部 off にした数（0 か 1。ADR 0191 の見直し、U494）。
+  readonly memory_settings_closed_count: number;
   readonly safety_revision: string;
 }
 
@@ -456,6 +458,22 @@ function writeAftermath(
           )
           .run(input.restored_at).changes;
 
+  // 7c. 保存してよい記憶の種類の設定（ADR 0191 の見直し、U494）。バックアップの後に本人が取り消した許可が復元で戻らないよう、
+  // 許可が 1 つでもあれば全部 off にして版を 1 進める（ADR 0038 の「取り消した同意を復元で戻さない」と同じ考え。本人は画面で
+  // 選び直せる）。行は消さない（0024 の trigger が DELETE を拒む）。0024 より前の版のバックアップには表がないので、表があるときだけ。
+  const memorySettingsClosed =
+    db
+      .prepare(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'memory_settings'",
+      )
+      .get() === undefined
+      ? 0
+      : db
+          .prepare(
+            "UPDATE memory_settings SET preference = 'off', goal = 'off', person = 'off', routine = 'off', lexicon = 'off', progress = 'off', settings_revision = settings_revision + 1, updated_at = ? WHERE setting_id = 1 AND 'on' IN (preference, goal, person, routine, lexicon, progress)",
+          )
+          .run(input.restored_at).changes;
+
   // 8. DB の世代と、効いている復元の時刻（予算の保留・付帯クレジット・候補起点の自動実行の検査が読む）。
   const setMeta = db.prepare(
     'INSERT INTO schema_meta (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value',
@@ -489,6 +507,7 @@ function writeAftermath(
     connections_reauth_count: reauth,
     sync_scopes_reset_count: syncReset,
     receipt_settings_closed_count: receiptClosed,
+    memory_settings_closed_count: memorySettingsClosed,
     safety_revision: safety.safety_revision,
   };
 }

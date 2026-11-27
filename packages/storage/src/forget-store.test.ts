@@ -62,6 +62,7 @@ import {
   run,
   value,
   withWorld,
+  SETTINGS_REVISION,
 } from './forget-test-support.js';
 import {
   cancelCommand,
@@ -662,6 +663,7 @@ test('late results: memory.save re-checks the whole ledger in the transaction (f
         sources: [{ source_kind: 'turn', source_id: T_OTHER }],
         source_hmacs: HMACS,
         forgetting_generation: '0',
+        settings_revision: SETTINGS_REVISION,
         now: NOW_1 + 10,
         ...overrides,
       });

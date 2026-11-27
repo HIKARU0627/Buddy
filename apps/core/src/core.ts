@@ -837,6 +837,9 @@ export async function startCore(
     log,
   });
   let forgetService: ForgetService;
+  // 台帳の HMAC の鍵（バックアップの設定で記録した鍵の ID で、バックアップの鍵の KeyStore から要求ごとに読む）。本人の明示の
+  // 依頼の記憶の由来・内容の HMAC に使う（ADR 0191）。設定の前・読めなければ null（記憶を保存しない）。
+  let memoryLedgerKey: (() => Promise<Uint8Array | null>) | undefined;
   let syncRun: {
     executor: SyncExecutor;
     scheduler: SyncScheduler | null;
@@ -1281,6 +1284,16 @@ export async function startCore(
       // 記憶の忘却の経路（B06-07b-2、ADR 0180）。忘却の公開ゲート（U112）は既定で閉じ、開けるのは忘却の画面（UI-10）の
       // PR だけ。台帳用の HMAC は、バックアップの設定で記録した台帳の鍵から要求ごとに求める（鍵がなければ計画を作らない。U384）。
       const forgetStore = opened.store;
+      memoryLedgerKey = async () => {
+        const facts = await forgetStore.memory({ kind: 'backup.facts' });
+        if (!facts.ok || facts.value.recorded_ledger_key_id === null)
+          return null;
+        const key = await backupKeys.read(
+          'ledger_hmac_key',
+          facts.value.recorded_ledger_key_id,
+        );
+        return key.ok ? key.key.key : null;
+      };
       forgetService = createForgetService({
         store: forgetStore,
         ledgerPath: join(dataDir, FORGET_LEDGER_FILE),
@@ -1348,6 +1361,7 @@ export async function startCore(
         researchRun?.acceptor,
         oauthRun === null ? undefined : oauthRun.service,
         forgetService,
+        memoryLedgerKey,
         // 選べる取得対象の読み取り（ADR 0145）。走査の実行器と同じ、解決済みのトークンの出所を使う
         // （sync の明示が無ければ OAuth サービスが既定、B03-04）。出所が両方とも無ければ口を作らない。
         googleTokenSourceFor === undefined && graphTokenSourceFor === undefined
@@ -1537,6 +1551,8 @@ async function startHttps(
   oauthService?: OAuthService,
   // 記憶の忘却の経路（B06-07b-2、ADR 0180）。無ければ計画・実行の経路は 503（処理のない経路）。
   forgetService?: ForgetService | null,
+  // 台帳の HMAC の鍵を読む口（本人の明示の依頼の記憶、ADR 0191）。無ければ記憶を保存しない。
+  memoryLedgerKey?: () => Promise<Uint8Array | null>,
   // 選べる取得対象の読み取り口（ADR 0145）。無ければ undefined で、その経路は 503 で閉じる。
   discovery?: TargetDiscoveryPort,
 ): Promise<{
@@ -1958,6 +1974,12 @@ async function startHttps(
             lease: () => (retention as RetentionSweeper).lease(),
           },
         }),
+    // 本人の明示の依頼の記憶（ADR 0191）。保存してよい種類の設定（既定は空）・台帳・保存の最終ガードを通す。忘却の公開ゲートは
+    // 返事の言い分けのために読むだけ。
+    memory: {
+      ledgerKey: memoryLedgerKey ?? (() => Promise.resolve(null)),
+      forgetGate: () => FORGET_PUBLIC_GATE_OPEN,
+    },
   });
   // 連携の口座と許可の版を一度確かめておく（発言の入力の時点の版を外部へ問い合わせずに持つ。B04-07）。
   await turns.prime().catch(() => undefined);

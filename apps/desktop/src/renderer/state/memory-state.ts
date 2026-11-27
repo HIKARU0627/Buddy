@@ -6,6 +6,9 @@
 //   （ADR 0024 の約束 7「押せないボタンは置かない」の例外。理由を同じ欄に出す。ADR 0183）。
 // - 実行は確認の帯の中のボタンだけから送る。main が OS の確認ダイアログを 1 回出す。計画の後に変わった（preview_stale）は
 //   計画を作り直させ、自動では作り直さない。結果が分からない（outcome_unknown）は「消えたかもしれない」と見せ、自動では送り直さない。
+// - 保存してよい記憶の種類の設定（ADR 0191）: 種類ごとの選択を変えたら、変えた後の種類の全部と、見ている設定の参照をすぐ
+//   送る（版は main が持つ）。別の画面で変わった・結果が分からないときは送り直さず、一覧と設定を読み直し、読み直しが終わる
+//   まで選択を押せないままにする（古い表示から作った全部を新しい版で送らない。ADR 0191 の見直し）。
 // 理由のコード・API の名前・「世代」の語は画面に出さない。
 import type {
   DesktopForgetPlanView,
@@ -66,6 +69,31 @@ export const MEMORY_LABELS = {
     '忘却の結果を確かめられませんでした。自動では送り直しません。「読み直す」で、記憶が一覧に残っているかを確かめてください。',
   expired: '計画の期限が過ぎました。「忘却の計画を作る」で作り直してください。',
 } as const;
+
+// 保存してよい記憶の種類の欄（ADR 0191）。
+export const MEMORY_SETTINGS_LABELS = {
+  section: '保存してよい記憶の種類',
+  lead: 'ここで選んだ種類だけを、記憶として保存します。「〇〇を覚えて」と頼んだときも、選んでいない種類は保存しません。',
+  none: '今は何も選んでいないので、記憶は保存しません。',
+  some: (n: number) => `今は${NB}${n}${NB}種類を保存します。`,
+  keep: '選ぶのをやめても、保存済みの記憶は消えません。忘れるときは、下の「記憶と忘却」の欄を使います。',
+  changing: '変えています…',
+  unread:
+    '保存してよい記憶の種類を、まだ中枢から読めていません。「記憶と忘却」の欄の「読み直す」を押してください。',
+  listLabel: '保存してよい記憶の種類',
+} as const;
+
+// 種類ごとの説明（どんなことを覚えるか。ADR 0191 の暫定の言い方。U491）。
+export const MEMORY_KIND_DESCRIPTIONS: Readonly<
+  Record<DesktopMemoryEntry['kind'], string>
+> = {
+  preference: '好きなもの・苦手なもの・返事の長さなど',
+  goal: '達成したいこと・続けたいこと',
+  person: '家族・友人・仕事の相手についてのこと',
+  routine: '毎日・毎週のように繰り返すこと',
+  lexicon: '呼び方・言い回し・略語の意味',
+  progress: '学習や作業がどこまで進んだか',
+};
 
 export const MEMORY_KIND_LABELS: Readonly<
   Record<DesktopMemoryEntry['kind'], string>
@@ -235,6 +263,8 @@ export function expiryText(
 export const HEAD_PLACE = 'head';
 export const PLAN_PLACE = 'plan';
 export const BAND_PLACE = 'band';
+// 保存してよい記憶の種類の欄（ADR 0191）。
+export const SETTINGS_PLACE = 'settings';
 
 export interface MemoryNotice {
   readonly tone: 'warning' | 'success';
@@ -285,9 +315,30 @@ export function shownPlan(
   return plan === null || plan.ref === state.dismissed ? null : plan;
 }
 
-type Kind = 'list' | 'plan' | 'execute';
+type Kind = 'list' | 'plan' | 'execute' | 'settings';
+
+// 保存してよい記憶の種類の設定の変更が断られた・結果が分からないときの文（ADR 0191）。
+function settingsFailureText(reason: RejectReason): string {
+  switch (reason) {
+    case 'preview_stale':
+      return '設定がほかの画面で変わりました。今の設定を読み直したので、もう一度選んでください。';
+    case 'outcome_unknown':
+      return '設定を変えられたか確かめられませんでした。自動では送り直しません。今の設定を読み直しているので、表示を確かめてください。';
+    case 'entry_not_found':
+      return '今の設定を読めていないため、変えられません。「記憶と忘却」の欄の「読み直す」を押してください。';
+    case 'confirmation_pending':
+      return '前の変更を送っています。終わってから、もう一度選んでください。';
+    case 'core_rejected':
+      return '中枢が受け付けませんでした。設定は変わっていません。';
+    case 'not_connected':
+      return '中枢に接続していないため、設定を変えられません。';
+    default:
+      return REJECT_MESSAGES[reason];
+  }
+}
 
 export function memoryFailureText(kind: Kind, reason: RejectReason): string {
+  if (kind === 'settings') return settingsFailureText(reason);
   switch (reason) {
     case 'forget_unavailable':
       return MEMORY_LABELS.unavailable;
@@ -331,6 +382,7 @@ function withView(
       place !== HEAD_PLACE &&
       place !== PLAN_PLACE &&
       place !== BAND_PLACE &&
+      place !== SETTINGS_PLACE &&
       place !== null &&
       !refs.has(place)
         ? null
@@ -415,6 +467,65 @@ export function applyExecuteResponse(
   return withView({ ...idle, notice: null }, response.memories);
 }
 
+// 読み直しが終わるまで選択を押せないままにする拒否（main が設定を読み直している）。
+const SETTINGS_REREAD: ReadonlySet<RejectReason> = new Set([
+  'preview_stale',
+  'outcome_unknown',
+]);
+
+export function applySettingsResponse(
+  state: MemoryViewState,
+  response: DesktopIpcResponse,
+): MemoryViewState {
+  const idle = {
+    ...state,
+    busy: state.busy === SETTINGS_PLACE ? null : state.busy,
+  };
+  if (response.outcome === 'rejected')
+    return {
+      ...(SETTINGS_REREAD.has(response.reason) ? state : idle),
+      notice: {
+        tone: 'warning',
+        text: memoryFailureText('settings', response.reason),
+        place: SETTINGS_PLACE,
+      },
+    };
+  if (!('memories' in response)) return idle;
+  return withView({ ...idle, notice: null }, response.memories);
+}
+
+type MemoryKindName = DesktopMemoryEntry['kind'];
+type AllowedKinds = Extract<
+  DesktopIpcRequest,
+  { channel: 'desktop.memory_settings_change' }
+>['payload']['allowed_kinds'];
+
+// 画面が見ている設定の参照（main が版ごとに付ける。読めていなければ null）。
+export function settingsRefOf(state: MemoryViewState): string | null {
+  return state.view?.settings?.ref ?? null;
+}
+
+// 中枢から読めた保存してよい種類（読めていなければ null）。
+export function allowedKinds(
+  state: MemoryViewState,
+): readonly MemoryKindName[] | null {
+  const settings = state.view?.settings ?? null;
+  return settings === null
+    ? null
+    : (settings.allowed_kinds as readonly MemoryKindName[]);
+}
+
+// 種類 1 つの選択を変えた後の、保存してよい種類の全部（決まった順。ADR 0191）。
+export function nextAllowedKinds(
+  current: readonly DesktopMemoryEntry['kind'][],
+  kind: DesktopMemoryEntry['kind'],
+  allowed: boolean,
+): DesktopMemoryEntry['kind'][] {
+  return MEMORY_KIND_ORDER.filter((item) =>
+    item === kind ? allowed : current.includes(item),
+  );
+}
+
 export function applyFailure(
   state: MemoryViewState,
   place: string | null,
@@ -438,6 +549,11 @@ export interface MemoryActions {
   readonly plan: (ref: string) => void;
   readonly execute: () => void;
   readonly dismiss: () => void;
+  // 保存してよい記憶の種類の選択を変える（ADR 0191）。
+  readonly setKind: (
+    kind: DesktopMemoryEntry['kind'],
+    allowed: boolean,
+  ) => void;
 }
 
 export interface MemoryApi {
@@ -473,6 +589,7 @@ export class MemoryStore {
         if (plan === null || this.#state.busy !== null) return;
         this.#set({ ...this.#state, dismissed: plan.ref, notice: null });
       },
+      setKind: (kind, allowed) => this.#setKind(kind, allowed),
     };
   }
 
@@ -578,6 +695,53 @@ export class MemoryStore {
       )
         this.#reread();
     });
+  }
+
+  // 保存してよい記憶の種類の選択を変える。変えた後の種類の全部を送り、送っている間はほかの操作を止める。結果が分からない・
+  // 別の画面で変わったときは送り直さない（main が今の設定を読み直す）。
+  #setKind(kind: DesktopMemoryEntry['kind'], allowed: boolean): void {
+    const current = allowedKinds(this.#state);
+    const settingsRef = settingsRefOf(this.#state);
+    if (this.#state.busy !== null || current === null || settingsRef === null)
+      return;
+    if (current.includes(kind) === allowed) return;
+    const epoch = this.#epoch;
+    this.#set({ ...this.#state, busy: SETTINGS_PLACE, notice: null });
+    void this.#send(
+      request('desktop.memory_settings_change', {
+        settings_ref: settingsRef,
+        allowed_kinds: nextAllowedKinds(current, kind, allowed) as AllowedKinds,
+      }),
+      applySettingsResponse,
+      (state) => applyFailure(state, SETTINGS_PLACE),
+    ).then((response) => {
+      if (
+        response !== null &&
+        response.outcome === 'rejected' &&
+        SETTINGS_REREAD.has(response.reason) &&
+        epoch === this.#epoch
+      )
+        this.#rereadSettings();
+    });
+  }
+
+  // 設定の変更が断られた・結果が分からなかった後の読み直し。読み直しが終わる（読めた・読めなかった）まで選択を押せないままにし、
+  // 終わったら外す（文言は残す）。
+  #rereadSettings(): void {
+    const release = (state: MemoryViewState): MemoryViewState => ({
+      ...state,
+      busy: state.busy === SETTINGS_PLACE ? null : state.busy,
+    });
+    void this.#send(
+      request('desktop.memories_list', null),
+      (state, response) =>
+        release(
+          response.outcome === 'ok' && 'memories' in response
+            ? withView(state, response.memories)
+            : state,
+        ),
+      release,
+    );
   }
 
   // 出せなくなった（ロック・切断）: 世代を進めて内容を捨てる。

@@ -171,6 +171,8 @@ export const MEMORY_CHANNELS: readonly DesktopIpcChannel[] = [
   'desktop.memories_list',
   'desktop.forget_plan',
   'desktop.forget_execute',
+  // 保存してよい記憶の種類の設定の変更（ADR 0191）。
+  'desktop.memory_settings_change',
 ];
 
 // 家計簿の月ごとの合計と 1 か月の記録・分類の変更・削除のチャネル（ADR 0162）。登録済みでロック解除済みの端末なら、
@@ -1476,7 +1478,8 @@ export class DesktopCoreLink {
     );
   }
 
-  // 忘却の画面（UI-10、ADR 0183）。一覧はロック解除済み、計画と実行はロック解除済みの画面操作（前面）。実行は OS の確認
+  // 忘却の画面（UI-10、ADR 0183）と保存してよい記憶の種類の設定（ADR 0191）。一覧はロック解除済み、計画・実行・設定の変更は
+  // ロック解除済みの画面操作（前面）。実行は OS の確認
   // ダイアログを 1 回挟む（#confirm）。どちらも中枢の記録を消すだけで外部へは送らないので、この端末の入出力の停止中も
   // 受け付ける。ロック・切断をまたいだ値は渡さない。
   async handleMemoryIpc(
@@ -1491,7 +1494,8 @@ export class DesktopCoreLink {
       raw.channel !== ipcChannel ||
       (raw.channel !== 'desktop.memories_list' &&
         raw.channel !== 'desktop.forget_plan' &&
-        raw.channel !== 'desktop.forget_execute')
+        raw.channel !== 'desktop.forget_execute' &&
+        raw.channel !== 'desktop.memory_settings_change')
     )
       return this.#reject(
         echoRequestId(raw),
@@ -1514,7 +1518,12 @@ export class DesktopCoreLink {
         ? await this.#memories.list()
         : raw.channel === 'desktop.forget_plan'
           ? await this.#memories.plan(raw.payload.ref)
-          : await this.#memories.execute(raw.payload.ref);
+          : raw.channel === 'desktop.memory_settings_change'
+            ? await this.#memories.changeSettings(
+                raw.payload.settings_ref,
+                raw.payload.allowed_kinds,
+              )
+            : await this.#memories.execute(raw.payload.ref);
     return this.#withinGeneration(
       generation,
       this.#operationOutcome(

@@ -432,7 +432,32 @@ export function createMockInterpreter(): Interpreter {
           intent: 'research',
           args: { ...EMPTY_ARGS, query: research[1] as string },
         });
+      // 本人の明示の依頼の記憶（ADR 0191）。「〇〇」を種類として覚えて／直して。種類は画面の言い方。
+      const memory =
+        /^「(.+)」を(好み|目標|人|習慣|言葉の使い方|進み具合)として(覚えて|覚え直して)$/u.exec(
+          text,
+        );
+      if (memory !== null)
+        return Promise.resolve({
+          kind: 'intent',
+          intent: memory[3] === '覚えて' ? 'memory_save' : 'memory_correct',
+          args: {
+            ...EMPTY_ARGS,
+            body: memory[1] as string,
+            memory_kind: MOCK_MEMORY_KINDS[memory[2] as string] ?? null,
+          },
+        });
       return Promise.resolve({ kind: 'unclear' });
     },
   };
 }
+
+// 模擬の解釈の種類の言い方（画面の言い方と同じ）。
+const MOCK_MEMORY_KINDS: Readonly<Record<string, string>> = {
+  好み: 'preference',
+  目標: 'goal',
+  人: 'person',
+  習慣: 'routine',
+  言葉の使い方: 'lexicon',
+  進み具合: 'progress',
+};

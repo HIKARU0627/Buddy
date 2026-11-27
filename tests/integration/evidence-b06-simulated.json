@@ -1,6 +1,6 @@
 {
   "status": "recorded",
-  "description": "B06-09 の模擬結果。commit は実行時の基点、source_sha256 は未コミット差分を含む検査対象の正確な内容。保存期限の掃除・記憶と忘却の命令・忘却の Core の経路・バックアップと復元・記録しない会話をつなぎ、行・知らせ・台帳と、合成の目印の平文・暗号文を DB・WAL・台帳の別ファイル・バックアップ・ログから探した結果を手書きの期待値と突き合わせた。忘却と遅着の順序は seed ごとに入れ替えた。実機の Mac mini での実際のバックアップと鍵の復元・実 API・実請求は未実施（B15）。memory_save・memory_correct の Core の経路・発言からの忘却は未実装で観測していない。知らせを端末へ運ぶ経路（UI-05 の段階 3、ADR 0187）はこの統合では観測していない。",
+  "description": "B06-09 の模擬結果。commit は実行時の基点、source_sha256 は未コミット差分を含む検査対象の正確な内容。保存期限の掃除・記憶と忘却の命令・忘却の Core の経路・バックアップと復元・記録しない会話をつなぎ、行・知らせ・台帳と、合成の目印の平文・暗号文を DB・WAL・台帳の別ファイル・バックアップ・ログから探した結果を手書きの期待値と突き合わせた。忘却と遅着の順序は seed ごとに入れ替えた。実機の Mac mini での実際のバックアップと鍵の復元・実 API・実請求は未実施（B15）。本人の明示の依頼の記憶の保存（memory_save、ADR 0191）は、記録しない会話の間に保存しないこと（X59）と通常の会話での保存（陽性の対照）だけを観測した。memory_correct・自動の抽出・発言からの忘却は観測していない。知らせを端末へ運ぶ経路（UI-05 の段階 3、ADR 0187）はこの統合では観測していない。",
   "command": "node --test tests/integration/b06.test.mjs",
   "source_sha256": [
     {
@@ -45,7 +45,7 @@
     },
     {
       "path": "apps/core/src/api-memory.ts",
-      "sha256": "08eb34fec26e261c6de8750339dda299c9d45ef7b0a1d4c502e9a5e88081a4ba"
+      "sha256": "14ad4ad7de0f96e9a61dc5bb8842b7f82d1dd19aef567aed7f5706db58450a37"
     },
     {
       "path": "apps/core/src/api-operations.ts",
@@ -57,7 +57,7 @@
     },
     {
       "path": "apps/core/src/api-routes.ts",
-      "sha256": "e243ddeae0db64ca84c70888746a51fac66b17a0d4230bf0af544e875a7e0e95"
+      "sha256": "5529d087a33ac90a8fa1d09061700bc65adfc3a1744d0401443faf001380cb46"
     },
     {
       "path": "apps/core/src/api-server.ts",
@@ -69,7 +69,7 @@
     },
     {
       "path": "apps/core/src/api-turns.ts",
-      "sha256": "deaf5533e0f98e68350c222a428de979c98ed64c92b2052bdf43fff3fa443ea2"
+      "sha256": "582597e517af66bf77276361bf04b6c19fed645f86a349c02948eacae692a92e"
     },
     {
       "path": "apps/core/src/api-voice.ts",
@@ -149,7 +149,7 @@
     },
     {
       "path": "apps/core/src/core.ts",
-      "sha256": "d8ac71104e7f685b130f9d0abe75fec89a7760bef284be56db809fe45e609b33"
+      "sha256": "8da2f630ebd6e62767712ca624129c3be7c2284b5ddf7e617d909002998950f5"
     },
     {
       "path": "apps/core/src/data-dir.ts",
@@ -234,6 +234,10 @@
     {
       "path": "apps/core/src/lock.ts",
       "sha256": "897e47eeea4fb93ae7d12dffb95bd93d259733a27d58b5c1f44f42b0ebc0696f"
+    },
+    {
+      "path": "apps/core/src/memory-save.ts",
+      "sha256": "4165117a87d28702c359312bf65ae73d61f3b8cdba66080d033b2de8a284b0e5"
     },
     {
       "path": "apps/core/src/model-https.ts",
@@ -353,7 +357,7 @@
     },
     {
       "path": "apps/core/src/turn-ports.ts",
-      "sha256": "0e6de6419e7e6c165d3cbe3f28f3bbd509fa198aa7f9e5b5991170612a5de700"
+      "sha256": "aefc23d31ec6084c4bdd8a69949cc5bf9b50fbb761977d37edf6127caa111f62"
     },
     {
       "path": "apps/core/src/voice-control.ts",
@@ -481,7 +485,7 @@
     },
     {
       "path": "packages/contracts/schemas/buddy.schema.json",
-      "sha256": "1f1e64a8615f77c8017ae0866cef1410b870969b98dae20379a878367caa44a2"
+      "sha256": "8de01cb4f2db91ed7460c55b2f1f0213ef40635a3655d847e4b67acc205c4477"
     },
     {
       "path": "packages/domain/package.json",
@@ -493,7 +497,7 @@
     },
     {
       "path": "packages/domain/src/api.ts",
-      "sha256": "a68b40ade58cf4edfbda372b31361572efcd537c354ed497b423e517cac6ec6a"
+      "sha256": "ccf7d7018e91c4487b86aa3b9aeabd01c412286273de1b02d6e21465660bdf55"
     },
     {
       "path": "packages/domain/src/approval.ts",
@@ -513,7 +517,7 @@
     },
     {
       "path": "packages/domain/src/backup-plan.ts",
-      "sha256": "f0dbd19a1805d1947fb91ee518cbf63d5f1c9cfd8eb1580ae0872ae9a8e3ca47"
+      "sha256": "932c4af8cadf282e9e3fa18ff2a7f55a1aa74a8bf040d43456c75656f4f088e4"
     },
     {
       "path": "packages/domain/src/budget-credit.ts",
@@ -581,7 +585,7 @@
     },
     {
       "path": "packages/domain/src/desktop.ts",
-      "sha256": "743cfa7e2327d01cb79d7d3936b0f3ea3625cf3de1f75af65377faeae87a9e85"
+      "sha256": "5a928aa7f101c23d18bcdf566c120eac950d27efd2b0806bb4dd18b83dcaacc3"
     },
     {
       "path": "packages/domain/src/dispatch-guard.ts",
@@ -689,7 +693,7 @@
     },
     {
       "path": "packages/domain/src/memory.ts",
-      "sha256": "e4d33cf3efbb7ea1a58b18b8dac1b18d6ae6496267d5749dd1a6779fefc51a90"
+      "sha256": "d0631acd57ac617e82944da561b71f57d8a5fdc4e8dd05c4430eb78e28f3bead"
     },
     {
       "path": "packages/domain/src/notification.ts",
@@ -960,6 +964,10 @@
       "sha256": "bf78952bba1d691be1e50f698f7f3d2278593cec940ea18fc8d54ae354abceba"
     },
     {
+      "path": "packages/storage/migrations/0024_memory_settings.sql",
+      "sha256": "890b8ae416710dadcffb49e8f387dcb13fb4f478064d18701381c54e291ef18c"
+    },
+    {
       "path": "packages/storage/migrations/connection.sql",
       "sha256": "43dab403fa9aac2dbc4aa82fd13aef3522fae16438cf9b5edf11d95997e930a7"
     },
@@ -1013,7 +1021,7 @@
     },
     {
       "path": "packages/storage/src/conversation-store.ts",
-      "sha256": "16b1e9ebf7450684e0e6e8532d5f7312d79791b1bf8ba90a103b8b118917a520"
+      "sha256": "8d2faace8e99a1ab98b5d4775b59d66ab985755b2297122094e55926d6ed0124"
     },
     {
       "path": "packages/storage/src/db-client.ts",
@@ -1077,7 +1085,7 @@
     },
     {
       "path": "packages/storage/src/memory-store.ts",
-      "sha256": "7e11ebeb090d3631d962e678c92dc74810667c19a147ae43902840cc2ac40ff6"
+      "sha256": "49d3307da99d9415d7a119ecd5989bbc7a0390e10dba2ddbbeec74752848cfd2"
     },
     {
       "path": "packages/storage/src/migrations.ts",
@@ -1097,7 +1105,7 @@
     },
     {
       "path": "packages/storage/src/policy.ts",
-      "sha256": "20e2439c198af8dc8338f7a54e8393311893c66adf9aa1e8ddd7bfb639451ab1"
+      "sha256": "ccaa8c0d8da41ebf577aed389e7e48577e5eb10698365de62ba70ea2c6be259b"
     },
     {
       "path": "packages/storage/src/research-store.ts",
@@ -1105,7 +1113,7 @@
     },
     {
       "path": "packages/storage/src/restore-aftermath-store.ts",
-      "sha256": "412a98f9656c8c0f68361b3816ad25b7036c6ee607691b3bb95462edd13ca6c3"
+      "sha256": "d269e137e5b0ef76ea92a1e5549d56ecbdbce79943089d31ae1ec24e23001ab0"
     },
     {
       "path": "packages/storage/src/restore-facts.ts",
@@ -1153,19 +1161,19 @@
     },
     {
       "path": "tests/integration/b06-cases.mjs",
-      "sha256": "7111c4a9a946493a8c5ad976d3886419b76d3f1623663c2e0e52b1489b0a9674"
+      "sha256": "9d43c8b215be81e691767c822c95bbdb9e908f2df10551a16549f20027490c46"
     },
     {
       "path": "tests/integration/b06-expectations.json",
-      "sha256": "bdda9f8a8984d4e32e2185c554825703c134b92dbf4475fa3c9d3fff39c99ca1"
+      "sha256": "e1780418762c6e02a240298a77f8fb62c68386d76379fc265bdefd3a164f05f3"
     },
     {
       "path": "tests/integration/b06-support.mjs",
-      "sha256": "fdaffc90dfb497da3bc594e925cd25c18adbcf3d94c3c3c1cdae9d7b0d05e6bf"
+      "sha256": "1df97022803d3219c8aaf8cf6a52e82347f170a01da6fefaff526c226d7b8a82"
     },
     {
       "path": "tests/integration/b06.test.mjs",
-      "sha256": "fe7404ee30d82bbb9aecbe714bde558b032f297789ce1843ce05207ae4a60434"
+      "sha256": "84567336703f7aaf0106afcbad0b48aa24b5b8862d23083fcf35dbda50961e50"
     },
     {
       "path": "tests/integration/evidence-run.mjs",
@@ -1176,9 +1184,9 @@
     {
       "case_id": "X16-retention-deadline-and-resummary",
       "kind": "simulated",
-      "commit": "040438ea2dbf0c933673922988e9b2c2759020af",
+      "commit": "23d1243ae4d04f03bf7399b2b7587a3856c54ce7",
       "contract_version": "1.0.0",
-      "db_version": "23",
+      "db_version": "24",
       "environment": {
         "os": "linux 6.18.44-fc-v880 / v24.22.3",
         "hub": "同一プロセスの保存期限の掃除・忘却の Core の経路・バックアップと復元・保存境界の保持者（一時ディレクトリの DB と DB worker、HTTPS は 127.0.0.1）と模擬の Live の provider",
@@ -1190,7 +1198,7 @@
       "provider_state_changes": 0,
       "approvals": 0,
       "final_state": "turns=T_S2;summaries=",
-      "observed_at": "2026-11-27T18:51:15.953Z",
+      "observed_at": "2026-11-27T20:44:53.177Z",
       "deviation": "模擬の試験。合成のデータ鍵・台帳の鍵・バックアップの鍵（模擬の KeyStore）、一時ディレクトリの DB と DB worker、同じプロセスの Core（HTTPS は 127.0.0.1）、模擬の Live の provider を使った。忘却の公開ゲートは製品では閉じたままで、試験の組み立てで開いた関数を渡した。実機の Mac mini での実際のバックアップと鍵の復元・同期フォルダー・SSD の痕跡・実 API・実請求は未実施（B15）。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -1198,9 +1206,9 @@
     {
       "case_id": "X16-clock-rollback-no-extension",
       "kind": "simulated",
-      "commit": "040438ea2dbf0c933673922988e9b2c2759020af",
+      "commit": "23d1243ae4d04f03bf7399b2b7587a3856c54ce7",
       "contract_version": "1.0.0",
-      "db_version": "23",
+      "db_version": "24",
       "environment": {
         "os": "linux 6.18.44-fc-v880 / v24.22.3",
         "hub": "同一プロセスの保存期限の掃除・忘却の Core の経路・バックアップと復元・保存境界の保持者（一時ディレクトリの DB と DB worker、HTTPS は 127.0.0.1）と模擬の Live の provider",
@@ -1212,7 +1220,7 @@
       "provider_state_changes": 0,
       "approvals": 0,
       "final_state": "turns=none",
-      "observed_at": "2026-11-27T18:51:15.953Z",
+      "observed_at": "2026-11-27T20:44:53.177Z",
       "deviation": "模擬の試験。合成のデータ鍵・台帳の鍵・バックアップの鍵（模擬の KeyStore）、一時ディレクトリの DB と DB worker、同じプロセスの Core（HTTPS は 127.0.0.1）、模擬の Live の provider を使った。忘却の公開ゲートは製品では閉じたままで、試験の組み立てで開いた関数を渡した。実機の Mac mini での実際のバックアップと鍵の復元・同期フォルダー・SSD の痕跡・実 API・実請求は未実施（B15）。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -1220,9 +1228,9 @@
     {
       "case_id": "X44-memory-review-deadline",
       "kind": "simulated",
-      "commit": "040438ea2dbf0c933673922988e9b2c2759020af",
+      "commit": "23d1243ae4d04f03bf7399b2b7587a3856c54ce7",
       "contract_version": "1.0.0",
-      "db_version": "23",
+      "db_version": "24",
       "environment": {
         "os": "linux 6.18.44-fc-v880 / v24.22.3",
         "hub": "同一プロセスの保存期限の掃除・忘却の Core の経路・バックアップと復元・保存境界の保持者（一時ディレクトリの DB と DB worker、HTTPS は 127.0.0.1）と模擬の Live の provider",
@@ -1234,7 +1242,7 @@
       "provider_state_changes": 0,
       "approvals": 0,
       "final_state": "memories=M_CONTINUE:active",
-      "observed_at": "2026-11-27T18:51:15.953Z",
+      "observed_at": "2026-11-27T20:44:53.177Z",
       "deviation": "模擬の試験。合成のデータ鍵・台帳の鍵・バックアップの鍵（模擬の KeyStore）、一時ディレクトリの DB と DB worker、同じプロセスの Core（HTTPS は 127.0.0.1）、模擬の Live の provider を使った。忘却の公開ゲートは製品では閉じたままで、試験の組み立てで開いた関数を渡した。実機の Mac mini での実際のバックアップと鍵の復元・同期フォルダー・SSD の痕跡・実 API・実請求は未実施（B15）。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -1242,9 +1250,9 @@
     {
       "case_id": "X15-forget-and-late-result-order",
       "kind": "simulated",
-      "commit": "040438ea2dbf0c933673922988e9b2c2759020af",
+      "commit": "23d1243ae4d04f03bf7399b2b7587a3856c54ce7",
       "contract_version": "1.0.0",
-      "db_version": "23",
+      "db_version": "24",
       "environment": {
         "os": "linux 6.18.44-fc-v880 / v24.22.3",
         "hub": "同一プロセスの保存期限の掃除・忘却の Core の経路・バックアップと復元・保存境界の保持者（一時ディレクトリの DB と DB worker、HTTPS は 127.0.0.1）と模擬の Live の provider",
@@ -1256,7 +1264,7 @@
       "provider_state_changes": 0,
       "approvals": 0,
       "final_state": "memories=L2,M_OTHER;generation=1",
-      "observed_at": "2026-11-27T18:51:15.953Z",
+      "observed_at": "2026-11-27T20:44:53.177Z",
       "deviation": "模擬の試験。合成のデータ鍵・台帳の鍵・バックアップの鍵（模擬の KeyStore）、一時ディレクトリの DB と DB worker、同じプロセスの Core（HTTPS は 127.0.0.1）、模擬の Live の provider を使った。忘却の公開ゲートは製品では閉じたままで、試験の組み立てで開いた関数を渡した。実機の Mac mini での実際のバックアップと鍵の復元・同期フォルダー・SSD の痕跡・実 API・実請求は未実施（B15）。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -1264,9 +1272,9 @@
     {
       "case_id": "X16-old-backup-restore-applies-ledger",
       "kind": "simulated",
-      "commit": "040438ea2dbf0c933673922988e9b2c2759020af",
+      "commit": "23d1243ae4d04f03bf7399b2b7587a3856c54ce7",
       "contract_version": "1.0.0",
-      "db_version": "23",
+      "db_version": "24",
       "environment": {
         "os": "linux 6.18.44-fc-v880 / v24.22.3",
         "hub": "同一プロセスの保存期限の掃除・忘却の Core の経路・バックアップと復元・保存境界の保持者（一時ディレクトリの DB と DB worker、HTTPS は 127.0.0.1）と模擬の Live の provider",
@@ -1278,7 +1286,7 @@
       "provider_state_changes": 0,
       "approvals": 0,
       "final_state": "restored;memories=M_OTHER;generation=1",
-      "observed_at": "2026-11-27T18:51:15.953Z",
+      "observed_at": "2026-11-27T20:44:53.177Z",
       "deviation": "模擬の試験。合成のデータ鍵・台帳の鍵・バックアップの鍵（模擬の KeyStore）、一時ディレクトリの DB と DB worker、同じプロセスの Core（HTTPS は 127.0.0.1）、模擬の Live の provider を使った。忘却の公開ゲートは製品では閉じたままで、試験の組み立てで開いた関数を渡した。実機の Mac mini での実際のバックアップと鍵の復元・同期フォルダー・SSD の痕跡・実 API・実請求は未実施（B15）。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -1286,9 +1294,9 @@
     {
       "case_id": "X17-private-conversation-not-saved",
       "kind": "simulated",
-      "commit": "040438ea2dbf0c933673922988e9b2c2759020af",
+      "commit": "23d1243ae4d04f03bf7399b2b7587a3856c54ce7",
       "contract_version": "1.0.0",
-      "db_version": "23",
+      "db_version": "24",
       "environment": {
         "os": "linux 6.18.44-fc-v880 / v24.22.3",
         "hub": "同一プロセスの保存期限の掃除・忘却の Core の経路・バックアップと復元・保存境界の保持者（一時ディレクトリの DB と DB worker、HTTPS は 127.0.0.1）と模擬の Live の provider",
@@ -1300,7 +1308,29 @@
       "provider_state_changes": 0,
       "approvals": 0,
       "final_state": "turns=2;private_turn=200;resent_after_exit=409;live=409",
-      "observed_at": "2026-11-27T18:51:15.953Z",
+      "observed_at": "2026-11-27T20:44:53.177Z",
+      "deviation": "模擬の試験。合成のデータ鍵・台帳の鍵・バックアップの鍵（模擬の KeyStore）、一時ディレクトリの DB と DB worker、同じプロセスの Core（HTTPS は 127.0.0.1）、模擬の Live の provider を使った。忘却の公開ゲートは製品では閉じたままで、試験の組み立てで開いた関数を渡した。実機の Mac mini での実際のバックアップと鍵の復元・同期フォルダー・SSD の痕跡・実 API・実請求は未実施（B15）。",
+      "voice_stop_ms": null,
+      "outcome": "matched_expectation"
+    },
+    {
+      "case_id": "X59-private-conversation-no-memory-save",
+      "kind": "simulated",
+      "commit": "23d1243ae4d04f03bf7399b2b7587a3856c54ce7",
+      "contract_version": "1.0.0",
+      "db_version": "24",
+      "environment": {
+        "os": "linux 6.18.44-fc-v880 / v24.22.3",
+        "hub": "同一プロセスの保存期限の掃除・忘却の Core の経路・バックアップと復元・保存境界の保持者（一時ディレクトリの DB と DB worker、HTTPS は 127.0.0.1）と模擬の Live の provider",
+        "devices": []
+      },
+      "seed": "7,1006,2026",
+      "fault_point": "private_memory_save,private_resend_after_exit",
+      "provider_requests": 0,
+      "provider_state_changes": 0,
+      "approvals": 0,
+      "final_state": "memories=1;private_save=200/0;resent_after_exit=409",
+      "observed_at": "2026-11-27T20:44:53.177Z",
       "deviation": "模擬の試験。合成のデータ鍵・台帳の鍵・バックアップの鍵（模擬の KeyStore）、一時ディレクトリの DB と DB worker、同じプロセスの Core（HTTPS は 127.0.0.1）、模擬の Live の provider を使った。忘却の公開ゲートは製品では閉じたままで、試験の組み立てで開いた関数を渡した。実機の Mac mini での実際のバックアップと鍵の復元・同期フォルダー・SSD の痕跡・実 API・実請求は未実施（B15）。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -1308,19 +1338,124 @@
   ],
   "runs": [
     {
+      "case_id": "X44-memory-review-deadline",
+      "seed": "7",
+      "order": [
+        "X44-memory-review-deadline",
+        "X16-old-backup-restore-applies-ledger",
+        "X16-retention-deadline-and-resummary",
+        "X17-private-conversation-not-saved",
+        "X16-clock-rollback-no-extension",
+        "X59-private-conversation-no-memory-save",
+        "X15-forget-and-late-result-order"
+      ],
+      "faults": ["review_boundary", "explicit_continue"],
+      "observed": {
+        "checked": {
+          "steps": [
+            {
+              "step": "review_one_ms_before",
+              "memories": [
+                {
+                  "memory": "M_REVIEW",
+                  "status": "active",
+                  "review_at": "2031-04-01T00:00:00.000Z",
+                  "delete_at": null
+                },
+                {
+                  "memory": "M_CONTINUE",
+                  "status": "active",
+                  "review_at": "2031-04-01T00:00:00.000Z",
+                  "delete_at": null
+                }
+              ],
+              "ciphertext_in_db_files": ["M_CONTINUE", "M_REVIEW"]
+            },
+            {
+              "step": "review_at",
+              "memories": [
+                {
+                  "memory": "M_REVIEW",
+                  "status": "review_pending",
+                  "review_at": "2031-04-01T00:00:00.000Z",
+                  "delete_at": "2031-05-01T00:00:00.000Z"
+                },
+                {
+                  "memory": "M_CONTINUE",
+                  "status": "review_pending",
+                  "review_at": "2031-04-01T00:00:00.000Z",
+                  "delete_at": "2031-05-01T00:00:00.000Z"
+                }
+              ],
+              "ciphertext_in_db_files": ["M_CONTINUE", "M_REVIEW"]
+            },
+            {
+              "step": "delete_one_ms_before",
+              "memories": [
+                {
+                  "memory": "M_REVIEW",
+                  "status": "review_pending",
+                  "review_at": "2031-04-01T00:00:00.000Z",
+                  "delete_at": "2031-05-01T00:00:00.000Z"
+                },
+                {
+                  "memory": "M_CONTINUE",
+                  "status": "active",
+                  "review_at": "2031-07-10T00:00:00.000Z",
+                  "delete_at": null
+                }
+              ],
+              "ciphertext_in_db_files": ["M_CONTINUE", "M_REVIEW"]
+            },
+            {
+              "step": "delete_at",
+              "memories": [
+                {
+                  "memory": "M_CONTINUE",
+                  "status": "active",
+                  "review_at": "2031-07-10T00:00:00.000Z",
+                  "delete_at": null
+                }
+              ],
+              "ciphertext_in_db_files": ["M_CONTINUE"]
+            }
+          ],
+          "memory_notices": [
+            {
+              "reason": "review_unanswered",
+              "items": ["memory:M_REVIEW"]
+            }
+          ],
+          "plaintext_found": []
+        },
+        "variant": null,
+        "event_order": null,
+        "db_version": "24",
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approvals": 0,
+        "final_state": "memories=M_CONTINUE:active"
+      }
+    },
+    {
       "case_id": "X16-old-backup-restore-applies-ledger",
       "seed": "7",
       "order": [
-        "X16-old-backup-restore-applies-ledger",
-        "X15-forget-and-late-result-order",
-        "X16-clock-rollback-no-extension",
-        "X17-private-conversation-not-saved",
         "X44-memory-review-deadline",
-        "X16-retention-deadline-and-resummary"
+        "X16-old-backup-restore-applies-ledger",
+        "X16-retention-deadline-and-resummary",
+        "X17-private-conversation-not-saved",
+        "X16-clock-rollback-no-extension",
+        "X59-private-conversation-no-memory-save",
+        "X15-forget-and-late-result-order"
       ],
       "faults": ["restore_backup_older_than_ledger"],
       "observed": {
         "checked": {
+          "settings_after_restore": {
+            "allowed_kinds": [],
+            "settings_revision": "2"
+          },
           "first_backup_generation": "0",
           "old_backup_ciphertext": ["M", "M_OTHER", "T_OTHER", "T_SRC"],
           "forget": {
@@ -1359,7 +1494,7 @@
         },
         "variant": null,
         "event_order": null,
-        "db_version": "23",
+        "db_version": "24",
         "provider_requests": 0,
         "provider_state_changes": 0,
         "approvals": 0,
@@ -1367,15 +1502,297 @@
       }
     },
     {
+      "case_id": "X16-retention-deadline-and-resummary",
+      "seed": "7",
+      "order": [
+        "X44-memory-review-deadline",
+        "X16-old-backup-restore-applies-ledger",
+        "X16-retention-deadline-and-resummary",
+        "X17-private-conversation-not-saved",
+        "X16-clock-rollback-no-extension",
+        "X59-private-conversation-no-memory-save",
+        "X15-forget-and-late-result-order"
+      ],
+      "faults": ["deadline_boundary", "resummary"],
+      "observed": {
+        "checked": {
+          "steps": [
+            {
+              "step": "one_ms_before_deadline",
+              "status": "completed",
+              "turns": ["T_DUE", "T_LIVE", "T_S2"],
+              "summaries": ["S", "S2"],
+              "live_turn_expires_at": ["2031-01-08T00:00:00.001Z"],
+              "ciphertext_in_db_files": [
+                "SUM_S",
+                "SUM_S2",
+                "T_DUE",
+                "T_LIVE",
+                "T_S2"
+              ]
+            },
+            {
+              "step": "at_deadline",
+              "status": "completed",
+              "turns": ["T_LIVE", "T_S2"],
+              "summaries": [],
+              "live_turn_expires_at": ["2031-01-08T00:00:00.001Z"],
+              "ciphertext_in_db_files": ["T_LIVE", "T_S2"]
+            },
+            {
+              "step": "one_ms_after_deadline",
+              "status": "completed",
+              "turns": ["T_S2"],
+              "summaries": [],
+              "live_turn_expires_at": [],
+              "ciphertext_in_db_files": ["T_S2"]
+            }
+          ],
+          "turn_notices": [
+            {
+              "reason": "retention_due",
+              "items": ["turn:T_DUE"]
+            },
+            {
+              "reason": "retention_due",
+              "items": ["turn:T_LIVE"]
+            }
+          ],
+          "plaintext_found": []
+        },
+        "variant": null,
+        "event_order": null,
+        "db_version": "24",
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approvals": 0,
+        "final_state": "turns=T_S2;summaries="
+      }
+    },
+    {
+      "case_id": "X17-private-conversation-not-saved",
+      "seed": "7",
+      "order": [
+        "X44-memory-review-deadline",
+        "X16-old-backup-restore-applies-ledger",
+        "X16-retention-deadline-and-resummary",
+        "X17-private-conversation-not-saved",
+        "X16-clock-rollback-no-extension",
+        "X59-private-conversation-no-memory-save",
+        "X15-forget-and-late-result-order"
+      ],
+      "faults": [
+        "private_turn",
+        "live_while_private",
+        "private_resend_after_exit"
+      ],
+      "observed": {
+        "checked": {
+          "steps": [
+            {
+              "step": "normal_turn",
+              "status": 200,
+              "turns": 1
+            },
+            {
+              "step": "enter_private",
+              "status": 200,
+              "boundary": {
+                "segment_generation": "2",
+                "private_open": true
+              },
+              "private_conversation": true
+            },
+            {
+              "step": "private_turn",
+              "status": 200,
+              "storage_mode": "private",
+              "turn_status": "clarification",
+              "turns": 1
+            },
+            {
+              "step": "private_turn_replay",
+              "status": 200,
+              "same_turn": true,
+              "turns": 1
+            },
+            {
+              "step": "private_ram_while_private",
+              "ram": {
+                "replays": 1,
+                "recent_turns": 2,
+                "last_discard": null,
+                "canvas_private": true
+              }
+            },
+            {
+              "step": "live_while_private",
+              "status": 409,
+              "code": "private_conversation",
+              "provider_created": 0,
+              "budget_calls": 0
+            },
+            {
+              "step": "exit_private",
+              "status": 200,
+              "boundary": {
+                "segment_generation": "3",
+                "private_open": false
+              },
+              "private_conversation": false,
+              "ram": {
+                "replays": 0,
+                "recent_turns": 0,
+                "last_discard": "private_ended",
+                "canvas_private": false
+              }
+            },
+            {
+              "step": "private_turn_resent_after_exit",
+              "status": 409,
+              "turns": 1
+            },
+            {
+              "step": "normal_turn_after",
+              "status": 200,
+              "turns": 2
+            }
+          ],
+          "visible_turn_markers": ["NORMAL_1", "NORMAL_2"],
+          "plaintext_found": []
+        },
+        "variant": null,
+        "event_order": null,
+        "db_version": "24",
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approvals": 0,
+        "final_state": "turns=2;private_turn=200;resent_after_exit=409;live=409"
+      }
+    },
+    {
+      "case_id": "X16-clock-rollback-no-extension",
+      "seed": "7",
+      "order": [
+        "X44-memory-review-deadline",
+        "X16-old-backup-restore-applies-ledger",
+        "X16-retention-deadline-and-resummary",
+        "X17-private-conversation-not-saved",
+        "X16-clock-rollback-no-extension",
+        "X59-private-conversation-no-memory-save",
+        "X15-forget-and-late-result-order"
+      ],
+      "faults": ["clock_rolled_back_after_restart"],
+      "observed": {
+        "checked": {
+          "rolled_back": {
+            "gate_reasons": ["clock_regression"],
+            "turns": ["T_LIVE"],
+            "expires_at": ["2031-01-09T00:00:00.000Z"],
+            "last_checked_at": "2031-01-08T12:00:00Z",
+            "ciphertext_in_db_files": ["T_LIVE"]
+          },
+          "reached_deadline": {
+            "turns": [],
+            "expires_at": [],
+            "ciphertext_in_db_files": []
+          },
+          "plaintext_found": []
+        },
+        "variant": null,
+        "event_order": null,
+        "db_version": "24",
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approvals": 0,
+        "final_state": "turns=none"
+      }
+    },
+    {
+      "case_id": "X59-private-conversation-no-memory-save",
+      "seed": "7",
+      "order": [
+        "X44-memory-review-deadline",
+        "X16-old-backup-restore-applies-ledger",
+        "X16-retention-deadline-and-resummary",
+        "X17-private-conversation-not-saved",
+        "X16-clock-rollback-no-extension",
+        "X59-private-conversation-no-memory-save",
+        "X15-forget-and-late-result-order"
+      ],
+      "faults": ["private_memory_save", "private_resend_after_exit"],
+      "observed": {
+        "checked": {
+          "steps": [
+            {
+              "step": "allow_preference",
+              "status": 200,
+              "allowed_kinds": ["preference"]
+            },
+            {
+              "step": "enter_private",
+              "status": 200
+            },
+            {
+              "step": "private_memory_save",
+              "status": 200,
+              "storage_mode": "private",
+              "turn_status": "clarification",
+              "reply_text": "記録しない会話では、この依頼はまだ受け付けられません。記録しない会話を終えてから、もう一度お願いします。",
+              "turns": 0,
+              "memories": 0
+            },
+            {
+              "step": "exit_private",
+              "status": 200
+            },
+            {
+              "step": "private_memory_save_resent_after_exit",
+              "status": 409,
+              "turns": 0,
+              "memories": 0
+            },
+            {
+              "step": "normal_memory_save",
+              "status": 200,
+              "storage_mode": "normal",
+              "turn_status": "answered",
+              "reply_text": "「好み」の記憶として覚えました。「記憶と忘却」の欄で確かめられます。",
+              "turns": 1,
+              "memories": 1
+            },
+            {
+              "step": "normal_memory_save_replay",
+              "status": 200,
+              "same_turn": true,
+              "turns": 1,
+              "memories": 1
+            }
+          ],
+          "visible_memory_markers": ["NORMAL"],
+          "memory_sources": ["turn:explicit_request"],
+          "plaintext_found": []
+        },
+        "variant": null,
+        "event_order": null,
+        "db_version": "24",
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approvals": 0,
+        "final_state": "memories=1;private_save=200/0;resent_after_exit=409"
+      }
+    },
+    {
       "case_id": "X15-forget-and-late-result-order",
       "seed": "7",
       "order": [
-        "X16-old-backup-restore-applies-ledger",
-        "X15-forget-and-late-result-order",
-        "X16-clock-rollback-no-extension",
-        "X17-private-conversation-not-saved",
         "X44-memory-review-deadline",
-        "X16-retention-deadline-and-resummary"
+        "X16-old-backup-restore-applies-ledger",
+        "X16-retention-deadline-and-resummary",
+        "X17-private-conversation-not-saved",
+        "X16-clock-rollback-no-extension",
+        "X59-private-conversation-no-memory-save",
+        "X15-forget-and-late-result-order"
       ],
       "faults": [
         "late_result_before_forget",
@@ -1437,7 +1854,7 @@
           "late_from_unrelated_source",
           "late_from_forgotten_source"
         ],
-        "db_version": "23",
+        "db_version": "24",
         "provider_requests": 0,
         "provider_state_changes": 0,
         "approvals": 0,
@@ -1445,680 +1862,16 @@
       }
     },
     {
-      "case_id": "X16-clock-rollback-no-extension",
-      "seed": "7",
-      "order": [
-        "X16-old-backup-restore-applies-ledger",
-        "X15-forget-and-late-result-order",
-        "X16-clock-rollback-no-extension",
-        "X17-private-conversation-not-saved",
-        "X44-memory-review-deadline",
-        "X16-retention-deadline-and-resummary"
-      ],
-      "faults": ["clock_rolled_back_after_restart"],
-      "observed": {
-        "checked": {
-          "rolled_back": {
-            "gate_reasons": ["clock_regression"],
-            "turns": ["T_LIVE"],
-            "expires_at": ["2031-01-09T00:00:00.000Z"],
-            "last_checked_at": "2031-01-08T12:00:00Z",
-            "ciphertext_in_db_files": ["T_LIVE"]
-          },
-          "reached_deadline": {
-            "turns": [],
-            "expires_at": [],
-            "ciphertext_in_db_files": []
-          },
-          "plaintext_found": []
-        },
-        "variant": null,
-        "event_order": null,
-        "db_version": "23",
-        "provider_requests": 0,
-        "provider_state_changes": 0,
-        "approvals": 0,
-        "final_state": "turns=none"
-      }
-    },
-    {
-      "case_id": "X17-private-conversation-not-saved",
-      "seed": "7",
-      "order": [
-        "X16-old-backup-restore-applies-ledger",
-        "X15-forget-and-late-result-order",
-        "X16-clock-rollback-no-extension",
-        "X17-private-conversation-not-saved",
-        "X44-memory-review-deadline",
-        "X16-retention-deadline-and-resummary"
-      ],
-      "faults": [
-        "private_turn",
-        "live_while_private",
-        "private_resend_after_exit"
-      ],
-      "observed": {
-        "checked": {
-          "steps": [
-            {
-              "step": "normal_turn",
-              "status": 200,
-              "turns": 1
-            },
-            {
-              "step": "enter_private",
-              "status": 200,
-              "boundary": {
-                "segment_generation": "2",
-                "private_open": true
-              },
-              "private_conversation": true
-            },
-            {
-              "step": "private_turn",
-              "status": 200,
-              "storage_mode": "private",
-              "turn_status": "clarification",
-              "turns": 1
-            },
-            {
-              "step": "private_turn_replay",
-              "status": 200,
-              "same_turn": true,
-              "turns": 1
-            },
-            {
-              "step": "private_ram_while_private",
-              "ram": {
-                "replays": 1,
-                "recent_turns": 2,
-                "last_discard": null,
-                "canvas_private": true
-              }
-            },
-            {
-              "step": "live_while_private",
-              "status": 409,
-              "code": "private_conversation",
-              "provider_created": 0,
-              "budget_calls": 0
-            },
-            {
-              "step": "exit_private",
-              "status": 200,
-              "boundary": {
-                "segment_generation": "3",
-                "private_open": false
-              },
-              "private_conversation": false,
-              "ram": {
-                "replays": 0,
-                "recent_turns": 0,
-                "last_discard": "private_ended",
-                "canvas_private": false
-              }
-            },
-            {
-              "step": "private_turn_resent_after_exit",
-              "status": 409,
-              "turns": 1
-            },
-            {
-              "step": "normal_turn_after",
-              "status": 200,
-              "turns": 2
-            }
-          ],
-          "visible_turn_markers": ["NORMAL_1", "NORMAL_2"],
-          "plaintext_found": []
-        },
-        "variant": null,
-        "event_order": null,
-        "db_version": "23",
-        "provider_requests": 0,
-        "provider_state_changes": 0,
-        "approvals": 0,
-        "final_state": "turns=2;private_turn=200;resent_after_exit=409;live=409"
-      }
-    },
-    {
-      "case_id": "X44-memory-review-deadline",
-      "seed": "7",
-      "order": [
-        "X16-old-backup-restore-applies-ledger",
-        "X15-forget-and-late-result-order",
-        "X16-clock-rollback-no-extension",
-        "X17-private-conversation-not-saved",
-        "X44-memory-review-deadline",
-        "X16-retention-deadline-and-resummary"
-      ],
-      "faults": ["review_boundary", "explicit_continue"],
-      "observed": {
-        "checked": {
-          "steps": [
-            {
-              "step": "review_one_ms_before",
-              "memories": [
-                {
-                  "memory": "M_REVIEW",
-                  "status": "active",
-                  "review_at": "2031-04-01T00:00:00.000Z",
-                  "delete_at": null
-                },
-                {
-                  "memory": "M_CONTINUE",
-                  "status": "active",
-                  "review_at": "2031-04-01T00:00:00.000Z",
-                  "delete_at": null
-                }
-              ],
-              "ciphertext_in_db_files": ["M_CONTINUE", "M_REVIEW"]
-            },
-            {
-              "step": "review_at",
-              "memories": [
-                {
-                  "memory": "M_REVIEW",
-                  "status": "review_pending",
-                  "review_at": "2031-04-01T00:00:00.000Z",
-                  "delete_at": "2031-05-01T00:00:00.000Z"
-                },
-                {
-                  "memory": "M_CONTINUE",
-                  "status": "review_pending",
-                  "review_at": "2031-04-01T00:00:00.000Z",
-                  "delete_at": "2031-05-01T00:00:00.000Z"
-                }
-              ],
-              "ciphertext_in_db_files": ["M_CONTINUE", "M_REVIEW"]
-            },
-            {
-              "step": "delete_one_ms_before",
-              "memories": [
-                {
-                  "memory": "M_REVIEW",
-                  "status": "review_pending",
-                  "review_at": "2031-04-01T00:00:00.000Z",
-                  "delete_at": "2031-05-01T00:00:00.000Z"
-                },
-                {
-                  "memory": "M_CONTINUE",
-                  "status": "active",
-                  "review_at": "2031-07-10T00:00:00.000Z",
-                  "delete_at": null
-                }
-              ],
-              "ciphertext_in_db_files": ["M_CONTINUE", "M_REVIEW"]
-            },
-            {
-              "step": "delete_at",
-              "memories": [
-                {
-                  "memory": "M_CONTINUE",
-                  "status": "active",
-                  "review_at": "2031-07-10T00:00:00.000Z",
-                  "delete_at": null
-                }
-              ],
-              "ciphertext_in_db_files": ["M_CONTINUE"]
-            }
-          ],
-          "memory_notices": [
-            {
-              "reason": "review_unanswered",
-              "items": ["memory:M_REVIEW"]
-            }
-          ],
-          "plaintext_found": []
-        },
-        "variant": null,
-        "event_order": null,
-        "db_version": "23",
-        "provider_requests": 0,
-        "provider_state_changes": 0,
-        "approvals": 0,
-        "final_state": "memories=M_CONTINUE:active"
-      }
-    },
-    {
-      "case_id": "X16-retention-deadline-and-resummary",
-      "seed": "7",
-      "order": [
-        "X16-old-backup-restore-applies-ledger",
-        "X15-forget-and-late-result-order",
-        "X16-clock-rollback-no-extension",
-        "X17-private-conversation-not-saved",
-        "X44-memory-review-deadline",
-        "X16-retention-deadline-and-resummary"
-      ],
-      "faults": ["deadline_boundary", "resummary"],
-      "observed": {
-        "checked": {
-          "steps": [
-            {
-              "step": "one_ms_before_deadline",
-              "status": "completed",
-              "turns": ["T_DUE", "T_LIVE", "T_S2"],
-              "summaries": ["S", "S2"],
-              "live_turn_expires_at": ["2031-01-08T00:00:00.001Z"],
-              "ciphertext_in_db_files": [
-                "SUM_S",
-                "SUM_S2",
-                "T_DUE",
-                "T_LIVE",
-                "T_S2"
-              ]
-            },
-            {
-              "step": "at_deadline",
-              "status": "completed",
-              "turns": ["T_LIVE", "T_S2"],
-              "summaries": [],
-              "live_turn_expires_at": ["2031-01-08T00:00:00.001Z"],
-              "ciphertext_in_db_files": ["T_LIVE", "T_S2"]
-            },
-            {
-              "step": "one_ms_after_deadline",
-              "status": "completed",
-              "turns": ["T_S2"],
-              "summaries": [],
-              "live_turn_expires_at": [],
-              "ciphertext_in_db_files": ["T_S2"]
-            }
-          ],
-          "turn_notices": [
-            {
-              "reason": "retention_due",
-              "items": ["turn:T_DUE"]
-            },
-            {
-              "reason": "retention_due",
-              "items": ["turn:T_LIVE"]
-            }
-          ],
-          "plaintext_found": []
-        },
-        "variant": null,
-        "event_order": null,
-        "db_version": "23",
-        "provider_requests": 0,
-        "provider_state_changes": 0,
-        "approvals": 0,
-        "final_state": "turns=T_S2;summaries="
-      }
-    },
-    {
-      "case_id": "X44-memory-review-deadline",
-      "seed": "1006",
-      "order": [
-        "X44-memory-review-deadline",
-        "X16-old-backup-restore-applies-ledger",
-        "X16-retention-deadline-and-resummary",
-        "X17-private-conversation-not-saved",
-        "X16-clock-rollback-no-extension",
-        "X15-forget-and-late-result-order"
-      ],
-      "faults": ["review_boundary", "explicit_continue"],
-      "observed": {
-        "checked": {
-          "steps": [
-            {
-              "step": "review_one_ms_before",
-              "memories": [
-                {
-                  "memory": "M_REVIEW",
-                  "status": "active",
-                  "review_at": "2031-04-01T00:00:00.000Z",
-                  "delete_at": null
-                },
-                {
-                  "memory": "M_CONTINUE",
-                  "status": "active",
-                  "review_at": "2031-04-01T00:00:00.000Z",
-                  "delete_at": null
-                }
-              ],
-              "ciphertext_in_db_files": ["M_CONTINUE", "M_REVIEW"]
-            },
-            {
-              "step": "review_at",
-              "memories": [
-                {
-                  "memory": "M_REVIEW",
-                  "status": "review_pending",
-                  "review_at": "2031-04-01T00:00:00.000Z",
-                  "delete_at": "2031-05-01T00:00:00.000Z"
-                },
-                {
-                  "memory": "M_CONTINUE",
-                  "status": "review_pending",
-                  "review_at": "2031-04-01T00:00:00.000Z",
-                  "delete_at": "2031-05-01T00:00:00.000Z"
-                }
-              ],
-              "ciphertext_in_db_files": ["M_CONTINUE", "M_REVIEW"]
-            },
-            {
-              "step": "delete_one_ms_before",
-              "memories": [
-                {
-                  "memory": "M_REVIEW",
-                  "status": "review_pending",
-                  "review_at": "2031-04-01T00:00:00.000Z",
-                  "delete_at": "2031-05-01T00:00:00.000Z"
-                },
-                {
-                  "memory": "M_CONTINUE",
-                  "status": "active",
-                  "review_at": "2031-07-10T00:00:00.000Z",
-                  "delete_at": null
-                }
-              ],
-              "ciphertext_in_db_files": ["M_CONTINUE", "M_REVIEW"]
-            },
-            {
-              "step": "delete_at",
-              "memories": [
-                {
-                  "memory": "M_CONTINUE",
-                  "status": "active",
-                  "review_at": "2031-07-10T00:00:00.000Z",
-                  "delete_at": null
-                }
-              ],
-              "ciphertext_in_db_files": ["M_CONTINUE"]
-            }
-          ],
-          "memory_notices": [
-            {
-              "reason": "review_unanswered",
-              "items": ["memory:M_REVIEW"]
-            }
-          ],
-          "plaintext_found": []
-        },
-        "variant": null,
-        "event_order": null,
-        "db_version": "23",
-        "provider_requests": 0,
-        "provider_state_changes": 0,
-        "approvals": 0,
-        "final_state": "memories=M_CONTINUE:active"
-      }
-    },
-    {
-      "case_id": "X16-old-backup-restore-applies-ledger",
-      "seed": "1006",
-      "order": [
-        "X44-memory-review-deadline",
-        "X16-old-backup-restore-applies-ledger",
-        "X16-retention-deadline-and-resummary",
-        "X17-private-conversation-not-saved",
-        "X16-clock-rollback-no-extension",
-        "X15-forget-and-late-result-order"
-      ],
-      "faults": ["restore_backup_older_than_ledger"],
-      "observed": {
-        "checked": {
-          "first_backup_generation": "0",
-          "old_backup_ciphertext": ["M", "M_OTHER", "T_OTHER", "T_SRC"],
-          "forget": {
-            "plan": ["M"],
-            "generation": "1"
-          },
-          "sweep_before_new_backup": {
-            "deleted": 0,
-            "needs_new_backup": true
-          },
-          "second_backup": {
-            "generation": "1",
-            "deleted_first": true,
-            "files_in_backup_dir": ["second"],
-            "ciphertext": ["M_OTHER", "T_OTHER", "T_SRC"]
-          },
-          "restore": {
-            "outcome": "restored",
-            "forgotten_applied_count": 1,
-            "approvals_revoked_count": 0,
-            "ciphertext_in_db_files": ["M_OTHER", "T_OTHER", "T_SRC"]
-          },
-          "after_restart": {
-            "visible_memory_markers": ["M_OTHER"],
-            "ledger_generation": "1",
-            "late_from_forgotten_source": {
-              "saved": false,
-              "reasons": ["source_forgotten"]
-            },
-            "late_from_unrelated_source": {
-              "saved": true,
-              "status": "active"
-            }
-          },
-          "plaintext_found": []
-        },
-        "variant": null,
-        "event_order": null,
-        "db_version": "23",
-        "provider_requests": 0,
-        "provider_state_changes": 0,
-        "approvals": 0,
-        "final_state": "restored;memories=M_OTHER;generation=1"
-      }
-    },
-    {
-      "case_id": "X16-retention-deadline-and-resummary",
-      "seed": "1006",
-      "order": [
-        "X44-memory-review-deadline",
-        "X16-old-backup-restore-applies-ledger",
-        "X16-retention-deadline-and-resummary",
-        "X17-private-conversation-not-saved",
-        "X16-clock-rollback-no-extension",
-        "X15-forget-and-late-result-order"
-      ],
-      "faults": ["deadline_boundary", "resummary"],
-      "observed": {
-        "checked": {
-          "steps": [
-            {
-              "step": "one_ms_before_deadline",
-              "status": "completed",
-              "turns": ["T_DUE", "T_LIVE", "T_S2"],
-              "summaries": ["S", "S2"],
-              "live_turn_expires_at": ["2031-01-08T00:00:00.001Z"],
-              "ciphertext_in_db_files": [
-                "SUM_S",
-                "SUM_S2",
-                "T_DUE",
-                "T_LIVE",
-                "T_S2"
-              ]
-            },
-            {
-              "step": "at_deadline",
-              "status": "completed",
-              "turns": ["T_LIVE", "T_S2"],
-              "summaries": [],
-              "live_turn_expires_at": ["2031-01-08T00:00:00.001Z"],
-              "ciphertext_in_db_files": ["T_LIVE", "T_S2"]
-            },
-            {
-              "step": "one_ms_after_deadline",
-              "status": "completed",
-              "turns": ["T_S2"],
-              "summaries": [],
-              "live_turn_expires_at": [],
-              "ciphertext_in_db_files": ["T_S2"]
-            }
-          ],
-          "turn_notices": [
-            {
-              "reason": "retention_due",
-              "items": ["turn:T_DUE"]
-            },
-            {
-              "reason": "retention_due",
-              "items": ["turn:T_LIVE"]
-            }
-          ],
-          "plaintext_found": []
-        },
-        "variant": null,
-        "event_order": null,
-        "db_version": "23",
-        "provider_requests": 0,
-        "provider_state_changes": 0,
-        "approvals": 0,
-        "final_state": "turns=T_S2;summaries="
-      }
-    },
-    {
-      "case_id": "X17-private-conversation-not-saved",
-      "seed": "1006",
-      "order": [
-        "X44-memory-review-deadline",
-        "X16-old-backup-restore-applies-ledger",
-        "X16-retention-deadline-and-resummary",
-        "X17-private-conversation-not-saved",
-        "X16-clock-rollback-no-extension",
-        "X15-forget-and-late-result-order"
-      ],
-      "faults": [
-        "private_turn",
-        "live_while_private",
-        "private_resend_after_exit"
-      ],
-      "observed": {
-        "checked": {
-          "steps": [
-            {
-              "step": "normal_turn",
-              "status": 200,
-              "turns": 1
-            },
-            {
-              "step": "enter_private",
-              "status": 200,
-              "boundary": {
-                "segment_generation": "2",
-                "private_open": true
-              },
-              "private_conversation": true
-            },
-            {
-              "step": "private_turn",
-              "status": 200,
-              "storage_mode": "private",
-              "turn_status": "clarification",
-              "turns": 1
-            },
-            {
-              "step": "private_turn_replay",
-              "status": 200,
-              "same_turn": true,
-              "turns": 1
-            },
-            {
-              "step": "private_ram_while_private",
-              "ram": {
-                "replays": 1,
-                "recent_turns": 2,
-                "last_discard": null,
-                "canvas_private": true
-              }
-            },
-            {
-              "step": "live_while_private",
-              "status": 409,
-              "code": "private_conversation",
-              "provider_created": 0,
-              "budget_calls": 0
-            },
-            {
-              "step": "exit_private",
-              "status": 200,
-              "boundary": {
-                "segment_generation": "3",
-                "private_open": false
-              },
-              "private_conversation": false,
-              "ram": {
-                "replays": 0,
-                "recent_turns": 0,
-                "last_discard": "private_ended",
-                "canvas_private": false
-              }
-            },
-            {
-              "step": "private_turn_resent_after_exit",
-              "status": 409,
-              "turns": 1
-            },
-            {
-              "step": "normal_turn_after",
-              "status": 200,
-              "turns": 2
-            }
-          ],
-          "visible_turn_markers": ["NORMAL_1", "NORMAL_2"],
-          "plaintext_found": []
-        },
-        "variant": null,
-        "event_order": null,
-        "db_version": "23",
-        "provider_requests": 0,
-        "provider_state_changes": 0,
-        "approvals": 0,
-        "final_state": "turns=2;private_turn=200;resent_after_exit=409;live=409"
-      }
-    },
-    {
-      "case_id": "X16-clock-rollback-no-extension",
-      "seed": "1006",
-      "order": [
-        "X44-memory-review-deadline",
-        "X16-old-backup-restore-applies-ledger",
-        "X16-retention-deadline-and-resummary",
-        "X17-private-conversation-not-saved",
-        "X16-clock-rollback-no-extension",
-        "X15-forget-and-late-result-order"
-      ],
-      "faults": ["clock_rolled_back_after_restart"],
-      "observed": {
-        "checked": {
-          "rolled_back": {
-            "gate_reasons": ["clock_regression"],
-            "turns": ["T_LIVE"],
-            "expires_at": ["2031-01-09T00:00:00.000Z"],
-            "last_checked_at": "2031-01-08T12:00:00Z",
-            "ciphertext_in_db_files": ["T_LIVE"]
-          },
-          "reached_deadline": {
-            "turns": [],
-            "expires_at": [],
-            "ciphertext_in_db_files": []
-          },
-          "plaintext_found": []
-        },
-        "variant": null,
-        "event_order": null,
-        "db_version": "23",
-        "provider_requests": 0,
-        "provider_state_changes": 0,
-        "approvals": 0,
-        "final_state": "turns=none"
-      }
-    },
-    {
       "case_id": "X15-forget-and-late-result-order",
       "seed": "1006",
       "order": [
-        "X44-memory-review-deadline",
+        "X15-forget-and-late-result-order",
         "X16-old-backup-restore-applies-ledger",
-        "X16-retention-deadline-and-resummary",
-        "X17-private-conversation-not-saved",
         "X16-clock-rollback-no-extension",
-        "X15-forget-and-late-result-order"
+        "X17-private-conversation-not-saved",
+        "X16-retention-deadline-and-resummary",
+        "X44-memory-review-deadline",
+        "X59-private-conversation-no-memory-save"
       ],
       "faults": [
         "late_result_before_forget",
@@ -2189,7 +1942,7 @@
           "execute",
           "late_from_unrelated_source"
         ],
-        "db_version": "23",
+        "db_version": "24",
         "provider_requests": 0,
         "provider_state_changes": 0,
         "approvals": 0,
@@ -2197,14 +1950,524 @@
       }
     },
     {
+      "case_id": "X16-old-backup-restore-applies-ledger",
+      "seed": "1006",
+      "order": [
+        "X15-forget-and-late-result-order",
+        "X16-old-backup-restore-applies-ledger",
+        "X16-clock-rollback-no-extension",
+        "X17-private-conversation-not-saved",
+        "X16-retention-deadline-and-resummary",
+        "X44-memory-review-deadline",
+        "X59-private-conversation-no-memory-save"
+      ],
+      "faults": ["restore_backup_older_than_ledger"],
+      "observed": {
+        "checked": {
+          "settings_after_restore": {
+            "allowed_kinds": [],
+            "settings_revision": "2"
+          },
+          "first_backup_generation": "0",
+          "old_backup_ciphertext": ["M", "M_OTHER", "T_OTHER", "T_SRC"],
+          "forget": {
+            "plan": ["M"],
+            "generation": "1"
+          },
+          "sweep_before_new_backup": {
+            "deleted": 0,
+            "needs_new_backup": true
+          },
+          "second_backup": {
+            "generation": "1",
+            "deleted_first": true,
+            "files_in_backup_dir": ["second"],
+            "ciphertext": ["M_OTHER", "T_OTHER", "T_SRC"]
+          },
+          "restore": {
+            "outcome": "restored",
+            "forgotten_applied_count": 1,
+            "approvals_revoked_count": 0,
+            "ciphertext_in_db_files": ["M_OTHER", "T_OTHER", "T_SRC"]
+          },
+          "after_restart": {
+            "visible_memory_markers": ["M_OTHER"],
+            "ledger_generation": "1",
+            "late_from_forgotten_source": {
+              "saved": false,
+              "reasons": ["source_forgotten"]
+            },
+            "late_from_unrelated_source": {
+              "saved": true,
+              "status": "active"
+            }
+          },
+          "plaintext_found": []
+        },
+        "variant": null,
+        "event_order": null,
+        "db_version": "24",
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approvals": 0,
+        "final_state": "restored;memories=M_OTHER;generation=1"
+      }
+    },
+    {
+      "case_id": "X16-clock-rollback-no-extension",
+      "seed": "1006",
+      "order": [
+        "X15-forget-and-late-result-order",
+        "X16-old-backup-restore-applies-ledger",
+        "X16-clock-rollback-no-extension",
+        "X17-private-conversation-not-saved",
+        "X16-retention-deadline-and-resummary",
+        "X44-memory-review-deadline",
+        "X59-private-conversation-no-memory-save"
+      ],
+      "faults": ["clock_rolled_back_after_restart"],
+      "observed": {
+        "checked": {
+          "rolled_back": {
+            "gate_reasons": ["clock_regression"],
+            "turns": ["T_LIVE"],
+            "expires_at": ["2031-01-09T00:00:00.000Z"],
+            "last_checked_at": "2031-01-08T12:00:00Z",
+            "ciphertext_in_db_files": ["T_LIVE"]
+          },
+          "reached_deadline": {
+            "turns": [],
+            "expires_at": [],
+            "ciphertext_in_db_files": []
+          },
+          "plaintext_found": []
+        },
+        "variant": null,
+        "event_order": null,
+        "db_version": "24",
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approvals": 0,
+        "final_state": "turns=none"
+      }
+    },
+    {
+      "case_id": "X17-private-conversation-not-saved",
+      "seed": "1006",
+      "order": [
+        "X15-forget-and-late-result-order",
+        "X16-old-backup-restore-applies-ledger",
+        "X16-clock-rollback-no-extension",
+        "X17-private-conversation-not-saved",
+        "X16-retention-deadline-and-resummary",
+        "X44-memory-review-deadline",
+        "X59-private-conversation-no-memory-save"
+      ],
+      "faults": [
+        "private_turn",
+        "live_while_private",
+        "private_resend_after_exit"
+      ],
+      "observed": {
+        "checked": {
+          "steps": [
+            {
+              "step": "normal_turn",
+              "status": 200,
+              "turns": 1
+            },
+            {
+              "step": "enter_private",
+              "status": 200,
+              "boundary": {
+                "segment_generation": "2",
+                "private_open": true
+              },
+              "private_conversation": true
+            },
+            {
+              "step": "private_turn",
+              "status": 200,
+              "storage_mode": "private",
+              "turn_status": "clarification",
+              "turns": 1
+            },
+            {
+              "step": "private_turn_replay",
+              "status": 200,
+              "same_turn": true,
+              "turns": 1
+            },
+            {
+              "step": "private_ram_while_private",
+              "ram": {
+                "replays": 1,
+                "recent_turns": 2,
+                "last_discard": null,
+                "canvas_private": true
+              }
+            },
+            {
+              "step": "live_while_private",
+              "status": 409,
+              "code": "private_conversation",
+              "provider_created": 0,
+              "budget_calls": 0
+            },
+            {
+              "step": "exit_private",
+              "status": 200,
+              "boundary": {
+                "segment_generation": "3",
+                "private_open": false
+              },
+              "private_conversation": false,
+              "ram": {
+                "replays": 0,
+                "recent_turns": 0,
+                "last_discard": "private_ended",
+                "canvas_private": false
+              }
+            },
+            {
+              "step": "private_turn_resent_after_exit",
+              "status": 409,
+              "turns": 1
+            },
+            {
+              "step": "normal_turn_after",
+              "status": 200,
+              "turns": 2
+            }
+          ],
+          "visible_turn_markers": ["NORMAL_1", "NORMAL_2"],
+          "plaintext_found": []
+        },
+        "variant": null,
+        "event_order": null,
+        "db_version": "24",
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approvals": 0,
+        "final_state": "turns=2;private_turn=200;resent_after_exit=409;live=409"
+      }
+    },
+    {
+      "case_id": "X16-retention-deadline-and-resummary",
+      "seed": "1006",
+      "order": [
+        "X15-forget-and-late-result-order",
+        "X16-old-backup-restore-applies-ledger",
+        "X16-clock-rollback-no-extension",
+        "X17-private-conversation-not-saved",
+        "X16-retention-deadline-and-resummary",
+        "X44-memory-review-deadline",
+        "X59-private-conversation-no-memory-save"
+      ],
+      "faults": ["deadline_boundary", "resummary"],
+      "observed": {
+        "checked": {
+          "steps": [
+            {
+              "step": "one_ms_before_deadline",
+              "status": "completed",
+              "turns": ["T_DUE", "T_LIVE", "T_S2"],
+              "summaries": ["S", "S2"],
+              "live_turn_expires_at": ["2031-01-08T00:00:00.001Z"],
+              "ciphertext_in_db_files": [
+                "SUM_S",
+                "SUM_S2",
+                "T_DUE",
+                "T_LIVE",
+                "T_S2"
+              ]
+            },
+            {
+              "step": "at_deadline",
+              "status": "completed",
+              "turns": ["T_LIVE", "T_S2"],
+              "summaries": [],
+              "live_turn_expires_at": ["2031-01-08T00:00:00.001Z"],
+              "ciphertext_in_db_files": ["T_LIVE", "T_S2"]
+            },
+            {
+              "step": "one_ms_after_deadline",
+              "status": "completed",
+              "turns": ["T_S2"],
+              "summaries": [],
+              "live_turn_expires_at": [],
+              "ciphertext_in_db_files": ["T_S2"]
+            }
+          ],
+          "turn_notices": [
+            {
+              "reason": "retention_due",
+              "items": ["turn:T_DUE"]
+            },
+            {
+              "reason": "retention_due",
+              "items": ["turn:T_LIVE"]
+            }
+          ],
+          "plaintext_found": []
+        },
+        "variant": null,
+        "event_order": null,
+        "db_version": "24",
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approvals": 0,
+        "final_state": "turns=T_S2;summaries="
+      }
+    },
+    {
+      "case_id": "X44-memory-review-deadline",
+      "seed": "1006",
+      "order": [
+        "X15-forget-and-late-result-order",
+        "X16-old-backup-restore-applies-ledger",
+        "X16-clock-rollback-no-extension",
+        "X17-private-conversation-not-saved",
+        "X16-retention-deadline-and-resummary",
+        "X44-memory-review-deadline",
+        "X59-private-conversation-no-memory-save"
+      ],
+      "faults": ["review_boundary", "explicit_continue"],
+      "observed": {
+        "checked": {
+          "steps": [
+            {
+              "step": "review_one_ms_before",
+              "memories": [
+                {
+                  "memory": "M_REVIEW",
+                  "status": "active",
+                  "review_at": "2031-04-01T00:00:00.000Z",
+                  "delete_at": null
+                },
+                {
+                  "memory": "M_CONTINUE",
+                  "status": "active",
+                  "review_at": "2031-04-01T00:00:00.000Z",
+                  "delete_at": null
+                }
+              ],
+              "ciphertext_in_db_files": ["M_CONTINUE", "M_REVIEW"]
+            },
+            {
+              "step": "review_at",
+              "memories": [
+                {
+                  "memory": "M_REVIEW",
+                  "status": "review_pending",
+                  "review_at": "2031-04-01T00:00:00.000Z",
+                  "delete_at": "2031-05-01T00:00:00.000Z"
+                },
+                {
+                  "memory": "M_CONTINUE",
+                  "status": "review_pending",
+                  "review_at": "2031-04-01T00:00:00.000Z",
+                  "delete_at": "2031-05-01T00:00:00.000Z"
+                }
+              ],
+              "ciphertext_in_db_files": ["M_CONTINUE", "M_REVIEW"]
+            },
+            {
+              "step": "delete_one_ms_before",
+              "memories": [
+                {
+                  "memory": "M_REVIEW",
+                  "status": "review_pending",
+                  "review_at": "2031-04-01T00:00:00.000Z",
+                  "delete_at": "2031-05-01T00:00:00.000Z"
+                },
+                {
+                  "memory": "M_CONTINUE",
+                  "status": "active",
+                  "review_at": "2031-07-10T00:00:00.000Z",
+                  "delete_at": null
+                }
+              ],
+              "ciphertext_in_db_files": ["M_CONTINUE", "M_REVIEW"]
+            },
+            {
+              "step": "delete_at",
+              "memories": [
+                {
+                  "memory": "M_CONTINUE",
+                  "status": "active",
+                  "review_at": "2031-07-10T00:00:00.000Z",
+                  "delete_at": null
+                }
+              ],
+              "ciphertext_in_db_files": ["M_CONTINUE"]
+            }
+          ],
+          "memory_notices": [
+            {
+              "reason": "review_unanswered",
+              "items": ["memory:M_REVIEW"]
+            }
+          ],
+          "plaintext_found": []
+        },
+        "variant": null,
+        "event_order": null,
+        "db_version": "24",
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approvals": 0,
+        "final_state": "memories=M_CONTINUE:active"
+      }
+    },
+    {
+      "case_id": "X59-private-conversation-no-memory-save",
+      "seed": "1006",
+      "order": [
+        "X15-forget-and-late-result-order",
+        "X16-old-backup-restore-applies-ledger",
+        "X16-clock-rollback-no-extension",
+        "X17-private-conversation-not-saved",
+        "X16-retention-deadline-and-resummary",
+        "X44-memory-review-deadline",
+        "X59-private-conversation-no-memory-save"
+      ],
+      "faults": ["private_memory_save", "private_resend_after_exit"],
+      "observed": {
+        "checked": {
+          "steps": [
+            {
+              "step": "allow_preference",
+              "status": 200,
+              "allowed_kinds": ["preference"]
+            },
+            {
+              "step": "enter_private",
+              "status": 200
+            },
+            {
+              "step": "private_memory_save",
+              "status": 200,
+              "storage_mode": "private",
+              "turn_status": "clarification",
+              "reply_text": "記録しない会話では、この依頼はまだ受け付けられません。記録しない会話を終えてから、もう一度お願いします。",
+              "turns": 0,
+              "memories": 0
+            },
+            {
+              "step": "exit_private",
+              "status": 200
+            },
+            {
+              "step": "private_memory_save_resent_after_exit",
+              "status": 409,
+              "turns": 0,
+              "memories": 0
+            },
+            {
+              "step": "normal_memory_save",
+              "status": 200,
+              "storage_mode": "normal",
+              "turn_status": "answered",
+              "reply_text": "「好み」の記憶として覚えました。「記憶と忘却」の欄で確かめられます。",
+              "turns": 1,
+              "memories": 1
+            },
+            {
+              "step": "normal_memory_save_replay",
+              "status": 200,
+              "same_turn": true,
+              "turns": 1,
+              "memories": 1
+            }
+          ],
+          "visible_memory_markers": ["NORMAL"],
+          "memory_sources": ["turn:explicit_request"],
+          "plaintext_found": []
+        },
+        "variant": null,
+        "event_order": null,
+        "db_version": "24",
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approvals": 0,
+        "final_state": "memories=1;private_save=200/0;resent_after_exit=409"
+      }
+    },
+    {
+      "case_id": "X16-old-backup-restore-applies-ledger",
+      "seed": "2026",
+      "order": [
+        "X16-old-backup-restore-applies-ledger",
+        "X16-retention-deadline-and-resummary",
+        "X15-forget-and-late-result-order",
+        "X59-private-conversation-no-memory-save",
+        "X16-clock-rollback-no-extension",
+        "X44-memory-review-deadline",
+        "X17-private-conversation-not-saved"
+      ],
+      "faults": ["restore_backup_older_than_ledger"],
+      "observed": {
+        "checked": {
+          "settings_after_restore": {
+            "allowed_kinds": [],
+            "settings_revision": "2"
+          },
+          "first_backup_generation": "0",
+          "old_backup_ciphertext": ["M", "M_OTHER", "T_OTHER", "T_SRC"],
+          "forget": {
+            "plan": ["M"],
+            "generation": "1"
+          },
+          "sweep_before_new_backup": {
+            "deleted": 0,
+            "needs_new_backup": true
+          },
+          "second_backup": {
+            "generation": "1",
+            "deleted_first": true,
+            "files_in_backup_dir": ["second"],
+            "ciphertext": ["M_OTHER", "T_OTHER", "T_SRC"]
+          },
+          "restore": {
+            "outcome": "restored",
+            "forgotten_applied_count": 1,
+            "approvals_revoked_count": 0,
+            "ciphertext_in_db_files": ["M_OTHER", "T_OTHER", "T_SRC"]
+          },
+          "after_restart": {
+            "visible_memory_markers": ["M_OTHER"],
+            "ledger_generation": "1",
+            "late_from_forgotten_source": {
+              "saved": false,
+              "reasons": ["source_forgotten"]
+            },
+            "late_from_unrelated_source": {
+              "saved": true,
+              "status": "active"
+            }
+          },
+          "plaintext_found": []
+        },
+        "variant": null,
+        "event_order": null,
+        "db_version": "24",
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approvals": 0,
+        "final_state": "restored;memories=M_OTHER;generation=1"
+      }
+    },
+    {
       "case_id": "X16-retention-deadline-and-resummary",
       "seed": "2026",
       "order": [
-        "X16-retention-deadline-and-resummary",
-        "X44-memory-review-deadline",
-        "X16-clock-rollback-no-extension",
         "X16-old-backup-restore-applies-ledger",
+        "X16-retention-deadline-and-resummary",
         "X15-forget-and-late-result-order",
+        "X59-private-conversation-no-memory-save",
+        "X16-clock-rollback-no-extension",
+        "X44-memory-review-deadline",
         "X17-private-conversation-not-saved"
       ],
       "faults": ["deadline_boundary", "resummary"],
@@ -2256,7 +2519,7 @@
         },
         "variant": null,
         "event_order": null,
-        "db_version": "23",
+        "db_version": "24",
         "provider_requests": 0,
         "provider_state_changes": 0,
         "approvals": 0,
@@ -2264,14 +2527,206 @@
       }
     },
     {
+      "case_id": "X15-forget-and-late-result-order",
+      "seed": "2026",
+      "order": [
+        "X16-old-backup-restore-applies-ledger",
+        "X16-retention-deadline-and-resummary",
+        "X15-forget-and-late-result-order",
+        "X59-private-conversation-no-memory-save",
+        "X16-clock-rollback-no-extension",
+        "X44-memory-review-deadline",
+        "X17-private-conversation-not-saved"
+      ],
+      "faults": [
+        "late_result_before_forget",
+        "late_result_after_forget",
+        "unrelated_late_result"
+      ],
+      "observed": {
+        "checked": {
+          "variant": "late_source_after_execute",
+          "events": {
+            "execute": {
+              "attempts": [
+                {
+                  "ok": true,
+                  "generation": "1"
+                }
+              ],
+              "plans": [["M"]]
+            },
+            "late_from_forgotten_source": {
+              "saved": false,
+              "reasons": ["source_forgotten"]
+            },
+            "late_from_unrelated_source": {
+              "saved": true,
+              "status": "active"
+            }
+          },
+          "final": {
+            "memories": ["L2", "M_OTHER"],
+            "turns": ["T_OTHER", "T_SRC"],
+            "ledger_generation": "1",
+            "ledger_file_generation": "1",
+            "visible_memory_markers": ["L2", "M_OTHER"],
+            "notices": [
+              {
+                "reason": "forgotten",
+                "items": ["memory:M"]
+              }
+            ],
+            "ledger_notices": 1
+          },
+          "late_after_restart": {
+            "forgotten_source": {
+              "saved": false,
+              "reasons": ["source_forgotten"]
+            }
+          },
+          "ciphertext_in_db_files": {
+            "before_forget": ["M", "M_OTHER", "T_OTHER", "T_SRC"],
+            "after_forget": ["L2", "M_OTHER", "T_OTHER", "T_SRC"],
+            "after_restart": ["L2", "M_OTHER", "T_OTHER", "T_SRC"]
+          },
+          "plaintext_found": []
+        },
+        "variant": "late_source_after_execute",
+        "event_order": [
+          "execute",
+          "late_from_forgotten_source",
+          "late_from_unrelated_source"
+        ],
+        "db_version": "24",
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approvals": 0,
+        "final_state": "memories=L2,M_OTHER;generation=1"
+      }
+    },
+    {
+      "case_id": "X59-private-conversation-no-memory-save",
+      "seed": "2026",
+      "order": [
+        "X16-old-backup-restore-applies-ledger",
+        "X16-retention-deadline-and-resummary",
+        "X15-forget-and-late-result-order",
+        "X59-private-conversation-no-memory-save",
+        "X16-clock-rollback-no-extension",
+        "X44-memory-review-deadline",
+        "X17-private-conversation-not-saved"
+      ],
+      "faults": ["private_memory_save", "private_resend_after_exit"],
+      "observed": {
+        "checked": {
+          "steps": [
+            {
+              "step": "allow_preference",
+              "status": 200,
+              "allowed_kinds": ["preference"]
+            },
+            {
+              "step": "enter_private",
+              "status": 200
+            },
+            {
+              "step": "private_memory_save",
+              "status": 200,
+              "storage_mode": "private",
+              "turn_status": "clarification",
+              "reply_text": "記録しない会話では、この依頼はまだ受け付けられません。記録しない会話を終えてから、もう一度お願いします。",
+              "turns": 0,
+              "memories": 0
+            },
+            {
+              "step": "exit_private",
+              "status": 200
+            },
+            {
+              "step": "private_memory_save_resent_after_exit",
+              "status": 409,
+              "turns": 0,
+              "memories": 0
+            },
+            {
+              "step": "normal_memory_save",
+              "status": 200,
+              "storage_mode": "normal",
+              "turn_status": "answered",
+              "reply_text": "「好み」の記憶として覚えました。「記憶と忘却」の欄で確かめられます。",
+              "turns": 1,
+              "memories": 1
+            },
+            {
+              "step": "normal_memory_save_replay",
+              "status": 200,
+              "same_turn": true,
+              "turns": 1,
+              "memories": 1
+            }
+          ],
+          "visible_memory_markers": ["NORMAL"],
+          "memory_sources": ["turn:explicit_request"],
+          "plaintext_found": []
+        },
+        "variant": null,
+        "event_order": null,
+        "db_version": "24",
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approvals": 0,
+        "final_state": "memories=1;private_save=200/0;resent_after_exit=409"
+      }
+    },
+    {
+      "case_id": "X16-clock-rollback-no-extension",
+      "seed": "2026",
+      "order": [
+        "X16-old-backup-restore-applies-ledger",
+        "X16-retention-deadline-and-resummary",
+        "X15-forget-and-late-result-order",
+        "X59-private-conversation-no-memory-save",
+        "X16-clock-rollback-no-extension",
+        "X44-memory-review-deadline",
+        "X17-private-conversation-not-saved"
+      ],
+      "faults": ["clock_rolled_back_after_restart"],
+      "observed": {
+        "checked": {
+          "rolled_back": {
+            "gate_reasons": ["clock_regression"],
+            "turns": ["T_LIVE"],
+            "expires_at": ["2031-01-09T00:00:00.000Z"],
+            "last_checked_at": "2031-01-08T12:00:00Z",
+            "ciphertext_in_db_files": ["T_LIVE"]
+          },
+          "reached_deadline": {
+            "turns": [],
+            "expires_at": [],
+            "ciphertext_in_db_files": []
+          },
+          "plaintext_found": []
+        },
+        "variant": null,
+        "event_order": null,
+        "db_version": "24",
+        "provider_requests": 0,
+        "provider_state_changes": 0,
+        "approvals": 0,
+        "final_state": "turns=none"
+      }
+    },
+    {
       "case_id": "X44-memory-review-deadline",
       "seed": "2026",
       "order": [
-        "X16-retention-deadline-and-resummary",
-        "X44-memory-review-deadline",
-        "X16-clock-rollback-no-extension",
         "X16-old-backup-restore-applies-ledger",
+        "X16-retention-deadline-and-resummary",
         "X15-forget-and-late-result-order",
+        "X59-private-conversation-no-memory-save",
+        "X16-clock-rollback-no-extension",
+        "X44-memory-review-deadline",
         "X17-private-conversation-not-saved"
       ],
       "faults": ["review_boundary", "explicit_continue"],
@@ -2355,7 +2810,7 @@
         },
         "variant": null,
         "event_order": null,
-        "db_version": "23",
+        "db_version": "24",
         "provider_requests": 0,
         "provider_state_changes": 0,
         "approvals": 0,
@@ -2363,188 +2818,15 @@
       }
     },
     {
-      "case_id": "X16-clock-rollback-no-extension",
-      "seed": "2026",
-      "order": [
-        "X16-retention-deadline-and-resummary",
-        "X44-memory-review-deadline",
-        "X16-clock-rollback-no-extension",
-        "X16-old-backup-restore-applies-ledger",
-        "X15-forget-and-late-result-order",
-        "X17-private-conversation-not-saved"
-      ],
-      "faults": ["clock_rolled_back_after_restart"],
-      "observed": {
-        "checked": {
-          "rolled_back": {
-            "gate_reasons": ["clock_regression"],
-            "turns": ["T_LIVE"],
-            "expires_at": ["2031-01-09T00:00:00.000Z"],
-            "last_checked_at": "2031-01-08T12:00:00Z",
-            "ciphertext_in_db_files": ["T_LIVE"]
-          },
-          "reached_deadline": {
-            "turns": [],
-            "expires_at": [],
-            "ciphertext_in_db_files": []
-          },
-          "plaintext_found": []
-        },
-        "variant": null,
-        "event_order": null,
-        "db_version": "23",
-        "provider_requests": 0,
-        "provider_state_changes": 0,
-        "approvals": 0,
-        "final_state": "turns=none"
-      }
-    },
-    {
-      "case_id": "X16-old-backup-restore-applies-ledger",
-      "seed": "2026",
-      "order": [
-        "X16-retention-deadline-and-resummary",
-        "X44-memory-review-deadline",
-        "X16-clock-rollback-no-extension",
-        "X16-old-backup-restore-applies-ledger",
-        "X15-forget-and-late-result-order",
-        "X17-private-conversation-not-saved"
-      ],
-      "faults": ["restore_backup_older_than_ledger"],
-      "observed": {
-        "checked": {
-          "first_backup_generation": "0",
-          "old_backup_ciphertext": ["M", "M_OTHER", "T_OTHER", "T_SRC"],
-          "forget": {
-            "plan": ["M"],
-            "generation": "1"
-          },
-          "sweep_before_new_backup": {
-            "deleted": 0,
-            "needs_new_backup": true
-          },
-          "second_backup": {
-            "generation": "1",
-            "deleted_first": true,
-            "files_in_backup_dir": ["second"],
-            "ciphertext": ["M_OTHER", "T_OTHER", "T_SRC"]
-          },
-          "restore": {
-            "outcome": "restored",
-            "forgotten_applied_count": 1,
-            "approvals_revoked_count": 0,
-            "ciphertext_in_db_files": ["M_OTHER", "T_OTHER", "T_SRC"]
-          },
-          "after_restart": {
-            "visible_memory_markers": ["M_OTHER"],
-            "ledger_generation": "1",
-            "late_from_forgotten_source": {
-              "saved": false,
-              "reasons": ["source_forgotten"]
-            },
-            "late_from_unrelated_source": {
-              "saved": true,
-              "status": "active"
-            }
-          },
-          "plaintext_found": []
-        },
-        "variant": null,
-        "event_order": null,
-        "db_version": "23",
-        "provider_requests": 0,
-        "provider_state_changes": 0,
-        "approvals": 0,
-        "final_state": "restored;memories=M_OTHER;generation=1"
-      }
-    },
-    {
-      "case_id": "X15-forget-and-late-result-order",
-      "seed": "2026",
-      "order": [
-        "X16-retention-deadline-and-resummary",
-        "X44-memory-review-deadline",
-        "X16-clock-rollback-no-extension",
-        "X16-old-backup-restore-applies-ledger",
-        "X15-forget-and-late-result-order",
-        "X17-private-conversation-not-saved"
-      ],
-      "faults": [
-        "late_result_before_forget",
-        "late_result_after_forget",
-        "unrelated_late_result"
-      ],
-      "observed": {
-        "checked": {
-          "variant": "late_source_after_execute",
-          "events": {
-            "execute": {
-              "attempts": [
-                {
-                  "ok": true,
-                  "generation": "1"
-                }
-              ],
-              "plans": [["M"]]
-            },
-            "late_from_forgotten_source": {
-              "saved": false,
-              "reasons": ["source_forgotten"]
-            },
-            "late_from_unrelated_source": {
-              "saved": true,
-              "status": "active"
-            }
-          },
-          "final": {
-            "memories": ["L2", "M_OTHER"],
-            "turns": ["T_OTHER", "T_SRC"],
-            "ledger_generation": "1",
-            "ledger_file_generation": "1",
-            "visible_memory_markers": ["L2", "M_OTHER"],
-            "notices": [
-              {
-                "reason": "forgotten",
-                "items": ["memory:M"]
-              }
-            ],
-            "ledger_notices": 1
-          },
-          "late_after_restart": {
-            "forgotten_source": {
-              "saved": false,
-              "reasons": ["source_forgotten"]
-            }
-          },
-          "ciphertext_in_db_files": {
-            "before_forget": ["M", "M_OTHER", "T_OTHER", "T_SRC"],
-            "after_forget": ["L2", "M_OTHER", "T_OTHER", "T_SRC"],
-            "after_restart": ["L2", "M_OTHER", "T_OTHER", "T_SRC"]
-          },
-          "plaintext_found": []
-        },
-        "variant": "late_source_after_execute",
-        "event_order": [
-          "execute",
-          "late_from_forgotten_source",
-          "late_from_unrelated_source"
-        ],
-        "db_version": "23",
-        "provider_requests": 0,
-        "provider_state_changes": 0,
-        "approvals": 0,
-        "final_state": "memories=L2,M_OTHER;generation=1"
-      }
-    },
-    {
       "case_id": "X17-private-conversation-not-saved",
       "seed": "2026",
       "order": [
-        "X16-retention-deadline-and-resummary",
-        "X44-memory-review-deadline",
-        "X16-clock-rollback-no-extension",
         "X16-old-backup-restore-applies-ledger",
+        "X16-retention-deadline-and-resummary",
         "X15-forget-and-late-result-order",
+        "X59-private-conversation-no-memory-save",
+        "X16-clock-rollback-no-extension",
+        "X44-memory-review-deadline",
         "X17-private-conversation-not-saved"
       ],
       "faults": [
@@ -2629,7 +2911,7 @@
         },
         "variant": null,
         "event_order": null,
-        "db_version": "23",
+        "db_version": "24",
         "provider_requests": 0,
         "provider_state_changes": 0,
         "approvals": 0,

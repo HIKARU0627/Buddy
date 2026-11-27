@@ -89,9 +89,9 @@ test(
     // レシートの写真の読み取りの入・切と読み取り（ADR 0177）で 2 つ、請求予定を消す操作（ADR 0179）で 1 つ増えた。
     // 忘却の計画・実行と忘却台帳の配信（B06-07b-2、ADR 0180）で 3 つ増えた。
     // 記憶の一覧（UI-10、ADR 0183）で 1 つ増えた。流れの今の保存モード（getStreamStorageMode、UI-05 の段階 6・
-    // ADR 0189）で 1 つ増えた。
-    assert.equal(operations.length, 68);
-    assert.equal(API_ROUTES.length, 68);
+    // ADR 0189）で 1 つ増えた。保存してよい記憶の種類の設定の読み取りと変更（ADR 0191）で 2 つ増えた。
+    assert.equal(operations.length, 70);
+    assert.equal(API_ROUTES.length, 70);
     for (const { path, method, operation } of operations) {
       const route = API_ROUTES.find(
         (candidate) => candidate.operationId === operation.operationId,
@@ -185,8 +185,8 @@ test(
     // レシートの写真の読み取りの入・切と読み取り（ADR 0177）で 2 つ、請求予定を消す操作（ADR 0179）で 1 つ増えた。
     // 忘却の計画と実行（B06-07b-2、ADR 0180）で 2 つ増えた（台帳の配信はロック中も返すので宣言しない）。
     // 記憶の一覧（UI-10、ADR 0183）で 1 つ増えた。流れの今の保存モードの読み取り（getStreamStorageMode、UI-05 の
-    // 段階 6・ADR 0189）で 1 つ増えた。
-    assert.equal(declared.length, 56);
+    // 段階 6・ADR 0189）で 1 つ増えた。保存してよい記憶の種類の設定の読み取りと変更（ADR 0191）で 2 つ増えた。
+    assert.equal(declared.length, 58);
   },
 );
 

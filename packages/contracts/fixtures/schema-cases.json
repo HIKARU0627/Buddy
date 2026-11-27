@@ -30152,7 +30152,11 @@
           "blocked_source_count": 1
         },
         "result": null,
-        "list_seq": 2
+        "list_seq": 2,
+        "settings": {
+          "ref": "00000000-0000-4000-8000-000000000e90",
+          "allowed_kinds": ["preference"]
+        }
       }
     }
   },
@@ -30211,7 +30215,11 @@
           "blocked_source_count": 1
         },
         "result": null,
-        "list_seq": 2
+        "list_seq": 2,
+        "settings": {
+          "ref": "00000000-0000-4000-8000-000000000e90",
+          "allowed_kinds": ["preference"]
+        }
       }
     }
   },
@@ -30266,7 +30274,11 @@
           "blocked_source_count": 1
         },
         "result": null,
-        "list_seq": 2
+        "list_seq": 2,
+        "settings": {
+          "ref": "00000000-0000-4000-8000-000000000e90",
+          "allowed_kinds": ["preference"]
+        }
       }
     }
   },
@@ -30299,8 +30311,246 @@
         ],
         "plan": null,
         "result": null,
-        "list_seq": 2
+        "list_seq": 2,
+        "settings": {
+          "ref": "00000000-0000-4000-8000-000000000e90",
+          "allowed_kinds": ["preference"]
+        }
       }
+    }
+  },
+  {
+    "id": "desktop-ipc-memories-view-settings-unread",
+    "schema": "DesktopIpcResponse",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000e80",
+      "channel": "desktop.memories_list",
+      "outcome": "ok",
+      "memories": {
+        "fetch": "unavailable",
+        "fetched_at": null,
+        "forget": "unavailable",
+        "truncated": false,
+        "entries": [],
+        "plan": null,
+        "result": null,
+        "list_seq": 1,
+        "settings": null
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-memory-settings-changed",
+    "schema": "DesktopIpcResponse",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000e81",
+      "channel": "desktop.memory_settings_change",
+      "outcome": "ok",
+      "memories": {
+        "fetch": "loaded",
+        "fetched_at": "2030-11-04T08:59:00.000Z",
+        "forget": "closed",
+        "truncated": false,
+        "entries": [],
+        "plan": null,
+        "result": null,
+        "list_seq": 3,
+        "settings": {
+          "ref": "00000000-0000-4000-8000-000000000e90",
+          "allowed_kinds": ["preference", "goal"]
+        }
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-memory-settings-view-with-revision",
+    "schema": "DesktopIpcResponse",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000e81",
+      "channel": "desktop.memory_settings_change",
+      "outcome": "ok",
+      "memories": {
+        "fetch": "loaded",
+        "fetched_at": "2030-11-04T08:59:00.000Z",
+        "forget": "closed",
+        "truncated": false,
+        "entries": [],
+        "plan": null,
+        "result": null,
+        "list_seq": 3,
+        "settings": {
+          "ref": "00000000-0000-4000-8000-000000000e90",
+          "allowed_kinds": ["preference"],
+          "memory_settings_revision": "2"
+        }
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-memory-settings-change-request",
+    "schema": "DesktopIpcRequest",
+    "valid": true,
+    "value": {
+      "channel": "desktop.memory_settings_change",
+      "request_id": "00000000-0000-4000-8000-000000000e82",
+      "payload": {
+        "settings_ref": "00000000-0000-4000-8000-000000000e90",
+        "allowed_kinds": ["goal", "preference"]
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-memory-settings-change-request-empty",
+    "schema": "DesktopIpcRequest",
+    "valid": true,
+    "value": {
+      "channel": "desktop.memory_settings_change",
+      "request_id": "00000000-0000-4000-8000-000000000e82",
+      "payload": {
+        "settings_ref": "00000000-0000-4000-8000-000000000e90",
+        "allowed_kinds": []
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-memory-settings-change-without-ref",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.memory_settings_change",
+      "request_id": "00000000-0000-4000-8000-000000000e82",
+      "payload": { "allowed_kinds": ["goal"] }
+    }
+  },
+  {
+    "id": "desktop-ipc-memory-settings-view-without-ref",
+    "schema": "DesktopIpcResponse",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000e81",
+      "channel": "desktop.memory_settings_change",
+      "outcome": "ok",
+      "memories": {
+        "fetch": "loaded",
+        "fetched_at": "2030-11-04T08:59:00.000Z",
+        "forget": "closed",
+        "truncated": false,
+        "entries": [],
+        "plan": null,
+        "result": null,
+        "list_seq": 3,
+        "settings": { "allowed_kinds": ["goal"] }
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-memory-settings-change-unknown-kind",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.memory_settings_change",
+      "request_id": "00000000-0000-4000-8000-000000000e82",
+      "payload": {
+        "settings_ref": "00000000-0000-4000-8000-000000000e90",
+        "allowed_kinds": ["health"]
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-memory-settings-change-duplicate-kind",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.memory_settings_change",
+      "request_id": "00000000-0000-4000-8000-000000000e82",
+      "payload": {
+        "settings_ref": "00000000-0000-4000-8000-000000000e90",
+        "allowed_kinds": ["goal", "goal"]
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-memory-settings-change-with-revision",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.memory_settings_change",
+      "request_id": "00000000-0000-4000-8000-000000000e82",
+      "payload": {
+        "settings_ref": "00000000-0000-4000-8000-000000000e90",
+        "allowed_kinds": ["goal"],
+        "expected_memory_settings_revision": "3"
+      }
+    }
+  },
+  {
+    "id": "memory-settings-default-empty",
+    "schema": "MemorySettings",
+    "valid": true,
+    "value": {
+      "schema": "buddy.memory-settings.v1",
+      "allowed_kinds": [],
+      "memory_settings_revision": "0"
+    }
+  },
+  {
+    "id": "memory-settings-all-kinds",
+    "schema": "MemorySettings",
+    "valid": true,
+    "value": {
+      "schema": "buddy.memory-settings.v1",
+      "allowed_kinds": [
+        "preference",
+        "goal",
+        "person",
+        "routine",
+        "lexicon",
+        "progress"
+      ],
+      "memory_settings_revision": "12"
+    }
+  },
+  {
+    "id": "memory-settings-revision-leading-zero",
+    "schema": "MemorySettings",
+    "valid": false,
+    "value": {
+      "schema": "buddy.memory-settings.v1",
+      "allowed_kinds": ["goal"],
+      "memory_settings_revision": "01"
+    }
+  },
+  {
+    "id": "memory-settings-change-request",
+    "schema": "MemorySettingsChangeRequest",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-0000000f0201",
+      "command_scope_id": "00000000-0000-4000-8000-000000009002",
+      "expected_memory_settings_revision": "0",
+      "allowed_kinds": ["preference"]
+    }
+  },
+  {
+    "id": "memory-settings-change-request-seven-kinds",
+    "schema": "MemorySettingsChangeRequest",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-0000000f0201",
+      "command_scope_id": "00000000-0000-4000-8000-000000009002",
+      "expected_memory_settings_revision": "0",
+      "allowed_kinds": [
+        "preference",
+        "goal",
+        "person",
+        "routine",
+        "lexicon",
+        "progress",
+        "preference"
+      ]
     }
   },
   {

@@ -895,7 +895,8 @@ test('B06 のケース・seed・観測値・順序の入れ替え・対応表の
     assert.equal(record.seed, spec.seeds.join(','));
     assert.match(record.deviation, /実機の Mac mini.*未実施（B15）/u);
   }
-  // 対応表: 観測した範囲だけを simulated_partial にする（他工程の担当・実機・未実装の経路が残る）。X59・QA38 は not_run。
+  // 対応表: 観測した範囲だけを simulated_partial にする（他工程の担当・実機・未実装の経路が残る）。QA38 は not_run。
+  // X59 は記録しない会話の間の本人の明示の依頼の記憶の保存の拒否（ADR 0191）だけを観測したので simulated_partial。
   const expectedMap = {
     X15: [
       'X15-forget-and-late-result-order',
@@ -908,6 +909,7 @@ test('B06 のケース・seed・観測値・順序の入れ替え・対応表の
     ],
     X17: ['X17-private-conversation-not-saved'],
     X44: ['X44-memory-review-deadline'],
+    X59: ['X59-private-conversation-no-memory-save'],
     QA34: ['X15-forget-and-late-result-order'],
   };
   for (const [id, cases] of Object.entries(expectedMap)) {
@@ -923,7 +925,7 @@ test('B06 のケース・seed・観測値・順序の入れ替え・対応表の
     assert.match(entry.product_scope, /未実施/u, id);
     assert.match(entry.product_scope, /B15/u, id);
   }
-  for (const id of ['X59', 'QA38'])
+  for (const id of ['QA38'])
     assert.equal(map.tests.find((e) => e.id === id).product_test, 'not_run');
   // 目印・期待値は合成の値だけ（実データ・内部の URL を入れない）。
   const text = JSON.stringify(spec);

@@ -34,6 +34,7 @@ import {
   reasons,
   value,
   withWorld,
+  SETTINGS_REVISION,
 } from './forget-test-support.js';
 import { sealedIntent } from './operation-test-support.js';
 
@@ -58,6 +59,7 @@ function save(
     sources: [],
     source_hmacs: HMACS,
     forgetting_generation: '0',
+    settings_revision: SETTINGS_REVISION,
     now: 1_000_000,
     ...overrides,
   });

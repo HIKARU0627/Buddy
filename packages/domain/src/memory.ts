@@ -362,3 +362,53 @@ export function restoreReasons(input: {
   }
   return { restoreMemories: reasons.length === 0, reasons };
 }
+
+// 記憶の本文の上限（契約の MemoryRecord.text・MemoryCandidateWire.text・MemoryListItem.text と同じ 80 コードポイント）。
+export const MEMORY_TEXT_MAX_CODE_POINTS = 80;
+
+// 本人の明示の依頼（memory_save・memory_correct の body）を記憶の本文にする（ADR 0191）。Unicode の NFC にそろえ、改行・
+// タブ・復帰を空白にし、前後の空白を除き、続く空白を 1 つにする。見えない文字（下の一覧）を含む本文は、見かけと中身が
+// 食い違うので記憶にしない（受け付けずに理由を返す）。空・80 文字を超える本文も記憶にしない（勝手に縮めない）。
+export type ExplicitMemoryText =
+  | { readonly ok: true; readonly text: string }
+  | {
+      readonly ok: false;
+      readonly reason: 'empty' | 'too_long' | 'control_character';
+    };
+
+// 見えない文字（ADR 0191 の見直し、U499）: 書式文字（Cf。書字方向の制御・ゼロ幅の文字・BOM など）、制御文字（Cc。改行・
+// タブ・復帰は先に空白にする）、行と段落の区切り（Zl・Zp）、割り当てのない符号位置（Cn）、空白に見えるフィラーの明示の一覧
+// （ハングルのフィラー U+115F・U+1160・U+3164・U+FFA0、点字の空白 U+2800、クメールの見えない母音 U+17B4・U+17B5、結合書記素
+// 接合子 U+034F、モンゴルの自由字形選択子 U+180B〜U+180D・U+180F）。異体字セレクター（U+FE00〜U+FE0F）は絵文字の表示に
+// 使うので含めない。結合する文字（U+034F・U+17B4・U+17B5・U+180B〜U+180D・U+180F）は文字の組の中に置かず、選択肢で書く。
+const HIDDEN_CHARACTER = /[\p{Cf}\p{Cc}\p{Zl}\p{Zp}\p{Cn}ᅟᅠ⠀ㅤﾠ]|͏|឴|឵|᠋|᠌|᠍|᠏/u;
+const LINE_SPACE = /[\t\n\r]/gu;
+
+// 発言と本文の比べ方を同じにする整え（NFC・改行とタブを空白に・続く空白を 1 つ・前後を除く）。
+function foldSpaces(text: string): string {
+  return text
+    .normalize('NFC')
+    .replace(LINE_SPACE, ' ')
+    .replace(/\s+/gu, ' ')
+    .trim();
+}
+
+export function explicitMemoryText(body: string): ExplicitMemoryText {
+  const spaced = body.normalize('NFC').replace(LINE_SPACE, ' ');
+  if (HIDDEN_CHARACTER.test(spaced))
+    return { ok: false, reason: 'control_character' };
+  const text = foldSpaces(spaced);
+  if (text.length === 0) return { ok: false, reason: 'empty' };
+  if ([...text].length > MEMORY_TEXT_MAX_CODE_POINTS)
+    return { ok: false, reason: 'too_long' };
+  return { ok: true, text };
+}
+
+// 記憶の本文（explicitMemoryText で整えた値）が、本人の発言を同じ整えにした文の中にそのまま含まれるか（ADR 0191 の見直し）。
+// 本文を決めるのは解釈（LLM）なので、本人の言っていない文を記憶にしない。言い換え・要約・補った本文は含まれないので保存しない。
+export function memoryTextInUtterance(
+  text: string,
+  utterance: string,
+): boolean {
+  return text.length > 0 && foldSpaces(utterance).includes(text);
+}

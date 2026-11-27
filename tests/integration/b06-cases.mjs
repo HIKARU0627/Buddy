@@ -84,6 +84,7 @@ import {
   insertSession,
   insertTurn,
   marker,
+  allowPreference,
   memorySaveOp,
   openRow,
   residueLabels,
@@ -414,6 +415,7 @@ async function memoryReview(seed, round) {
     });
     const hmac = storeHmac();
     const ct = {};
+    await allowPreference(harness.store, B);
     for (const [memoryId, name, n] of [
       [M_REVIEW, 'M_REVIEW', 1],
       [M_CONTINUE, 'M_CONTINUE', 2],
@@ -552,6 +554,7 @@ async function forgetLateOrder(seed, round) {
     });
     const hmac = storeHmac();
     const now = B + DAY;
+    await allowPreference(harness.store, B);
     // record: 暗号文を目印に加える（拒否を確かめるだけの保存は加えない）。
     const save = async (
       memoryId,
@@ -846,6 +849,8 @@ async function oldBackupRestore(seed, round) {
       return restoreSourceHmac(key.key.key);
     };
     const hmac = await ledgerHmac(handle.store);
+    // 保存してよい種類の設定の版（復元の後は許可が全部 off になり版が進むので、選び直した版に変える。U494）。
+    let settingsRevision = '1';
     // record: 暗号文を目印に加える（復元の後の遅着の確かめの保存は加えない）。
     const save = async (
       store,
@@ -864,11 +869,14 @@ async function oldBackupRestore(seed, round) {
         generation,
         now: clock.value,
         n,
+        settingsRevision,
       });
       if (record) ct[name] = sealed.ciphertext;
       return saveOutcome(await store.memory(op));
     };
     clock.value = BACKUP_T0 + 2000;
+    // 保存してよい種類（ADR 0191）。バックアップに含まれ、復元の後も同じ版で残る。
+    await allowPreference(handle.store, clock.value);
     assert.equal((await save(handle.store, M, 'M', T_SRC, '0', 1)).saved, true);
     assert.equal(
       (await save(handle.store, M_OTHER, 'M_OTHER', T_OTHER, '0', 4)).saved,
@@ -953,6 +961,20 @@ async function oldBackupRestore(seed, round) {
       kind: 'forget.ledger_export',
     });
     assert.ok(exported.ok);
+    // 復元の後は保存してよい種類の許可が全部 off に戻る（U494）。本人が好みを選び直してから遅着を確かめる。
+    const settingsAfterRestore = await handle.store.memory({
+      kind: 'memory.settings_get',
+    });
+    assert.ok(settingsAfterRestore.ok);
+    checked.settings_after_restore = settingsAfterRestore.value;
+    const reallowed = await handle.store.memory({
+      kind: 'memory.settings_set',
+      expected_revision: settingsAfterRestore.value.settings_revision,
+      allowed_kinds: ['preference'],
+      now: clock.value,
+    });
+    assert.ok(reallowed.ok, JSON.stringify(reallowed));
+    settingsRevision = reallowed.value.settings_revision;
     // 忘却より前（世代 0）に始めた抽出が、忘れた記憶の元の発言から届く。台帳は復元を越えて効く。
     const lateForgotten = await save(
       handle.store,
@@ -1324,6 +1346,263 @@ async function privateConversation(seed, round) {
   };
 }
 
+// --- 7. 記録しない会話での記憶の保存の拒否（X59、ADR 0191） ---
+
+// 記録しない会話の間の本人の明示の依頼（「〇〇を好みとして覚えて」）は、好みを許可していても保存しない。記録しない会話を
+// 終えた後の再送も保存しない。通常の会話の同じ依頼は保存する（陽性の対照。台帳の鍵はバックアップの設定で作る）。
+async function privateMemorySave(seed, round) {
+  const text = {
+    PRIVATE: marker('memory-private', seed, round),
+    NORMAL: marker('memory-normal', seed, round),
+  };
+  const checked = {};
+  const base = await mkdtemp(join(tmpdir(), 'buddy-b06-memory-'));
+  const dataDir = join(base, 'data');
+  const backupDir = join(base, 'backups');
+  const logs = [];
+  const log = (message) => logs.push(String(message));
+  const backupKeys = createMockBackupKeyStore();
+  const dataKeys = () =>
+    createMockKeyStore({ stored: DATA_KEY.key.toString('base64') });
+  let handle = null;
+  try {
+    await mkdir(backupDir, { recursive: true });
+    handle = await startCore({
+      dataDir,
+      keyStore: dataKeys(),
+      shutdownGraceMs: 200,
+      probeTimeoutMs: 300,
+      now: () => PRIVATE_CLOCK,
+      log,
+      backup: { keyStore: backupKeys },
+      https: {
+        host: '127.0.0.1',
+        port: 0,
+        tlsKeyStore: createMockTlsKeyStore(),
+        environment: {
+          homeNetwork: () => true,
+          lockState: () => 'unlocked',
+          hubLocal: () => true,
+          audioOwner: () => 'self',
+          claimSecretMatches: () => false,
+        },
+        turns: { utcOffset: '+09:00' },
+      },
+    });
+    await handle.retention.idle();
+    // 台帳の鍵（記憶の由来と内容の HMAC に使う）は、バックアップの設定で作って復旧キーで包む（ADR 0040・0055）。
+    await writeFile(
+      join(dataDir, BACKUP_CONFIG_FILE),
+      JSON.stringify({
+        schema: 'buddy.backup-config.v1',
+        directory: backupDir,
+        keep_generations: 7,
+      }),
+      { mode: 0o600 },
+    );
+    const current = handle;
+    const setup = await runBackupSetup({
+      dataDir,
+      contract,
+      dataKeys: dataKeys(),
+      backupKeys,
+      now: () => PRIVATE_CLOCK,
+      inspect: () => inspectBackupSetup(current.store),
+      record: (ledgerHmacKeyId) =>
+        recordBackupSetup({
+          dataDir,
+          contract,
+          store: current.store,
+          backupKeys,
+          ledgerHmacKeyId,
+        }),
+      display: () => undefined,
+    });
+    assert.ok(setup.ok, JSON.stringify(setup));
+    const target = {
+      host: handle.https.host,
+      port: handle.https.port,
+      certificatePem: await readFile(
+        join(dataDir, TLS_CERTIFICATE_FILE),
+        'utf8',
+      ),
+      fingerprint: handle.https.certificateFingerprint,
+    };
+    const device = await insertDevice(handle.store);
+    const headers = {
+      authorization: `Bearer ${device.token}`,
+      'content-type': 'application/json',
+    };
+    const boot = await pinnedRequest(target, {
+      method: 'GET',
+      path: '/v1/bootstrap',
+      headers,
+    });
+    assert.equal(boot.status, 200, boot.text);
+    const scope = String(boot.json?.['command_scope_id']);
+    const responses = [];
+    const post = async (path, body, extraHeaders = {}) => {
+      const response = await pinnedRequest(target, {
+        method: 'POST',
+        path,
+        headers: { ...headers, ...extraHeaders },
+        body: JSON.stringify(body),
+      });
+      responses.push(response.text);
+      return response;
+    };
+    const screen = { 'buddy-input-origin': 'screen' };
+    const remember = (value, requestId = randomUUID()) =>
+      post('/v1/stream/turns', {
+        request_id: requestId,
+        command_scope_id: scope,
+        text: `「${value}」を好みとして覚えて`,
+        input_kind: 'text',
+        expected_canvas_revision: '0',
+      });
+    const mode = (storageMode) =>
+      post(
+        '/v1/stream/storage-mode',
+        {
+          request_id: randomUUID(),
+          command_scope_id: scope,
+          storage_mode: storageMode,
+        },
+        screen,
+      );
+    const counts = async () => {
+      const db = openWriteConnection(join(dataDir, DB_FILE), {
+        platform: storagePlatform(process.platform),
+      });
+      try {
+        return {
+          turns: Number(rows(db, 'SELECT count(*) FROM turns')[0]),
+          memories: Number(rows(db, 'SELECT count(*) FROM memories')[0]),
+        };
+      } finally {
+        db.close();
+      }
+    };
+    const steps = [];
+    // 保存してよい種類（本人の画面操作）: 好みを許可する。
+    const allowed = await post(
+      '/v1/memory/settings',
+      {
+        request_id: randomUUID(),
+        command_scope_id: scope,
+        expected_memory_settings_revision: '0',
+        allowed_kinds: ['preference'],
+      },
+      screen,
+    );
+    steps.push({
+      step: 'allow_preference',
+      status: allowed.status,
+      allowed_kinds: allowed.json?.['allowed_kinds'] ?? null,
+    });
+    const entered = await mode('private');
+    steps.push({ step: 'enter_private', status: entered.status });
+    const privateRequest = randomUUID();
+    const privateSave = await remember(text.PRIVATE, privateRequest);
+    steps.push({
+      step: 'private_memory_save',
+      status: privateSave.status,
+      storage_mode: privateSave.json?.['segment']?.['storage_mode'] ?? null,
+      turn_status: privateSave.json?.['status'] ?? null,
+      reply_text: privateSave.json?.['reply_text'] ?? null,
+      ...(await counts()),
+    });
+    const exited = await mode('normal');
+    steps.push({ step: 'exit_private', status: exited.status });
+    // 終えた後の記録しない間の要求の再送は、通常の区切りで保存し直さない（409）。
+    const resent = await remember(text.PRIVATE, privateRequest);
+    steps.push({
+      step: 'private_memory_save_resent_after_exit',
+      status: resent.status,
+      ...(await counts()),
+    });
+    // 陽性の対照: 通常の会話の同じ依頼は保存する。同じ要求の再送は二度保存しない。
+    const normalRequest = randomUUID();
+    const normalSave = await remember(text.NORMAL, normalRequest);
+    steps.push({
+      step: 'normal_memory_save',
+      status: normalSave.status,
+      storage_mode: normalSave.json?.['segment']?.['storage_mode'] ?? null,
+      turn_status: normalSave.json?.['status'] ?? null,
+      reply_text: normalSave.json?.['reply_text'] ?? null,
+      ...(await counts()),
+    });
+    const normalReplay = await remember(text.NORMAL, normalRequest);
+    steps.push({
+      step: 'normal_memory_save_replay',
+      status: normalReplay.status,
+      same_turn:
+        normalReplay.json?.['turn_id'] === normalSave.json?.['turn_id'],
+      ...(await counts()),
+    });
+    const dbVersion = String(handle.store.schemaVersion);
+    await handle.stop('test');
+    handle = null;
+    // 保存した記憶の本文を開いて、見える目印を数える（陽性の対照）。
+    const db = openWriteConnection(join(dataDir, DB_FILE), {
+      platform: storagePlatform(process.platform),
+    });
+    let visible;
+    let sources;
+    try {
+      visible = db
+        .prepare(
+          "SELECT m.memory_id, b.format_version, b.key_id, b.nonce, b.ciphertext, b.tag FROM memories m JOIN sealed_blobs b ON b.blob_id = m.text_blob_id AND b.purpose = 'memory_text'",
+        )
+        .all()
+        .map(
+          (row) => openRow(row, 'memories', row.memory_id, 'memory_text') ?? '',
+        )
+        .flatMap((opened) =>
+          Object.entries(text)
+            .filter(([, value]) => opened === value)
+            .map(([name]) => name),
+        )
+        .sort();
+      sources = rows(
+        db,
+        "SELECT source_kind || ':' || origin FROM memory_sources JOIN memories USING (memory_id)",
+      );
+    } finally {
+      db.close();
+    }
+    checked.steps = steps;
+    checked.visible_memory_markers = visible;
+    checked.memory_sources = sources;
+    // 平文の目印は、データディレクトリ（DB・WAL・時計の状態ファイルなど）とログのどこにも出ない。記録しない会話の目印は
+    // 応答（本人の画面への返事）にも出ない（返事は決まった文で、依頼の本文を返さない）。
+    checked.plaintext_found = [
+      ...findResidue(
+        { ...filesUnder(dataDir, 'data'), logs: textSource(logs.join('\n')) },
+        text,
+      ),
+      ...findResidue(
+        { responses: textSource(responses.join('\n')) },
+        { PRIVATE: text.PRIVATE },
+      ),
+    ];
+    checked.db_version = dbVersion;
+  } finally {
+    if (handle !== null) await handle.stop('test').catch(() => undefined);
+    await rm(base, {
+      recursive: true,
+      force: true,
+      maxRetries: 5,
+      retryDelay: 200,
+    });
+  }
+  const at = (name) => checked.steps.find((step) => step.step === name);
+  return {
+    checked,
+    final_state: `memories=${at('normal_memory_save_replay').memories};private_save=${at('private_memory_save').status}/${at('private_memory_save').memories};resent_after_exit=${at('private_memory_save_resent_after_exit').status}`,
+  };
+}
+
 const CASES = {
   'X16-retention-deadline-and-resummary': retentionBoundary,
   'X16-clock-rollback-no-extension': clockRollback,
@@ -1331,6 +1610,7 @@ const CASES = {
   'X15-forget-and-late-result-order': forgetLateOrder,
   'X16-old-backup-restore-applies-ledger': oldBackupRestore,
   'X17-private-conversation-not-saved': privateConversation,
+  'X59-private-conversation-no-memory-save': privateMemorySave,
 };
 
 export const caseIds = () => Object.keys(CASES);

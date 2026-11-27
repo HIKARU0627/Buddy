@@ -11,6 +11,10 @@
 //   （blocked・unverified。変更を作らない）として書く。端末内の音声認識（local_asr）は B06。
 // - 発言から作る操作（承認待ち）は、発言・依頼と同じ transaction で作る（同じ要求の同時の再送で二つ作らない）。
 // - 応答（turn_responses、0004）も同じ transaction で書き、再送には解釈し直さずにその応答を返す。
+// - 本人の明示の依頼（memory_save・memory_correct）の記憶は、発言と同じ transaction で保存する（ADR 0191）。由来はこの発言
+//   だけ。記憶の保存の検査（設定・台帳・重複・食い違い）は memory-store の saveMemoryInTransaction が行い、拒否したら発言も
+//   書かずに memory_rejected と理由を返す（Core は記憶なしの応答で発言を記録し直す）。同じ要求の再送は受付で先に返すので、
+//   記憶を二度保存しない。
 // 結果の理由にはコードだけを入れ、SQL・本文・hash の値を入れない。
 
 import Database from 'better-sqlite3';
@@ -20,6 +24,12 @@ import type { SqliteDatabase, StoragePlatform } from './connection.js';
 import { isRevision } from './operation-commands.js';
 import type { SealedBlobInput } from './operation-commands.js';
 import { appendEvent, insertVersion, runImmediate } from './operation-store.js';
+import { ForgetRejection } from './forget-store.js';
+import {
+  memoryOpShapeReasons,
+  saveMemoryInTransaction,
+} from './memory-store.js';
+import type { MemoryKindName, MemoryOp } from './memory-store.js';
 
 const RECEIPT_TTL_MS = RETENTION_RULES['command_receipt']?.ms ?? 0;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
@@ -77,6 +87,48 @@ export interface TurnOperationInput {
   readonly intent: SealedBlobInput;
 }
 
+// 本人の明示の依頼で、発言と同じ transaction に保存する記憶（ADR 0191）。由来はこの発言（turn・turn_id）だけ。
+export interface TurnMemoryInput {
+  readonly memory_id: string;
+  readonly memory_kind: MemoryKindName;
+  // 記憶の本文と対象キーの封筒（owner = memories・memory_id・版 0、用途 memory_text・memory_target_key）。
+  readonly text: SealedBlobInput;
+  readonly target_key: SealedBlobInput;
+  // 対象キーと内容の HMAC（台帳の鍵から導いた鍵。ADR 0040）。
+  readonly target_key_hash: string;
+  readonly dedupe_key: string;
+  // この発言の台帳用 HMAC（由来の照合に使う）。
+  readonly source_hmac: string;
+  // 保存の判定を始めたときの台帳の世代と、保存してよい種類の設定の版。
+  readonly forgetting_generation: string;
+  readonly settings_revision: string;
+}
+
+// 発言の記憶を memory.save の命令の形にする（検査と保存を memory-store と共通にする）。
+function memorySaveOp(
+  turnId: string,
+  createdAt: number,
+  memory: TurnMemoryInput,
+): Extract<MemoryOp, { kind: 'memory.save' }> {
+  return {
+    kind: 'memory.save',
+    memory_id: memory.memory_id,
+    origin: 'explicit_request',
+    memory_kind: memory.memory_kind,
+    text: memory.text,
+    target_key: memory.target_key,
+    target_key_hash: memory.target_key_hash,
+    dedupe_key: memory.dedupe_key,
+    sources: [{ source_kind: 'turn', source_id: turnId }],
+    source_hmacs: [
+      { source_kind: 'turn', source_id: turnId, hmac: memory.source_hmac },
+    ],
+    forgetting_generation: memory.forgetting_generation,
+    settings_revision: memory.settings_revision,
+    now: createdAt,
+  };
+}
+
 export interface OperationIntentBlob {
   readonly operation_id: string;
   readonly content_version: string;
@@ -120,6 +172,8 @@ export type ConversationOp =
       readonly operation: TurnOperationInput | null;
       // 応答（契約の TurnResponse の JSON）。
       readonly response_json: string;
+      // 本人の明示の依頼で保存する記憶（ADR 0191）。文字入力だけ。省略は記憶なし。
+      readonly memory?: TurnMemoryInput;
     }
   // 解釈の前の再送の判定。保存済みの発言があればその応答、なければ null（照合値の違いは request_conflict）。
   | { readonly kind: 'turn.find'; readonly request: ConversationRequestRef }
@@ -286,6 +340,21 @@ export function conversationOpShapeReasons(op: ConversationOp): string[] {
         op.response_json.length > 16_384
       )
         reasons.push('response_invalid');
+      const memory = op.memory;
+      if (memory !== undefined) {
+        // 記憶は文字入力の発言からだけ保存する（Live の文字起こしの暫定入力からは保存しない。memory_save は方式 C の対象外）。
+        // 操作（承認待ち）とは一緒に作らない。
+        if (
+          typeof memory !== 'object' ||
+          memory === null ||
+          (input !== undefined && input.kind !== 'text') ||
+          op.operation !== null ||
+          !isUuid(op.turn_id) ||
+          memoryOpShapeReasons(memorySaveOp(op.turn_id, op.created_at, memory))
+            .length > 0
+        )
+          reasons.push('memory_invalid');
+      }
       reasons.push(...requestReasons(op.request));
       break;
     }
@@ -517,6 +586,18 @@ function applyWrite(
       op.operation,
       op.created_at,
     );
+  // 本人の明示の依頼の記憶（ADR 0191）。保存の検査で拒否したら、発言も書かずに戻す（Core が記憶なしで記録し直す）。
+  if (op.memory !== undefined)
+    try {
+      saveMemoryInTransaction(
+        db,
+        memorySaveOp(op.turn_id, op.created_at, op.memory),
+      );
+    } catch (error) {
+      if (error instanceof ForgetRejection)
+        throw new ConversationRejection(['memory_rejected', ...error.reasons]);
+      throw error;
+    }
   const forgetting = forgettingGeneration(db);
   if (input.kind === 'voice_live') {
     const sealed = input.outcome.state === 'sealed';

@@ -416,6 +416,63 @@ test('the canvas notification sets the description; null discards it; a locked s
   );
 });
 
+// UI-05 の段階 4（ADR 0188）: 表示のリースを失った理由は、理由つきの通知でだけ立ち、理由のない通知・ロック・停止で消える。
+test('the withheld reason comes only with its notification and goes with any other canvas notice, a lock or a stop', () => {
+  const view = { canvas_revision: '4', items: [], reading_order: [] };
+  const running = applyNotification(
+    applyNotification(INITIAL_VIEW_STATE, {
+      channel: 'desktop.state_changed',
+      status: shown('none'),
+    }),
+    { channel: 'desktop.canvas_changed', canvas: view },
+  );
+  assert.equal(running.canvasWithheld, null);
+  const withheld = applyNotification(running, {
+    channel: 'desktop.canvas_changed',
+    canvas: null,
+    withheld_reason: 'display_lease_lost',
+  });
+  assert.equal(withheld.canvas, null);
+  assert.equal(withheld.canvasWithheld, 'display_lease_lost');
+  // 状態が変わっても（解除済みで止まっていない）理由は残る。
+  assert.equal(
+    applyNotification(withheld, {
+      channel: 'desktop.state_changed',
+      status: shown('none'),
+    }).canvasWithheld,
+    'display_lease_lost',
+  );
+  // 取り直せた（理由のない空・記述）で消える。
+  assert.equal(
+    applyNotification(withheld, {
+      channel: 'desktop.canvas_changed',
+      canvas: null,
+    }).canvasWithheld,
+    null,
+  );
+  const back = applyNotification(withheld, {
+    channel: 'desktop.canvas_changed',
+    canvas: view,
+  });
+  assert.equal(back.canvasWithheld, null);
+  assert.deepEqual(back.canvas, view);
+  // ロック中・停止中は理由も出さない（中身を出さないだけ）。
+  assert.equal(
+    applyNotification(withheld, {
+      channel: 'desktop.state_changed',
+      status: { visibility: 'hidden', lock_state: 'locked' },
+    }).canvasWithheld,
+    null,
+  );
+  assert.equal(
+    applyNotification(withheld, {
+      channel: 'desktop.state_changed',
+      status: shown('local'),
+    }).canvasWithheld,
+    null,
+  );
+});
+
 // 入出力の停止でも、キャンバスの記述は描かない（ロックと同じ。再開しても main が送るまで戻さない）。
 test('a stopped state discards the canvas description and resuming does not bring it back', () => {
   const view = { canvas_revision: '4', items: [], reading_order: [] };

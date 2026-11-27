@@ -17045,6 +17045,25 @@
           "properties": {
             "channel": {
               "type": "string",
+              "const": "desktop.canvas_changed"
+            },
+            "canvas": {
+              "type": "null"
+            },
+            "withheld_reason": {
+              "type": "string",
+              "enum": ["display_lease_lost"]
+            }
+          },
+          "required": ["channel", "canvas", "withheld_reason"],
+          "additionalProperties": false,
+          "description": "キャンバスの物を描かない理由つきの「捨てた」（UI-05 の段階 4、ADR 0188）。display_lease_lost は、キャンバスの窓が見えている間に保つ表示のリース（POST /v1/leases/renew の display）を失った（更新の拒否・期限切れ・結果の分からない取得）こと。canvas は必ず null で、画面は物を描かずに理由の 1 文だけを出す。取り直せたら理由のない形（上の形）が届く。ロック・停止・隠れた・接続が切れた・キャンバス表示でないときは理由を付けない（リースを失ったのではなく、取りに行かないため）。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "channel": {
+              "type": "string",
               "const": "desktop.canvas_work_area"
             },
             "insets": {

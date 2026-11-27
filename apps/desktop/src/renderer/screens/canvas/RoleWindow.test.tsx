@@ -14,6 +14,7 @@ import { AppProviders } from '../../app/AppProviders.js';
 import {
   canSummonCanvas,
   canvasContentShown,
+  canvasWithheldLine,
   contentShown,
   initialChannelsFor,
   inputBarEnabled,
@@ -24,6 +25,7 @@ import {
 } from '../../state/window-role-state.js';
 import { CanvasGround } from './CanvasGround.js';
 import { CanvasIsland } from './CanvasIsland.js';
+import { CanvasWithheld } from './CanvasWithheld.js';
 import { InputBar } from './InputBar.js';
 
 import { islandView } from '../../state/island-state.js';
@@ -578,4 +580,43 @@ test('the canvas content is shown only while unlocked and not stopped', () => {
     contentShown(shown({ stop_scope: 'local', input_permitted: false })),
     true,
   );
+});
+
+// UI-05 の段階 4（ADR 0188）: 表示のリースを失った間は、物の代わりに理由の 1 文だけを記号と文言で出す（tones.ts の warning の ○、
+// 共通の枠 FRAME_CLASS の箱の丸み）。理由がなければ何も出さない。ロック中・停止中は地の中身ごと描かない。
+test('the withheld canvas shows one sentence with the warning circle in the shared frame, and nothing without a reason', () => {
+  assert.equal(canvasWithheldLine(null), null);
+  const line = canvasWithheldLine('display_lease_lost');
+  assert.deepEqual(line, {
+    tone: 'warning',
+    mark: 'circle',
+    text: '中枢との表示の確認が途切れたため、キャンバスの物を隠しています（確認し直せたら戻ります）。',
+  });
+  assert(line !== null);
+  const html = render(
+    <CanvasGround front={false} shown>
+      <CanvasWithheld line={line} />
+    </CanvasGround>,
+  );
+  assert.match(html, /role="status"/u);
+  assert.match(html, /data-canvas-withheld="true"/u);
+  assert.match(html, /rounded-box border border-separator/u);
+  // 記号（○）は warning の文字色で、読み上げない。文言は 1 文。
+  assert.match(
+    html,
+    /<span aria-hidden="true" class="text-warning-soft-foreground">○<\/span>/u,
+  );
+  const text = html.replace(/<[^>]+>/gu, '');
+  assert.equal(
+    text,
+    '○中枢との表示の確認が途切れたため、キャンバスの物を隠しています（確認し直せたら戻ります）。',
+  );
+  assert.equal(text.match(/。/gu)?.length, 1);
+  // ロック中・停止中（shown が false）は理由も描かない。
+  const hidden = render(
+    <CanvasGround front={false} shown={false}>
+      <CanvasWithheld line={line} />
+    </CanvasGround>,
+  );
+  assert.doesNotMatch(hidden, /中枢との表示の確認/u);
 });

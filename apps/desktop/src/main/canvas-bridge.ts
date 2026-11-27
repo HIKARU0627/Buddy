@@ -12,6 +12,8 @@
 // - 世代（ロック・停止・切断・世代の変化）: reset で記述と参照を捨て、画面へ「空」を通知する。非同期の取得・発言は各 await の
 //   後に世代・取得の順・ロック状態を照合する（ADR 0031 と同じ。またいだ応答は何も変えない）。取得は後に始めたものだけが
 //   有効で、古い応答で新しい記述を戻さない。版は戻さない（同じ世代の中で小さい版を受けない）。
+// - 表示のリース（UI-05 の段階 4、ADR 0188）: リースを持っている間だけ記述を取る・渡す。失ったら記述と参照を捨て、理由つきの
+//   空（display_lease_lost）を画面へ渡す。取り直せたら今の記述を取り直す。リースの保持は DisplayLeaseKeeper（main）が持つ。
 // Electron に依存しない（node:test で試験する）。
 import type {
   CanvasContent,
@@ -27,7 +29,11 @@ import type { ClientConnection } from '@buddy/client';
 import { canvasContentErrors, canvasDocumentErrors } from '@buddy/domain';
 import type { DesktopIpcRejectReason } from '@buddy/domain';
 import type { DesktopContract } from './contract.js';
+import type { DisplayLeaseState } from './display-lease-keeper.js';
 import type { BridgeOutcome } from './operation-bridge.js';
+
+// 物を描かない理由（画面へ渡す。ADR 0188）。
+export type CanvasWithheldReason = 'display_lease_lost';
 
 // 物の中身の読み取りの結果（UI-07）。この値だけが本文を運び、画面へは desktop.canvas_content の応答でだけ返す。
 export interface CanvasContentValue {
@@ -46,8 +52,13 @@ export interface CanvasHost {
   readonly unlocked: () => boolean;
   // 端末の今の入出力の状態（送る直前に確かめる）。permitted は停止していないこと。
   readonly io: () => { readonly permitted: boolean; readonly epoch: string };
-  // 画面（キャンバスの窓）へ記述を渡す。null は描いている物をすべて捨てる。
-  readonly publish: (canvas: DesktopCanvasView | null) => void;
+  // 画面（キャンバスの窓）へ記述を渡す。null は描いている物をすべて捨てる。withheld は描かない理由（null と組でだけ渡す）。
+  readonly publish: (
+    canvas: DesktopCanvasView | null,
+    withheld?: CanvasWithheldReason,
+  ) => void;
+  // 表示のリースを持っているか（ADR 0188）。省略は持っている（リースを使わない組み立て・試験）。
+  readonly displayHeld?: () => boolean;
   // 発言の文字の結果を画面に出す値にする（OperationBridge と同じ規則）。
   readonly turnResult: (turn: StreamTurnResponse) => DesktopTurnResult;
   readonly log: (code: string) => void;
@@ -83,6 +94,8 @@ export class CanvasBridge {
   // キャンバスの窓そのものが隠れている（hide・最小化。UI-07）。隠れている間は、版の知らせ・再接続・ロックの解除・入出力の再開が
   // あっても、記述も本文も取らず、送り直さない。show・restore（show）で取り直す。後ろにあるが表示している間は隠れていない。
   #hidden = false;
+  // 物を描かない理由（表示のリースを失った）。理由を出している間は記述を持たない。
+  #withheld: CanvasWithheldReason | null = null;
 
   constructor(host: CanvasHost) {
     this.#host = host;
@@ -98,16 +111,61 @@ export class CanvasBridge {
     return this.#refs.size;
   }
 
+  // 物を描かない理由（画面へ渡している理由。なければ null）。
+  get withheld(): CanvasWithheldReason | null {
+    return this.#withheld;
+  }
+
+  // 窓そのものが隠れているか（表示のリースの条件。ADR 0188）。
+  get hidden(): boolean {
+    return this.#hidden;
+  }
+
   // 表示の権限の世代が進んだ（ロック・切断・世代の変化）: 記述・参照を捨て、画面へ空を通知する。
   // 進行中の取得・発言は、世代の照合で何も変えずに終わる。
   reset(): void {
+    if (this.#discard()) this.#host.publish(null);
+  }
+
+  // 記述・参照を捨てて世代を進める。記述を持っていたら true（画面へ空を通知するのは呼び出し側）。
+  #discard(): boolean {
     this.#gen += 1;
     this.#fetchSeq += 1;
     this.#refs = new Map();
     this.#refKeys = new Map();
-    if (this.#view === null) return;
+    if (this.#view === null) return false;
     this.#view = null;
-    this.#host.publish(null);
+    return true;
+  }
+
+  #displayHeld(): boolean {
+    return this.#host.displayHeld?.() ?? true;
+  }
+
+  // 表示のリースの状態が変わった（ADR 0188）。held: 理由を消して今の記述を取り直す。lost: 記述と参照を捨て、理由つきの空を
+  // 画面へ渡す（物を描かない）。idle・acquiring: 取りに行かない間・取り始め。記述を捨て、理由は出さない（ロック・停止・隠れた・
+  // 切断はリースを失ったのではない）。
+  displayChanged(state: DisplayLeaseState): void {
+    if (state === 'held') {
+      if (this.#withheld !== null) {
+        this.#withheld = null;
+        this.#host.publish(null);
+      }
+      void this.refresh();
+      return;
+    }
+    const had = this.#discard();
+    if (state === 'lost') {
+      if (this.#withheld === null || had) {
+        this.#withheld = 'display_lease_lost';
+        this.#host.publish(null, 'display_lease_lost');
+      }
+      return;
+    }
+    if (this.#withheld !== null || had) {
+      this.#withheld = null;
+      this.#host.publish(null);
+    }
   }
 
   // 窓そのものが隠れた: 記述・参照・取っている途中の答えを捨て（reset）、表示し直されるまで取らない。
@@ -147,6 +205,7 @@ export class CanvasBridge {
   resend(): void {
     if (this.#hidden) return;
     if (this.#view !== null) this.#host.publish(this.#view);
+    else if (this.#withheld !== null) this.#host.publish(null, this.#withheld);
     else void this.refresh();
   }
 
@@ -176,7 +235,8 @@ export class CanvasBridge {
   }
 
   async #refresh(): Promise<void> {
-    if (this.#hidden) return;
+    // 隠れている間・表示のリースを持っていない間は取らない（ADR 0188）。
+    if (this.#hidden || !this.#displayHeld()) return;
     const connection = this.#host.connection();
     if (connection === null || !this.#host.unlocked()) return;
     // 停止中は取らない。停止をまたいだ（世代が進んだ）記述は捨てる。
@@ -191,8 +251,13 @@ export class CanvasBridge {
       method: 'GET',
       path: '/v1/canvas',
     });
-    // 世代をまたいだ・後から始めた取得がある・ロックした: 何も変えない。
-    if (gen !== this.#gen || seq !== this.#fetchSeq || !this.#host.unlocked())
+    // 世代をまたいだ・後から始めた取得がある・ロックした・表示のリースを失った: 何も変えない。
+    if (
+      gen !== this.#gen ||
+      seq !== this.#fetchSeq ||
+      !this.#host.unlocked() ||
+      !this.#displayHeld()
+    )
       return;
     const after = this.#host.io();
     if (!after.permitted || after.epoch !== io.epoch) return;

@@ -36,9 +36,19 @@ test('channel, event and reason lists in the schema and domain are the same', ()
   assert.deepEqual(consts(defs.DesktopIpcRequest, 'channel'), [
     ...DESKTOP_IPC_CHANNELS,
   ]);
-  assert.deepEqual(consts(defs.DesktopIpcNotification, 'channel'), [
-    ...DESKTOP_NOTIFICATION_CHANNELS,
-  ]);
+  // 通知の分岐は全チャネルを一度ずつ受け持つ。例外はキャンバスの記述の知らせだけで、記述（または空）を渡す分岐と、
+  // 表示のリースを失ったときの理由つきの空を渡す分岐の 2 つを持つ（ADR 0188）。
+  const notificationChannels = consts(defs.DesktopIpcNotification, 'channel');
+  assert.deepEqual(
+    notificationChannels.filter(
+      (channel) => channel === 'desktop.canvas_changed',
+    ),
+    ['desktop.canvas_changed', 'desktop.canvas_changed'],
+  );
+  assert.deepEqual(
+    [...new Set(notificationChannels)],
+    [...DESKTOP_NOTIFICATION_CHANNELS],
+  );
   const power = defs.DesktopIpcNotification.oneOf.find(
     (branch) => branch.properties.channel.const === 'desktop.power_event',
   );

@@ -18,11 +18,11 @@ import {
 export const LEASE_HEARTBEAT_MS = 2000;
 export const LEASE_TTL_MS = 6000;
 
-// リースの更新の本文（契約の LeaseRenewalRequest）。
+// リースの更新の本文（契約の LeaseRenewalRequest）。音声（このファイル）と表示（display-lease-keeper.ts。ADR 0188）で使う。
 export interface LeaseRenewalBody {
   readonly request_id: string;
   readonly lease_id: string;
-  readonly kind: 'audio';
+  readonly kind: 'audio' | 'display';
   readonly device_id: string;
   readonly core_instance_id: string;
   readonly command_scope_id: string;

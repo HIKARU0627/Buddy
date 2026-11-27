@@ -4,6 +4,10 @@
 //   SHA-256）で同じメールから二つ目を作らない。同じ月に同じ会社・同じ引き落とし日・同じ金額の請求予定があれば、別の
 //   メール（確定のお知らせと引き落とし前のお知らせなど）でも作らない（same_bill）。中身は請求予定を所有者にして暗号化する。
 // - readHouseholdBills: 1 か月（引き落とし日の月）の請求予定を読み、復号して並べる。復号できない請求予定は数だけ返す。
+//   消す操作のために、請求予定の ID と内容版も返す（ADR 0179）。
+// - deleteHouseholdBill: 本人が請求予定を消す（ADR 0179）。内容版を照合し、行は残して月と中身を消す（保存層）。同じメールから
+//   作り直さない。別のメールが同じ請求を知らせても、消した請求予定の中身はもう読めないので、同じ請求かは比べられない
+//   （新しい請求予定として作る）。
 // 請求予定は家計の記録（household_entries）に入れないので、月の集計・予算・定期の支出の計算には入らない（二重の計上を
 // しない）。承認・実行経路・effect_kind は関わらない（メールを読むだけで、外部を変えない）。
 
@@ -34,9 +38,23 @@ export type RecordedHouseholdBill =
   | { readonly outcome: 'duplicate' | 'same_bill' }
   | Failure;
 
+// 請求予定 1 件（中身と、消す操作の照合に使う ID と内容版）。
+export interface HouseholdBillView extends HouseholdBillContent {
+  readonly bill_id: string;
+  readonly content_revision: string;
+}
+
+export type HouseholdBillDeletion =
+  | {
+      readonly outcome: 'deleted';
+      readonly bill_id: string;
+      readonly content_revision: string;
+    }
+  | Failure;
+
 export interface HouseholdBillsRead {
   readonly outcome: 'ok';
-  readonly bills: HouseholdMonthBills;
+  readonly bills: HouseholdMonthBills<HouseholdBillView>;
   // 復号できなかった請求予定の数（並べず、合計に入れていない）。
   readonly unreadable: number;
   // 一度に読む上限で切ったか。
@@ -67,7 +85,7 @@ async function listMonth(
 ): Promise<
   | {
       readonly ok: true;
-      readonly bills: readonly HouseholdBillContent[];
+      readonly bills: readonly HouseholdBillView[];
       readonly unreadable: number;
       readonly truncated: boolean;
     }
@@ -79,12 +97,19 @@ async function listMonth(
   });
   if (!listed.ok)
     return { ok: false, outcome: listed.outcome, reasons: listed.reasons };
-  const bills: HouseholdBillContent[] = [];
+  const bills: HouseholdBillView[] = [];
   let unreadable = 0;
   for (const record of listed.value.bills) {
     const content = openRecord(ports.dataKey, record);
     if (content === null) unreadable += 1;
-    else bills.push(content);
+    else
+      bills.push({
+        bill_id: record.bill_id,
+        content_revision: record.content_revision,
+        issuer: content.issuer,
+        amount_yen: content.amount_yen,
+        due_on: content.due_on,
+      });
   }
   return { ok: true, bills, unreadable, truncated: listed.value.truncated };
 }
@@ -141,5 +166,26 @@ export async function readHouseholdBills(
     bills: summarizeHouseholdBills(listed.bills, month),
     unreadable: listed.unreadable,
     truncated: listed.truncated,
+  };
+}
+
+/** 請求予定を消す（ADR 0179）。照合と書込みは保存層が同じ transaction で行う。 */
+export async function deleteHouseholdBill(
+  ports: Pick<HouseholdPorts, 'client' | 'now'>,
+  billId: string,
+  expectedRevision: string,
+): Promise<HouseholdBillDeletion> {
+  const deleted = await ports.client.household({
+    kind: 'household.bill_delete',
+    bill_id: billId,
+    expected_revision: expectedRevision,
+    now: ports.now(),
+  });
+  if (!deleted.ok)
+    return { outcome: deleted.outcome, reasons: deleted.reasons };
+  return {
+    outcome: 'deleted',
+    bill_id: deleted.value.bill_id,
+    content_revision: deleted.value.content_revision,
   };
 }

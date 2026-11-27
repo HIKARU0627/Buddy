@@ -1,5 +1,6 @@
-// レシートの写真の読み取りの口の Gemini の実装と profile（ADR 0178）の試験。外部のモデルは模擬の HTTP の口だけで、実 API は
-// 呼ばない。鍵は合成の値、画像は合成のバイト列（JPEG の頭と大きさだけ）。期待値はすべて手で書いた。
+// レシートの写真の読み取りの口の Gemini の実装と profile（ADR 0178）の試験。入・切の保存（ADR 0179）との組み合わせも
+// 含む。外部のモデルは模擬の HTTP の口だけで、実 API は呼ばない。鍵は合成の値、画像は合成のバイト列（JPEG の頭と大きさ
+// だけ）。期待値はすべて手で書いた。
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { inspect } from 'node:util';
@@ -33,6 +34,7 @@ import {
   receiptEndpointAllowed,
 } from './household-receipt-reader.js';
 import type { ReceiptHttpTransport } from './household-receipt-reader.js';
+import { memoryReceiptSettingStore } from './household-receipt-setting.js';
 import type { JsonObject } from './strict-json.js';
 
 type Json = Record<string, unknown>;
@@ -655,9 +657,11 @@ const routesWith = (step: Step) => {
   return { transport, routes };
 };
 
+// 設定の版は、中枢のメモリーの保存を新しく作ったときは 0（ADR 0179）。経路はどれも 1 回だけ入にする。
 const settingOn: JsonObject = {
   request_id: uuid(800),
   command_scope_id: uuid(900),
+  expected_settings_revision: '0',
   receipt_reading: 'on',
 };
 
@@ -769,7 +773,7 @@ test('経路: Gemini の応答から候補を作り、検査に落ちる応答�
   let n = 10;
   for (const [name, step, status, expected] of cases) {
     const h = routesWith(step);
-    assert.equal(h.routes.state(), 'off', name);
+    assert.equal(await h.routes.state(), 'off', name);
     await call(h.routes.handlers.changeHouseholdReceiptSetting, settingOn);
     n += 1;
     const result = await call(
@@ -794,6 +798,7 @@ test('経路: Gemini の応答から候補を作り、検査に落ちる応答�
 
 test('経路: 鍵がなければ unavailable で、入にもできない', async () => {
   const transport = new MockTransport(() => Promise.resolve(ok(envelope())));
+  const settings = memoryReceiptSettingStore();
   const routes = createHouseholdReceiptRoutes({
     setup: householdReceiptSetup({
       apiKey: null,
@@ -803,14 +808,57 @@ test('経路: 鍵がなければ unavailable で、入にもできない', async
     budget: null,
     zone: () => 'Asia/Tokyo',
     now: () => Date.parse('2030-10-15T03:00:00.000Z'),
+    settings,
   });
-  assert.equal(routes.state(), 'unavailable');
+  assert.equal(await routes.state(), 'unavailable');
   const on = await call(
     routes.handlers.changeHouseholdReceiptSetting,
     settingOn,
   );
   assert.equal(on.status, 503);
-  assert.equal(routes.state(), 'unavailable');
+  assert.equal(await routes.state(), 'unavailable');
+  // 入にする要求は保存しない（ADR 0179）。
+  assert.deepEqual(await settings.read(), {
+    receipt_reading: 'off',
+    settings_revision: '0',
+  });
+  assert.equal(transport.requests.length, 0);
+});
+
+test('経路: 入で保存していても、鍵がなければ unavailable で送らない（ADR 0179）', async () => {
+  const transport = new MockTransport(() => Promise.resolve(ok(envelope())));
+  // 鍵があったときに入にして保存した（版 1）。
+  const settings = memoryReceiptSettingStore();
+  assert.equal((await settings.write('0', 'on')).kind, 'written');
+  const routes = createHouseholdReceiptRoutes({
+    setup: householdReceiptSetup({
+      apiKey: null,
+      transport,
+      priceVersionFor: () => 'xts.gemini.v1',
+    }),
+    budget: null,
+    zone: () => 'Asia/Tokyo',
+    now: () => Date.parse('2030-10-15T03:00:00.000Z'),
+    settings,
+  });
+  assert.equal(await routes.state(), 'unavailable');
+  const result = await call(
+    routes.handlers.readHouseholdReceipt,
+    readBody(uuid(3)),
+  );
+  assert.equal(result.status, 503);
+  assert.equal(result.body['code'], 'not_sent');
+  // 切にする要求は保存する（見せる値は unavailable のまま）。
+  const off = await call(routes.handlers.changeHouseholdReceiptSetting, {
+    ...settingOn,
+    expected_settings_revision: '1',
+    receipt_reading: 'off',
+  });
+  assert.equal(off.status, 200);
+  assert.deepEqual(off.body, {
+    receipt_reading: 'unavailable',
+    settings_revision: '2',
+  });
   assert.equal(transport.requests.length, 0);
 });
 

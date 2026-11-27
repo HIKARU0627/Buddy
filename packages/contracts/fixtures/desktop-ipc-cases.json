@@ -974,6 +974,48 @@
         "expected": { "ok": false, "reason": "untrusted_sender" }
       },
       {
+        "id": "household-bill-delete-from-hidden-window",
+        "refs": ["ADR 0179"],
+        "channel": "desktop.household_bill_delete",
+        "expected_io_epoch": null,
+        "sender": { "windowFocused": false },
+        "expected": { "ok": false, "reason": "screen_operation_required" }
+      },
+      {
+        "id": "household-bill-delete-while-locked",
+        "channel": "desktop.household_bill_delete",
+        "expected_io_epoch": null,
+        "state": { "lockState": "locked" },
+        "expected": { "ok": false, "reason": "device_locked" }
+      },
+      {
+        "id": "household-bill-delete-while-lock-unknown",
+        "channel": "desktop.household_bill_delete",
+        "expected_io_epoch": null,
+        "state": { "lockState": "unknown" },
+        "expected": { "ok": false, "reason": "device_locked" }
+      },
+      {
+        "id": "household-bill-delete-focused",
+        "channel": "desktop.household_bill_delete",
+        "expected_io_epoch": null,
+        "expected": { "ok": true }
+      },
+      {
+        "id": "household-bill-delete-while-stopped",
+        "channel": "desktop.household_bill_delete",
+        "expected_io_epoch": null,
+        "state": { "stopScope": "local" },
+        "expected": { "ok": true }
+      },
+      {
+        "id": "household-bill-delete-untrusted",
+        "channel": "desktop.household_bill_delete",
+        "expected_io_epoch": null,
+        "sender": { "trustedSender": false },
+        "expected": { "ok": false, "reason": "untrusted_sender" }
+      },
+      {
         "id": "household-intake-from-hidden-window",
         "refs": ["ADR 0163"],
         "channel": "desktop.household_intake",

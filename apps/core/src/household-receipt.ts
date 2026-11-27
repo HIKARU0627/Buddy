@@ -24,7 +24,9 @@
 //   待つのをやめ、時間切れとして扱い、口がまだ参照していても画像を 0 で埋め、貸し出しを返し、次の読み取りを受ける
 //   （再見直しの指摘 1）。base64 の文字列と JSON の文字列は JavaScript では 0 で埋められないので、参照を手放すだけ
 //   （ADR 0177 の追補）。
-// - 設定（入・切）は中枢のメモリーにだけ持つ。既定は切で、中枢を起動し直すと切に戻る（U364）。
+// - 設定（入・切）は家計簿の設定の行に保存する（ADR 0179。household-receipt-setting.ts）。既定は切で、中枢を起動し直しても
+//   変わらない。変更は設定の版（利用通知の取り込みの入・切と共通）で照合し、違えば 409。読み取りは送る前に保存した値を
+//   読み直す（読めなければ送らない）。読み取りの口がなければ、保存した値によらず unavailable。
 
 import type { ModelProfile, ModelUsage } from '@buddy/contracts';
 import type { AdapterResult } from '@buddy/ai';
@@ -45,6 +47,14 @@ import { apiErrorResponse } from './api-server.js';
 import type { ApiRouteHandler } from './api-server.js';
 import type { BudgetGate, PaidOutcome } from './budget-gate.js';
 import { parseStrictJson } from './strict-json.js';
+import {
+  RECEIPT_SETTING_REVISION,
+  memoryReceiptSettingStore,
+} from './household-receipt-setting.js';
+import type {
+  ReceiptReadingSetting,
+  ReceiptSettingStore,
+} from './household-receipt-setting.js';
 
 // 外部のモデルへの指示（画像と一緒に送る）。応答の形は domain の readHouseholdReceiptReply が確かめる形と同じ。
 export const HOUSEHOLD_RECEIPT_INSTRUCTIONS = [
@@ -214,11 +224,19 @@ export interface HouseholdReceiptOptions {
   readonly requestLimits?: ReceiptHubRequestLimits;
   // 中身を出さない記録（理由の名前だけ）。
   readonly log?: (message: string) => void;
+  // 入・切の保存（ADR 0179）。本番は家計簿の設定の行（receiptSettingStoreOf）。省略すると中枢のメモリーにだけ持つ（試験）。
+  readonly settings?: ReceiptSettingStore;
 }
 
 export interface HouseholdReceiptRoutes {
-  // 今の設定（月ごとの合計の receipt_reading にも返す）。
-  readonly state: () => ReceiptReadingState;
+  // 保存した入・切から、画面に見せる設定を決める（読み取りの口がなければ unavailable）。月ごとの合計の receipt_reading。
+  readonly stateOf: (stored: ReceiptReadingSetting) => ReceiptReadingState;
+  // 保存した入・切を読み、画面に見せる設定を返す（読めなければ切として扱う）。
+  readonly state: () => Promise<ReceiptReadingState>;
+  // 中枢の起動のときに呼ぶ。読み取りの口がなく、保存した値が入なら、切に倒して保存する（理由の名前だけを記録する）。
+  // 口が戻っても切のままにし、入にするには OS の確認ダイアログを経させるため（ADR 0179 の追補）。口があるときと、
+  // 保存した値が読めないときは何もしない。保存できなければ false を返す（読み取りは unavailable のまま止まる）。
+  readonly closeWhenUnavailable: () => Promise<boolean>;
   readonly handlers: {
     readonly changeHouseholdReceiptSetting: ApiRouteHandler;
     readonly readHouseholdReceipt: ApiRouteHandler;
@@ -303,14 +321,33 @@ export function createHouseholdReceiptRoutes(
       : null;
   const budget = options.budget;
   const available = setup !== null && budget !== null;
-  let reading: 'on' | 'off' = 'off';
+  const settings = options.settings ?? memoryReceiptSettingStore();
+  // 切にする要求を受けた回数。読み取りは始めたときの値を覚え、送るまでの間に切にされたら送らない（保存した値を読む間に
+  // 切にされた場合も含む）。
+  let offRequests = 0;
   // 受け付けた request_id（送ったかどうかを問わない）。同じ request_id は二度送らない。
   const seen = new Set<string>();
   // 読み取り中の要求の中断（設定を切にしたら止める）。同時に一つだけ。
   let inFlight: AbortController | null = null;
 
-  const state = (): ReceiptReadingState =>
-    !available ? 'unavailable' : reading;
+  const stateOf = (stored: ReceiptReadingSetting): ReceiptReadingState =>
+    !available ? 'unavailable' : stored;
+  const state = async (): Promise<ReceiptReadingState> =>
+    stateOf((await settings.read())?.receipt_reading ?? 'off');
+
+  const closeWhenUnavailable = async (): Promise<boolean> => {
+    if (available) return true;
+    const stored = await settings.read();
+    if (stored === null || stored.receipt_reading !== 'on') return true;
+    // 版は今の版から 1 進める（切にする要求は版を照合しない）。古い表示から入にする要求は、版の違いで 409 になる。
+    const written = await settings.write(stored.settings_revision, 'off');
+    log(
+      written.kind === 'written'
+        ? '家計簿のレシートの写真の読み取りの設定を切にしました（receipt_reader_unavailable_at_start）。'
+        : '家計簿のレシートの写真の読み取りの設定を切にできませんでした（receipt_setting_close_failed）。',
+    );
+    return written.kind === 'written';
+  };
 
   const remember = (requestId: string): void => {
     seen.add(requestId);
@@ -324,22 +361,34 @@ export function createHouseholdReceiptRoutes(
     const body = request.body ?? {};
     const requestId = stringOf(body['request_id']);
     const wanted = body['receipt_reading'];
-    if (wanted !== 'on' && wanted !== 'off')
+    const expected = stringOf(body['expected_settings_revision']);
+    if (
+      (wanted !== 'on' && wanted !== 'off') ||
+      !RECEIPT_SETTING_REVISION.test(expected)
+    )
       return apiErrorResponse(422, 'invalid_input', requestId || null);
-    if (wanted === 'on') {
-      if (!available)
-        return apiErrorResponse(
-          503,
-          'dependency_unavailable',
-          requestId || null,
-        );
-      reading = 'on';
-    } else {
-      reading = 'off';
-      // 送っている途中の読み取りを止める（送出意図の前なら送らず、後なら結果を捨てる。予算の門が扱う）。
+    if (wanted === 'on' && !available)
+      return apiErrorResponse(503, 'dependency_unavailable', requestId || null);
+    if (wanted === 'off') {
+      // 送っている途中の読み取りを止める（送出意図の前なら送らず、後なら結果を捨てる。予算の門が扱う）。保存の結果を
+      // 待たずに止める（止める側は安全なので、保存が版の違いで拒否されても止めたままにする）。
+      offRequests += 1;
       inFlight?.abort();
     }
-    return { status: 200, body: { receipt_reading: state() } };
+    const written = await settings.write(expected, wanted);
+    if (written.kind === 'conflict')
+      return apiErrorResponse(409, 'conflict', requestId || null);
+    if (written.kind === 'invalid')
+      return apiErrorResponse(422, 'invalid_input', requestId || null);
+    if (written.kind === 'unknown')
+      return apiErrorResponse(503, 'dependency_unavailable', requestId || null);
+    return {
+      status: 200,
+      body: {
+        receipt_reading: stateOf(written.stored.receipt_reading),
+        settings_revision: written.stored.settings_revision,
+      },
+    };
   };
 
   const readHouseholdReceipt: ApiRouteHandler = async (request) => {
@@ -352,7 +401,13 @@ export function createHouseholdReceiptRoutes(
     // 外部へ送る前に止めた（費用はかかっていない）。結果の分からない 503 と分ける（見直しの指摘 5）。
     const notSent = () => fail(503, 'not_sent');
     if (setup === null || budget === null) return notSent();
-    if (reading !== 'on') return fail(403, 'external_send_consent_required');
+    // 保存した設定を読む（ADR 0179）。読めなければ送らない。読む間に切にされたら送らない。
+    const offMark = offRequests;
+    const stored = await settings.read();
+    if (stored === null) return notSent();
+    const turnedOff = (): boolean =>
+      stored.receipt_reading !== 'on' || offRequests !== offMark;
+    if (turnedOff()) return fail(403, 'external_send_consent_required');
     // 同じ request_id は、結果を問わず二度送らない（結果不明の自動の再送をしない）。
     if (seen.has(requestId)) return fail(409, 'conflict');
     remember(requestId);
@@ -401,7 +456,7 @@ export function createHouseholdReceiptRoutes(
         if (release === null) return notSent();
       }
       // 本人が切にした・止めた・端末が接続を切った・期限を過ぎた。
-      if (reading !== 'on') return fail(403, 'external_send_consent_required');
+      if (turnedOff()) return fail(403, 'external_send_consent_required');
       if (controller.signal.aborted) return notSent();
       const received: { value: AdapterResult | null } = { value: null };
       const outcome = await budget.run(
@@ -442,9 +497,9 @@ export function createHouseholdReceiptRoutes(
       if (outcome.kind === 'rejected')
         return outcome.budget_held ? fail(422, 'budget_held') : notSent();
       if (outcome.kind === 'released')
-        return reading === 'on'
-          ? notSent()
-          : fail(403, 'external_send_consent_required');
+        return turnedOff()
+          ? fail(403, 'external_send_consent_required')
+          : notSent();
       const reply = received.value;
       // 応答が届いていない・中断した: 結果が分からないので 503（自動では送り直さない）。
       if (
@@ -511,7 +566,9 @@ export function createHouseholdReceiptRoutes(
   };
 
   return {
+    stateOf,
     state,
+    closeWhenUnavailable,
     handlers: { changeHouseholdReceiptSetting, readHouseholdReceipt },
   };
 }

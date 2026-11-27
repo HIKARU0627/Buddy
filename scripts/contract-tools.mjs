@@ -1387,8 +1387,11 @@ export function semanticErrors(name, value) {
     errors.push(...new Set(found));
   }
   // 1 か月の請求予定（ADR 0176）。引き落とし日は暦に実在し、引き落とし日・会社の表示名・金額の順に並び、合計は金額の和。
+  // 請求予定の ID は重ならない（ADR 0179）。
   if (name === 'HouseholdMonthBills') {
     const found = [];
+    const ids = value.items.map((bill) => bill.bill_id);
+    if (new Set(ids).size !== ids.length) found.push('bill_duplicate');
     for (const bill of value.items)
       if (!isHouseholdDate(bill.due_on)) found.push('due_on_invalid');
     const compare = (a, b) =>

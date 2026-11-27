@@ -196,6 +196,7 @@ function snapshot(db: SqliteDatabase): Snapshot {
     sync: all(
       'SELECT scope_id, provider_cursor, pending_full, committed_watermark FROM sync_scopes',
     ),
+    settings: all('SELECT * FROM household_settings'),
     meta: all(
       "SELECT key, value FROM schema_meta WHERE key NOT GLOB 'migration_sha256:*' ORDER BY key",
     ),
@@ -225,6 +226,7 @@ test('restore aftermath: every reset is written in one transaction (hand-written
       live_sessions_closed_count: 1,
       connections_reauth_count: 1,
       sync_scopes_reset_count: 1,
+      receipt_settings_closed_count: 0,
       safety_revision: '8',
     });
     const after = snapshot(db);
@@ -380,7 +382,7 @@ test('restore aftermath: every reset is written in one transaction (hand-written
     assert.deepEqual(after['meta'], [
       { key: 'restore_backup_created_at', value: String(BACKUP_AT) },
       { key: 'restore_restored_at', value: String(RESTORED_AT) },
-      { key: 'schema_version', value: '21' },
+      { key: 'schema_version', value: '22' },
       { key: 'store_generation', value: NEW_GENERATION },
     ]);
     // 隔離の印のある操作は、承認・準備へ進めない（DB の最後の保証）。
@@ -453,5 +455,43 @@ test('restore aftermath: when the hub is lost, the hub_local device is revoked t
       db.prepare('SELECT guest_mode FROM io_stop_state').pluck().get(),
       0,
     );
+  });
+});
+
+test('restore aftermath: 入だったレシートの写真の読み取りの設定を切にし、版を 1 進める（ADR 0038・0179）', async () => {
+  await withSeeded((db) => {
+    db.prepare(
+      "INSERT INTO household_settings (setting_id, mail_intake, receipt_reading, settings_revision, updated_at) VALUES (1, 'off', 'on', 3, 5)",
+    ).run();
+    const result = applyRestoreAftermath(db, INPUT);
+    assert.equal(result.receipt_settings_closed_count, 1);
+    assert.deepEqual(db.prepare('SELECT * FROM household_settings').all(), [
+      {
+        setting_id: 1,
+        mail_intake: 'off',
+        receipt_reading: 'off',
+        settings_revision: 4,
+        updated_at: RESTORED_AT,
+      },
+    ]);
+  });
+});
+
+test('restore aftermath: 切だったレシートの設定は変えず、版も進めない', async () => {
+  await withSeeded((db) => {
+    db.prepare(
+      "INSERT INTO household_settings (setting_id, mail_intake, receipt_reading, settings_revision, updated_at) VALUES (1, 'on', 'off', 3, 5)",
+    ).run();
+    const result = applyRestoreAftermath(db, INPUT);
+    assert.equal(result.receipt_settings_closed_count, 0);
+    assert.deepEqual(db.prepare('SELECT * FROM household_settings').all(), [
+      {
+        setting_id: 1,
+        mail_intake: 'on',
+        receipt_reading: 'off',
+        settings_revision: 3,
+        updated_at: 5,
+      },
+    ]);
   });
 });

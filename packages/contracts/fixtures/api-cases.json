@@ -3063,11 +3063,15 @@
         "bills": {
           "items": [
             {
+              "bill_id": "00000000-0000-4000-8000-0000000e000d",
+              "content_revision": "1",
               "issuer": "合成のカード",
               "amount_yen": 25800,
               "due_on": "2030-11-10"
             },
             {
+              "bill_id": "00000000-0000-4000-8000-0000000e000e",
+              "content_revision": "1",
               "issuer": "合成のカード",
               "amount_yen": 4200,
               "due_on": "2030-11-27"
@@ -3180,6 +3184,49 @@
           "command_scope_id": "00000000-0000-4000-8000-000000009002",
           "expected_content_revision": "1",
           "state": "deleted"
+        }
+      ]
+    },
+    "deleteHouseholdBill": {
+      "params": {
+        "bill_id": "00000000-0000-4000-8000-0000000e0001"
+      },
+      "request": {
+        "request_id": "00000000-0000-4000-8000-0000000e0101",
+        "command_scope_id": "00000000-0000-4000-8000-000000009002",
+        "expected_content_revision": "1"
+      },
+      "response": {
+        "bill_id": "00000000-0000-4000-8000-0000000e0001",
+        "state": "deleted"
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"],
+        ["stale_scope", 410, "expired_scope"],
+        ["locked", 403, "device_locked"],
+        ["lock_unknown", 403, "device_locked"],
+        ["too_large", 413, "payload_too_large"],
+        ["voice_origin", 403, "screen_operation_required"],
+        ["chat_origin", 403, "screen_operation_required"],
+        ["system_origin", 403, "screen_operation_required"]
+      ],
+      "invalid_bodies": [
+        {
+          "request_id": "00000000-0000-4000-8000-0000000e0101",
+          "expected_content_revision": "1"
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-0000000e0101",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "expected_content_revision": "01"
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-0000000e0101",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "expected_content_revision": "1",
+          "amount_yen": 1000
         }
       ]
     },
@@ -3655,10 +3702,12 @@
       "request": {
         "request_id": "00000000-0000-4000-8000-0000000c0108",
         "command_scope_id": "00000000-0000-4000-8000-000000009002",
+        "expected_settings_revision": "0",
         "receipt_reading": "on"
       },
       "response": {
-        "receipt_reading": "on"
+        "receipt_reading": "on",
+        "settings_revision": "1"
       },
       "rejections": [
         ["no_token", 401, "unauthenticated"],
@@ -3676,17 +3725,25 @@
         {
           "request_id": "00000000-0000-4000-8000-0000000c0108",
           "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "expected_settings_revision": "0",
           "receipt_reading": "unavailable"
         },
         {
           "request_id": "00000000-0000-4000-8000-0000000c0108",
-          "command_scope_id": "00000000-0000-4000-8000-000000009002"
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "expected_settings_revision": "0"
         },
         {
           "request_id": "00000000-0000-4000-8000-0000000c0108",
           "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "receipt_reading": "on"
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-0000000c0108",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "expected_settings_revision": "0",
           "receipt_reading": "on",
-          "expected_settings_revision": "0"
+          "mail_intake": "on"
         }
       ]
     },

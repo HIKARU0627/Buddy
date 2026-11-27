@@ -161,6 +161,7 @@ export const HOUSEHOLD_CHANNELS: readonly DesktopIpcChannel[] = [
   'desktop.household_export',
   'desktop.household_receipt_setting',
   'desktop.household_receipt_read',
+  'desktop.household_bill_delete',
 ];
 
 // 連携の接続の一覧と取得範囲の変更のチャネル（B08-02 P3・B09-05、ADR 0142）。中枢の画面の端末でだけ使える
@@ -1325,7 +1326,8 @@ export class DesktopCoreLink {
         raw.channel !== 'desktop.household_edit' &&
         raw.channel !== 'desktop.household_export' &&
         raw.channel !== 'desktop.household_receipt_setting' &&
-        raw.channel !== 'desktop.household_receipt_read')
+        raw.channel !== 'desktop.household_receipt_read' &&
+        raw.channel !== 'desktop.household_bill_delete')
     )
       return this.#reject(
         echoRequestId(raw),
@@ -1375,34 +1377,36 @@ export class DesktopCoreLink {
             )
           : raw.channel === 'desktop.household_delete'
             ? await this.#household.remove(raw.payload.ref)
-            : raw.channel === 'desktop.household_intake'
-              ? await this.#household.intake(raw.payload.mail_intake)
-              : raw.channel === 'desktop.household_import'
-                ? await this.#household.importExport(
-                    this.#options.pickHouseholdExport ??
-                      (() => Promise.resolve(null)),
-                  )
-                : raw.channel === 'desktop.household_budget'
-                  ? await this.#household.budget(raw.payload.items)
-                  : raw.channel === 'desktop.household_add'
-                    ? await this.#household.add(raw.payload.entry)
-                    : raw.channel === 'desktop.household_export'
-                      ? await this.#household.exportCsv(
-                          raw.payload.from,
-                          raw.payload.to,
-                          this.#options.saveHouseholdExport ??
-                            (() => Promise.resolve('cancelled')),
-                        )
-                      : raw.channel === 'desktop.household_receipt_setting'
-                        ? await this.#household.receiptSetting(
-                            raw.payload.receipt_reading,
-                            this.#options.confirmReceiptSetting ??
-                              (() => Promise.resolve(false)),
+            : raw.channel === 'desktop.household_bill_delete'
+              ? await this.#household.removeBill(raw.payload.ref)
+              : raw.channel === 'desktop.household_intake'
+                ? await this.#household.intake(raw.payload.mail_intake)
+                : raw.channel === 'desktop.household_import'
+                  ? await this.#household.importExport(
+                      this.#options.pickHouseholdExport ??
+                        (() => Promise.resolve(null)),
+                    )
+                  : raw.channel === 'desktop.household_budget'
+                    ? await this.#household.budget(raw.payload.items)
+                    : raw.channel === 'desktop.household_add'
+                      ? await this.#household.add(raw.payload.entry)
+                      : raw.channel === 'desktop.household_export'
+                        ? await this.#household.exportCsv(
+                            raw.payload.from,
+                            raw.payload.to,
+                            this.#options.saveHouseholdExport ??
+                              (() => Promise.resolve('cancelled')),
                           )
-                        : await this.#household.edit(
-                            raw.payload.ref,
-                            raw.payload.entry,
-                          );
+                        : raw.channel === 'desktop.household_receipt_setting'
+                          ? await this.#household.receiptSetting(
+                              raw.payload.receipt_reading,
+                              this.#options.confirmReceiptSetting ??
+                                (() => Promise.resolve(false)),
+                            )
+                          : await this.#household.edit(
+                              raw.payload.ref,
+                              raw.payload.entry,
+                            );
     return this.#withinGeneration(
       generation,
       this.#operationOutcome(

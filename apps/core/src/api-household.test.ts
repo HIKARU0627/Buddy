@@ -403,21 +403,24 @@ test('1 か月: 請求予定は記録・集計と分けて返し、支出の合�
       },
     );
   };
-  assert.equal((await bill({})).outcome, 'created');
-  assert.equal(
-    (
-      await bill({
-        issuer: '合成の別カード',
-        amount_yen: 4200,
-        due_on: '2030-11-10',
-      })
-    ).outcome,
-    'created',
-  );
+  const created = async (
+    over: Partial<{ issuer: string; amount_yen: number; due_on: string }>,
+  ): Promise<string> => {
+    const result = await bill(over);
+    assert.equal(result.outcome, 'created');
+    if (result.outcome !== 'created') throw new Error('unreachable');
+    return result.bill_id;
+  };
+  const late = await created({});
+  const early = await created({
+    issuer: '合成の別カード',
+    amount_yen: 4200,
+    due_on: '2030-11-10',
+  });
   // 同じ請求の二通目は作らない。
   assert.deepEqual(await bill({}), { outcome: 'same_bill' });
   // 翌月の引き落としは翌月にだけ出る。
-  assert.equal((await bill({ due_on: '2030-12-10' })).outcome, 'created');
+  const next = await created({ due_on: '2030-12-10' });
   // 別のデータ鍵の請求予定は読めないものとして数だけ返す。
   await bill(
     { amount_yen: 999 },
@@ -426,10 +429,23 @@ test('1 か月: 請求予定は記録・集計と分けて返し、支出の合�
   const response = await call(handlers.getHouseholdMonth, { month: '2030-11' });
   assert.equal(response.status, 200);
   assert(contract.valid('HouseholdMonth', response.body));
+  // 消す操作のために、請求予定の ID と内容版（作ったときは 1）も返す（ADR 0179）。
   assert.deepEqual(response.body['bills'], {
     items: [
-      { issuer: '合成の別カード', amount_yen: 4200, due_on: '2030-11-10' },
-      { issuer: '合成のカード', amount_yen: 25800, due_on: '2030-11-27' },
+      {
+        bill_id: early,
+        content_revision: '1',
+        issuer: '合成の別カード',
+        amount_yen: 4200,
+        due_on: '2030-11-10',
+      },
+      {
+        bill_id: late,
+        content_revision: '1',
+        issuer: '合成のカード',
+        amount_yen: 25800,
+        due_on: '2030-11-27',
+      },
     ],
     total_yen: 30000,
     unreadable: 1,
@@ -447,7 +463,13 @@ test('1 か月: 請求予定は記録・集計と分けて返し、支出の合�
   assert(!JSON.stringify(response.body).includes('acct-synthetic'));
   const december = await call(handlers.getHouseholdMonth, { month: '2030-12' });
   assert.deepEqual((december.body['bills'] as Json)['items'], [
-    { issuer: '合成のカード', amount_yen: 25800, due_on: '2030-12-10' },
+    {
+      bill_id: next,
+      content_revision: '1',
+      issuer: '合成のカード',
+      amount_yen: 25800,
+      due_on: '2030-12-10',
+    },
   ]);
   // 月ごとの合計・定期の支出にも入らない（予算は設定だけで、請求予定の金額を足さない）。
   const overview = await call(handlers.listHouseholdMonths);
@@ -487,6 +509,154 @@ test('1 か月: 請求予定は記録・集計と分けて返し、支出の合�
     ).status,
     503,
   );
+});
+
+const billDeleteBody = (expected: string): JsonObject => ({
+  request_id: '00000000-0000-4000-8000-0000000e0101',
+  command_scope_id: SCOPE,
+  expected_content_revision: expected,
+});
+
+test('請求予定を消す: 内容版を照合して消し、月の一覧と合計から外す。再送・古い版は 409、ない請求予定・内容版 0 は 422（ADR 0179）', async (t) => {
+  const { store, dataKey, ports } = withDb(t);
+  const handlers = routes(store, dataKey);
+  await record(ports, { amount_yen: 1280, occurred_on: '2030-11-01' });
+  const source = (remoteId: string) => ({
+    provider: 'google' as const,
+    account_id: 'acct-synthetic',
+    remote_id: remoteId,
+  });
+  const recordBill = async (
+    remoteId: string,
+    over: Partial<{ issuer: string; amount_yen: number; due_on: string }> = {},
+  ) =>
+    recordHouseholdBill(ports, source(remoteId), {
+      issuer: '合成のカード',
+      amount_yen: 25800,
+      due_on: '2030-11-27',
+      ...over,
+    });
+  const misread = await recordBill('bill-a', { amount_yen: 258000 });
+  const kept = await recordBill('bill-b', {
+    issuer: '合成の別カード',
+    amount_yen: 4200,
+    due_on: '2030-11-10',
+  });
+  assert.equal(misread.outcome, 'created');
+  assert.equal(kept.outcome, 'created');
+  if (misread.outcome !== 'created' || kept.outcome !== 'created')
+    throw new Error('unreachable');
+  const target = { bill_id: misread.bill_id };
+  // 内容版が違えば消さない。
+  const stale = await call(
+    handlers.deleteHouseholdBill,
+    target,
+    billDeleteBody('2'),
+  );
+  assert.equal(stale.status, 409);
+  assert.equal(stale.body['code'], 'conflict');
+  const deleted = await call(
+    handlers.deleteHouseholdBill,
+    target,
+    billDeleteBody('1'),
+  );
+  assert.equal(deleted.status, 200);
+  assert(contract.valid('HouseholdBillDeleteResult', deleted.body));
+  assert.deepEqual(deleted.body, {
+    bill_id: misread.bill_id,
+    state: 'deleted',
+  });
+  // 消した後の再送（同じ要求）は 409 で、二度は効かない。
+  const resent = await call(
+    handlers.deleteHouseholdBill,
+    target,
+    billDeleteBody('1'),
+  );
+  assert.equal(resent.status, 409);
+  assert.equal(
+    resent.body['request_id'],
+    '00000000-0000-4000-8000-0000000e0101',
+  );
+  // 消した後に新しい内容版で送っても 409。
+  assert.equal(
+    (await call(handlers.deleteHouseholdBill, target, billDeleteBody('2')))
+      .status,
+    409,
+  );
+  // ない請求予定・家計の記録の ID は 422。内容版 0 は保存する版にないので 422。
+  assert.equal(
+    (
+      await call(
+        handlers.deleteHouseholdBill,
+        { bill_id: MISSING },
+        billDeleteBody('1'),
+      )
+    ).status,
+    422,
+  );
+  assert.equal(
+    (
+      await call(
+        handlers.deleteHouseholdBill,
+        { bill_id: kept.bill_id },
+        billDeleteBody('0'),
+      )
+    ).status,
+    422,
+  );
+  // 月の一覧と合計から外れる。支出の合計は記録のまま。
+  const month = await call(handlers.getHouseholdMonth, { month: '2030-11' });
+  assert.equal(month.status, 200);
+  assert(contract.valid('HouseholdMonth', month.body));
+  assert.deepEqual(month.body['bills'], {
+    items: [
+      {
+        bill_id: kept.bill_id,
+        content_revision: '1',
+        issuer: '合成の別カード',
+        amount_yen: 4200,
+        due_on: '2030-11-10',
+      },
+    ],
+    total_yen: 4200,
+    unreadable: 0,
+    truncated: false,
+  });
+  assert.equal((month.body['summary'] as Json)['expense_yen'], 1280);
+  // 同じメールを読み直しても作り直さない（出所の鍵が残る）。
+  assert.deepEqual(await recordBill('bill-a', { amount_yen: 258000 }), {
+    outcome: 'duplicate',
+  });
+  const again = await call(handlers.getHouseholdMonth, { month: '2030-11' });
+  assert.equal(((again.body['bills'] as Json)['items'] as Json[]).length, 1);
+  // 別のメールが同じ請求を知らせると、消した請求予定の中身はもう読めないので、新しい請求予定として作る（U377）。
+  assert.equal(
+    (await recordBill('bill-c', { amount_yen: 258000 })).outcome,
+    'created',
+  );
+  // 書込みの成否不明・失敗は 503 で、成功にも競合にも見せない。
+  const real = store.household as (op: HouseholdOp) => Promise<unknown>;
+  for (const outcome of ['unknown', 'rejected'] as const) {
+    const failing: Store = {
+      household: ((op: HouseholdOp) =>
+        op.kind === 'household.bill_delete'
+          ? Promise.resolve({
+              ok: false,
+              outcome,
+              reasons: [
+                outcome === 'unknown' ? 'commit_failed' : 'store_halted',
+              ],
+            })
+          : real(op)) as Store['household'],
+    };
+    const lost = await call(
+      routes(failing, dataKey).deleteHouseholdBill,
+      { bill_id: kept.bill_id },
+      billDeleteBody('1'),
+    );
+    assert.equal(lost.status, 503, outcome);
+    assert.equal(lost.body['code'], 'dependency_unavailable');
+  }
 });
 
 test('1 か月: 記録のない月は空で返す。2000〜2099 年の外は 422、データ鍵がなければ 503', async (t) => {

@@ -266,6 +266,120 @@ test('a deletion is confirmed in the screen first, then sent by reference', asyn
   assert.equal(state.notice?.place, null);
 });
 
+// 請求予定の行（ADR 0179）。
+const bills = (
+  items: { n: number; delivery_unknown?: boolean }[],
+): NonNullable<DesktopHouseholdView['bills']> => ({
+  items: items.map(({ n, delivery_unknown = false }) => ({
+    ref: id(0x80 + n),
+    issuer: `合成カード${String(n)}`,
+    amount_yen: 1000,
+    due_on: '2030-11-10',
+    delivery_unknown,
+  })),
+  total_yen: items.length * 1000,
+  unreadable: 0,
+  truncated: false,
+});
+
+test('a bill deletion is confirmed in the screen first, then sent by reference (ADR 0179)', async () => {
+  const fake = fakeApi();
+  const store = new HouseholdStore(fake.api);
+  store.actions.refresh();
+  fake.answer((request) =>
+    okResponse(
+      request,
+      view([entry(0)], { bills: bills([{ n: 0 }, { n: 1 }]) }),
+    ),
+  );
+  await settle();
+  // 確かめを出さずに確定はできない。
+  store.actions.confirmBillDelete();
+  assert.equal(fake.sent.length, 1);
+  // 記録の削除の確かめと、請求予定の確かめは同時に出さない。
+  store.actions.startDelete(id(0));
+  store.actions.startBillDelete(id(0x81));
+  assert.equal(store.snapshot().confirming, null);
+  assert.equal(store.snapshot().confirmingBill, id(0x81));
+  store.actions.cancelBillDelete();
+  assert.equal(store.snapshot().confirmingBill, null);
+  // 読んでいない参照では確かめを出さない。
+  store.actions.startBillDelete(id(0x99));
+  assert.equal(store.snapshot().confirmingBill, null);
+  store.actions.startBillDelete(id(0x81));
+  store.actions.confirmBillDelete();
+  assert.equal(store.snapshot().busy, id(0x81));
+  assert.equal(fake.sent.at(-1)?.channel, 'desktop.household_bill_delete');
+  assert.deepEqual(fake.sent.at(-1)?.payload, { ref: id(0x81) });
+  // 送っている間に二度は送らない。
+  store.actions.confirmBillDelete();
+  assert.equal(fake.sent.length, 2);
+  fake.answer((request) =>
+    okResponse(
+      request,
+      view([entry(0)], { list_seq: 3, bills: bills([{ n: 0 }]) }),
+    ),
+  );
+  await settle();
+  const state = store.snapshot();
+  assert.equal(state.busy, null);
+  assert.equal(state.confirmingBill, null);
+  assert.equal(state.notice?.text, '請求予定を消しました。');
+  // 消えた行の代わりに欄の頭へ出す。
+  assert.equal(state.notice?.place, null);
+});
+
+test('a bill deletion that is stale or unknown warns on the row, re-reads and is not resent (ADR 0179)', async () => {
+  const fake = fakeApi();
+  const store = new HouseholdStore(fake.api);
+  store.actions.refresh();
+  fake.answer((request) =>
+    okResponse(request, view([entry(0)], { bills: bills([{ n: 0 }]) })),
+  );
+  await settle();
+  store.actions.startBillDelete(id(0x80));
+  store.actions.confirmBillDelete();
+  fake.answer((request) => rejected(request, 'preview_stale'));
+  await settle();
+  assert.match(
+    store.snapshot().notice?.text ?? '',
+    /この請求予定はすでに消されていたか、その後に変わっていました。/u,
+  );
+  assert.equal(store.snapshot().notice?.place, id(0x80));
+  assert.equal(fake.sent.at(-1)?.channel, 'desktop.household_view');
+  fake.answer((request) =>
+    okResponse(
+      request,
+      view([entry(0)], { list_seq: 3, bills: bills([{ n: 0 }]) }),
+    ),
+  );
+  await settle();
+  store.actions.startBillDelete(id(0x80));
+  store.actions.confirmBillDelete();
+  fake.answer((request) => rejected(request, 'outcome_unknown'));
+  await settle();
+  assert.match(
+    store.snapshot().notice?.text ?? '',
+    /消した結果を確かめられませんでした。自動では送り直しません。/u,
+  );
+  // 読み直した値で結果不明の行は、確かめを出させない（送らない）。
+  fake.answer((request) =>
+    okResponse(
+      request,
+      view([entry(0)], {
+        list_seq: 4,
+        bills: bills([{ n: 0, delivery_unknown: true }]),
+      }),
+    ),
+  );
+  await settle();
+  const sentBefore = fake.sent.length;
+  store.actions.startBillDelete(id(0x80));
+  store.actions.confirmBillDelete();
+  assert.equal(store.snapshot().confirmingBill, null);
+  assert.equal(fake.sent.length, sentBefore);
+});
+
 test('a stale or unknown result warns on the row and re-reads the shown month', async () => {
   const fake = fakeApi();
   const store = new HouseholdStore(fake.api);

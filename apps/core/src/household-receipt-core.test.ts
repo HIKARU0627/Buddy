@@ -1,5 +1,6 @@
-// Core の起動の設定からのレシートの写真の読み取り（ADR 0178）。Core は同じプロセスの startCore（HTTPS は 127.0.0.1、鍵は
-// 模擬）。外部のモデルは模擬の送信の口だけで、実 API は呼ばない。鍵は合成の値。期待値は手で書いた。
+// Core の起動の設定からのレシートの写真の読み取り（ADR 0178）と、入・切の保存との組み合わせ（ADR 0179）。Core は同じ
+// プロセスの startCore（HTTPS は 127.0.0.1、鍵は模擬）。外部のモデルは模擬の送信の口だけで、実 API は呼ばない。鍵は合成の
+// 値。期待値は手で書いた。
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -9,12 +10,14 @@ import type { HttpRequest, HttpResult } from '@buddy/ai';
 import { tempDir } from './api-test-support.js';
 import { BUDGET_CONFIG_FILE } from './budget-config.js';
 import { OCT_15, syntheticConfig } from './budget-test-support.js';
+import type { TestDevice } from './api-test-support.js';
 import {
   bootstrap,
   insertDevice,
   postJson,
   startEventCore,
 } from './event-test-support.js';
+import type { EventCore } from './event-test-support.js';
 import type { ReceiptHttpTransport } from './household-receipt-reader.js';
 
 type Json = Record<string, unknown>;
@@ -114,17 +117,26 @@ async function startWith(
   withGemini: boolean,
   // 製品の送信の口（transport を渡さない）で、endpoint だけ指定する場合。
   productEndpoint?: string,
+  // 中枢を起動し直す場合の前の中枢（同じデータディレクトリ・TLS の鍵・端末を使う）。
+  previous?: { readonly core: EventCore; readonly device: TestDevice },
 ) {
-  const dataDir = join(await tempDir(t, 'buddy-receipt-core-'), 'data');
-  await mkdir(dataDir, { recursive: true, mode: 0o700 });
-  await writeFile(
-    join(dataDir, BUDGET_CONFIG_FILE),
-    JSON.stringify(geminiConfig(withGemini)),
-    { mode: 0o600 },
-  );
+  const dataDir =
+    previous?.core.dataDir ??
+    join(await tempDir(t, 'buddy-receipt-core-'), 'data');
+  if (previous === undefined) {
+    await mkdir(dataDir, { recursive: true, mode: 0o700 });
+    await writeFile(
+      join(dataDir, BUDGET_CONFIG_FILE),
+      JSON.stringify(geminiConfig(withGemini)),
+      { mode: 0o600 },
+    );
+  }
   const transport = new MockTransport();
   const core = await startEventCore(t, {
     dataDir,
+    ...(previous === undefined
+      ? {}
+      : { tlsKeyStore: previous.core.tlsKeyStore }),
     budget: { tickIntervalMs: 0, now: () => OCT_15 },
     household: {
       receiptProvider:
@@ -133,10 +145,11 @@ async function startWith(
           : { apiKey, endpoint: productEndpoint },
     },
   });
-  const device = await insertDevice(core.handle.store);
+  const device = previous?.device ?? (await insertDevice(core.handle.store));
   const scope = await bootstrap(core, device);
   const screen = { 'buddy-input-origin': 'screen' };
-  const turnOn = () =>
+  // 設定の版（ADR 0179）。家計簿の設定の行がなければ 0。
+  const change = (value: 'on' | 'off', revision = '0') =>
     postJson(
       core,
       device,
@@ -144,10 +157,21 @@ async function startWith(
       {
         request_id: randomUUID(),
         command_scope_id: scope,
-        receipt_reading: 'on',
+        expected_settings_revision: revision,
+        receipt_reading: value,
       },
       screen,
     );
+  const turnOn = (revision = '0') => change('on', revision);
+  const turnOff = (revision: string) => change('off', revision);
+  // DB に保存した入・切と版（読み取りの口の有無によらない値）。
+  const stored = async () => {
+    const got = await core.handle.store.household({
+      kind: 'household.settings_get',
+    });
+    assert(got.ok);
+    return [got.value.receipt_reading, got.value.settings_revision];
+  };
   const read = () =>
     postJson(
       core,
@@ -160,7 +184,7 @@ async function startWith(
       },
       screen,
     );
-  return { core, transport, turnOn, read };
+  return { core, device, transport, turnOn, turnOff, stored, read };
 }
 
 test(
@@ -170,7 +194,10 @@ test(
     const h = await startWith(t, KEY, true);
     const on = await h.turnOn();
     assert.equal(on.status, 200, on.text);
-    assert.deepEqual(on.json, { receipt_reading: 'on' });
+    assert.deepEqual(on.json, {
+      receipt_reading: 'on',
+      settings_revision: '1',
+    });
     const result = await h.read();
     assert.equal(result.status, 200, result.text);
     assert.deepEqual(result.json, {
@@ -207,6 +234,8 @@ test(
       const h = await startWith(t, apiKey, withGemini);
       const on = await h.turnOn();
       assert.equal(on.status, 503, on.text);
+      // 入にする要求は保存しない（ADR 0179）。
+      assert.deepEqual(await h.stored(), ['off', '0']);
       const result = await h.read();
       assert.equal(result.status, 503, result.text);
       assert.equal(h.transport.requests.length, 0);
@@ -243,5 +272,85 @@ test(
     );
     const on = await allowed.turnOn();
     assert.equal(on.status, 200, on.text);
+  },
+);
+
+test(
+  '入にして起動し直すと入のままで、鍵を外して起動し直すと切に倒して保存し、鍵を戻しても切のまま（403 で送らない）',
+  { timeout: 60_000 },
+  async (t) => {
+    const first = await startWith(t, KEY, true);
+    const on = await first.turnOn();
+    assert.equal(on.status, 200, on.text);
+    await first.core.handle.stop('restart');
+
+    // 鍵のまま起動し直す: 入にし直さなくても読み取りを受け、1 回だけ送る。
+    const again = await startWith(t, KEY, true, undefined, first);
+    assert.deepEqual(await again.stored(), ['on', '1']);
+    const read = await again.read();
+    assert.equal(read.status, 200, read.text);
+    assert.equal(again.transport.requests.length, 1);
+    await again.core.handle.stop('restart');
+
+    // 鍵を外して起動し直す: 読み取りの口がないので、保存した値が入だったのを切に倒して保存する（版は 1 進む）。送らない。
+    const keyless = await startWith(t, null, true, undefined, first);
+    assert.deepEqual(await keyless.stored(), ['off', '2']);
+    const notSent = await keyless.read();
+    assert.equal(notSent.status, 503, notSent.text);
+    assert.equal(notSent.json?.['code'], 'not_sent');
+    // 入にする要求は 503 で保存しない。
+    const refused = await keyless.turnOn('2');
+    assert.equal(refused.status, 503, refused.text);
+    assert.deepEqual(await keyless.stored(), ['off', '2']);
+    assert.equal(keyless.transport.requests.length, 0);
+    await keyless.core.handle.stop('restart');
+
+    // 鍵を戻して起動し直す: 切のままで、確認ダイアログを経る入にする要求まで送らない（403）。
+    const back = await startWith(t, KEY, true, undefined, first);
+    assert.deepEqual(await back.stored(), ['off', '2']);
+    const consent = await back.read();
+    assert.equal(consent.status, 403, consent.text);
+    assert.equal(consent.json?.['code'], 'external_send_consent_required');
+    assert.equal(back.transport.requests.length, 0);
+    // 古い表示（版 1）から入にする要求は、版の違いで 409。今の版（2）で入にすると送れる。
+    const stale = await back.turnOn('1');
+    assert.equal(stale.status, 409, stale.text);
+    const onAgain = await back.turnOn('2');
+    assert.equal(onAgain.status, 200, onAgain.text);
+    assert.deepEqual(await back.stored(), ['on', '3']);
+  },
+);
+
+test(
+  '入にして、確認済みの単価の版がない状態で起動し直すと切に倒して保存し、単価の版を戻しても切のまま（403 で送らない）',
+  { timeout: 60_000 },
+  async (t) => {
+    const first = await startWith(t, KEY, true);
+    const on = await first.turnOn();
+    assert.equal(on.status, 200, on.text);
+    await first.core.handle.stop('restart');
+
+    // 予算の設定から Gemini の単価の版を外して起動し直す。
+    const configPath = join(first.core.dataDir, BUDGET_CONFIG_FILE);
+    await writeFile(configPath, JSON.stringify(geminiConfig(false)), {
+      mode: 0o600,
+    });
+    const noPrice = await startWith(t, KEY, false, undefined, first);
+    assert.deepEqual(await noPrice.stored(), ['off', '2']);
+    const notSent = await noPrice.read();
+    assert.equal(notSent.status, 503, notSent.text);
+    assert.equal(noPrice.transport.requests.length, 0);
+    await noPrice.core.handle.stop('restart');
+
+    // 単価の版を戻して起動し直す: 切のままで送らない。
+    await writeFile(configPath, JSON.stringify(geminiConfig(true)), {
+      mode: 0o600,
+    });
+    const back = await startWith(t, KEY, true, undefined, first);
+    assert.deepEqual(await back.stored(), ['off', '2']);
+    const consent = await back.read();
+    assert.equal(consent.status, 403, consent.text);
+    assert.equal(consent.json?.['code'], 'external_send_consent_required');
+    assert.equal(back.transport.requests.length, 0);
   },
 );

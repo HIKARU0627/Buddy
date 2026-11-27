@@ -137,6 +137,13 @@ const twentyFirstBytes = readFileSync(
 const twentyFirstSha = createHash('sha256')
   .update(twentyFirstBytes)
   .digest('hex');
+// 0022（ADR 0179）: 請求予定を消す操作（household_bills の作り直し）と、レシートの写真の読み取りの設定の保存。
+const twentySecondBytes = readFileSync(
+  new URL('0022_household_bills_settings.sql', MIGRATIONS_DIR),
+);
+const twentySecondSha = createHash('sha256')
+  .update(twentySecondBytes)
+  .digest('hex');
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
 
 function withTempDir(run: (dir: string) => void): void {
@@ -197,7 +204,7 @@ function schemaSnapshot(db: SqliteDatabase): unknown {
   };
 }
 
-test('0001 to 0021 apply to a temporary file DB: 64 STRICT tables, version 21 and the content hashes', () => {
+test('0001 to 0022 apply to a temporary file DB: 64 STRICT tables, version 22 and the content hashes', () => {
   withTempDir((dir) => {
     const path = join(dir, 'buddy.sqlite');
     const db = openWriteConnection(path, { platform: 'macos' });
@@ -205,10 +212,10 @@ test('0001 to 0021 apply to a temporary file DB: 64 STRICT tables, version 21 an
       assert.equal(readSchemaVersion(db), 0);
       assert.deepEqual(applyMigrations(db), {
         from: 0,
-        to: 21,
+        to: 22,
         applied: [
           1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
-          21,
+          21, 22,
         ],
       });
       const tables = tableNames(db);
@@ -243,20 +250,21 @@ test('0001 to 0021 apply to a temporary file DB: 64 STRICT tables, version 21 an
         'migration_sha256:0019': nineteenthSha,
         'migration_sha256:0020': twentiethSha,
         'migration_sha256:0021': twentyFirstSha,
-        schema_version: '21',
+        'migration_sha256:0022': twentySecondSha,
+        schema_version: '22',
       });
       assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
       assert.equal(db.pragma('integrity_check', { simple: true }), 'ok');
     } finally {
       db.close();
     }
-    // 開き直しても版は 21 のまま、適用するものはない。
+    // 開き直しても版は 22 のまま、適用するものはない。
     const reopened = openWriteConnection(path, { platform: 'macos' });
     try {
-      assert.equal(readSchemaVersion(reopened), 21);
+      assert.equal(readSchemaVersion(reopened), 22);
       assert.deepEqual(applyMigrations(reopened), {
-        from: 21,
-        to: 21,
+        from: 22,
+        to: 22,
         applied: [],
       });
     } finally {
@@ -444,6 +452,7 @@ test('migration files are numbered from 1 without gaps and contain no transactio
       [19, '0019_household_budgets.sql'],
       [20, '0020_household_mail_baselines_scope.sql'],
       [21, '0021_household_bills.sql'],
+      [22, '0022_household_bills_settings.sql'],
     ],
   );
   withTempDir((dir) => {

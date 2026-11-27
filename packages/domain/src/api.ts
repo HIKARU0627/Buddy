@@ -109,6 +109,8 @@ export const ROUTE_CHECKS: Readonly<Record<string, readonly CoreCheck[]>> = {
   // 分類の変更と削除は本人の画面操作だけ（チャット窓口からは受けない）。内容版の照合は経路の処理が行い、409 にする。
   changeHouseholdCategory: SCREEN,
   deleteHouseholdEntry: SCREEN,
+  // 請求予定を消す（ADR 0179）。家計の記録の削除と同じ検査（本人の画面操作だけ。チャット・音声から受けない）。
+  deleteHouseholdBill: SCREEN,
   // 利用通知の取り込みの入・切（ADR 0163）。本人の画面操作だけ。版の照合は経路の処理が行い、409 にする。
   changeHouseholdSettings: SCREEN,
   // 外部の家計簿サービスの書き出しの取り込み（ADR 0164）。本人が選んだファイルの行だけ。本人の画面操作だけ。
@@ -120,7 +122,7 @@ export const ROUTE_CHECKS: Readonly<Record<string, readonly CoreCheck[]>> = {
   // 家計の記録の中身の変更（ADR 0169）。本人の画面操作だけ。内容版の照合は経路の処理が行い、409 にする。
   changeHouseholdEntry: SCREEN,
   // レシートの写真の読み取りの入・切と読み取り（ADR 0177）。どちらも本人の画面操作だけ。読み取りは外部へ送るので、設定・
-  // 予算・保存期限の掃除の門・同じ要求の二度目の拒否は経路の処理が行う。
+  // 予算・保存期限の掃除の門・同じ要求の二度目の拒否は経路の処理が行う。設定の版の照合（ADR 0179）も経路の処理が行い、409 にする。
   changeHouseholdReceiptSetting: SCREEN,
   readHouseholdReceipt: SCREEN,
 };

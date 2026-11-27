@@ -4,8 +4,10 @@
 // - 未取得・取得の失敗を「記録はありません」にしない。
 // - 分類の変更は選んだらすぐ送る（直せるので確かめない）。中身の変更（ADR 0169）は行の中に入力欄（今の値を入れた状態）を出し、
 //   送れたらしまう。拒否なら残して直させる。削除は同じ通知から作り直さないので、画面の中で一度確かめる。
+// - 請求予定を消す（ADR 0179）も、同じメールから作り直さないので、画面の中で一度確かめる。請求予定を直す操作はない。
 // 理由のコード・API の名前・記録の ID は画面に出さない。
 import type {
+  DesktopHouseholdBill,
   DesktopHouseholdEntry,
   DesktopHouseholdReceiptView,
   DesktopHouseholdView,
@@ -84,6 +86,12 @@ export const HOUSEHOLD_LABELS = {
   billsEmpty: 'この月に引き落とされる請求予定はありません。',
   billsTotal: '請求予定の合計',
   billsTruncated: '請求予定が多いため、一部だけを出しています。',
+  billDelete: '消す',
+  billDeleting: '消しています…',
+  billDeleteConfirm:
+    'この請求予定を消しますか。消した請求予定は請求予定の一覧と合計から外れ、同じメールからは作り直しません。',
+  billDeleteSubmit: '消す',
+  billUnknown: '消した結果を確認できませんでした',
   budgetTitle: '予算',
   budgetEmpty: 'まだ予算を決めていません。',
   budgetEdit: '予算を決める',
@@ -493,6 +501,8 @@ export interface HouseholdViewState {
   readonly notice: HouseholdNotice | null;
   // 削除の確かめを出している行の参照。
   readonly confirming: string | null;
+  // 消す確かめを出している請求予定の行の参照（ADR 0179）。
+  readonly confirmingBill: string | null;
   // 予算の入力欄を出しているか。
   readonly editingBudget: boolean;
   // 手入力の欄を出しているか。
@@ -515,6 +525,7 @@ export const INITIAL_HOUSEHOLD_STATE: HouseholdViewState = {
   busy: null,
   notice: null,
   confirming: null,
+  confirmingBill: null,
   editingBudget: false,
   adding: false,
   addPrefill: null,
@@ -531,6 +542,7 @@ type Kind =
   | 'view'
   | 'category'
   | 'delete'
+  | 'bill_delete'
   | 'intake'
   | 'import'
   | 'export'
@@ -563,6 +575,19 @@ export function householdFailureText(kind: Kind, reason: RejectReason): string {
       default:
         break;
     }
+  if (kind === 'bill_delete')
+    switch (reason) {
+      case 'preview_stale':
+        return 'この請求予定はすでに消されていたか、その後に変わっていました。読み直したので、今の請求予定を確かめてください。';
+      case 'outcome_unknown':
+        return '消した結果を確かめられませんでした。自動では送り直しません。「読み直す」で今の請求予定を確かめてください。';
+      case 'core_rejected':
+        return '中枢が受け付けませんでした。読み直したので、今の請求予定を確かめてください。';
+      default:
+        break;
+    }
+  if (kind === 'receipt_setting' && reason === 'preview_stale')
+    return '家計簿の設定はその後に変わっていました。読み直したので、今の設定を確かめてから、もう一度押してください。';
   switch (reason) {
     case 'preview_stale':
       return kind === 'intake'
@@ -599,6 +624,7 @@ function withView(
 ): HouseholdViewState {
   if (view.list_seq < state.seq) return state;
   const refs = new Set(view.entries.map((entry) => entry.ref));
+  const billRefs = new Set(view.bills?.items.map((bill) => bill.ref) ?? []);
   const place = state.notice?.place ?? null;
   return {
     ...state,
@@ -608,6 +634,14 @@ function withView(
     confirming:
       state.confirming !== null && refs.has(state.confirming)
         ? state.confirming
+        : null,
+    // 消す確かめを出している請求予定が消えた・結果が分からなくなったら、確かめをしまう。
+    confirmingBill:
+      state.confirmingBill !== null &&
+      (view.bills?.items ?? []).some(
+        (bill) => bill.ref === state.confirmingBill && !bill.delivery_unknown,
+      )
+        ? state.confirmingBill
         : null,
     // 直している行が消えた・結果が分からなくなったら、入力欄をしまう（古い値のまま送らせない）。
     editing:
@@ -622,6 +656,7 @@ function withView(
       state.notice !== null &&
       place !== null &&
       !refs.has(place) &&
+      !billRefs.has(place) &&
       state.notice.tone === 'warning'
         ? null
         : state.notice,
@@ -652,6 +687,7 @@ export function applyViewResponse(
 type ChangeKind =
   | 'category'
   | 'delete'
+  | 'bill_delete'
   | 'intake'
   | 'budget'
   | 'add'
@@ -667,6 +703,7 @@ const SUCCESS_TEXT: Readonly<Record<ChangeKind, string>> = {
   category:
     '分類を変えました。店名のある記録は、同じ店の次の未分類の利用にもこの分類を使います。',
   delete: '記録を削除しました。',
+  bill_delete: '請求予定を消しました。',
 };
 
 export function applyChangeResponse(
@@ -679,6 +716,7 @@ export function applyChangeResponse(
     ...state,
     busy: state.busy === place ? null : state.busy,
     confirming: kind === 'delete' ? null : state.confirming,
+    confirmingBill: kind === 'bill_delete' ? null : state.confirmingBill,
   };
   if (response.outcome === 'rejected')
     return {
@@ -696,8 +734,11 @@ export function applyChangeResponse(
       notice: {
         tone: 'success',
         text: SUCCESS_TEXT[kind],
-        // 削除した行は消える。直した行も、日付を直すと別の月へ移るので、欄の頭に出す。
-        place: kind === 'delete' || kind === 'edit' ? null : place,
+        // 削除した行・消した請求予定は消える。直した行も、日付を直すと別の月へ移るので、欄の頭に出す。
+        place:
+          kind === 'delete' || kind === 'bill_delete' || kind === 'edit'
+            ? null
+            : place,
       },
     },
     response.household,
@@ -737,7 +778,7 @@ export function canEdit(
 
 export function canChange(
   state: HouseholdViewState,
-  entry: DesktopHouseholdEntry,
+  entry: DesktopHouseholdEntry | DesktopHouseholdBill,
 ): boolean {
   return state.busy === null && !entry.delivery_unknown;
 }
@@ -752,6 +793,10 @@ export interface HouseholdActions {
   readonly startDelete: (ref: string) => void;
   readonly cancelDelete: () => void;
   readonly confirmDelete: () => void;
+  // 請求予定を消す（ADR 0179）。画面の中で一度確かめてから送る。
+  readonly startBillDelete: (ref: string) => void;
+  readonly cancelBillDelete: () => void;
+  readonly confirmBillDelete: () => void;
   // 利用通知の取り込みを止める・再開する（ADR 0163）。
   readonly setIntake: (mailIntake: 'on' | 'off') => void;
   // 書き出しを取り込む（ADR 0164）。ファイルは main が OS のファイル選択で本人に選ばせる。
@@ -813,12 +858,29 @@ export class HouseholdStore {
         this.#set({
           ...this.#state,
           confirming: ref,
+          confirmingBill: null,
           editing: null,
           notice: null,
         });
       },
       cancelDelete: () => this.#set({ ...this.#state, confirming: null }),
       confirmDelete: () => this.#delete(),
+      startBillDelete: (ref) => {
+        const bill = this.#state.view?.bills?.items.find(
+          (item) => item.ref === ref,
+        );
+        if (bill === undefined || !canChange(this.#state, bill)) return;
+        this.#set({
+          ...this.#state,
+          confirmingBill: ref,
+          confirming: null,
+          editing: null,
+          notice: null,
+        });
+      },
+      cancelBillDelete: () =>
+        this.#set({ ...this.#state, confirmingBill: null }),
+      confirmBillDelete: () => this.#deleteBill(),
       setIntake: (mailIntake) => this.#intake(mailIntake),
       importExport: () => this.#importExport(),
       exportCsv: (from, to) => this.#exportCsv(from, to),
@@ -1221,6 +1283,17 @@ export class HouseholdStore {
     if (ref === null || this.#state.busy !== null) return;
     this.#set({ ...this.#state, busy: ref, notice: null });
     this.#change('delete', ref, request('desktop.household_delete', { ref }));
+  }
+
+  #deleteBill(): void {
+    const ref = this.#state.confirmingBill;
+    if (ref === null || this.#state.busy !== null) return;
+    this.#set({ ...this.#state, busy: ref, notice: null });
+    this.#change(
+      'bill_delete',
+      ref,
+      request('desktop.household_bill_delete', { ref }),
+    );
   }
 
   // 出せなくなった（ロック・切断）: 世代を進めて内容を捨てる。

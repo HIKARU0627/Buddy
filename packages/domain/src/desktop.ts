@@ -81,6 +81,8 @@ export const DESKTOP_IPC_CHANNELS = [
   // レシートの写真の読み取りの入・切と、写真 1 枚の読み取り（ADR 0177）。
   'desktop.household_receipt_setting',
   'desktop.household_receipt_read',
+  // 請求予定を消す（ADR 0179）。
+  'desktop.household_bill_delete',
 ] as const;
 
 export type DesktopIpcChannel = (typeof DESKTOP_IPC_CHANNELS)[number];
@@ -244,6 +246,9 @@ export const DESKTOP_PAIRING_SCREEN_CHANNELS: readonly DesktopIpcChannel[] = [
   // 挟む。写真は main が OS のファイル選択で本人に選ばせる。
   'desktop.household_receipt_setting',
   'desktop.household_receipt_read',
+  // 請求予定を消す（ADR 0179）も本人の画面操作。中枢へ記録するだけで外部へは送らないので、この端末の入出力の停止中も
+  // 受け付ける（家計の記録の削除と同じ）。
+  'desktop.household_bill_delete',
 ];
 
 // 外部へ送る画面操作（ADR 0177）。この端末の入出力の停止中は受け付けない（停止は外部への送信を止める操作なので）。
@@ -397,6 +402,7 @@ export const DESKTOP_ROLE_CHANNELS: Readonly<
     'desktop.household_export',
     'desktop.household_receipt_setting',
     'desktop.household_receipt_read',
+    'desktop.household_bill_delete',
   ],
   input: ['desktop.get_state', 'desktop.turn_submit', 'desktop.canvas_summon'],
 };

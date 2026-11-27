@@ -316,9 +316,11 @@ export function readHouseholdBill(
 
 // --- 月の請求予定 ---
 
-export interface HouseholdMonthBills {
+export interface HouseholdMonthBills<
+  T extends HouseholdBillContent = HouseholdBillContent,
+> {
   // 引き落とし日の早い順（同じなら会社の表示名の順、金額の小さい順）。
-  readonly items: readonly HouseholdBillContent[];
+  readonly items: readonly T[];
   // 請求予定の合計。支出の合計・予算・定期の支出には入れない。
   readonly total_yen: number;
 }
@@ -326,11 +328,14 @@ export interface HouseholdMonthBills {
 const compareText = (a: string, b: string): number =>
   a < b ? -1 : a > b ? 1 : 0;
 
-/** その月の請求予定を並べ、合計を出す。月の外の引き落とし日の請求予定は入れない。 */
-export function summarizeHouseholdBills(
-  bills: readonly HouseholdBillContent[],
+/**
+ * その月の請求予定を並べ、合計を出す。月の外の引き落とし日の請求予定は入れない。中身のほかの値（Core が付ける請求予定の
+ * ID と内容版。ADR 0179）はそのまま持ち越す。
+ */
+export function summarizeHouseholdBills<T extends HouseholdBillContent>(
+  bills: readonly T[],
   month: string,
-): HouseholdMonthBills {
+): HouseholdMonthBills<T> {
   const items = bills
     .filter((bill) => householdMonthOf(bill.due_on) === month)
     .slice()

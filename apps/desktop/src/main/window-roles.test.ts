@@ -96,6 +96,8 @@ const AUTO_ACTIONS = [
   'desktop.household_export',
   'desktop.household_receipt_setting',
   'desktop.household_receipt_read',
+  // 請求予定を消す（ADR 0179）。
+  'desktop.household_bill_delete',
 ];
 const ALL_CHANNELS = [
   ...LEGACY_CHANNELS,

@@ -269,6 +269,37 @@ test('admission: locked, unfocused, malformed and unknown refs send nothing to t
     entry,
   });
   assert.equal(reason(editUnknown), 'entry_not_found');
+  // 請求予定を消す（ADR 0179）: 前面でない・ロック中・ロックの状態が分からないときは拒否し、形の誤りと読んでいない
+  // 参照は中枢へ何も送らない。入出力の停止中は受付の規則では拒否しない（参照がないので entry_not_found まで進む）。
+  const billHidden = await r.ipc(
+    'desktop.household_bill_delete',
+    { ref: randomUUID() },
+    { sender: { trustedSender: true, windowFocused: false } },
+  );
+  assert.equal(reason(billHidden), 'screen_operation_required');
+  for (const lockState of ['locked', 'unknown'] as const) {
+    const billLocked = await r.ipc(
+      'desktop.household_bill_delete',
+      { ref: randomUUID() },
+      { io: { ...UNLOCKED, lockState } },
+    );
+    assert.equal(reason(billLocked), 'device_locked');
+  }
+  for (const payload of [
+    null,
+    {},
+    { ref: randomUUID(), bill_id: randomUUID() },
+    { ref: randomUUID(), expected_content_revision: '1' },
+  ]) {
+    const malformed = await r.ipc('desktop.household_bill_delete', payload);
+    assert.equal(reason(malformed), 'invalid_request');
+  }
+  const billStopped = await r.ipc(
+    'desktop.household_bill_delete',
+    { ref: randomUUID() },
+    { io: { ...UNLOCKED, stopScope: 'local' } },
+  );
+  assert.equal(reason(billStopped), 'entry_not_found');
   // CSV の書き出し（ADR 0172）: 前面でない・ロック中は拒否し、形の誤りと範囲の誤り（逆順・121 か月・2000 年より前・
   // 2099 年より後）は中枢へ何も送らずに拒否する。保存先を選ぶ口がないとき（この組み立て）は、選ばずにやめたのと同じ。
   const range = { from: '2030-01', to: '2030-12' };

@@ -45,6 +45,7 @@
   /* 島の伸び縮みと、物の位置・大きさの動きの曲線（ADR 0181）。時間は下の --motion-* で、動きを減らす設定では 0 にする。 */
   --ease-island: cubic-bezier(0.32, 0.72, 0, 1);
   --animate-status-panel-in: status-panel-in var(--motion-panel) ease-out;
+  --animate-island-in: island-in var(--motion-island) var(--ease-island);
 }
 
 /*
@@ -240,5 +241,18 @@ body {
   to {
     opacity: 1;
     transform: translateX(0);
+  }
+}
+
+/* 上の中央の島が広がるときの動き（ADR 0181 の段階 2）。広がった行が上から少しだけ下りて現れる。畳むときは動かさない。
+   動きを減らす設定では付けない（motion-safe。時間の --motion-island も 0 になる）。 */
+@keyframes island-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }

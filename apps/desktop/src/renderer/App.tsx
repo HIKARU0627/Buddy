@@ -28,6 +28,7 @@ import { useDesktopState, useNow } from './state/use-desktop-state.js';
 import { useHomeState } from './state/use-home-state.js';
 import { useHubState } from './state/use-hub-state.js';
 import { useWorkState } from './state/use-work-state.js';
+import { useIslandSignals } from './state/use-island-signals.js';
 import { useCandidateState } from './state/use-candidate-state.js';
 import { useAutoActionState } from './state/use-auto-action-state.js';
 import { useHouseholdState } from './state/use-household-state.js';
@@ -94,6 +95,13 @@ function ConnectedApp({ api }: { readonly api: BuddyDesktopApi }) {
     workLive,
     connection?.operations ?? NO_OPERATIONS,
   );
+  // 上の中央の島を広げるきっかけ（ADR 0181 の段階 2）。確認が必要な操作が増えた・操作の結果が届いた。会話と同じく、
+  // ロック解除済みで中枢に接続している間だけ数える（ロック・切断で忘れる）。
+  const island = useIslandSignals(
+    workLive,
+    connection?.operations ?? NO_OPERATIONS,
+    work.state.notices,
+  );
   // 気づき（B11-05、ADR 0132）。会話と同じく、ロック解除済みで中枢に接続している間だけ内容を持つ（切断・ロックで捨てる）。
   const candidates = useCandidateState(api, workLive);
   // 自動実行の一覧・安全停止・取り消し（B13-05、ADR 0154）。気づきと同じく、ロック解除済みで中枢に接続している間だけ
@@ -127,6 +135,7 @@ function ConnectedApp({ api }: { readonly api: BuddyDesktopApi }) {
             : 'この端末'
       }
       onDismissRegistered={dismissRegistered}
+      island={island}
       stopShortcut={
         <StopShortcutMark
           mark={stopShortcutMark(api.stopShortcut)}

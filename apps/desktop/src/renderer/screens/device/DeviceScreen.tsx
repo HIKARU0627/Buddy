@@ -1,7 +1,7 @@
-// 端末の画面（設計 01 いつも見える状態・停止・終了、ADR 0014・0015・0024・0025）。骨格は AppShell の順:
-// 状態帯 → 今やること（登録の知らせ・停止中の帯） → 本体（中枢との接続、中枢の画面なら申請・端末の管理） →
+// 端末の画面（設計 01 いつも見える状態・停止・終了、ADR 0014・0015・0024・0025・0181）。骨格は AppShell の順:
+// 状態帯（上の中央の島と項目の行） → 今やること（登録の知らせ・停止中の帯） → 本体（中枢との接続、中枢の画面なら申請・端末の管理） →
 // 詳細（電源とロックの記録） → フッター（閉じる・終了）。状態と操作は引数で受け取り、限定 API を直接呼ばない。
-// ロック中・ロック状態不明では、状態帯（内容を隠した表示と停止）とフッターだけを出す。
+// ロック中・ロック状態不明では、島（内容を隠した表示と停止）とフッターだけを出す。
 import type { ReactNode } from 'react';
 import { Alert, CloseButton } from '@heroui/react';
 import type { DesktopConnectionView } from '@buddy/contracts';
@@ -9,6 +9,7 @@ import { AppShell } from '../../app/AppShell.js';
 import { AppFooter } from '../../components/AppFooter.js';
 import { StatusBand } from '../../components/StatusBand.js';
 import { messageFor, shownStatus } from '../../state/desktop-state.js';
+import type { IslandSignals } from '../../state/island-state.js';
 import type {
   DesktopViewState,
   DeviceActions,
@@ -31,6 +32,7 @@ export function DeviceScreen({
   hub,
   work,
   stopShortcut,
+  island = null,
   onDismissRegistered,
 }: {
   readonly state: DesktopViewState;
@@ -43,6 +45,8 @@ export function DeviceScreen({
   readonly work?: ReactNode;
   // 全体の停止のショートカットの印（UI-04。停止のボタンの横に置く）。なければ出さない。
   readonly stopShortcut?: ReactNode;
+  // 上の中央の島を広げるきっかけ（確認が必要な操作・操作の結果。ADR 0181 の段階 2）。なければ小さい形のまま。
+  readonly island?: IslandSignals | null;
   readonly onDismissRegistered?: () => void;
 }) {
   const shown = shownStatus(state.status);
@@ -59,6 +63,7 @@ export function DeviceScreen({
           now={now}
           onStop={actions.stop}
           stopShortcut={stopShortcut}
+          island={island}
         />
       }
       todo={

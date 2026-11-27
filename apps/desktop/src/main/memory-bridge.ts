@@ -26,6 +26,7 @@ import type {
 } from '@buddy/contracts';
 import type { ClientConnection } from '@buddy/client';
 import type { DesktopIpcRejectReason } from '@buddy/domain';
+import { displayText } from './admin-confirm.js';
 import type { DesktopContract } from './contract.js';
 
 // 忘却の実行の前の OS の確認（admin-confirm.ts の forgetConfirmText が文言にする）。値は main が中枢から読んだ一覧と計画の
@@ -156,10 +157,15 @@ export class MemoryBridge {
         })) as DesktopForgetPlanView['removed']['counts'],
         memory_refs: memoryRefs,
         unlisted_memory_count: unlisted,
+        // 本文は、確認のダイアログと同じく制御文字・書字方向の制御文字・ゼロ幅の文字を除き、空白を 1 つにまとめて
+        // 渡す（見かけを紛らわしくしない。長さは中枢が 200 文字までにしている）。除いて空になれば読めない指示と同じ扱い。
         directives: plan.view.removed.directives.map((directive, index) => ({
           ref: plan.directiveRefs[index] as string,
           scope: directive.scope,
-          text: directive.text,
+          text:
+            directive.text === null
+              ? null
+              : displayText(directive.text, 200) || null,
         })),
       },
       kept: {

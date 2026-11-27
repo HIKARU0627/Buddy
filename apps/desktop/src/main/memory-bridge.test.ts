@@ -648,3 +648,39 @@ test('a plan whose directive carries a raw id field or a too long text is not sh
   }
   assert.equal(r.executes().length, 0);
 });
+
+test('directive texts reach the screen without control, bidi or zero-width characters, and a text that is only such characters is unreadable', async () => {
+  const r = rig();
+  const listed = ok(await r.bridge.list());
+  r.plan = () => ({
+    kind: 'response',
+    status: 200,
+    body: planBody({
+      removed: {
+        counts: [
+          { kind: 'memory', count: 1 },
+          { kind: 'user_directive', count: 2 },
+        ],
+        memory_ids: [M1],
+        directives: [
+          {
+            directive_id: DIRECTIVE,
+            scope: 'from_now_on',
+            text: '今後は\n\u202e返信を\u200b短めに\tして',
+          },
+          {
+            directive_id: uuid(0xc02),
+            scope: 'this_time',
+            text: '\u202e\u200b\n',
+          },
+        ],
+      },
+    }),
+  });
+  const view = ok(await r.bridge.plan(listed.entries[0]?.ref as string));
+  assert(contract.valid('DesktopMemoryView', view));
+  assert.deepEqual(
+    view.plan?.removed.directives.map((directive) => directive.text),
+    ['今後は 返信を 短めに して', null],
+  );
+});

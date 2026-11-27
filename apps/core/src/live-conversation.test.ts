@@ -4198,3 +4198,34 @@ test(
     });
   },
 );
+
+test(
+  'U561: a delegated consult without a port stays "not supported" even when the interpretation query is only blank',
+  TIMEOUT,
+  async () => {
+    await withConversation(
+      async (c) => {
+        await speak(c, { text: CONSULT_SPOKEN });
+        await delegate(c, 'd1', 800);
+        await c.rig.clock.advance(500);
+        await waitUntil(
+          c.rig,
+          'the answer',
+          () => c.sb.commentary.length === 1,
+        );
+        assert.deepEqual(c.sb.commentary, [
+          ['その依頼にはまだ対応していません。'],
+        ]);
+        assert.deepEqual(workflowStates(c.rig), ['clarifying']);
+      },
+      {
+        prepare: (script) => {
+          script.replies.set(
+            CONSULT_SPOKEN,
+            intentReply('consult', { query: '   ' }),
+          );
+        },
+      },
+    );
+  },
+);

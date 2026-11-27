@@ -780,6 +780,63 @@ const countingProvider = () => {
 
 const PRIVATE_SEGMENT = '00000000-0000-4000-8000-00000000a001';
 
+// 製品の応答の変更（ADR 0195）: 記録しない会話の相談は、受付の口がない受付器でも・受付器がなくても、決まった文で断る
+// （以前は「未対応」の聞き返しで、依頼の記録を作ろうとした）。DB には触れず、依頼も作らない。
+test('in a private segment a consult is refused with the fixed private sentence even without a consult port or any acceptor', async () => {
+  for (const backgroundJobs of [
+    {
+      acceptResearch: () => Promise.resolve({ kind: 'unavailable' as const }),
+    },
+    undefined,
+  ]) {
+    const touched = touchedStore();
+    const routes = createTurnRoutes({
+      store: touched.store,
+      keyStore: {
+        loadDataKey: () =>
+          Promise.resolve({ ok: true as const, dataKey: DATA_KEY_MATERIAL }),
+      },
+      interpreter: createMockInterpreter(),
+      provider: countingProvider().reader,
+      candidates: { mailCandidates: () => Promise.resolve([]) },
+      policy: TEST_TURN_POLICY,
+      previews: new PreviewRegistry(),
+      storage: {
+        mode: 'private',
+        origin: () => ({
+          segment_id: PRIVATE_SEGMENT,
+          segment_generation: '2',
+        }),
+      },
+      utcOffset: '+09:00',
+      now: () => CLOCK.getTime(),
+      ...(backgroundJobs === undefined ? {} : { backgroundJobs }),
+    });
+    const route = API_ROUTES.find((entry) => entry.operationId === 'postTurn');
+    assert(route !== undefined);
+    const response = await routes.handlers['postTurn']?.({
+      route,
+      device: A,
+      body: {
+        request_id: randomUUID(),
+        command_scope_id: SCOPE_A,
+        text: '合成の悩みについて相談したい',
+        input_kind: 'text',
+        origin: { segment_id: PRIVATE_SEGMENT, segment_generation: '2' },
+      },
+      params: { session_id: PRIVATE_SEGMENT },
+      remoteAddress: '127.0.0.1',
+      query: {},
+      declaredLockState: 'unlocked',
+    });
+    assert.equal(response?.status, 200, JSON.stringify(response?.body));
+    const body = response?.body as TurnResponse;
+    assert.equal(body.reply_text, PRIVATE_UNSUPPORTED);
+    assert.equal(body.workflow_id, null);
+    assert.deepEqual(touched.calls, []);
+  }
+});
+
 test('in a private segment the turn routes never touch the DB; reads go to the provider, while tasks, labels, research and consult are refused without any call', async () => {
   const touched = touchedStore();
   const reads = countingProvider();

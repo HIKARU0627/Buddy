@@ -2125,6 +2125,45 @@ test(
 );
 
 test(
+  'U561: a consult without a port stays "not supported" even when its query is blank (the product response is unchanged), while a research without a port and without a query still asks for the missing information',
+  { timeout: 60_000 },
+  async () => {
+    const researchOnly: BackgroundJobAcceptor = {
+      acceptResearch: () => Promise.resolve({ kind: 'unavailable' }),
+    };
+    const state = {
+      intent: 'consult',
+      reply_text: undefined as string | null | undefined,
+      args: { query: null } as Record<string, unknown>,
+    };
+    for (const acceptor of [researchOnly, undefined]) {
+      await withResearchRoutes(
+        {
+          ...(acceptor === undefined ? {} : { acceptor }),
+          interpreter: replyingInterpreter(state),
+        },
+        async (rig) => {
+          state.intent = 'consult';
+          // 主題が null のときは意図表の必須の不足で、口の有無より前に聞き返す（以前と同じ）。空白だけが受付の判定に届く。
+          {
+            const query = '   ';
+            state.args = { query };
+            const body = await researchTurn(rig, '合成の発言');
+            assert.equal(body['status'], 'clarification', String(query));
+            assert.equal(body['reply_text'], UNSUPPORTED_SENTENCE);
+          }
+          // 調査は従来の順（主題の確認が先）のまま。
+          state.intent = 'research';
+          state.args = { query: null };
+          const research = await researchTurn(rig, '合成の発言');
+          assert.equal(research['reply_text'], MISSING_OTHER_SENTENCE);
+        },
+      );
+    }
+  },
+);
+
+test(
   'U217/U560: the model reply text is never used for a consult; the accepted consult says only the fixed acceptance sentence',
   { timeout: 60_000 },
   async () => {

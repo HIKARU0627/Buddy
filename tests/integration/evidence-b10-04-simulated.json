@@ -1,11 +1,11 @@
 {
   "status": "recorded",
-  "description": "B10-04 の模擬結果（ADR 0105〜0109・0135・0195）。委譲のつなぎ・背景化・遅着・閉じた接続への追記 0・端末への委譲の状態・同じ session への保存・記録しない会話の保存 0 件と Live 接続 0 回・欠落した断片や重複した委譲で変更が 0 のことを、Core の会話の経路・模擬のサイドバンド・手で進める時計で確かめ、手書きの期待値に一致した。commit は観測した基点で、source_sha256 はその commit の検査対象の内容。実音声・実 API・実請求・実機は未実施。結果が次回の文脈へ回る経路（B10-06）と完了の気づき（B11）は未実装で、観測していない。",
+  "description": "B10-04 の模擬結果（ADR 0105〜0109・0135・0195）。委譲のつなぎ・背景化・遅着・閉じた接続への追記 0・端末への委譲の状態・同じ session への保存・記録しない会話の保存 0 件と Live 接続 0 回・欠落した断片や重複した委譲で変更が 0 のことを、Core の会話の経路・模擬のサイドバンド・手で進める時計で確かめ、手書きの期待値に一致した。commit は観測した基点で、source_sha256 は、見直しの修正（相談は口の有無を主題の確認より先に判定・記録しない会話の相談の試験）を加えた後の検査対象の内容。実音声・実 API・実請求・実機は未実施。結果が次回の文脈へ回る経路（B10-06）と完了の気づき（B11）は未実装で、観測していない。 この記録は手書きで、scripts/evidence-check.mjs の対象外。ソースが変わっても CI は記録の古さを検出しない。",
   "command": "node --test apps/core/dist/live-conversation.test.js apps/core/dist/api-turns.test.js apps/core/dist/private-conversation.test.js apps/core/dist/voice-private.test.js scripts/voice-commentary-limits.test.mjs",
   "source_sha256": [
     {
       "path": "apps/core/src/api-turns.ts",
-      "sha256": "e909b0204e4f625c921a4a2424db8f8040aea6a39787f6e8373cce1dac87d892"
+      "sha256": "fad083a1320e5981e4df8e4132a14e10a57d513062b2ee54b9bee4a74f8f9d69"
     },
     {
       "path": "apps/core/src/turn-ports.ts",
@@ -17,15 +17,15 @@
     },
     {
       "path": "apps/core/src/live-conversation.test.ts",
-      "sha256": "4b63e9e7a11af2e5240d665c8a4f5a9e0b753df894728a69448deda22e206195"
+      "sha256": "5a16fdf89807a3a8887550eaf6092a987e4cdc9d878c00b6c20ff9d74e49d302"
     },
     {
       "path": "apps/core/src/api-turns.test.ts",
-      "sha256": "6f79d8cc9ee05142eb505f959fa2f6153b5eca34b5749d909baf3540094d2045"
+      "sha256": "a97bda2a10e511783cd2f759f6701731af983bfeaec6295de678c8116f130415"
     },
     {
       "path": "apps/core/src/private-conversation.test.ts",
-      "sha256": "64ce007429326098e6536bbdc3d1cd8d19c48bbce621b603060e9c0d47e7fc32"
+      "sha256": "2c3fe09d374fcad4a0c06118ce7ce0383830b424d42b69f0a42048e80ef6d02d"
     },
     {
       "path": "apps/core/src/voice-private.test.ts",

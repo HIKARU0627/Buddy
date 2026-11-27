@@ -16,6 +16,13 @@
 | Live の届け方        | 変えない（ADR 0135）。`status: 'background'` は結果の画面回しを作らず、声で返せるときだけ受付の文を 1 回だけ追記する。閉じた接続・背景化済み・世代違い・失効した依頼では何も足さない。受付の前後と送る直前の再確認は、調査と同じ共通の経路（`commitLive` と `#deliver`）を通る                                                                                                                                                                                   |
 | 完了条件の判定       | `docs/b10/b10-04-completion.md` に、Issue の完了条件ごとに、観測する試験と未実施の範囲を表で書いた。X29・X33・X36・QA05 の `product_test` は、新しい `tests/integration/evidence-b10-04-simulated.json` の記録で `simulated_partial` にした（U564）。X49・X51・QA34 は既存の記録のまま                                                                                                                                                                           |
 
+## 製品の応答の変更
+
+製品は相談の口を渡さないので、受付の経路は変えないが、次の 1 点だけ製品の応答が変わる。
+
+- 記録しない会話での相談: 以前は「その依頼にはまだ対応していません。」（意図つきの聞き返し）だった。今は、保存を伴う依頼と同じく決まった文（`private_unsupported`、意図なし）で断り、依頼を記録しない（U562）。方針どおりの変更で、口が無い受付器・受付器なしでも同じ（試験: `private-conversation.test.ts`「in a private segment a consult is refused with the fixed private sentence…」）。
+- 記録する会話の相談は、口が無ければ主題が空白だけでも以前と同じ「未対応」のまま。相談では口の有無の判定を主題の確認より先に行う（調査の判定順は変えない）。
+
 ## 試験（模擬だけ）
 
 - `apps/core/src/api-turns.test.ts`: 相談の受付（`background`・`speech_bubble`・`preparing`・受付の文・5 項目だけ・調査の口は呼ばない・依頼 `executing`・操作 0・意味検査と一致）、同じ `request_id` の再送で受付 1 回、受付器の `unavailable`・例外・不正な ID は「今は進められません」で受付の文も実行中の依頼もなし、調査の口だけ・受付器なしは「未対応」で調査の口を呼ばない、主題が空は聞き返しで受付器を呼ばない、掃除のゲートが閉じている間は受け付けず開けば受け付ける、モデルの自由文を使わない。

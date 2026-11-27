@@ -1039,7 +1039,6 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     intake: IntakeContext,
   ): Promise<TurnPlan> => {
     const query = typeof args.query === 'string' ? args.query.trim() : '';
-    if (query.length === 0) return clarify('missing_other', intent);
     const acceptor = options.backgroundJobs;
     // 相談は、受付器が相談の口（acceptConsult）を持つときだけ受け付ける。調査の口しかない受付器（今の製品）では
     // 相談を調査として渡さず、従来どおり「未対応」にする（U561、ADR 0195）。
@@ -1055,6 +1054,11 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
             : (job) =>
                 acceptor.acceptConsult?.({ ...job, intent: 'consult' }) ??
                 Promise.resolve({ kind: 'unavailable' });
+    // 相談は口がなければ主題の有無にかかわらず、以前と同じ「未対応」にする（製品の応答を変えない）。調査は従来の
+    // 順（主題の確認が先）のまま。
+    if (intent === 'consult' && accept === undefined)
+      return clarify('unsupported', intent);
+    if (query.length === 0) return clarify('missing_other', intent);
     if (accept === undefined) return clarify('unsupported', intent);
     if (evidence === 'unverified') return clarify('blocked', intent);
     if (options.retention !== undefined) {

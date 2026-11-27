@@ -794,3 +794,76 @@ test('B06-06d1: close() ends a sweep waiting for a lease that is never released,
   await job.drain();
   assert.equal(port.calls.filter((call) => call === 'read').length, 1);
 });
+
+// --- U440（ADR 0186）: 忘却の COMMIT の後の WAL の切り詰め ---
+
+test('U440: the truncation after a forget runs the same checkpoint at once and leaves nothing pending when it truncates', async () => {
+  const port = new FakePort();
+  const logs: string[] = [];
+  const job = sweeper(port, () => T0, { log: (message) => logs.push(message) });
+  assert.equal(await job.truncateLogAfterForget(), true);
+  assert.deepEqual(port.calls, ['checkpoint']);
+  assert.deepEqual(logs, []);
+  // 保留はないので、次の掃除（削除なし）の後に checkpoint は呼ばない。VACUUM もしない（忘却は VACUUM の保留を立てない）。
+  await job.runOnce(true);
+  await job.drain();
+  assert.equal(port.checkpointCalls, 1);
+  assert.equal(port.vacuumCalls, 0);
+});
+
+test('U440: a busy truncation after a forget is retried after the next sweep, even one that deletes nothing', async () => {
+  const port = new FakePort();
+  port.checkpointBusyQueue = [1];
+  const logs: string[] = [];
+  const job = sweeper(port, () => T0, { log: (message) => logs.push(message) });
+  assert.equal(await job.truncateLogAfterForget(), false);
+  assert.deepEqual(logs, [
+    '忘却の後に、ログを切り詰められませんでした（他の接続が使用中）。次の掃除の後にもう一度試します。',
+  ]);
+  await job.runOnce(true);
+  await job.drain();
+  // 掃除の本体の後に、保留した checkpoint を 1 回試す（今度は busy でない）。VACUUM はしない。
+  assert.equal(port.calls[0], 'checkpoint');
+  assert.equal(port.calls.at(-1), 'checkpoint');
+  assert.equal(port.checkpointCalls, 2);
+  assert.equal(port.vacuumCalls, 0);
+  // 済んだので、その次の掃除では試さない。
+  await job.runOnce(true);
+  await job.drain();
+  assert.equal(port.checkpointCalls, 2);
+  assert.equal(logs.length, 1);
+});
+
+test('U440: a failed truncation after a forget does not throw and is retried after the next sweep', async () => {
+  const port = new FakePort();
+  port.checkpointErrorQueue = [
+    new RetentionSweepCallError(['database_full'], 'rejected'),
+    new Error('simulated'),
+  ];
+  const logs: string[] = [];
+  const job = sweeper(port, () => T0, { log: (message) => logs.push(message) });
+  assert.equal(await job.truncateLogAfterForget(), false);
+  assert.deepEqual(logs, [
+    '忘却の後のログの切り詰めに失敗しました（database_full）。次の掃除の後にもう一度試します。',
+  ]);
+  // 次の掃除の後の再試行も失敗する。保留は残り、その次の掃除の後に試して済む。
+  await job.runOnce(true);
+  await job.drain();
+  assert.equal(port.checkpointCalls, 2);
+  assert.equal(logs.length, 2);
+  await job.runOnce(true);
+  await job.drain();
+  assert.equal(port.checkpointCalls, 3);
+  await job.runOnce(true);
+  await job.drain();
+  assert.equal(port.checkpointCalls, 3);
+  assert.equal(port.vacuumCalls, 0);
+});
+
+test('U440: after close the truncation after a forget is not sent (closing the DB folds the WAL back)', async () => {
+  const port = new FakePort();
+  const job = sweeper(port, () => T0);
+  job.close();
+  assert.equal(await job.truncateLogAfterForget(), false);
+  assert.equal(port.checkpointCalls, 0);
+});

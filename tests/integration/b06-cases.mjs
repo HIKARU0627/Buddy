@@ -582,12 +582,20 @@ async function forgetLateOrder(seed, round) {
       status: 'active',
     });
     const sink = new RecordingNoticeSink();
+    // 忘却の COMMIT の後の WAL の切り詰めは、製品の core.ts と同じく掃除の job に頼む（U440、ADR 0186）。
+    const job = new RetentionSweeper({
+      port: createRetentionSweepPort(harness.store),
+      epoch: randomUUID(),
+      now: () => now,
+      log,
+    });
     // 忘却の公開ゲートを開いた試験の組み立て（製品の FORGET_PUBLIC_GATE_OPEN は false のまま）。
     const service = createForgetService({
       store: harness.store,
       ledgerPath: files().ledger,
       gate: () => true,
       sourceHmac: async () => hmac,
+      truncateLog: () => job.truncateLogAfterForget(),
       notices: sink,
       now: () => now,
       log,
@@ -648,9 +656,10 @@ async function forgetLateOrder(seed, round) {
           )[0],
         ),
       }));
-    // 忘却の直後（DB worker は開いたまま）。消した行の暗号文は、書き込んだときの WAL のフレームにまだ残る
-    // （checkpoint は掃除の job が削除を伴った掃除の後にだけ行い、忘却の命令は行わない。U440）。期待値はこの観測を書く。
+    // 忘却の直後（DB worker は開いたまま）。忘却の経路が COMMIT の後に WAL を切り詰めるので、消した行の暗号文は
+    // DB にも WAL にもない（U440、ADR 0186。消したページは secure_delete で 0 になっている）。
     const afterForget = residueLabels(findResidue(dbFiles(files()), ct));
+    job.close();
     const ledgerFile = JSON.parse(await readFile(files().ledger, 'utf8'));
     const visible = await visibleMemoryMarkers(harness.store, text, now);
     const final = state();

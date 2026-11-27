@@ -7,7 +7,13 @@
 
 import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -16,14 +22,17 @@ import {
   applyMigrations,
   executeCommand,
   executeMemoryOp,
+  executeRetentionOp,
   initStoreGeneration,
   openWriteConnection,
   sealBlob,
 } from '@buddy/storage';
 import type {
   DataKeyMaterial,
+  DbWorkerClient,
   MemoryOp,
   MemoryOpResult,
+  RetentionOp,
   SqliteDatabase,
 } from '@buddy/storage';
 import { createForgetRoutes } from './api-forget.js';
@@ -40,6 +49,10 @@ import {
 import type { ForgetService, ForgetServiceOptions } from './forget-service.js';
 import type { ForgetLedgerStore } from './forget-ledger.js';
 import { RecordingNoticeSink } from './notice-sink.js';
+import {
+  RetentionSweeper,
+  createRetentionSweepPort,
+} from './retention-sweeper.js';
 import type { JsonObject } from './strict-json.js';
 
 const STORE_GENERATION = '00000000-0000-4000-8000-0000000000aa';
@@ -216,6 +229,9 @@ interface World {
   readonly gate: { open: boolean };
   // データ鍵を読んだ回数。
   readonly keyReads: { count: number };
+  // WAL の切り詰めを頼まれたときの記憶の行（頼まれた回数と、COMMIT の後に呼ばれたことを見る。U440）。
+  readonly truncations: string[][];
+  readonly logs: string[];
   readonly service: ForgetService;
 }
 
@@ -251,10 +267,17 @@ function world(
   const keyReads = { count: 0 };
   let counter = 0;
   const ledgerPath = join(dir, 'forget-ledger.json');
+  const truncations: string[][] = [];
+  const logs: string[] = [];
   const service = createForgetService({
     store,
     ledgerPath,
     gate: () => gate.open,
+    truncateLog: () => {
+      truncations.push(memories(db));
+      return Promise.resolve(true);
+    },
+    log: (message) => logs.push(message),
     sourceHmac: () =>
       Promise.resolve(
         (source: MemorySource) =>
@@ -283,6 +306,8 @@ function world(
     sink,
     gate,
     keyReads,
+    truncations,
+    logs,
     service,
   };
 }
@@ -717,6 +742,8 @@ test('an execution whose commit is uncertain is not sent again and the plan is d
   );
   assert.equal(w.applies.count, 1);
   assert.equal(w.sink.notices.length + w.sink.ledgerNotices.length, 0);
+  // COMMIT した可能性があるので、WAL の切り詰めは頼む（1 回だけ。U440）。
+  assert.equal(w.truncations.length, 1);
 });
 
 test('when the ledger file cannot be written the forget still stands and devices read the entry from the DB', async (t) => {
@@ -732,6 +759,7 @@ test('when the ledger file cannot be written the forget still stands and devices
           HMAC[`${source.source_kind}:${source.source_id}`] ?? '',
       ),
     dataKey: () => Promise.resolve(KEY),
+    truncateLog: () => Promise.resolve(true),
     now: () => NOW,
   });
   const planned = await broken.plan({ device_id: DEVICE, memory_id: M });
@@ -1366,4 +1394,190 @@ test('a plan with disappearing directives needs the data key; a plan without the
   });
   assert.equal(executed.ok, true, JSON.stringify(executed));
   assert.equal(w.applies.count, 1);
+});
+
+// --- U440（ADR 0186）: 忘却の COMMIT の後の WAL の切り詰め ---
+
+test('U440: a committed forget asks for one log truncation after the commit, and a refused forget asks for none', async (t) => {
+  const w = world(t);
+  const first = await planOk(w);
+  const secondPlanned = await w.service.plan({
+    device_id: OTHER_DEVICE,
+    memory_id: M,
+  });
+  assert(secondPlanned.ok);
+  const done = await w.service.execute({
+    device_id: DEVICE,
+    plan_id: first.plan_id,
+    forgetting_generation: '0',
+  });
+  assert.equal(done.ok, true, JSON.stringify(done));
+  // 頼まれたのは COMMIT の後（その時点で M・M2 はもうない）で、1 回だけ。
+  assert.deepEqual(w.truncations, [[M_OTHER]]);
+  // 同じ計画の再送は控えた結果を返すだけで、もう一度は頼まない。
+  const again = await w.service.execute({
+    device_id: DEVICE,
+    plan_id: first.plan_id,
+    forgetting_generation: '0',
+  });
+  assert.equal(again.ok, true);
+  // 拒否された忘却（何も消していない）では頼まない。
+  const stale = await w.service.execute({
+    device_id: OTHER_DEVICE,
+    plan_id: secondPlanned.view.plan_id,
+    forgetting_generation: '0',
+  });
+  assert.equal(stale.ok, false);
+  assert.equal(w.truncations.length, 1);
+});
+
+test('U440: a truncation that throws or cannot truncate leaves the forget succeeded', async (t) => {
+  for (const truncateLog of [
+    () => Promise.reject(new Error('simulated')),
+    () => Promise.resolve(false),
+  ]) {
+    const w = world(t, { truncateLog });
+    const view = await planOk(w);
+    const done = await w.service.execute({
+      device_id: DEVICE,
+      plan_id: view.plan_id,
+      forgetting_generation: '0',
+    });
+    assert.equal(done.ok, true, JSON.stringify(done));
+    if (!done.ok) return;
+    assert.deepEqual(done.result, {
+      schema: 'buddy.forget-execute-result.v1',
+      plan_id: view.plan_id,
+      forgetting_generation: '1',
+    });
+    assert.equal(done.ledger_file, 'written');
+    assert.deepEqual(memories(w.db), [M_OTHER]);
+    assert.equal(generation(w.db), 1);
+    // 知らせも出る（切り詰めの失敗で止めない）。
+    assert.equal(w.sink.ledgerNotices.length, 1);
+  }
+});
+
+// 一時ディレクトリの DB と WAL のどちらに、指定のバイト列があるか（'db'・'wal' の順）。
+function filesHolding(dbPath: string, bytes: Buffer): string[] {
+  const found: string[] = [];
+  for (const [name, path] of [
+    ['db', dbPath],
+    ['wal', `${dbPath}-wal`],
+  ] as const)
+    if (existsSync(path) && readFileSync(path).includes(bytes))
+      found.push(name);
+  return found;
+}
+
+// 記憶の封筒の暗号文（本文と対象の鍵）。
+function memoryCiphertexts(db: SqliteDatabase, memoryId: string): Buffer[] {
+  return db
+    .prepare(
+      "SELECT ciphertext FROM sealed_blobs WHERE owner_table = 'memories' AND owner_id = ? ORDER BY purpose",
+    )
+    .pluck()
+    .all(memoryId) as Buffer[];
+}
+
+test('U440: with the product sweeper, forgotten ciphertext leaves the WAL; a busy reader defers it to the next sweep', async (t) => {
+  // 掃除の job を本物の DB の命令（同じプロセス）につなぐ。製品の core.ts と同じく truncateLogAfterForget を渡す。
+  const holder: { job: RetentionSweeper | null } = { job: null };
+  const w = world(t, {
+    truncateLog: () =>
+      holder.job?.truncateLogAfterForget() ?? Promise.resolve(false),
+  });
+  const logs: string[] = [];
+  const client = {
+    retention: (op: RetentionOp) =>
+      Promise.resolve(
+        executeRetentionOp(w.db, op, { platform: 'macos', halted: false })
+          .result,
+      ),
+  } as unknown as DbWorkerClient;
+  const job = new RetentionSweeper({
+    port: createRetentionSweepPort(client),
+    epoch: randomUUID(),
+    now: () => NOW,
+    log: (message) => logs.push(message),
+  });
+  holder.job = job;
+  t.after(() => job.close());
+  // 発言の作成時刻を今にする（合成の世界の発言は作成から 7 日を過ぎていて、掃除が消すと、その削除の後始末で切り詰まる。
+  // ここでは削除のない掃除でも保留した切り詰めを試すことを確かめる）。
+  w.db.prepare('UPDATE turns SET created_at = ?').run(NOW);
+  const dbPath = join(w.dir, 'buddy.db');
+  const forgotten = [
+    ...memoryCiphertexts(w.db, M),
+    ...memoryCiphertexts(w.db, M2),
+  ];
+  const kept = memoryCiphertexts(w.db, M_OTHER);
+  assert.equal(forgotten.length, 4);
+  assert.equal(kept.length, 2);
+  // 合成の世界は書き込んだまま checkpoint していないので、暗号文は WAL のフレームにある（探し方の陽性の対照）。
+  for (const bytes of [...forgotten, ...kept])
+    assert.deepEqual(filesHolding(dbPath, bytes), ['wal']);
+
+  // 1 回目: 別の接続が読みの transaction を開いている（バックアップの写しの読みに当たる）。切り詰めは busy。
+  // 読む接続は最後まで開いておく（閉じると、その接続の後始末で WAL が書き戻され、掃除の後の再試行を確かめられない）。
+  // この試験の中で必ず閉じる（t.after は登録した順に動き、world の一時ディレクトリの削除が先に動くため。Windows では
+  // 開いたままのファイルを消せない）。
+  const reader = openWriteConnection(dbPath, { platform: 'macos' });
+  try {
+    reader.exec('BEGIN');
+    assert.equal(
+      reader.prepare('SELECT COUNT(*) FROM memories').pluck().get(),
+      3,
+    );
+    const view = await planOk(w);
+    const done = await w.service.execute({
+      device_id: DEVICE,
+      plan_id: view.plan_id,
+      forgetting_generation: '0',
+    });
+    // 忘却は成功のまま。
+    assert.equal(done.ok, true, JSON.stringify(done));
+    assert.deepEqual(memories(w.db), [M_OTHER]);
+    assert.equal(generation(w.db), 1);
+    assert.deepEqual(logs, [
+      '忘却の後に、ログを切り詰められませんでした（他の接続が使用中）。次の掃除の後にもう一度試します。',
+    ]);
+    // 読みが終わっても、WAL は切り詰められておらず、忘れた暗号文を書き込んだときのフレームがまだ残る
+    // （DB のファイルの側は見ない）。
+    reader.exec('COMMIT');
+    for (const bytes of forgotten)
+      assert.ok(filesHolding(dbPath, bytes).includes('wal'));
+    assert.ok(statSync(`${dbPath}-wal`).size > 0);
+
+    // 次の掃除（削除はない）の後始末で、保留した切り詰めをもう一度試す。
+    await job.runOnce(true);
+    await job.drain();
+    // 掃除は何も消していない（発言 2 件は残る）。
+    assert.equal(count(w.db, 'SELECT COUNT(*) FROM turns'), 2);
+    assert.equal(statSync(`${dbPath}-wal`).size, 0);
+    for (const bytes of forgotten)
+      assert.deepEqual(filesHolding(dbPath, bytes), []);
+    // 消していない記憶の暗号文は DB にある（陽性の対照）。
+    for (const bytes of kept)
+      assert.deepEqual(filesHolding(dbPath, bytes), ['db']);
+    assert.equal(logs.length, 1);
+
+    // 2 回目: 読みの transaction がなければ（接続が開いているだけなら）、忘却の直後に切り詰まる（掃除を待たない）。
+    const planned = await w.service.plan({
+      device_id: DEVICE,
+      memory_id: M_OTHER,
+    });
+    assert(planned.ok, JSON.stringify(planned));
+    const second = await w.service.execute({
+      device_id: DEVICE,
+      plan_id: planned.view.plan_id,
+      forgetting_generation: '1',
+    });
+    assert.equal(second.ok, true, JSON.stringify(second));
+    assert.equal(statSync(`${dbPath}-wal`).size, 0);
+    for (const bytes of kept) assert.deepEqual(filesHolding(dbPath, bytes), []);
+    assert.equal(logs.length, 1);
+  } finally {
+    reader.close();
+  }
 });

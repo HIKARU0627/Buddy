@@ -1069,6 +1069,21 @@ function mockProvider() {
   };
 }
 
+// 記録しない区切りの RAM に持っている件数（本文は見ない）。
+const ramOf = (handle) => {
+  const held = handle.privateConversation?.held() ?? null;
+  return held === null
+    ? { ram: null }
+    : {
+        ram: {
+          replays: held.replays,
+          recent_turns: held.recent_turns,
+          last_discard: held.last_discard,
+          canvas_private: held.canvas_private,
+        },
+      };
+};
+
 async function privateConversation(seed, round) {
   const text = {
     NORMAL_1: marker('normal-1', seed, round),
@@ -1139,9 +1154,9 @@ async function privateConversation(seed, round) {
       responses.push(response.text);
       return response;
     };
-    const turn = (value) =>
+    const turn = (value, requestId = randomUUID()) =>
       post('/v1/stream/turns', {
-        request_id: randomUUID(),
+        request_id: requestId,
         command_scope_id: scope,
         text: `今日の用事を見せて ${value}`,
         input_kind: 'text',
@@ -1185,11 +1200,28 @@ async function privateConversation(seed, round) {
       boundary: await boundary(),
       private_conversation: handle.storage.privateConversation(),
     });
-    const privateTurn = await turn(text.PRIVATE);
+    // 記録しない間の発言は RAM だけで受けて答える（B06-07a-2 の 2c、ADR 0190）。発言の行は増えない。
+    const privateRequest = randomUUID();
+    const privateTurn = await turn(text.PRIVATE, privateRequest);
     steps.push({
       step: 'private_turn',
       status: privateTurn.status,
+      storage_mode: privateTurn.json?.['segment']?.['storage_mode'] ?? null,
+      turn_status: privateTurn.json?.['status'] ?? null,
       turns: await turnCount(),
+    });
+    // 同じ要求の再送は RAM の控えから同じ発言を返す。
+    const privateReplay = await turn(text.PRIVATE, privateRequest);
+    steps.push({
+      step: 'private_turn_replay',
+      status: privateReplay.status,
+      same_turn:
+        privateReplay.json?.['turn_id'] === privateTurn.json?.['turn_id'],
+      turns: await turnCount(),
+    });
+    steps.push({
+      step: 'private_ram_while_private',
+      ...ramOf(handle),
     });
     // 音声の制御（模擬の Live の provider と予算の門の組み立て）に、本物の保存境界の保持者の値をつなぐ。
     const gate = handle.storage;
@@ -1222,6 +1254,14 @@ async function privateConversation(seed, round) {
       status: exited.status,
       boundary: await boundary(),
       private_conversation: handle.storage.privateConversation(),
+      ...ramOf(handle),
+    });
+    // 終えた後の記録しない間の要求の再送は、通常の区切りへ保存しない（409）。
+    const resent = await turn(text.PRIVATE, privateRequest);
+    steps.push({
+      step: 'private_turn_resent_after_exit',
+      status: resent.status,
+      turns: await turnCount(),
     });
     const normal2 = await turn(text.NORMAL_2);
     steps.push({
@@ -1280,7 +1320,7 @@ async function privateConversation(seed, round) {
   return {
     checked,
     provider_requests: live.provider_created,
-    final_state: `turns=${checked.steps.at(-1).turns};private_turn=${checked.steps[2].status};live=${live.status}`,
+    final_state: `turns=${checked.steps.at(-1).turns};private_turn=${checked.steps[2].status};resent_after_exit=${checked.steps.find((step) => step.step === 'private_turn_resent_after_exit')?.status};live=${live.status}`,
   };
 }
 

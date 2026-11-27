@@ -293,26 +293,24 @@ test(
     assert.equal(r.hub.handle.storage.privateConversation(), true);
     assert.equal(statusMode(r), 'private');
 
-    // 記録しない間の従来の窓の発言は会話を作らず、流れの経路へ送る。2c までは中枢が断り、何も保存しない。
+    // 記録しない間の従来の窓の発言は会話を作らず、流れの経路へ送る。中枢は RAM だけで受けて答え（B06-07a-2 の 2c、
+    // ADR 0190）、画面へ結果を返す。記録された印は付かず、表示は記録しないのまま。
     const before = r.sent.length;
     const privateTurn = await r.turn('今日の用事を見せて');
-    assert.equal(privateTurn.outcome, 'rejected');
+    assert.equal(privateTurn.outcome, 'ok', JSON.stringify(privateTurn));
+    const shown = (
+      privateTurn as {
+        turn?: { status?: string; storage_notice?: string };
+      }
+    ).turn;
+    assert(shown !== undefined, JSON.stringify(privateTurn));
+    assert.equal(shown.storage_notice, undefined);
     const during = r.sent.slice(before).map((entry) => entry.path);
     assert(during.includes('/v1/stream/turns'), JSON.stringify(during));
     assert(!during.includes('/v1/sessions'), JSON.stringify(during));
-    // 断られた後に保存モードを読み直す（記録しないのまま）。
-    await waitUntil(
-      () =>
-        r.sent
-          .slice(before)
-          .some(
-            (entry) =>
-              entry.method === 'GET' &&
-              entry.path === '/v1/stream/storage-mode',
-          ),
-      'read after the refused turn',
-    );
     assert.equal(statusMode(r), 'private');
+    // 中枢は発言を RAM にだけ持つ（応答の控え 1 件）。
+    assert.equal(r.hub.handle.privateConversation?.held().replays, 1);
 
     // 継続相談へ出る。状態欄は継続相談になり、次の従来の窓の発言は継続相談の会話を作る。
     const exited = await r.change('extended');

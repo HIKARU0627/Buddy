@@ -101,6 +101,8 @@ export async function startEventCore(
     readonly sync?: StartCoreOptions['sync'];
     // 家計簿（レシートの写真の読み取りの口。ADR 0177・0178）。
     readonly household?: CoreHouseholdOptions;
+    // Core のログの受け口（記録しない会話の目印がログに出ないことを確かめる。ADR 0190）。
+    readonly log?: (message: string) => void;
   } = {},
 ): Promise<EventCore> {
   const dataDir =
@@ -143,6 +145,7 @@ export async function startEventCore(
     ...(options.budget === undefined ? {} : { budget: options.budget }),
     ...(options.research === undefined ? {} : { research: options.research }),
     ...(options.sync === undefined ? {} : { sync: options.sync }),
+    ...(options.log === undefined ? {} : { log: options.log }),
   });
   onCleanup(t, () => handle.stop('test').catch(() => undefined));
   assert(handle.https !== null);

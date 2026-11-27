@@ -47,6 +47,7 @@ import {
   automaticSegmentBoundary,
   canvasBatchPlacementTargets,
   canvasContentErrors,
+  endPrivateCanvas,
   nextCarriedSummary,
   streamSegmentErrors,
 } from '@buddy/domain';
@@ -113,6 +114,15 @@ export class CanvasHub {
   #record: CanvasUserRecordEntry[] = [];
   // 物の本文（U120）。記述・イベント・ログには載せず、content の経路でだけ返す（ADR 0032・0066）。
   #texts = new Map<string, string>();
+  // 記録しない区切りに入る前の記述（ADR 0032 の persisted。B06-07a-2 の 2c、ADR 0190）。記録しない間の変更は、AI の束・
+  // ユーザーの操作・知らせの後始末を含めてすべて今の記述（一時の記述）に当て、ここは変えない。終えたらここへ戻す。
+  // 記録しない区切りでなければ null。
+  #persisted: {
+    readonly document: CanvasDocument;
+    readonly placedAt: Map<string, string>;
+    readonly record: CanvasUserRecordEntry[];
+    readonly texts: Map<string, string>;
+  } | null = null;
 
   constructor(contract: ApiContract = createApiContract()) {
     this.#contract = contract;
@@ -125,6 +135,49 @@ export class CanvasHub {
   // ユーザーの操作の記録（古い順。最大 CANVAS_USER_RECORD_LIMIT 件）。
   get record(): readonly CanvasUserRecordEntry[] {
     return this.#record;
+  }
+
+  // 記録しない区切りの一時の記述を使っているか。
+  get privateOpen(): boolean {
+    return this.#persisted !== null;
+  }
+
+  // 記録しない区切りに入った後に、一時の記述が変わったか（閉じ直す必要があるか）。
+  get privateChanged(): boolean {
+    return (
+      this.#persisted !== null && this.#document !== this.#persisted.document
+    );
+  }
+
+  // 記録しない区切りに入る（保存境界の命令 begin_private_canvas）。今の記述・置き場所の版・操作の記録・本文を控え、以後の
+  // 変更は一時の記述に当てる。すでに入っていれば何もしない（domain の beginPrivateCanvas と同じ）。版は変えない。
+  beginPrivate(): void {
+    if (this.#persisted !== null) return;
+    this.#persisted = {
+      document: this.#document,
+      placedAt: new Map(this.#placedAt),
+      record: [...this.#record],
+      texts: new Map(this.#texts),
+    };
+  }
+
+  // 記録しない区切りを終える（保存境界の命令 end_private_canvas）。一時の記述と、その間の本文・操作の記録を捨て、入る前の
+  // 記述へ戻す。版は一時の記述の版より 1 進める（端末から見て版を戻さない。domain の endPrivateCanvas）。購読へ版を知らせる。
+  // 記録しない区切りでなければ何もせず null。
+  endPrivate(): string | null {
+    const saved = this.#persisted;
+    if (saved === null) return null;
+    this.#persisted = null;
+    const ended = endPrivateCanvas({
+      persisted: saved.document,
+      ephemeral: this.#document,
+    });
+    const next = ended.persisted as CanvasDocument;
+    this.#placedAt = saved.placedAt;
+    this.#record = saved.record;
+    this.#texts = saved.texts;
+    this.#commit(next);
+    return next.canvas_revision;
   }
 
   // 物の置き場所・存在が最後に変わった版（試験用）。
@@ -610,6 +663,19 @@ export interface StreamRoutes {
   readonly applyNotice: (notice: Notice) => boolean;
   // 発言との結び付きを持っている物の ID（試験・診断用。ADR 0187）。
   readonly boundItemIds: () => readonly string[];
+  // 記録しない区切りの表示（B06-07a-2 の 2c、ADR 0190）。Core が保存境界の命令に結び付ける。
+  // - begin: begin_private_canvas。以後のキャンバスの変更を一時の記述に当てる。
+  // - end: end_private_canvas。一時の記述を閉じ、入る前の記述へ戻す（版は進める）。
+  // - discard: discard_private_ram。記録しない間の発言に結び付けた控え（配置済みの印・応答の束・物の結び付き）を捨てる。
+  // - reset: 記録しない区切りのまま中身だけを捨てる（端末のロック・忘却の知らせ）。一時の記述を閉じて入り直し、控えも捨てる。
+  readonly privateConversation: {
+    begin(): void;
+    end(): void;
+    discard(): void;
+    reset(): void;
+    // 記録しない間の発言に結び付けた控えの数（試験・診断用）。
+    held(): { readonly turns: number };
+  };
 }
 
 const stringOf = (body: JsonObject | null, key: string): string => {
@@ -706,6 +772,13 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
   // 置いた物が消えた発言・記憶を参照していれば閉じる、閉じ損ねた物を次の知らせ・次の発言で閉じ直す。
   const goneTurns = new RecentIds(GONE_IDS_LIMIT);
   const goneMemories = new RecentIds(GONE_IDS_LIMIT);
+  // 記録しない区切りの間に受け付けた発言の ID（ADR 0190）。区切りを終えた・中身を捨てたときに、配置済みの印・応答の束・
+  // 物の結び付きから外す（記録しない間の結果を、出た後の表示に使わない）。受付の対応（accepted）は外さない: 記録しない区切りの
+  // 要求の再送を、出た後も元の（記録しない）区切りへ送って 409 にするため（外すと新しい要求として通常の区切りに保存してしまう）。
+  // 受付の対応は要求 ID と区切りの ID・世代だけで、本文を持たない。
+  const privateTurnIds = new Set<string>();
+  // 記録しない区切りに入る前の物の結び付き（一時の記述を閉じて戻すときに、結び付きも戻す）。
+  let itemTurnsBeforePrivate: Map<string, string> | null = null;
   // 今の記述にない物の結び付きを捨てる。
   const forgetClosedItems = (): void => {
     if (itemTurns.size === 0) return;
@@ -1231,6 +1304,10 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
             segment_id: stream.sessionId,
             segment_generation: options.storage.origin().segment_generation,
           };
+    // 記録しない区切りの発言（区切りが private で、由来がその区切り）。応答の後にも、同じ区切りのままかを確かめる。
+    const privateTurn =
+      stream.segment.storage_mode === 'private' &&
+      origin.segment_id === stream.segment.segment_id;
     const endSave = startTurnSave(stream.sessionId);
     let inner: { readonly status: number; readonly body: object };
     try {
@@ -1253,6 +1330,17 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
     if (inner.status !== 200) return inner;
     if (!contract.valid('TurnResponse', inner.body))
       return apiErrorResponse(503, 'dependency_unavailable', requestId);
+    // 記録しない区切りの結果は、応答を受けた時点でもその区切りが続いているときだけ置く。処理の間に終えた・入り直した
+    // ときは、キャンバス（戻した記述）にも受付の対応にも残さず 409 にする（遅れて届いた結果を次の区切りへ持ち込まない）。
+    if (
+      privateTurn &&
+      (options.storage.mode !== 'private' ||
+        current === null ||
+        current.segment.segment_id !== origin.segment_id ||
+        options.storage.origin().segment_generation !==
+          origin.segment_generation)
+    )
+      return apiErrorResponse(409, 'conflict', requestId);
     const turn = inner.body as TurnResponse;
     // 初めて受け付けた発言を、その区切りに結び付ける（再送はこの区切りで解決する）。受付レシートの有効期間だけ保ち、
     // 応答の束のキャッシュの件数では捨てない（PR #191 のレビュー P2）。
@@ -1267,6 +1355,7 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
         for (const [key, value] of accepted)
           if (value.expires_at <= at) accepted.delete(key);
     }
+    if (privateTurn) privateTurnIds.add(turn.turn_id);
     // 同じ要求の再送は、もう一度配置しない。配置済みかは発言の ID（turn_id。再送は保存済みの同じ発言を返す）で、
     // 応答の束のキャッシュの件数とは切り離して覚える（キャッシュから消えた後の再送でも再配置しない。そのときの束は
     // 再現できないので canvas は null）。UI-05 で発言の記録に結び付けて保存する。
@@ -1680,7 +1769,51 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
     return Promise.resolve({ status: 200, body: response });
   };
 
+  // 記録しない間の発言に結び付けた控えを捨てる（ADR 0190）。
+  const discardPrivate = (): void => {
+    for (const turnId of privateTurnIds) {
+      placed.delete(turnId);
+      replays.delete(turnId);
+    }
+    for (const [itemId, turnId] of [...itemTurns])
+      if (privateTurnIds.has(turnId)) itemTurns.delete(itemId);
+    privateTurnIds.clear();
+  };
+  const beginPrivate = (): void => {
+    if (options.canvas.privateOpen) return;
+    options.canvas.beginPrivate();
+    itemTurnsBeforePrivate = new Map(itemTurns);
+  };
+  // 一時の記述を閉じ、入る前の記述と物の結び付きへ戻す。記録しない間に期限切れ・忘却で消えた発言・記憶に結び付く物が
+  // 戻った記述にあれば、ここで閉じる（ADR 0187 の後始末を戻した記述にも当てる）。
+  const endPrivate = (): void => {
+    if (options.canvas.endPrivate() === null) return;
+    const saved = itemTurnsBeforePrivate;
+    itemTurnsBeforePrivate = null;
+    if (saved !== null) {
+      itemTurns.clear();
+      for (const [itemId, turnId] of saved) itemTurns.set(itemId, turnId);
+    }
+    if (goneTurns.size > 0 || goneMemories.size > 0) sweepGone();
+    else forgetClosedItems();
+  };
+
   return {
+    privateConversation: {
+      begin: beginPrivate,
+      end: endPrivate,
+      discard: discardPrivate,
+      reset: () => {
+        if (!options.canvas.privateOpen) return;
+        const bound = privateTurnIds.size > 0;
+        discardPrivate();
+        // 一時の記述が変わっていなければ閉じ直さない（ロック中の要求のたびに版を進めない）。
+        if (!bound && !options.canvas.privateChanged) return;
+        endPrivate();
+        beginPrivate();
+      },
+      held: () => ({ turns: privateTurnIds.size }),
+    },
     handlers: {
       postStreamTurn,
       postStreamStorageMode,

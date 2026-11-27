@@ -278,6 +278,12 @@ export interface VoiceControlOptions {
   // 保存の区切りの世代（保存境界の保持者の値。入る・出るのたびに変わる）。Live の受付は始めた時点の値を控え、後の判定で変わっていたら
   // 開かない（記録しない会話に入って出ても、入る前に始めた受付を通さない）。省略すると常に同じ値（試験）。
   readonly storageBoundary?: () => string;
+  // 保存の区切りの由来（保存境界の保持者の区切りの ID と世代）。Live の受付を始めた時点の値を Live に持たせ、委譲から発言を
+  // 保存するときの由来にする（開いた後に区切りが変わっていたら保存しない。ADR 0190、U485）。省略すると由来を持たない（試験）。
+  readonly storageOrigin?: () => {
+    readonly segment_id: string;
+    readonly segment_generation: string;
+  };
 }
 
 // このリースで開いた Live の結果。更新で作り直すエントリーの間で同じものを持ち回る。
@@ -318,6 +324,11 @@ interface LiveRuntime {
   record: LiveSessionRecord;
   // Live を開いた端末のリースの接続範囲（Live の委譲から発言を保存するときの受付の範囲。再起動の後は空）。
   command_scope_id: string;
+  // 受付を始めた時点の保存の区切りの由来（ADR 0190）。再起動の後に作り直した記録・由来の口がないときは null。
+  storage_origin: {
+    readonly segment_id: string;
+    readonly segment_generation: string;
+  } | null;
   // 会話の処理へ開いた・閉じたを知らせたか。
   conversation_opened: boolean;
   conversation_closed: boolean;
@@ -437,6 +448,12 @@ export class VoiceControl {
   readonly #retention: VoiceControlOptions['retention'];
   readonly #privateConversation: () => boolean;
   readonly #boundary: () => string;
+  readonly #origin:
+    | (() => {
+        readonly segment_id: string;
+        readonly segment_generation: string;
+      })
+    | null;
   readonly #budget: LiveBudgetPort | null;
   readonly #consent: (
     deviceId: string,
@@ -475,6 +492,7 @@ export class VoiceControl {
     this.#retention = options.retention;
     this.#privateConversation = options.privateConversation ?? (() => false);
     this.#boundary = options.storageBoundary ?? (() => '0');
+    this.#origin = options.storageOrigin ?? null;
     this.#budget = options.budget ?? null;
     this.#consent = options.consent ?? (() => 'missing');
     this.#displayTarget = options.displayTarget ?? (() => null);
@@ -1504,6 +1522,18 @@ export class VoiceControl {
         lease.opened = live;
         const runtime = this.#newRuntime(opened.value, live, ticket);
         runtime.command_scope_id = str(body, 'command_scope_id');
+        // 受付を始めた時点の区切りの由来を Live に持たせる（委譲の保存の由来にする。ADR 0190）。今の世代が受付を始めた時点の世代と
+        // 違えば（この後の判定で Live は開かない）、どの区切りとも一致しない由来にして保存させない。
+        const storageOrigin = this.#origin?.() ?? null;
+        runtime.storage_origin =
+          storageOrigin === null
+            ? null
+            : storageOrigin.segment_generation === boundary
+              ? {
+                  segment_id: storageOrigin.segment_id,
+                  segment_generation: storageOrigin.segment_generation,
+                }
+              : { segment_id: '', segment_generation: boundary };
         runtime.reserved_at = reservedAt;
         runtime.last_observed = reservedAt;
         this.#lives.set(liveSessionId, runtime);
@@ -1899,6 +1929,9 @@ export class VoiceControl {
       audio_epoch: runtime.record.audio_epoch,
       session_epoch: runtime.record.session_epoch,
       command_scope_id: runtime.command_scope_id,
+      ...(runtime.storage_origin === null
+        ? {}
+        : { storage_origin: runtime.storage_origin }),
     };
   }
 
@@ -2679,6 +2712,7 @@ export class VoiceControl {
       persisting: null,
       retryTimer: null,
       command_scope_id: '',
+      storage_origin: null,
       conversation_opened: false,
       conversation_closed: false,
       opened,

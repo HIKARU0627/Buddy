@@ -281,7 +281,11 @@
     {
       "id": "X17-private-conversation-not-saved",
       "condition": "private",
-      "faults": ["private_turn", "live_while_private"],
+      "faults": [
+        "private_turn",
+        "live_while_private",
+        "private_resend_after_exit"
+      ],
       "expected": {
         "steps": [
           { "step": "normal_turn", "status": 200, "turns": 1 },
@@ -291,7 +295,28 @@
             "boundary": { "segment_generation": "2", "private_open": true },
             "private_conversation": true
           },
-          { "step": "private_turn", "status": 503, "turns": 1 },
+          {
+            "step": "private_turn",
+            "status": 200,
+            "storage_mode": "private",
+            "turn_status": "clarification",
+            "turns": 1
+          },
+          {
+            "step": "private_turn_replay",
+            "status": 200,
+            "same_turn": true,
+            "turns": 1
+          },
+          {
+            "step": "private_ram_while_private",
+            "ram": {
+              "replays": 1,
+              "recent_turns": 2,
+              "last_discard": null,
+              "canvas_private": true
+            }
+          },
           {
             "step": "live_while_private",
             "status": 409,
@@ -303,7 +328,18 @@
             "step": "exit_private",
             "status": 200,
             "boundary": { "segment_generation": "3", "private_open": false },
-            "private_conversation": false
+            "private_conversation": false,
+            "ram": {
+              "replays": 0,
+              "recent_turns": 0,
+              "last_discard": "private_ended",
+              "canvas_private": false
+            }
+          },
+          {
+            "step": "private_turn_resent_after_exit",
+            "status": 409,
+            "turns": 1
           },
           { "step": "normal_turn_after", "status": 200, "turns": 2 }
         ],

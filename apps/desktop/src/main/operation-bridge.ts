@@ -307,7 +307,7 @@ export class OperationBridge {
     if (!io.permitted) return fail('input_stopped');
     const mode = this.#host.storageMode?.() ?? null;
     // 記録しない間は会話を作らない（記録しない会話の会話 ID は作らない。ADR 0060）。流れの経路へ送り、区切りは中枢が選ぶ
-    // （B06-07a-2 の 2c までは中枢が 503 で断り、何も保存しない）。
+    // （中枢は記録しない区切りの発言を RAM だけで受けて答える。B06-07a-2 の 2c、ADR 0190）。
     if (mode === 'private') return this.#submitStreamTurn(text, scope, gen);
     const sessionMode = mode === 'extended' ? 'extended' : 'normal';
     let session = this.#session;

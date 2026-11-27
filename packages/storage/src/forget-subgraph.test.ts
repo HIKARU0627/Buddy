@@ -86,7 +86,18 @@ interface World {
 }
 
 // 合成の世界を 1 つ足す。世界どうしは ID が重ならない（同じ DB に積むので、部分読みは関係のない世界を読まない）。
+// 行の挿入は 1 つの transaction にまとめる（行ごとに COMMIT すると、同期の遅い Windows の CI で 1 件が 2 分を超え、
+// 同じ shard の他の試験の時間切れの原因になった。Issue #348）。読む側の検査は挿入の後なので、結果は変わらない。
 function addWorld(
+  db: SqliteDatabase,
+  world: number,
+  seed: number,
+  density: number,
+): World {
+  return db.transaction(() => addWorldRows(db, world, seed, density))();
+}
+
+function addWorldRows(
   db: SqliteDatabase,
   world: number,
   seed: number,

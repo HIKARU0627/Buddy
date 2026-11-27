@@ -3,9 +3,16 @@
 // 暗号文は乱数の合成値で、実際の暗号化（B02-02）ではない。
 
 import { randomBytes, randomUUID } from 'node:crypto';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { openWriteConnection } from './connection.js';
 import type { SqliteDatabase } from './connection.js';
 import { applyMigrations, initStoreGeneration } from './migrations.js';
@@ -84,13 +91,50 @@ export const SEED = [
   "INSERT INTO connections VALUES ('c-1', 'google', NULL, 'keystore:c-1', 'active', 'read_write', '[]', '{}', 1, 1)",
 ];
 
-// 書込み接続を開き、0001 を適用して合成のデータを置く。
-export function openSeededDatabase(path: string): SqliteDatabase {
+// マイグレーションの適用と合成のデータを置く処理（下の雛形を作るときと、既にある DB を開くときに使う）。
+function migrateAndSeed(db: SqliteDatabase): void {
+  applyMigrations(db);
+  initStoreGeneration(db, STORE_GENERATION);
+  db.transaction(() => {
+    for (const sql of SEED) db.exec(sql);
+  })();
+}
+
+// 移行済みで合成のデータを置いた DB の雛形（プロセスで 1 つ）。試験ごとに全マイグレーションを適用し直すと、
+// 1 回の準備で書込みと同期（fsync）を数十回行う。同期の遅い Windows の CI では、DB を使う試験の時間の
+// 大半がこの準備になり、同じ shard の他の試験の時間切れの原因になった（Issue #348）。
+// 雛形は同じ関数（migrateAndSeed）で作り、試験ごとにファイルを写す。WAL は閉じる前に本体へ書き戻す。
+let seededTemplate: string | null = null;
+function seededTemplatePath(): string {
+  if (seededTemplate !== null) return seededTemplate;
+  const dir = mkdtempSync(join(tmpdir(), 'buddy-store-template-'));
+  process.once('exit', () => rmSync(dir, { recursive: true, force: true }));
+  const path = join(dir, 'buddy.sqlite');
   const db = openWriteConnection(path, { platform: 'macos' });
   try {
-    applyMigrations(db);
-    initStoreGeneration(db, STORE_GENERATION);
-    for (const sql of SEED) db.exec(sql);
+    migrateAndSeed(db);
+    const [checkpoint] = db.pragma('wal_checkpoint(TRUNCATE)') as {
+      busy: number;
+    }[];
+    if (checkpoint?.busy !== 0)
+      throw new Error('試験の DB の雛形の WAL を本体へ書き戻せませんでした。');
+  } finally {
+    db.close();
+  }
+  seededTemplate = path;
+  return path;
+}
+
+// 書込み接続を開き、全マイグレーションを適用して合成のデータを置く（新しいパスは雛形を写す）。
+export function openSeededDatabase(path: string): SqliteDatabase {
+  const fresh = !existsSync(path);
+  if (fresh) {
+    mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+    copyFileSync(seededTemplatePath(), path);
+  }
+  const db = openWriteConnection(path, { platform: 'macos' });
+  try {
+    if (!fresh) migrateAndSeed(db);
   } catch (error) {
     db.close();
     throw error;

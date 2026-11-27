@@ -30,7 +30,9 @@
 GitHub Actions は Ubuntu / Windows / macOS のそれぞれで `pnpm run check` と同じ検査を行う。所要時間を短くするため、OS ごとに試験を 4 つの shard（job）へ分けて並列に実行する（`.github/workflows/verify-os.yml`）。
 
 - shard 1: doctor・format:check・contracts:check・lint・build・typecheck・security:check・security:setup・security:staged と、割り当てられた試験。shard 2〜4: doctor・build と、割り当てられた試験。
-- 試験ファイルの割り当ては `node scripts/run-tests.mjs --shard <番号>/<総数>`。`scripts/test-shard-weights.json` の重みから決まる（重みは負荷の目安にすぎず、ずれても漏れや重複は起きない）。`--list` は実行せず対象を表示する。重い B04・B07 の統合試験は別々の shard に置く。模擬証拠を作る統合試験の shard（B06 は 1、B07 は 2、B04 は 3、B05 は 4）は workflow の条件と同じで、`scripts/test-shards.test.mjs` が検査する。引数なしの `pnpm test` は全ファイルを実行する。
+- 試験ファイルの割り当ては `node scripts/run-tests.mjs --shard <番号>/<総数>`。`scripts/test-shard-weights.json` の重みから決まる（重みは負荷の目安にすぎず、ずれても漏れや重複は起きない）。`--list` は実行せず対象を表示する。模擬証拠を作る統合試験の shard（B06 は 1、B07 は 2、B04 は 3、B05 は 4）は重みの `pinned` で先に固定し（workflow の条件と同じ）、`scripts/test-shards.test.mjs` が検査する。重い B04・B07 の統合試験はこれで別々の shard に入る。引数なしの `pnpm test` は全ファイルを実行する。
+- 重み（`files`）は、CI の spec reporter のログにある試験ごとの時間をファイルごとに足した秒数の、Ubuntu・Windows・macOS の中央値（3 秒未満のファイルは載せず、既定の 1）。2026-11-27 の PR #347 の CI（run 46019891949、Windows の shard 1 は再実行の成功分も）から取った。`reserved` の shard 1 の 200 は、shard 1 だけが行う静的検査（Windows で約 170 秒、Ubuntu で約 95 秒）を、3 ファイルの同時実行の試験の秒数に直した目安。試験ファイルの時間が大きく変わったら、同じ方法で取り直す。shard の時間がずれると、DB を使う試験が 1 つの shard に集まり、同期（fsync）の遅い Windows で試験の 20 秒の上限を超えることがある（Issue #348）。
+- DB を使う試験は、移行済みの DB の雛形をプロセスで 1 つ作って試験ごとに写す（`apps/core/src/api-test-support.ts` の `copyMigratedDatabase`、`packages/storage/src/operation-test-support.ts` の `openSeededDatabase`）。試験ごとに全マイグレーションを適用し直すと、1 回の準備で同期を数十回行う。マイグレーション自体・新しいファイルからの起動を確かめる試験は、雛形を使わずに直接作る。
 - 各ファイルがちょうど 1 回実行されること、`Verify (<os>)` が成立することは `scripts/test-shards.test.mjs` が検査する。試験を追加・削除しても割り当ては自動で更新される。
 - main の ruleset が要求する `Verify (<os>)` は、その OS の全 shard の合否を表す集約 job（`ci.yml`）。上流の結果が成功以外（失敗・取り消し・スキップ）なら失敗する。reusable workflow の構文エラーなどで集約 job 自体が作られない場合は、必須チェックが成立しないためマージできない。
 - `scripts/test-shards.test.mjs` が検査するのは workflow の構造と条件式の文字列まで。GitHub 上での部分的な matrix の失敗・取り消しは再現しないので、集約の仕組みを変えるときは失敗する run を実際に起こして証拠を残す。

@@ -7,7 +7,6 @@ import { X509Certificate, randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { connect as netConnect, createServer as netServer } from 'node:net';
 import { join } from 'node:path';
-import { createInterface } from 'node:readline';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { createMockKeyStore, createMockTlsKeyStore } from '@buddy/platform';
@@ -22,6 +21,7 @@ import {
 import type { PinnedTarget } from './api-test-support.js';
 import { startCore } from './core.js';
 import type { CoreHandle, CoreHttpsOptions, CoreStartError } from './core.js';
+import { startCli } from './cli-test-support.js';
 import { keyProtectionCheck } from './preflight.js';
 import { TLS_CERTIFICATE_FILE } from './tls-identity.js';
 
@@ -269,13 +269,15 @@ test(
   },
 );
 
+// 上限は呼び出し元の試験の期限（signal）だけ。固定の時間では打ち切らない（Issue #108）。
 function runCli(
+  signal: AbortSignal,
   args: readonly string[],
 ): Promise<{ code: number | null; stdout: string }> {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [CLI, ...args], {
       stdio: ['ignore', 'pipe', 'ignore'],
-      timeout: 15_000,
+      signal,
     });
     let stdout = '';
     child.stdout
@@ -291,46 +293,16 @@ test(
   { timeout: 60_000 },
   async (t) => {
     const dataDir = join(await tempDir(t, 'buddy-https-cli-'), 'data');
-    const child = spawn(
-      process.execPath,
-      [
-        CLI,
-        'start',
-        '--mock-key-protection',
-        '--https-host',
-        '127.0.0.1',
-        '--https-port',
-        '0',
-        '--data-dir',
-        dataDir,
-      ],
-      { stdio: ['ignore', 'pipe', 'ignore'] },
-    );
-    onCleanup(t, () => {
-      if (child.exitCode === null && child.signalCode === null) child.kill();
-    });
-    const exited = new Promise<number | null>((resolve) =>
-      child.on('close', resolve),
-    );
-    const events: Record<string, unknown>[] = [];
-    await new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(
-        () => reject(new Error('start timeout')),
-        15_000,
-      );
-      createInterface({ input: child.stdout }).on('line', (line) => {
-        const event = JSON.parse(line) as Record<string, unknown>;
-        events.push(event);
-        if (event['event'] === 'running') {
-          clearTimeout(timer);
-          resolve();
-        }
-      });
-      child.on('close', (code) => {
-        clearTimeout(timer);
-        reject(new Error(`exited ${code}`));
-      });
-    });
+    // running は全ての待受けが完了した後の CLI の通知。上限はこの試験の期限（signal）だけ。
+    const { events, exited } = await startCli(t, [
+      '--mock-key-protection',
+      '--https-host',
+      '127.0.0.1',
+      '--https-port',
+      '0',
+      '--data-dir',
+      dataDir,
+    ]);
     const listening = events.find(
       (event) => event['event'] === 'https_listening',
     );
@@ -357,19 +329,25 @@ test(
       { method: 'GET', path: '/v1/bootstrap' },
     );
     assert.equal(response.status, 401);
-    assert.equal((await runCli(['stop', '--data-dir', dataDir])).code, 0);
-    assert.equal(await exited, 0);
+    assert.equal(
+      (await runCli(t.signal, ['stop', '--data-dir', dataDir])).code,
+      0,
+    );
+    assert.equal((await exited).code, 0);
   },
 );
 
 test(
   'HTTPS options are usage errors outside start or without a host',
   { timeout: 30_000 },
-  async () => {
-    assert.equal((await runCli(['start', '--https-port', '1'])).code, 2);
+  async (t) => {
+    assert.equal(
+      (await runCli(t.signal, ['start', '--https-port', '1'])).code,
+      2,
+    );
     assert.equal(
       (
-        await runCli([
+        await runCli(t.signal, [
           'start',
           '--https-host',
           '127.0.0.1',
@@ -381,7 +359,7 @@ test(
     );
     assert.equal(
       (
-        await runCli([
+        await runCli(t.signal, [
           'start',
           '--https-host',
           '127.0.0.1',
@@ -392,7 +370,7 @@ test(
       2,
     );
     assert.equal(
-      (await runCli(['status', '--https-host', '127.0.0.1'])).code,
+      (await runCli(t.signal, ['status', '--https-host', '127.0.0.1'])).code,
       2,
     );
   },

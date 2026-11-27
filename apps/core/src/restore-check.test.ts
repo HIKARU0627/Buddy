@@ -37,8 +37,7 @@ import {
   unwrapBackupKey,
 } from '@buddy/storage';
 import type { BackupKeyWrapValue } from '@buddy/storage';
-import { createApiContract } from './api-contract.js';
-import { onCleanup } from './api-test-support.js';
+import { onCleanup, sharedApiContract } from './api-test-support.js';
 import { BACKUP_CONFIG_FILE } from './backup-config.js';
 import { BACKUP_KEY_FILE, BACKUP_STATE_FILE } from './backup-files.js';
 import { CLOCK_STATE_FILE } from './paths.js';
@@ -59,7 +58,7 @@ import { readRecoveryKeyFromTty } from './restore-tty.js';
 import type { TtyInput } from './restore-tty.js';
 
 const DATA_KEY = Buffer.alloc(32, 0x41);
-const contract = createApiContract();
+const contract = sharedApiContract();
 const T0 = Date.parse('2031-03-01T00:00:00.000Z');
 
 interface Rig {

@@ -11,7 +11,7 @@ import type {
   CanvasItem,
 } from '@buddy/contracts';
 import { canvasContentErrors } from '@buddy/domain';
-import { createApiContract } from './api-contract.js';
+import { sharedApiContract } from './api-test-support.js';
 import type { ApiHandlerRequest, ApiRouteHandler } from './api-server.js';
 import { API_ROUTES } from './api-routes.js';
 import { mockCanvasContent } from './canvas-content.js';
@@ -27,7 +27,7 @@ import {
 import type { EventCore } from './event-test-support.js';
 import type { ProviderEvent, ProviderReader } from './turn-ports.js';
 
-const contract = createApiContract();
+const contract = sharedApiContract();
 
 const CLOCK = new Date('2026-10-05T09:00:00+09:00');
 const ACCOUNT = '00000000-0000-4000-8000-000000000002';

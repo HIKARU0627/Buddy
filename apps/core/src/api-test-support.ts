@@ -18,6 +18,18 @@ import type { PeerCertificate, SecureVersion, TLSSocket } from 'node:tls';
 import { DbWorkerClient } from '@buddy/storage';
 import type { DeviceRecord } from '@buddy/storage';
 import { createDeviceToken, deviceTokenHash } from './api-auth.js';
+import { createApiContract } from './api-contract.js';
+import type { ApiContract } from './api-contract.js';
+
+// 契約の検証器は、全 Schema を Ajv で組み立てて検証関数を作る重い処理（1 回あたり CPU 約 0.6〜1 秒）。
+// 検証器は状態を持たない（検証関数の控えだけ）ので、試験ごとに作らず、プロセスで 1 つを共有する。
+// 試験ごとに作ると、CPU の少ない CI（Windows）で試験の 20 秒の上限を超える（予算・音声の試験が約 100 件ある）。
+// 契約の Schema を差し替える試験は、これを使わず createApiContract(schema) を直接呼ぶ。
+let sharedContract: ApiContract | null = null;
+export function sharedApiContract(): ApiContract {
+  sharedContract ??= createApiContract();
+  return sharedContract;
+}
 
 export const STORE_GENERATION = '00000000-0000-4000-8000-0000000000aa';
 

@@ -9,7 +9,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import test from 'node:test';
 import { sealOperationIntent } from '@buddy/storage';
 import type { ReviseContentCommand } from '@buddy/storage';
-import { createApiContract } from './api-contract.js';
+import { sharedApiContract } from './api-test-support.js';
 import { isRealLocalDateTime } from '@buddy/domain';
 import type { DbCommand } from '@buddy/storage';
 import type { RequestEnvironment } from './api-environment.js';
@@ -48,7 +48,7 @@ import type {
   ProviderReader,
 } from './turn-ports.js';
 
-const contract = createApiContract();
+const contract = sharedApiContract();
 
 // 設計 09 §2 の時計（2026-10-05T09:00:00+09:00）と、H01 と同じ合成の口座。
 const CLOCK = new Date('2026-10-05T09:00:00+09:00');

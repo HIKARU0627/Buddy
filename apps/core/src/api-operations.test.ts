@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import test from 'node:test';
-import { createApiContract } from './api-contract.js';
+import { sharedApiContract } from './api-test-support.js';
 import { deviceCommandId, requestHash } from './api-operations.js';
 import { decodeEventCursor } from './event-cursor.js';
 import {
@@ -28,7 +28,7 @@ import {
 import type { EventCore } from './event-test-support.js';
 import type { TestDevice } from './api-test-support.js';
 
-const contract = createApiContract();
+const contract = sharedApiContract();
 
 const eventsAfter = async (
   core: EventCore,

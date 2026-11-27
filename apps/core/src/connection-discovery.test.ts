@@ -17,7 +17,7 @@ import {
 } from '@buddy/connectors';
 import { targetDiscoveryErrors } from '@buddy/domain';
 import type { ConnectionRecord } from '@buddy/storage';
-import { createApiContract } from './api-contract.js';
+import { sharedApiContract } from './api-test-support.js';
 import { createConnectionRoutes } from './api-connections.js';
 import type { ConnectionRoutesStore } from './api-connections.js';
 import type { ApiHandlerRequest } from './api-server.js';
@@ -28,7 +28,7 @@ import type {
   TargetDiscoveryPort,
 } from './connection-discovery.js';
 
-const contract = createApiContract();
+const contract = sharedApiContract();
 
 const record = (over: Partial<ConnectionRecord> = {}): ConnectionRecord => ({
   connection_id: '00000000-0000-4000-8000-000000000e01',

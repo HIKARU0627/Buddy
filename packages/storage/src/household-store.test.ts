@@ -1384,6 +1384,134 @@ test('DB の trigger（0022）: 請求予定の変更は有効から消したへ
   });
 });
 
+const INSERT_ENTRY_OR_REPLACE =
+  "INSERT OR REPLACE INTO household_entries (entry_id, source_kind, source_key, state, month, content_revision, content_blob_id, created_at, updated_at, deleted_at) VALUES (?, 'manual', ?, 'active', '2030-10', 1, ?, 1, 1, NULL)";
+
+// 版 1 の暗号文を、持ち主を指定した記録の ID として直接書く（置き換えの試験で、有効な行を作るため）。
+function insertEntryBlob(db: SqliteDatabase, entryId: string): string {
+  const blob = sealed(entryId, 1, LUNCH);
+  db.prepare(
+    "INSERT INTO sealed_blobs (blob_id, purpose, owner_table, owner_id, owner_version, format_version, key_id, nonce, ciphertext, tag, created_at, delete_at) VALUES (?, 'household_entry', 'household_entries', ?, 1, ?, ?, ?, ?, ?, 1000, NULL)",
+  ).run(
+    blob.blob_id,
+    entryId,
+    blob.format_version,
+    blob.key_id,
+    Buffer.from(blob.nonce),
+    Buffer.from(blob.ciphertext),
+    Buffer.from(blob.tag),
+  );
+  return blob.blob_id;
+}
+
+test('DB の trigger（0023）: 同じ ID・同じ出所の鍵の INSERT OR REPLACE は、消した印の行を置き換えられない。新しい記録の普通の INSERT は通る', async () => {
+  await withDb((db) => {
+    const id = randomUUID();
+    value(run(db, recordOp(id)));
+    value(
+      run(db, {
+        kind: 'household.delete',
+        entry_id: id,
+        expected_revision: '1',
+        now: T1,
+      }),
+    );
+    const before = db
+      .prepare('SELECT * FROM household_entries WHERE entry_id = ?')
+      .get(id);
+    // 同じ出所の鍵で別の ID。
+    const otherId = randomUUID();
+    const otherBlob = insertEntryBlob(db, otherId);
+    assert.throws(
+      () =>
+        db.prepare(INSERT_ENTRY_OR_REPLACE).run(otherId, SOURCE_A, otherBlob),
+      /household_entry_no_replace/u,
+    );
+    // 同じ ID で別の出所の鍵。
+    const sameIdBlob = insertEntryBlob(db, id);
+    assert.throws(
+      () => db.prepare(INSERT_ENTRY_OR_REPLACE).run(id, SOURCE_B, sameIdBlob),
+      /household_entry_no_replace/u,
+    );
+    // 消した印の行は変わらない。
+    assert.deepEqual(
+      db.prepare('SELECT * FROM household_entries WHERE entry_id = ?').get(id),
+      before,
+    );
+    assert.equal(
+      (
+        db
+          .prepare('SELECT state FROM household_entries WHERE source_key = ?')
+          .get(SOURCE_A) as { state: string }
+      ).state,
+      'deleted',
+    );
+    // 新しい ID・新しい出所の鍵なら、INSERT OR REPLACE でも衝突しないので入る。
+    const freshId = randomUUID();
+    const freshBlob = insertEntryBlob(db, freshId);
+    db.prepare(INSERT_ENTRY_OR_REPLACE).run(freshId, 'e'.repeat(64), freshBlob);
+    // 保存層の普通の INSERT（新しい記録）は今までどおり通る。
+    assert.equal(
+      value<HouseholdRecordValue>(
+        run(db, recordOp(randomUUID(), { source_key: SOURCE_B })),
+      ).outcome,
+      'created',
+    );
+  });
+});
+
+test('マイグレーション 0023: 版 22 の DB の家計の記録は変わらず残り、置き換えの trigger が足される', async () => {
+  await withTempDir((dir) => {
+    const all = loadMigrations();
+    const db = openWriteConnection(databasePath(dir), { platform: 'macos' });
+    try {
+      assert.deepEqual(applyMigrations(db, all.slice(0, 22)).to, 22);
+      const active = randomUUID();
+      const removed = randomUUID();
+      const activeBlob = insertEntryBlob(db, active);
+      db.prepare(
+        "INSERT INTO household_entries (entry_id, source_kind, source_key, state, month, content_revision, content_blob_id, created_at, updated_at, deleted_at) VALUES (?, 'manual', ?, 'active', '2030-10', 1, ?, 1000, 1000, NULL)",
+      ).run(active, SOURCE_A, activeBlob);
+      db.prepare(
+        "INSERT INTO household_entries (entry_id, source_kind, source_key, state, month, content_revision, content_blob_id, created_at, updated_at, deleted_at) VALUES (?, 'manual', ?, 'deleted', NULL, 2, NULL, 1000, 2000, 2000)",
+      ).run(removed, SOURCE_B);
+      const snapshot = (): unknown =>
+        db.prepare('SELECT * FROM household_entries ORDER BY entry_id').all();
+      const before = snapshot();
+      const triggers = (): string[] =>
+        (
+          db
+            .prepare(
+              "SELECT name FROM sqlite_schema WHERE tbl_name = 'household_entries' AND type = 'trigger' ORDER BY name",
+            )
+            .all() as { name: string }[]
+        ).map((row) => row.name);
+      assert.ok(!triggers().includes('household_entries_no_replace'));
+      assert.deepEqual(applyMigrations(db, all), {
+        from: 22,
+        to: 23,
+        applied: [23],
+      });
+      assert.deepEqual(snapshot(), before);
+      assert.ok(triggers().includes('household_entries_no_replace'));
+      assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
+      // 移した記録は読めて、消した印の行は置き換えられない。
+      assert.ok(get(db, active).content);
+      const replaceBlob = insertEntryBlob(db, randomUUID());
+      assert.throws(
+        () =>
+          db
+            .prepare(INSERT_ENTRY_OR_REPLACE)
+            .run(removed, SOURCE_B, replaceBlob),
+        /household_entry_no_replace/u,
+      );
+      assert.deepEqual(snapshot(), before);
+    } finally {
+      db.close();
+    }
+  });
+});
+
 test('DB の trigger（0022）: 同じ ID・同じ出所の鍵の INSERT OR REPLACE は、消した印の行を置き換えられない', async () => {
   await withDb((db) => {
     const id = randomUUID();
@@ -1544,7 +1672,7 @@ test('マイグレーション 0022: 版 21 の DB の請求予定は有効・�
       db.prepare(
         "INSERT INTO household_settings (setting_id, mail_intake, settings_revision, updated_at) VALUES (1, 'off', 3, 1000)",
       ).run();
-      assert.deepEqual(applyMigrations(db, all), {
+      assert.deepEqual(applyMigrations(db, all.slice(0, 22)), {
         from: 21,
         to: 22,
         applied: [22],

@@ -24,7 +24,7 @@ import type {
   DbWorkerClient,
   HouseholdOp,
 } from '@buddy/storage';
-import { createApiContract } from './api-contract.js';
+import { sharedApiContract } from './api-test-support.js';
 import { createHouseholdRoutes } from './api-household.js';
 import { recordHouseholdBill } from './household-bills.js';
 import type { HouseholdRoutesOptions } from './api-household.js';
@@ -44,7 +44,7 @@ const NOW = Date.parse('2030-10-31T15:30:00Z');
 const ZONE = 'Asia/Tokyo';
 const SCOPE = '00000000-0000-4000-8000-000000009002';
 const MISSING = '00000000-0000-4000-8000-0000000000ff';
-const contract = createApiContract();
+const contract = sharedApiContract();
 
 type Store = Pick<DbWorkerClient, 'household'>;
 

@@ -14,7 +14,8 @@ import type {
   PrefilterHeaders,
   PrefilterRecord,
 } from '@buddy/domain';
-import { createApiContract, loadContractSchema } from './api-contract.js';
+import { loadContractSchema } from './api-contract.js';
+import { sharedApiContract } from './api-test-support.js';
 import {
   CALENDAR_INVITE_RULE_ID,
   analysisSourceOf,
@@ -26,7 +27,7 @@ import type {
 } from './mail-extraction.js';
 import type { ModelCallAdmission } from './model-interpreter.js';
 
-const contract = createApiContract();
+const contract = sharedApiContract();
 const schema = loadContractSchema() as Record<string, unknown>;
 const outputSchema = { ...schema, $ref: '#/$defs/ExtractionWire' };
 const schemaValidator = {

@@ -7,8 +7,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import test from 'node:test';
 import { applyEvents } from '@buddy/domain';
-import { createApiContract } from './api-contract.js';
-import { withTimeout } from './api-test-support.js';
+import { sharedApiContract, withTimeout } from './api-test-support.js';
 import { decodeEventCursor, encodeEventCursor } from './event-cursor.js';
 import {
   H01_OPERATION,
@@ -26,7 +25,7 @@ import {
   submitDurable,
 } from './event-test-support.js';
 
-const contract = createApiContract();
+const contract = sharedApiContract();
 const DAY = 86_400_000;
 const ENVELOPE_KEYS = [
   'event_cursor',

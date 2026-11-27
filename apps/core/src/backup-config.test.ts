@@ -13,8 +13,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { createApiContract } from './api-contract.js';
-import { onCleanup } from './api-test-support.js';
+import { onCleanup, sharedApiContract } from './api-test-support.js';
 import {
   MAX_BACKUP_CONFIG_BYTES,
   checkBackupConfigText,
@@ -23,7 +22,7 @@ import {
   syncProviderHint,
 } from './backup-config.js';
 
-const contract = createApiContract();
+const contract = sharedApiContract();
 const POSIX = process.platform !== 'win32';
 
 async function temp(t: test.TestContext): Promise<string> {

@@ -30,8 +30,7 @@ import {
   writeLedgerFileAtomic,
 } from '@buddy/storage';
 import type { LedgerChainEntry } from '@buddy/storage';
-import { createApiContract } from './api-contract.js';
-import { onCleanup } from './api-test-support.js';
+import { onCleanup, sharedApiContract } from './api-test-support.js';
 import { BACKUP_CONFIG_FILE } from './backup-config.js';
 import {
   inspectBackupSetup,
@@ -44,7 +43,7 @@ import { DB_FILE, FORGET_LEDGER_FILE } from './paths.js';
 import { runRestoreLedgerRepair } from './restore-repair.js';
 
 const DATA_KEY = Buffer.alloc(32, 0x41);
-const contract = createApiContract();
+const contract = sharedApiContract();
 const T0 = Date.parse('2031-03-01T00:00:00.000Z');
 
 interface Rig {

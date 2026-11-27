@@ -7,8 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
-import { createApiContract } from './api-contract.js';
-import { tempDir } from './api-test-support.js';
+import { sharedApiContract, tempDir } from './api-test-support.js';
 import { BUDGET_CONFIG_FILE } from './budget-config.js';
 import { BUDGET_CREDIT_FILE } from './budget-credit.js';
 import {
@@ -22,7 +21,7 @@ import { callControl } from './control-channel.js';
 import { parseControlRequest } from './control-protocol.js';
 import { getJson, insertDevice, startEventCore } from './event-test-support.js';
 
-const contract = createApiContract();
+const contract = sharedApiContract();
 const bytes = (text: string) => new TextEncoder().encode(text);
 // 制御チャネルの応答は原型のないオブジェクトなので、比べる前に普通の値にする。
 const plain = (value: unknown): unknown => JSON.parse(JSON.stringify(value));

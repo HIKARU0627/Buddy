@@ -2389,6 +2389,126 @@ paths:
           $ref: '#/components/responses/RateLimited'
         '503':
           $ref: '#/components/responses/Unavailable'
+  /v1/memory/forget-plans:
+    post:
+      operationId: createForgetPlan
+      summary: 記憶の忘却の計画
+      description: 本人がロック解除済みの画面で選んだ記憶 1 件について、中枢が忘却の計画（消える物・消える指示・残る物）を作って返す（B06-07b-2、ADR 0180）。この時点では何も消さない。端末は記憶の ID だけを送る。忘却の公開ゲート（U112）が閉じている間は 503 で、計画も作らない（ゲートを開けるのは忘却の画面の PR だけ。2026-10-31 Q1）。対象の記憶がなければ 409。台帳の HMAC の鍵がない（バックアップの設定の前）・計画が上限を超える・系譜が読めないときは 503。計画は要求した端末に結び付き、10 分で無効になる。
+      x-buddy-core-checks:
+        - device_token
+        - home_network
+        - command_scope
+        - unlocked
+        - screen_operation
+      parameters:
+        - $ref: '#/components/parameters/InputOrigin'
+        - $ref: '#/components/parameters/LockState'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas/buddy.schema.json#/$defs/ForgetPlanRequest
+      responses:
+        '200':
+          description: 本人が確かめる忘却の計画。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/ForgetPlanView
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/Gone'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /v1/memory/forget-plans/{plan_id}/execute:
+    post:
+      operationId: executeForgetPlan
+      summary: 本人が確かめた忘却の計画の実行
+      description: 本人がロック解除済みの画面で確かめた忘却の計画を実行する（B06-07b-2、ADR 0180）。中枢は計画を作り直さず、DB の今の系譜で作り直した計画と同じかを 1 つの transaction の中で照合してから、台帳への追記・物理削除・送出禁止の印を書く。台帳の世代が変わった・系譜が増えた・計画が無効（期限切れ・別の端末の計画・実行の途中で結果が分からなくなった）・本文の世代が計画と違うときは何も消さずに 409 で、端末は計画を取り直して本人に見せ直す（自動では作り直して実行しない）。同じ計画の実行の再送には同じ結果を返す。忘却の公開ゲート（U112）が閉じている間・結果が分からないときは 503 で、自動では送り直さない。
+      x-buddy-core-checks:
+        - device_token
+        - home_network
+        - command_scope
+        - unlocked
+        - screen_operation
+      parameters:
+        - $ref: '#/components/parameters/ForgetPlanId'
+        - $ref: '#/components/parameters/InputOrigin'
+        - $ref: '#/components/parameters/LockState'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas/buddy.schema.json#/$defs/ForgetExecuteRequest
+      responses:
+        '200':
+          description: 適用した忘却の台帳の世代。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/ForgetExecuteResult
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/Gone'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /v1/forget-ledger/sync:
+    post:
+      operationId: getForgetLedgerEntries
+      summary: 忘却台帳の端末への配信
+      description: 登録済みの端末が最後に保存できた忘却台帳の head（系譜・世代・entry_hash）を送り、中枢の台帳（DB が正本）の続きを最大 256 件受け取る（B06-07b-2、端末側の保存は #179。ADR 0180）。台帳は本文・生の元サービス ID を持たないので、ロック中でも返す。端末の複製が中枢の台帳の続きでなければ diverged、端末が中枢より新しい世代を持てば replica_ahead を返し、どちらも項目を返さない。読み取りだけで、忘却の公開ゲートには関わらない。中枢の台帳が読めない・連鎖が欠けているときは 503。
+      x-buddy-core-checks:
+        - device_token
+        - home_network
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas/buddy.schema.json#/$defs/ForgetLedgerSyncRequest
+      responses:
+        '200':
+          description: 台帳の続きか、続きを返せない理由。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/ForgetLedgerDelta
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
 components:
   securitySchemes:
     deviceToken:
@@ -2480,6 +2600,13 @@ components:
       schema:
         $ref: ./schemas/buddy.schema.json#/$defs/Id
       description: 請求予定の ID（ADR 0179）。
+    ForgetPlanId:
+      name: plan_id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/buddy.schema.json#/$defs/Id
+      description: 忘却の計画の ID（ADR 0180）。計画を求めた端末の計画だけを実行できる。
     Cursor:
       name: cursor
       in: query

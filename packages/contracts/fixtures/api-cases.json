@@ -3837,6 +3837,222 @@
           }
         }
       ]
+    },
+    "createForgetPlan": {
+      "request": {
+        "request_id": "00000000-0000-4000-8000-0000000f0101",
+        "command_scope_id": "00000000-0000-4000-8000-000000009002",
+        "memory_id": "00000000-0000-4000-8000-0000000f0001"
+      },
+      "response": {
+        "schema": "buddy.forget-plan-view.v1",
+        "plan_id": "00000000-0000-4000-8000-0000000f0002",
+        "target": {
+          "source_kind": "memory",
+          "source_id": "00000000-0000-4000-8000-0000000f0001"
+        },
+        "forgetting_generation": "3",
+        "expires_at": "2030-11-04T09:10:00.000Z",
+        "removed": {
+          "counts": [
+            {
+              "kind": "session_summary",
+              "count": 1
+            },
+            {
+              "kind": "memory",
+              "count": 2
+            },
+            {
+              "kind": "user_directive",
+              "count": 1
+            },
+            {
+              "kind": "operation_content",
+              "count": 1
+            }
+          ],
+          "memory_ids": [
+            "00000000-0000-4000-8000-0000000f0001",
+            "00000000-0000-4000-8000-0000000f0003"
+          ],
+          "directive_ids": ["00000000-0000-4000-8000-0000000f0004"]
+        },
+        "kept": {
+          "operations": [
+            {
+              "operation_id": "00000000-0000-4000-8000-0000000f0005",
+              "state": "dispatching"
+            }
+          ],
+          "lineage_only": 1
+        },
+        "blocked_source_count": 1
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"],
+        ["stale_scope", 410, "expired_scope"],
+        ["locked", 403, "device_locked"],
+        ["lock_unknown", 403, "device_locked"],
+        ["too_large", 413, "payload_too_large"],
+        ["voice_origin", 403, "screen_operation_required"],
+        ["chat_origin", 403, "screen_operation_required"],
+        ["system_origin", 403, "screen_operation_required"]
+      ],
+      "invalid_bodies": [
+        {
+          "request_id": "00000000-0000-4000-8000-0000000f0101",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "memory_id": "00000000-0000-4000-8000-0000000f0001",
+          "query": "合成の検索語"
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-0000000f0101",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "memory_id": "memory-1"
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-0000000f0101",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002"
+        }
+      ]
+    },
+    "executeForgetPlan": {
+      "params": {
+        "plan_id": "00000000-0000-4000-8000-0000000f0002"
+      },
+      "request": {
+        "request_id": "00000000-0000-4000-8000-0000000f0102",
+        "command_scope_id": "00000000-0000-4000-8000-000000009002",
+        "forgetting_generation": "3"
+      },
+      "response": {
+        "schema": "buddy.forget-execute-result.v1",
+        "plan_id": "00000000-0000-4000-8000-0000000f0002",
+        "forgetting_generation": "4"
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"],
+        ["stale_scope", 410, "expired_scope"],
+        ["locked", 403, "device_locked"],
+        ["lock_unknown", 403, "device_locked"],
+        ["too_large", 413, "payload_too_large"],
+        ["voice_origin", 403, "screen_operation_required"],
+        ["chat_origin", 403, "screen_operation_required"],
+        ["system_origin", 403, "screen_operation_required"]
+      ],
+      "invalid_bodies": [
+        {
+          "request_id": "00000000-0000-4000-8000-0000000f0102",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002"
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-0000000f0102",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "forgetting_generation": "03"
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-0000000f0102",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "forgetting_generation": "3",
+          "deletions": [
+            {
+              "kind": "memory",
+              "id": "00000000-0000-4000-8000-0000000f0001"
+            }
+          ]
+        }
+      ]
+    },
+    "getForgetLedgerEntries": {
+      "request": {
+        "ledger_id": "00000000-0000-4000-8000-000000001001",
+        "forgetting_generation": "1",
+        "entry_hash": "d5dc2e015da7ff5d8a46f2d27029e76f9c182167c61bbf3f2fbe5409da4a6844"
+      },
+      "response": {
+        "schema": "buddy.forget-ledger-delta.v1",
+        "outcome": "entries",
+        "ledger_id": "00000000-0000-4000-8000-000000001001",
+        "head": {
+          "forgetting_generation": "3",
+          "entry_hash": "a00ec0038401a5e553eef951d6698dc081c17e05b93bedbe534e958b17252c88"
+        },
+        "entries": [
+          {
+            "entry": {
+              "schema": "buddy.forget-ledger.v1",
+              "entry_id": "00000000-0000-4000-8000-000000002002",
+              "forgetting_generation": "2",
+              "recorded_at": "2026-10-03T10:30:00Z",
+              "forgotten": [
+                {
+                  "source_kind": "memory",
+                  "source_id": "00000000-0000-4000-8000-000000003002"
+                }
+              ],
+              "blocked_source_hmacs": [],
+              "blocked_content_keys": []
+            },
+            "previous_hash": "d5dc2e015da7ff5d8a46f2d27029e76f9c182167c61bbf3f2fbe5409da4a6844",
+            "entry_hash": "b46a8ee7ca7ca3c3a821b5112594ed1ab71d19b23bd94c1b4096ab0e27b406a1"
+          },
+          {
+            "entry": {
+              "schema": "buddy.forget-ledger.v1",
+              "entry_id": "00000000-0000-4000-8000-000000002003",
+              "forgetting_generation": "3",
+              "recorded_at": "2026-10-07T21:15:00Z",
+              "forgotten": [
+                {
+                  "source_kind": "source_item",
+                  "source_id_hmac": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3"
+                }
+              ],
+              "blocked_source_hmacs": [
+                "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3"
+              ],
+              "blocked_content_keys": []
+            },
+            "previous_hash": "b46a8ee7ca7ca3c3a821b5112594ed1ab71d19b23bd94c1b4096ab0e27b406a1",
+            "entry_hash": "a00ec0038401a5e553eef951d6698dc081c17e05b93bedbe534e958b17252c88"
+          }
+        ],
+        "has_more": false
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"],
+        ["too_large", 413, "payload_too_large"]
+      ],
+      "accepted_contexts": ["stale_scope", "locked", "lock_unknown"],
+      "invalid_bodies": [
+        {
+          "ledger_id": null,
+          "forgetting_generation": "0"
+        },
+        {
+          "ledger_id": null,
+          "forgetting_generation": "-1",
+          "entry_hash": "0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        {
+          "ledger_id": "ledger-1",
+          "forgetting_generation": "0",
+          "entry_hash": "0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        {
+          "ledger_id": null,
+          "forgetting_generation": "0",
+          "entry_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+          "entries": []
+        }
+      ]
     }
   }
 }

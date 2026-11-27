@@ -4719,6 +4719,355 @@
         "stop_reason": "restored",
         "stopped_at": "2026-10-24T03:10:00Z"
       }
+    },
+    {
+      "id": "x16-ledger-delta-continues-after-replica-head",
+      "schema": "ForgetLedgerDelta",
+      "valid": true,
+      "note": "端末が世代 2 まで持つとき、世代 3 だけを返す（B06-07b-2、ADR 0180）。hash は x16-ledger-file-three-generations と同じ値。",
+      "semantic_errors": [],
+      "value": {
+        "schema": "buddy.forget-ledger-delta.v1",
+        "outcome": "entries",
+        "ledger_id": "00000000-0000-4000-8000-000000001001",
+        "head": {
+          "forgetting_generation": "3",
+          "entry_hash": "a00ec0038401a5e553eef951d6698dc081c17e05b93bedbe534e958b17252c88"
+        },
+        "entries": [
+          {
+            "entry": {
+              "schema": "buddy.forget-ledger.v1",
+              "entry_id": "00000000-0000-4000-8000-000000002003",
+              "forgetting_generation": "3",
+              "recorded_at": "2026-10-07T21:15:00Z",
+              "forgotten": [
+                {
+                  "source_kind": "source_item",
+                  "source_id_hmac": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3"
+                }
+              ],
+              "blocked_source_hmacs": [
+                "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3"
+              ],
+              "blocked_content_keys": []
+            },
+            "previous_hash": "b46a8ee7ca7ca3c3a821b5112594ed1ab71d19b23bd94c1b4096ab0e27b406a1",
+            "entry_hash": "a00ec0038401a5e553eef951d6698dc081c17e05b93bedbe534e958b17252c88"
+          }
+        ],
+        "has_more": false
+      }
+    },
+    {
+      "id": "x16-ledger-delta-diverged-returns-nothing",
+      "schema": "ForgetLedgerDelta",
+      "valid": true,
+      "note": "端末の複製が中枢の台帳の続きでないときは、項目を返さない。",
+      "semantic_errors": [],
+      "value": {
+        "schema": "buddy.forget-ledger-delta.v1",
+        "outcome": "diverged",
+        "ledger_id": "00000000-0000-4000-8000-000000001001",
+        "head": {
+          "forgetting_generation": "3",
+          "entry_hash": "a00ec0038401a5e553eef951d6698dc081c17e05b93bedbe534e958b17252c88"
+        },
+        "entries": [],
+        "has_more": false
+      }
+    },
+    {
+      "id": "x16-ledger-delta-replica-ahead-returns-nothing",
+      "schema": "ForgetLedgerDelta",
+      "valid": true,
+      "note": "端末が中枢（空の台帳）より新しい世代を持つときは、項目を返さない（端末は巻き戻さない）。",
+      "semantic_errors": [],
+      "value": {
+        "schema": "buddy.forget-ledger-delta.v1",
+        "outcome": "replica_ahead",
+        "ledger_id": null,
+        "head": {
+          "forgetting_generation": "0",
+          "entry_hash": "0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        "entries": [],
+        "has_more": false
+      }
+    },
+    {
+      "id": "x16-ledger-delta-diverged-with-entries-rejected",
+      "schema": "ForgetLedgerDelta",
+      "valid": false,
+      "note": "続きでない複製に項目を返す形は表せない。",
+      "value": {
+        "schema": "buddy.forget-ledger-delta.v1",
+        "outcome": "diverged",
+        "ledger_id": "00000000-0000-4000-8000-000000001001",
+        "head": {
+          "forgetting_generation": "3",
+          "entry_hash": "a00ec0038401a5e553eef951d6698dc081c17e05b93bedbe534e958b17252c88"
+        },
+        "entries": [
+          {
+            "entry": {
+              "schema": "buddy.forget-ledger.v1",
+              "entry_id": "00000000-0000-4000-8000-000000002003",
+              "forgetting_generation": "3",
+              "recorded_at": "2026-10-07T21:15:00Z",
+              "forgotten": [
+                {
+                  "source_kind": "source_item",
+                  "source_id_hmac": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3"
+                }
+              ],
+              "blocked_source_hmacs": [
+                "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3"
+              ],
+              "blocked_content_keys": []
+            },
+            "previous_hash": "b46a8ee7ca7ca3c3a821b5112594ed1ab71d19b23bd94c1b4096ab0e27b406a1",
+            "entry_hash": "a00ec0038401a5e553eef951d6698dc081c17e05b93bedbe534e958b17252c88"
+          }
+        ],
+        "has_more": false
+      }
+    },
+    {
+      "id": "x16-ledger-delta-entry-with-body-rejected",
+      "schema": "ForgetLedgerDelta",
+      "valid": false,
+      "note": "配信する台帳の 1 件に本文の欄はない。",
+      "value": {
+        "schema": "buddy.forget-ledger-delta.v1",
+        "outcome": "entries",
+        "ledger_id": "00000000-0000-4000-8000-000000001001",
+        "head": {
+          "forgetting_generation": "3",
+          "entry_hash": "a00ec0038401a5e553eef951d6698dc081c17e05b93bedbe534e958b17252c88"
+        },
+        "entries": [
+          {
+            "entry": {
+              "schema": "buddy.forget-ledger.v1",
+              "entry_id": "00000000-0000-4000-8000-000000002003",
+              "forgetting_generation": "3",
+              "recorded_at": "2026-10-07T21:15:00Z",
+              "forgotten": [
+                {
+                  "source_kind": "source_item",
+                  "source_id_hmac": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3"
+                }
+              ],
+              "blocked_source_hmacs": [
+                "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3"
+              ],
+              "blocked_content_keys": [],
+              "text": "合成の忘れた文"
+            },
+            "previous_hash": "b46a8ee7ca7ca3c3a821b5112594ed1ab71d19b23bd94c1b4096ab0e27b406a1",
+            "entry_hash": "a00ec0038401a5e553eef951d6698dc081c17e05b93bedbe534e958b17252c88"
+          }
+        ],
+        "has_more": false
+      }
+    },
+    {
+      "id": "x16-ledger-notice-advanced",
+      "schema": "ForgetLedgerNotice",
+      "valid": true,
+      "note": "台帳が進んだ知らせ。系譜と head だけ。",
+      "semantic_errors": [],
+      "value": {
+        "schema": "buddy.forget-ledger-notice.v1",
+        "notice_id": "00000000-0000-4000-8000-000000008201",
+        "occurred_at": "2026-10-07T21:15:05Z",
+        "kind": "ledger_advanced",
+        "ledger_id": "00000000-0000-4000-8000-000000001001",
+        "forgetting_generation": "3",
+        "entry_hash": "a00ec0038401a5e553eef951d6698dc081c17e05b93bedbe534e958b17252c88"
+      }
+    },
+    {
+      "id": "x16-ledger-notice-with-items-rejected",
+      "schema": "ForgetLedgerNotice",
+      "valid": false,
+      "note": "知らせに台帳の項目を入れる欄はない（項目は配信で取る）。",
+      "value": {
+        "schema": "buddy.forget-ledger-notice.v1",
+        "notice_id": "00000000-0000-4000-8000-000000008201",
+        "occurred_at": "2026-10-07T21:15:05Z",
+        "kind": "ledger_advanced",
+        "ledger_id": "00000000-0000-4000-8000-000000001001",
+        "forgetting_generation": "3",
+        "entry_hash": "a00ec0038401a5e553eef951d6698dc081c17e05b93bedbe534e958b17252c88",
+        "forgotten": [
+          {
+            "source_kind": "turn",
+            "source_id": "00000000-0000-4000-8000-000000003001"
+          }
+        ]
+      }
+    },
+    {
+      "id": "x15-forget-plan-view-memory",
+      "schema": "ForgetPlanView",
+      "valid": true,
+      "note": "記憶 1 件の忘却の計画。消える物は件数と記憶の ID だけ。",
+      "semantic_errors": [],
+      "value": {
+        "schema": "buddy.forget-plan-view.v1",
+        "plan_id": "00000000-0000-4000-8000-0000000f0002",
+        "target": {
+          "source_kind": "memory",
+          "source_id": "00000000-0000-4000-8000-0000000f0001"
+        },
+        "forgetting_generation": "0",
+        "expires_at": "2026-11-01T02:10:00Z",
+        "removed": {
+          "counts": [
+            {
+              "kind": "memory",
+              "count": 1
+            }
+          ],
+          "memory_ids": ["00000000-0000-4000-8000-0000000f0001"],
+          "directive_ids": []
+        },
+        "kept": {
+          "operations": [],
+          "lineage_only": 0
+        },
+        "blocked_source_count": 1
+      }
+    },
+    {
+      "id": "x15-forget-plan-view-with-text-rejected",
+      "schema": "ForgetPlanView",
+      "valid": false,
+      "note": "計画に記憶の本文を入れる欄はない。",
+      "value": {
+        "schema": "buddy.forget-plan-view.v1",
+        "plan_id": "00000000-0000-4000-8000-0000000f0002",
+        "target": {
+          "source_kind": "memory",
+          "source_id": "00000000-0000-4000-8000-0000000f0001"
+        },
+        "forgetting_generation": "0",
+        "expires_at": "2026-11-01T02:10:00Z",
+        "removed": {
+          "counts": [
+            {
+              "kind": "memory",
+              "count": 1
+            }
+          ],
+          "memory_ids": ["00000000-0000-4000-8000-0000000f0001"],
+          "directive_ids": [],
+          "memory_texts": ["合成の記憶の本文"]
+        },
+        "kept": {
+          "operations": [],
+          "lineage_only": 0
+        },
+        "blocked_source_count": 1
+      }
+    },
+    {
+      "id": "x15-forget-plan-view-with-hmac-rejected",
+      "schema": "ForgetPlanView",
+      "valid": false,
+      "note": "計画に台帳の HMAC を入れる欄はない（件数だけ）。",
+      "value": {
+        "schema": "buddy.forget-plan-view.v1",
+        "plan_id": "00000000-0000-4000-8000-0000000f0002",
+        "target": {
+          "source_kind": "memory",
+          "source_id": "00000000-0000-4000-8000-0000000f0001"
+        },
+        "forgetting_generation": "0",
+        "expires_at": "2026-11-01T02:10:00Z",
+        "removed": {
+          "counts": [
+            {
+              "kind": "memory",
+              "count": 1
+            }
+          ],
+          "memory_ids": ["00000000-0000-4000-8000-0000000f0001"],
+          "directive_ids": []
+        },
+        "kept": {
+          "operations": [],
+          "lineage_only": 0
+        },
+        "blocked_source_count": 1,
+        "blocked_source_hmacs": [
+          "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+        ]
+      }
+    },
+    {
+      "id": "x15-forget-plan-view-source-target-rejected",
+      "schema": "ForgetPlanView",
+      "valid": false,
+      "note": "画面からの忘却の対象は記憶だけ（元サービスの ID を対象にしない）。",
+      "value": {
+        "schema": "buddy.forget-plan-view.v1",
+        "plan_id": "00000000-0000-4000-8000-0000000f0002",
+        "target": {
+          "source_kind": "source_item",
+          "source_id": "mail-001"
+        },
+        "forgetting_generation": "0",
+        "expires_at": "2026-11-01T02:10:00Z",
+        "removed": {
+          "counts": [
+            {
+              "kind": "memory",
+              "count": 1
+            }
+          ],
+          "memory_ids": ["00000000-0000-4000-8000-0000000f0001"],
+          "directive_ids": []
+        },
+        "kept": {
+          "operations": [],
+          "lineage_only": 0
+        },
+        "blocked_source_count": 1
+      }
+    },
+    {
+      "id": "x15-forget-plan-view-zero-count-rejected",
+      "schema": "ForgetPlanView",
+      "valid": false,
+      "note": "0 件の種類は出さない。",
+      "value": {
+        "schema": "buddy.forget-plan-view.v1",
+        "plan_id": "00000000-0000-4000-8000-0000000f0002",
+        "target": {
+          "source_kind": "memory",
+          "source_id": "00000000-0000-4000-8000-0000000f0001"
+        },
+        "forgetting_generation": "0",
+        "expires_at": "2026-11-01T02:10:00Z",
+        "removed": {
+          "counts": [
+            {
+              "kind": "memory",
+              "count": 0
+            }
+          ],
+          "memory_ids": ["00000000-0000-4000-8000-0000000f0001"],
+          "directive_ids": []
+        },
+        "kept": {
+          "operations": [],
+          "lineage_only": 0
+        },
+        "blocked_source_count": 1
+      }
     }
   ],
   "scenarios": [

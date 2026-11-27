@@ -125,6 +125,12 @@ export const ROUTE_CHECKS: Readonly<Record<string, readonly CoreCheck[]>> = {
   // 予算・保存期限の掃除の門・同じ要求の二度目の拒否は経路の処理が行う。設定の版の照合（ADR 0179）も経路の処理が行い、409 にする。
   changeHouseholdReceiptSetting: SCREEN,
   readHouseholdReceipt: SCREEN,
+  // 記憶の忘却の計画と、本人が確かめた計画の実行（B06-07b-2、ADR 0180）。どちらも本人の画面操作だけ（2026-11-01 Q2）。
+  // 忘却の公開ゲート（U112）・計画の世代と期限の照合は経路の処理が行う。
+  createForgetPlan: SCREEN,
+  executeForgetPlan: SCREEN,
+  // 忘却台帳の端末への配信（B06-07b-2、ADR 0180）。本文を持たない読み取りなので、ロック中でも返す（端末の複製を保つ）。
+  getForgetLedgerEntries: READ,
 };
 
 export interface RequestContext {

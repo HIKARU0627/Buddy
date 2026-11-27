@@ -1079,7 +1079,7 @@ test('a retry prepare starts only from not_executed (review P2)', async () => {
 // ADR 0045 の「最小の操作記録」から手で書いた値。
 test('a private minimal record is created approved with record_kind private_minimal, no workflow and a screen approval, and continues to prepare', async () => {
   await withStore((db) => {
-    const confirmationId = randomUUID();
+    const previewId = randomUUID();
     const approvalId = randomUUID();
     assert.equal(
       committed(
@@ -1088,7 +1088,7 @@ test('a private minimal record is created approved with record_kind private_mini
           private_minimal: {
             approval_id: approvalId,
             device_id: 'dev-1',
-            confirmation_id: confirmationId,
+            preview_id: previewId,
           },
         }),
       ),
@@ -1125,7 +1125,7 @@ test('a private minimal record is created approved with record_kind private_mini
           content_hash: CONTENT_HASH,
           route: 'screen',
           device_id: 'dev-1',
-          preview_id: confirmationId,
+          preview_id: previewId,
           policy_version: null,
           status: 'valid',
         },
@@ -1146,12 +1146,12 @@ test('a private minimal record is created approved with record_kind private_mini
   });
 });
 
-test('a private minimal record is refused with a workflow, an automatic approval, a local command, a device request, a malformed field or an unregistered device', async () => {
+test('a private minimal record is refused with a workflow, an automatic approval, a local command, a kind other than a label change, an undo, a candidate origin, a device request, a malformed field, an unregistered device or a revoked device', async () => {
   await withStore((db) => {
     const minimal = () => ({
       approval_id: randomUUID(),
       device_id: 'dev-1',
-      confirmation_id: randomUUID(),
+      preview_id: randomUUID(),
     });
     const conflict = ['private_minimal_conflict'];
     assert.deepEqual(
@@ -1184,6 +1184,42 @@ test('a private minimal record is refused with a workflow, an automatic approval
       ),
       conflict,
     );
+    // 返信の下書きは 2d では作らない（U502）。
+    assert.deepEqual(
+      reasons(
+        run(db, {
+          ...createCommand('op-pk', { operation_kind: 'mail.draft.create' }),
+          private_minimal: minimal(),
+        }),
+      ),
+      conflict,
+    );
+    assert.deepEqual(
+      reasons(
+        run(db, {
+          ...createCommand('op-pu', {
+            undo_of: { undo_id: randomUUID(), operation_id: 'op-other' },
+          }),
+          private_minimal: minimal(),
+        }),
+      ),
+      conflict,
+    );
+    assert.deepEqual(
+      reasons(
+        run(db, {
+          ...createCommand('op-pc', { auto: true }),
+          candidate_origin: {
+            candidate_id: randomUUID(),
+            account_id: 'acct-1',
+            calendar_id: null,
+          },
+          auto_approval: null,
+          private_minimal: minimal(),
+        }),
+      ),
+      ['candidate_origin_without_auto', ...conflict],
+    );
     assert.deepEqual(
       reasons(
         run(db, {
@@ -1213,6 +1249,19 @@ test('a private minimal record is refused with a workflow, an automatic approval
         run(db, {
           ...createCommand('op-pd'),
           private_minimal: { ...minimal(), device_id: 'dev-9' },
+        }),
+      ),
+      ['device_not_registered'],
+    );
+    // 失効した端末（revoked_at あり）の承認も拒む。
+    db.prepare(
+      "INSERT INTO devices (device_id, device_name, platform, hub_local, token_hash, registered_at, last_seen_at, revoked_at) VALUES ('dev-r', '合成の端末3', 'windows', 0, X'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', 1000, NULL, 2000)",
+    ).run();
+    assert.deepEqual(
+      reasons(
+        run(db, {
+          ...createCommand('op-pv'),
+          private_minimal: { ...minimal(), device_id: 'dev-r' },
         }),
       ),
       ['device_not_registered'],

@@ -14,16 +14,29 @@ import type { StreamTurnResponse } from '@buddy/contracts';
 import { openWriteConnection, storagePlatform } from '@buddy/storage';
 import { pinnedRequest, sharedApiContract } from './api-test-support.js';
 import type { TestDevice } from './api-test-support.js';
-import { bearer, insertDevice, startEventCore } from './event-test-support.js';
+import { API_ROUTES } from './api-routes.js';
+import { createTurnRoutes } from './api-turns.js';
+import type { TurnRouteStore } from './api-turns.js';
+import {
+  DATA_KEY_MATERIAL,
+  bearer,
+  insertDevice,
+  startEventCore,
+} from './event-test-support.js';
 import type { EventCore, MutableEnvironment } from './event-test-support.js';
 import { DB_FILE } from './paths.js';
 import { PRIVATE_CONFIRMATION_SCREEN_OPEN } from './private-confirmations.js';
 import type { PrivateConfirmationHandle } from './core.js';
+import { PreviewRegistry } from './previews.js';
+import { TEST_TURN_POLICY, createMockInterpreter } from './turn-ports.js';
 import type {
+  InterpretationContext,
+  Interpreter,
   ProviderMailTarget,
   ProviderReader,
   ProviderWriter,
 } from './turn-ports.js';
+import { A, SCOPE_A } from './voice-rig-test-support.js';
 
 const contract = sharedApiContract();
 const CLOCK = new Date('2026-10-05T09:00:00+09:00');
@@ -36,11 +49,14 @@ const PRIVATE_UNSUPPORTED =
   '記録しない会話では、この依頼はまだ受け付けられません。記録しない会話を終えてから、もう一度お願いします。';
 const PRIVATE_CONFIRMATION =
   '記録しない会話なので、この変更は確認の画面で一度承認してから行います。会話の内容は保存しません。';
+const BLOCKED = '今は進められません。少し待ってからもう一度お願いします。';
 
 // 合成の提供元。対象のメールのラベルを持ち、ラベルの変更を受けるたびに版を 1 つ進める。
 interface FakeMail {
   labels: string[];
   revision: number;
+  // 許可の版（試験の途中で変える）。
+  permission: string;
   readonly changes: { add: readonly string[]; remove: readonly string[] }[];
 }
 
@@ -70,7 +86,7 @@ function fakeProvider(mail: FakeMail): {
           accountId === ACCOUNT
             ? {
                 account_id: ACCOUNT,
-                permission_revision: '1',
+                permission_revision: mail.permission,
                 scopes: ['mail.read', 'mail.labels.change'],
               }
             : null,
@@ -108,9 +124,18 @@ interface Rig {
 
 async function startRig(
   t: test.TestContext,
-  options: { readonly open?: boolean; readonly env?: MutableEnvironment } = {},
+  options: {
+    readonly open?: boolean;
+    readonly env?: MutableEnvironment;
+    readonly interpreter?: Interpreter;
+  } = {},
 ): Promise<Rig> {
-  const mail: FakeMail = { labels: ['inbox'], revision: 1, changes: [] };
+  const mail: FakeMail = {
+    labels: ['inbox'],
+    revision: 1,
+    permission: '1',
+    changes: [],
+  };
   const ports = fakeProvider(mail);
   const logs: string[] = [];
   const core = await startEventCore(t, {
@@ -118,6 +143,9 @@ async function startRig(
     log: (message) => logs.push(String(message)),
     ...(options.env === undefined ? {} : { env: options.env }),
     turns: {
+      ...(options.interpreter === undefined
+        ? {}
+        : { interpreter: options.interpreter }),
       provider: ports.reader,
       writer: ports.writer,
       candidates: {
@@ -402,17 +430,28 @@ test('a label change in a private conversation becomes an independent confirmati
     sql(rig, (db) => ({
       ...(db
         .prepare(
-          'SELECT route, device_id, preview_id, content_hash FROM approvals WHERE operation_id = ?',
+          'SELECT route, device_id, content_hash FROM approvals WHERE operation_id = ?',
         )
         .get(operationId) as object),
     })),
     {
       route: 'screen',
       device_id: rig.device.device.device_id,
-      preview_id: entry.confirmation_id,
       content_hash: sha256(canonical(operation)),
     },
   );
+  // 画面の承認の preview_id は記録のために新しく作った値で、確認の ID（応答で端末へ返した値）ではない（U506）。
+  const previewId = sql(
+    rig,
+    (db) =>
+      (
+        db
+          .prepare('SELECT preview_id FROM approvals WHERE operation_id = ?')
+          .get(operationId) as { preview_id: string }
+      ).preview_id,
+  );
+  assert.match(previewId, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-/u);
+  assert.notEqual(previewId, entry.confirmation_id);
 
   // 同じ承認の再送は、記録を書き直さずに最初の結果を返す（外部へも送り直さない）。
   const rows = countRows(rig);
@@ -439,6 +478,8 @@ test('a label change in a private conversation becomes an independent confirmati
   await rig.core.handle.stop('test');
   await rig.core.handle.closed;
   assert.deepEqual(residue(rig, label), []);
+  // 確認の ID は DB（WAL を含む）・データディレクトリのどのファイルにもログにもない（操作から記録しない会話へたどれない）。
+  assert.deepEqual(residue(rig, entry.confirmation_id), []);
 });
 
 test('leaving, a lock report or a decline before the approval drops the confirmation: a later approval writes nothing and sends nothing', async (t) => {
@@ -569,11 +610,22 @@ test('a reply draft is refused in a private conversation even with the confirmat
 
   const closed = await startRig(t, { open: false });
   await switchMode(closed, 'private');
+  const closedBefore = countRows(closed);
   const label = await say(closed, `${MAIL} に ${marker()} を付けて`);
   assert.equal(label.status, 'clarification');
   assert.equal(label.reply_text, PRIVATE_UNSUPPORTED);
   assert.deepEqual(closed.desk.list(), []);
   assert.deepEqual(closed.desk.held(), { pending: 0, decided: 0 });
+  // 口が閉じていれば、操作・承認・受付を含めて DB の行は 1 行も増えない。
+  const closedAfter = countRows(closed);
+  assert.deepEqual(grown(closedBefore, closedAfter), {});
+  assert.equal(closedAfter['operations'], 0);
+  assert.equal(closedAfter['approvals'], 0);
+  assert.equal(
+    closedAfter['command_receipts'],
+    closedBefore['command_receipts'],
+  );
+  assert.deepEqual(closed.mail.changes, []);
 });
 
 test('with the confirmation open, a label change in a normal segment stays a normal operation awaiting approval', async (t) => {
@@ -594,4 +646,235 @@ test('with the confirmation open, a label change in a normal segment stays a nor
     })),
     { state: 'awaiting_approval', record_kind: 'normal', has_workflow: 1 },
   );
+});
+
+test('two approvals of the same confirmation arriving at once write one minimal record and both get the same result', async (t) => {
+  const rig = await startRig(t);
+  await switchMode(rig, 'private');
+  await say(rig, `${MAIL} に ${marker()} を付けて`);
+  const entry = rig.desk.list()[0];
+  assert(entry !== undefined);
+  const [first, second] = await Promise.all([
+    rig.desk.approve(approvalOf(rig, entry)),
+    rig.desk.approve(approvalOf(rig, entry)),
+  ]);
+  const operationId = entry.view.operation.operation_id;
+  assert.deepEqual(first, { kind: 'recorded', operation_id: operationId });
+  assert.deepEqual(second, first);
+  await rig.core.handle.runner?.idle();
+  assert.equal(rig.mail.changes.length, 1);
+  assert.equal(
+    sql(
+      rig,
+      (db) =>
+        (
+          db
+            .prepare(
+              "SELECT count(*) AS n FROM operations WHERE record_kind = 'private_minimal'",
+            )
+            .get() as { n: number }
+        ).n,
+    ),
+    1,
+  );
+});
+
+test('a forget notice before the approval drops the confirmation and stays private; a later approval writes nothing and sends nothing', async (t) => {
+  const rig = await startRig(t);
+  await switchMode(rig, 'private');
+  await say(rig, `${MAIL} に ${marker()} を付けて`);
+  const entry = rig.desk.list()[0];
+  assert(entry !== undefined);
+  const before = countRows(rig);
+  await rig.core.handle.notices.publish({
+    schema: 'buddy.retention-notice.v1',
+    notice_id: randomUUID(),
+    occurred_at: '2026-10-05T00:00:00Z',
+    kind: 'forgotten',
+    reason: 'forgotten',
+    forgetting_generation: '1',
+    items: [{ item_kind: 'memory', item_id: randomUUID() }],
+  });
+  assert.deepEqual(rig.desk.list(), []);
+  assert.equal(rig.core.handle.storage.privateConversation(), true);
+  assert.deepEqual(await rig.desk.approve(approvalOf(rig, entry)), {
+    kind: 'refused',
+    reason: 'confirmation_not_found',
+    errors: [],
+  });
+  assert.deepEqual(rig.desk.held(), { pending: 0, decided: 0 });
+  assert.deepEqual(countRows(rig), before);
+  assert.deepEqual(rig.mail.changes, []);
+});
+
+// 模擬の解釈の包み。決めた文では、解釈の途中で止めておく（その間に許可の版を変える）。
+class HoldingInterpreter implements Interpreter {
+  readonly #inner = createMockInterpreter();
+  readonly #holds = new Map<
+    string,
+    { started: () => void; release: Promise<void> }
+  >();
+
+  hold(text: string): { started: Promise<void>; release: () => void } {
+    let started: () => void = () => undefined;
+    let release: () => void = () => undefined;
+    const startedPromise = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const releasePromise = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    this.#holds.set(text, { started, release: releasePromise });
+    return { started: startedPromise, release };
+  }
+
+  async interpret(context: InterpretationContext) {
+    const hold = this.#holds.get(context.text);
+    if (hold !== undefined) {
+      hold.started();
+      await hold.release;
+    }
+    return this.#inner.interpret(context);
+  }
+}
+
+test('the permission revision is taken when the private turn arrives: a change observed by another turn during the interpretation makes it a "cannot proceed now" clarification, not a confirmation', async (t) => {
+  const interpreter = new HoldingInterpreter();
+  const rig = await startRig(t, { interpreter });
+  await switchMode(rig, 'private');
+  const slow = `${MAIL} に ${marker()} を付けて`;
+  const held = interpreter.hold(slow);
+  const pending = say(rig, slow);
+  await held.started;
+  // 解釈の間に許可の版が変わり、別の発言の計画が新しい版を読む（Core の控えの値が 2 になる）。
+  rig.mail.permission = '2';
+  const other = await say(rig, `${MAIL} に ${marker()} を付けて`);
+  assert.equal(other.status, 'clarification');
+  assert.equal(other.reply_text, BLOCKED);
+  held.release();
+  // 先に届いた発言は、届いた時点の版（1）と確定の直前の版（2）が違うので進めない（通常の経路と同じ聞き返し）。
+  const slowResponse = await pending;
+  assert.equal(slowResponse.status, 'clarification');
+  assert.equal(slowResponse.reply_text, BLOCKED);
+  assert.equal(slowResponse.result_view?.kind, 'clarification');
+  assert.deepEqual(rig.desk.list(), []);
+  // 新しい版を読んだ後に届いた発言は確認になる（陽性の対照）。
+  const after = await say(rig, `${MAIL} に ${marker()} を付けて`);
+  assert.equal(after.reply_text, PRIVATE_CONFIRMATION);
+  assert.equal(rig.desk.list().length, 1);
+});
+
+// 確認を出す間にロック・終えるがあった場合（保存境界の保持者の待ち行列の中で起きる出来事を、確認を出す口の中で起こす）。
+// 発言の処理は DB に触れない（触れたら例外）。
+test('a lock or leaving while the confirmation is being shown makes the turn 409 and declines that confirmation; without either the confirmation is answered', async () => {
+  const PRIVATE_SEGMENT = '00000000-0000-4000-8000-00000000a002';
+  const CONFIRMATION = '00000000-0000-4000-8000-00000000c0f1';
+  const touched: string[] = [];
+  const store = new Proxy(
+    {},
+    {
+      get: (_target, property) => () => {
+        touched.push(String(property));
+        throw new Error('store_touched');
+      },
+    },
+  ) as unknown as TurnRouteStore;
+  const mail: FakeMail = {
+    labels: ['inbox'],
+    revision: 1,
+    permission: '1',
+    changes: [],
+  };
+  const storage = {
+    mode: 'private' as 'normal' | 'private',
+    generation: '2',
+    origin() {
+      return {
+        segment_id: PRIVATE_SEGMENT,
+        segment_generation: this.generation,
+      };
+    },
+  };
+  const declined: string[] = [];
+  let during: () => void = () => undefined;
+  const routes = createTurnRoutes({
+    store,
+    keyStore: {
+      loadDataKey: () =>
+        Promise.resolve({ ok: true as const, dataKey: DATA_KEY_MATERIAL }),
+    },
+    interpreter: createMockInterpreter(),
+    provider: fakeProvider(mail).reader,
+    candidates: {
+      mailCandidates: () =>
+        Promise.resolve([{ candidate_id: MAIL_CANDIDATE, remote_id: MAIL }]),
+    },
+    policy: TEST_TURN_POLICY,
+    previews: new PreviewRegistry(),
+    storage,
+    utcOffset: '+09:00',
+    now: () => CLOCK.getTime(),
+    privateConfirmations: {
+      open: () => true,
+      desk: {
+        request: () => {
+          during();
+          return Promise.resolve({
+            ok: true as const,
+            confirmation_id: CONFIRMATION,
+            segment_generation: '2',
+          });
+        },
+        decline: (id: string) => {
+          declined.push(id);
+          return Promise.resolve({ ok: true as const });
+        },
+      },
+    },
+  });
+  await routes.prime();
+  const route = API_ROUTES.find((entry) => entry.operationId === 'postTurn');
+  assert(route !== undefined);
+  const turn = () =>
+    routes.handlers['postTurn']?.({
+      route,
+      device: A,
+      body: {
+        request_id: randomUUID(),
+        command_scope_id: SCOPE_A,
+        text: `${MAIL} に ${marker()} を付けて`,
+        input_kind: 'text',
+        origin: { segment_id: PRIVATE_SEGMENT, segment_generation: '2' },
+      },
+      params: { session_id: PRIVATE_SEGMENT },
+      remoteAddress: '127.0.0.1',
+      query: {},
+      declaredLockState: 'unlocked',
+    });
+
+  // ロックの申告（記録しない区切りの中身を捨てる）が確認を出す間に起きた。
+  during = () => routes.privateConversation.discard('locked');
+  assert.equal((await turn())?.status, 409);
+  assert.deepEqual(declined, [CONFIRMATION]);
+
+  // 何も起きなければ確認として答える（陽性の対照）。
+  during = () => undefined;
+  const answered = await turn();
+  assert.equal(answered?.status, 200);
+  assert.deepEqual(
+    (answered?.body as { result_view: { item_refs: unknown } }).result_view
+      .item_refs,
+    [{ kind: 'private_confirmation', id: CONFIRMATION }],
+  );
+  assert.deepEqual(declined, [CONFIRMATION]);
+
+  // 記録しない会話を終えた（区切りの世代が進み、通常の区切りになった）。
+  during = () => {
+    storage.mode = 'normal';
+    storage.generation = '3';
+  };
+  assert.equal((await turn())?.status, 409);
+  assert.deepEqual(declined, [CONFIRMATION, CONFIRMATION]);
+  assert.deepEqual(touched, []);
+  assert.deepEqual(mail.changes, []);
 });

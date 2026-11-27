@@ -1130,7 +1130,7 @@ function createOperation(
       origin.calendar_id ?? '',
       command.operation_id,
     );
-  // 独立した確認の承認を画面の承認として記録する（preview は確認の画面そのもの。preview_id に確認の ID を使う。ADR 0192）。
+  // 独立した確認の承認を画面の承認として記録する（preview_id は記録のために新しく作った値で、確認の ID ではない。ADR 0192）。
   if (minimal !== null)
     db.prepare(
       "INSERT INTO approvals (approval_id, operation_id, content_version, content_hash, route, device_id, preview_id, policy_version, status, approved_at) VALUES (?, ?, 1, ?, 'screen', ?, ?, NULL, 'valid', ?)",
@@ -1139,7 +1139,7 @@ function createOperation(
       command.operation_id,
       command.content_hash,
       minimal.device_id,
-      minimal.confirmation_id,
+      minimal.preview_id,
       context.now,
     );
   // 取り消しの押下を画面の承認として記録する（preview は一覧の行そのもの。preview_id に undo_id を使う。ADR 0153）。

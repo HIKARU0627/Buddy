@@ -1756,6 +1756,8 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
   const privatePlan = async (
     interpreted: InterpretedTurn,
     intake: IntakeContext,
+    // 入力の時点の口座と許可の版（発言を受けた時点、最初の await より前に控えた値。通常の経路と同じ。PR #107・ADR 0192）。
+    input: InputPermission,
   ): Promise<TurnPlan> => {
     const refused = (intent: IntentName | null): boolean =>
       intent !== null &&
@@ -1771,7 +1773,7 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
       return clarify('private_unsupported', null);
     const planned = await planFrom(
       interpreted,
-      observedPermission,
+      input,
       'submitted_text',
       intake,
     );
@@ -1796,6 +1798,9 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     request: ApiHandlerRequest,
     device: NonNullable<ApiHandlerRequest['device']>,
   ): Promise<{ status: number; body: object }> => {
+    // 入力の時点の口座と許可の版は、最初の await より前に Core のメモリーから控える（解釈を待つ間に別の要求が値を更新しても、
+    // 発言を受けた時点の値で比べる。通常の経路の postTurn と同じ。10 §5A・ADR 0029・0192）。
+    const input = observedPermission;
     const body = request.body as JsonObject;
     const requestId = stringOf(body, 'request_id');
     // 端末内の音声認識・Live の文字起こしは、通常の区切りと同じくこの経路では受けない。
@@ -1843,6 +1848,7 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
       segment,
       epoch,
       ref,
+      input,
     });
     privateRam.track(ref.command_id, ref.request_hash, processing);
     return processing;
@@ -1859,6 +1865,7 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     };
     readonly epoch: number;
     readonly ref: ConversationRequestRef;
+    readonly input: InputPermission;
   }): Promise<{ status: number; body: object }> => {
     const { request, device, requestId, sessionId, segment, epoch, ref } = args;
     const body = request.body as JsonObject;
@@ -1879,11 +1886,15 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
         },
         {},
       );
-      plan = await privatePlan(interpreted, {
-        dedupe_key: ref.command_id,
-        session_id: sessionId,
-        workflow_id: randomUUID(),
-      });
+      plan = await privatePlan(
+        interpreted,
+        {
+          dedupe_key: ref.command_id,
+          session_id: sessionId,
+          workflow_id: randomUUID(),
+        },
+        args.input,
+      );
     }
     // 処理の間に記録しない区切りを出た・入り直した・RAM を捨てた（ロック・忘却）なら、結果を持たずに断る（遅れて届いた結果を
     // 次の区切りへ持ち込まない。ADR 0045 の origin_private）。

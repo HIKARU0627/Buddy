@@ -8,7 +8,7 @@
 // - record_minimal_operation: 画面での一度の承認の後に、最小の操作記録を DB に書く。operations.record_kind は
 //   private_minimal、workflow_id は null（会話・依頼・区切りへたどれる値を持たない。0010 の制約）。確定済みの変更は
 //   暗号化して operation_versions に置き（J5 で完了から 7 日後に消える。ADR 0040）、承認は画面の承認として記録する
-//   （preview_id は確認の ID）。区切りの ID・世代・発言・応答は書かない。書けたら通常の操作と同じ状態機械（実行担当）で続く
+//   （preview_id は記録のために新しく作った値。確認の ID は DB に書かない。U506）。区切りの ID・世代・発言・応答は書かない。書けたら通常の操作と同じ状態機械（実行担当）で続く
 //   （送出・照合・結果不明の扱いは通常と同じ。結果不明を自動で再送しない）。
 //
 // 暫定（ADR 0192）:
@@ -204,7 +204,6 @@ export class PrivateConfirmationDesk {
   // 画面での一度の承認。保存境界の保持者が確認と照合し、通れば最小の操作記録を書く。承認済みの確認への再送は、記録を
   // 書き直さずに最初の結果を返す。
   async approve(input: PrivateApprovalInput): Promise<PrivateApprovalOutcome> {
-    const decided: { value: DecidedOutcome | null } = { value: null };
     const result = await this.#options.gate.confirmation(
       {
         type: 'confirmation_approved',
@@ -219,28 +218,26 @@ export class PrivateConfirmationDesk {
           content_hash: input.content_hash,
         },
       },
-      async (commands) => {
+      // 記録の書き込みと結果の控えは、保存境界の保持者の排他区間の中で行う（同時に届いた同じ承認は、この区間が終わってから
+      // 照合されて already_approved になり、控えた結果を返す。待ち行列の後の続きの順序に頼らない）。
+      async (commands): Promise<DecidedOutcome> => {
+        let outcome: DecidedOutcome = {
+          kind: 'record_failed',
+          reasons: ['record_missing'],
+        };
         for (const command of commands)
           if (command.type === 'record_minimal_operation')
-            decided.value = await this.#record(
-              input.confirmation_id,
-              command.record,
-            );
+            outcome = await this.#record(command.record);
+        this.#views.delete(input.confirmation_id);
+        this.#decided.set(input.confirmation_id, outcome);
+        return outcome;
       },
     );
-    if (!result.ok) {
-      const earlier = this.#decided.get(input.confirmation_id);
-      if (result.reason === 'already_approved' && earlier !== undefined)
-        return earlier;
-      return { kind: 'refused', reason: result.reason, errors: result.errors };
-    }
-    this.#views.delete(input.confirmation_id);
-    const outcome: DecidedOutcome = decided.value ?? {
-      kind: 'record_failed',
-      reasons: ['record_missing'],
-    };
-    this.#decided.set(input.confirmation_id, outcome);
-    return outcome;
+    if (result.ok) return result.value;
+    const earlier = this.#decided.get(input.confirmation_id);
+    if (result.reason === 'already_approved' && earlier !== undefined)
+      return earlier;
+    return { kind: 'refused', reason: result.reason, errors: result.errors };
   }
 
   // 取り下げ。承認を待つ確認だけ。記録も外部変更も作らない。
@@ -275,10 +272,7 @@ export class PrivateConfirmationDesk {
   }
 
   // 最小の操作記録を書く。hash は Core が封じた値と照合する（domain は形だけを検査する。ADR 0045）。
-  async #record(
-    confirmationId: string,
-    record: PrivateMinimalRecord,
-  ): Promise<DecidedOutcome> {
+  async #record(record: PrivateMinimalRecord): Promise<DecidedOutcome> {
     const operation = record.operation;
     const failed = (reason: string): DecidedOutcome => {
       this.#log(
@@ -336,10 +330,11 @@ export class PrivateConfirmationDesk {
       content_hash: sealed.content_hash,
       intent: sealed.intent,
       auto_approval: null,
+      // preview_id は記録のために新しく作る。確認の ID（記録しない会話の応答で端末へ返した値）は DB に書かない（U506）。
       private_minimal: {
         approval_id: this.#newId(),
         device_id: record.approval.device_id,
-        confirmation_id: confirmationId,
+        preview_id: this.#newId(),
       },
     };
     let outcome;

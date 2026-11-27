@@ -3,6 +3,7 @@
 // 端末の画面（登録する側）では最後の組を伏せる（maskLast）。本人は最後の 4 桁を中枢の画面から読んで入力する
 // （自分の画面から写して進めないため。UI レビュー 2 回目 R1-H1）。中枢の画面では最後の組に下線を引き、入力させる 4 桁を示す。
 import { fingerprintGroups } from '../format.js';
+import { FRAME_CLASS } from '../shapes.js';
 
 export const FINGERPRINT_HEADING = '中枢の証明書の指紋（SHA-256・64\u00a0桁）';
 export const MASKED_GROUP = '····';
@@ -33,7 +34,7 @@ export function FingerprintGrid({
       {note === undefined ? null : <p className="text-xs text-muted">{note}</p>}
       <ol
         aria-labelledby={id}
-        className="grid w-fit grid-cols-4 gap-x-4 gap-y-1 rounded-box border border-border px-4 py-3 font-mono text-lg tabular-nums"
+        className={`grid w-fit grid-cols-4 gap-x-4 gap-y-1 px-4 py-3 font-mono text-lg tabular-nums ${FRAME_CLASS}`}
       >
         {groups.map((group, index) =>
           index !== last ? (

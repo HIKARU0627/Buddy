@@ -2,7 +2,8 @@
 // （プレーンテキスト。React の文字列の子としてだけ渡す。HTML として解釈せず、リンクにしない）と、部品ごとの本文を置く。説明文は
 // 置かない。本文の中身は main から取った物（画面のメモリーだけ）で、取っている間は順番の数と空の帯、取れなかったときは警告の
 // 記号だけを出す。位置と大きさは配置のエンジン（UI-06）が決め、カードは置かれた箱いっぱいに描く。
-// 強調（high）は accent の太い線、ユーザーが動かした物・フローティングウィンドウ（kind が float）は影で、形で区別する。
+// 強調（high）は accent の太い線、フローティングウィンドウ（kind が float）は縁取りの線（影の代わり。ADR 0181 の段階 3・U393）で、
+// 形で区別する。
 // キャンバスが前に出ている間だけ、見出しの帯を掴んで動かせ、右上に閉じる・棚へ片付けるの印（controls）を出す。箱が低い（1 行分）
 // ときは、本文の代わりに件数の札だけを出す（compact）。箱が狭い（narrow）ときは、見出しを 1 行目に幅いっぱいで置き、件数の札と
 // 操作の印をその下の行へ移す（見出しを優先。PR #121 の再確認）。
@@ -11,6 +12,7 @@ import type { PointerEvent as ReactPointerEvent, ReactNode } from 'react';
 import { Card, Chip } from '@heroui/react';
 import { bodySizeOf, widthClassOf } from '../../state/canvas-content-state.js';
 import type { ItemContent } from '../../state/canvas-content-state.js';
+import { FLOAT_OUTLINE_CLASS } from '../../shapes.js';
 import { emphasisClass } from '../../state/canvas-state.js';
 import type { CanvasViewItem } from '../../state/canvas-state.js';
 import { ChartPart } from './parts/ChartPart.js';
@@ -151,7 +153,7 @@ export function ItemCard({
       data-kind={item.kind}
       data-width-class={box.size}
       className={`h-full w-full min-h-0 overflow-hidden ${emphasisClass(item.emphasis)} ${
-        item.kind === 'float' ? 'shadow-overlay' : ''
+        item.kind === 'float' ? FLOAT_OUTLINE_CLASS : ''
       }`}
     >
       <Card.Header

@@ -19,6 +19,7 @@ import {
 import { FingerprintGrid } from '../../components/FingerprintGrid.js';
 import { clockOf, remainingOf, splitInFour } from '../../format.js';
 import { AlertIcon } from '../../components/AlertIcon.js';
+import { StatusText } from '../../components/StatusText.js';
 import {
   PAIRING_STEPS,
   PAIRING_STEP_COUNT,
@@ -244,8 +245,10 @@ export function FingerprintStep({
           {PAIRING_LABELS.tailNote}
         </p>
         {formatError === null ? null : (
-          <p role="alert" className="text-sm text-danger-soft-foreground">
-            {formatError}
+          <p role="alert" className="text-sm">
+            <StatusText
+              line={{ tone: 'danger', mark: 'warning', text: formatError }}
+            />
           </p>
         )}
       </div>
@@ -334,8 +337,14 @@ export function CodeStep({
           {PAIRING_LABELS.codeHelp}
         </p>
         {codeInvalid ? (
-          <p className="text-xs text-danger-soft-foreground">
-            {PAIRING_LABELS.codeInvalid}
+          <p className="text-xs">
+            <StatusText
+              line={{
+                tone: 'danger',
+                mark: 'warning',
+                text: PAIRING_LABELS.codeInvalid,
+              }}
+            />
           </p>
         ) : null}
       </div>

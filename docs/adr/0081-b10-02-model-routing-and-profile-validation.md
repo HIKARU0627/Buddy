@@ -41,3 +41,7 @@
 - 出力の検証（schema・上限・空・途中の JSON・拒否）と `ModelOutcome`、usage から予約・精算へ渡す部分は P3。
 - 実際の provider の codec と、本人の「しっかり考えて」による上位の設定への切り替えは B10-03 以降。
 - QA40 の prefix cache の有無による遅延の比較は実機（B15）で測る。cache なしを採用条件未達とする判定は B10-07。
+
+## 追補（ADR 0178: レシートの写真の読み取りの例外）
+
+「endpoint・秘密」の決めは変えない。ADR 0178 は、レシートの写真の読み取りに限り、endpoint をコードに置き、起動の設定でホストを `generativelanguage.googleapis.com` に固定した例外を置いた（profile のモデルと URL のモデルを同じ場所で決めるため）。ほかの profile には広げない。未決事項は U372 と U375。

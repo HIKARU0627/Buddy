@@ -112,6 +112,8 @@ async function startWith(
   t: test.TestContext,
   apiKey: string | null,
   withGemini: boolean,
+  // 製品の送信の口（transport を渡さない）で、endpoint だけ指定する場合。
+  productEndpoint?: string,
 ) {
   const dataDir = join(await tempDir(t, 'buddy-receipt-core-'), 'data');
   await mkdir(dataDir, { recursive: true, mode: 0o700 });
@@ -125,7 +127,10 @@ async function startWith(
     dataDir,
     budget: { tickIntervalMs: 0, now: () => OCT_15 },
     household: {
-      receiptProvider: { apiKey, transport, endpoint: ENDPOINT },
+      receiptProvider:
+        productEndpoint === undefined
+          ? { apiKey, transport, endpoint: ENDPOINT }
+          : { apiKey, endpoint: productEndpoint },
     },
   });
   const device = await insertDevice(core.handle.store);
@@ -206,5 +211,37 @@ test(
       assert.equal(result.status, 503, result.text);
       assert.equal(h.transport.requests.length, 0);
     }
+  },
+);
+
+test(
+  '製品の送信の口では、鍵を送る宛先を generativelanguage.googleapis.com の https に限る',
+  { timeout: 30_000 },
+  async (t) => {
+    // 任意のホスト・http・別のホストに見える名前は、設定の段階で拒否して読み取りを使えなくする。
+    for (const endpoint of [
+      ENDPOINT,
+      'http://generativelanguage.googleapis.com/v1beta/models/m:generateContent',
+      'https://generativelanguage.googleapis.com.evil.invalid/v1beta/m',
+      [
+        'https://synthetic',
+        ':credential',
+        '@generativelanguage.googleapis.com/v1beta/m',
+      ].join(''),
+      'https://generativelanguage.googleapis.com:8443/v1beta/m',
+    ]) {
+      const h = await startWith(t, KEY, true, endpoint);
+      const on = await h.turnOn();
+      assert.equal(on.status, 503, `${endpoint}: ${on.text}`);
+    }
+    // 固定のホストなら読み取りを入にできる（ここでは送らない）。
+    const allowed = await startWith(
+      t,
+      KEY,
+      true,
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent',
+    );
+    const on = await allowed.turnOn();
+    assert.equal(on.status, 200, on.text);
   },
 );

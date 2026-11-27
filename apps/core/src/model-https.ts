@@ -2,7 +2,7 @@
 //
 // packages/ai は node:* を読まない（ADR 0080）ので、HttpRequest を実際に送る口は Core に置く。形は packages/ai の
 // HttpRequest・HttpResult のまま使う。
-// - https: の URL だけに送る。それ以外は接続せずに unavailable。
+// - https: の URL だけに送る（allowedHosts があれば、そのホストだけ）。それ以外は接続せずに unavailable。
 // - 1 回の send で送るのは 1 回だけで、自動で送り直さない（ADR 0070・0080）。
 // - 期限（request.timeout_ms）を過ぎたら接続を切って timeout。中断（signal）されたら接続を切ってすぐ unavailable を返す
 //   （呼び出し側が中断として扱う。ADR 0177 の追補 2: 中断されたらすぐ返す）。
@@ -26,6 +26,9 @@ export interface ModelHttpsOptions {
   // 検証）を使う。
   readonly agent?: Agent;
   readonly maxResponseBytes?: number;
+  // 送ってよい宛先のホスト（完全一致）。指定があり、URL のホストが含まれなければ接続せずに unavailable。製品は
+  // 鍵を送る宛先を固定するために指定する。試験の模擬のサーバーは省略する。
+  readonly allowedHosts?: readonly string[];
 }
 
 const headerText = (value: string | string[] | undefined): string =>
@@ -43,7 +46,12 @@ export function createModelHttpsTransport(
       } catch {
         return Promise.resolve({ kind: 'unavailable' });
       }
-      if (url.protocol !== 'https:' || signal?.aborted === true)
+      if (
+        url.protocol !== 'https:' ||
+        signal?.aborted === true ||
+        (options.allowedHosts !== undefined &&
+          !options.allowedHosts.includes(url.hostname))
+      )
         return Promise.resolve({ kind: 'unavailable' });
       const body = Buffer.from(request.body, 'utf8');
       let outgoing: ReturnType<typeof httpsRequest>;

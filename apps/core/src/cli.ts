@@ -39,7 +39,8 @@ import { runRestoreLedgerRepair } from './restore-repair.js';
 import { runRestoreRun } from './restore-run.js';
 import { readRecoveryKeyFromTty, stderrPrompt } from './restore-tty.js';
 import { CoreStartError, startCore } from './core.js';
-import { receiptApiKeyFromEnv } from './household-receipt-reader.js';
+import { householdOptionsFor, takeStartupSecrets } from './cli-secrets.js';
+import type { StartupSecrets } from './cli-secrets.js';
 import type { CoreHandle, CoreHttpsOptions } from './core.js';
 import { parseLockRecord } from './lock.js';
 import { LOCK_FILE, controlEndpoint, defaultDataDir } from './paths.js';
@@ -329,11 +330,13 @@ async function main(argv: readonly string[]): Promise<number> {
       : values['mock-key-protection']
         ? 'mock'
         : 'os';
+    // 秘密は読んだ直後に環境から消す（以降に起動する子プロセスへ受け継がせない）。
+    const secrets = takeStartupSecrets(process.env);
     const https =
       values['https-host'] === undefined
         ? null
         : { host: values['https-host'], port: httpsPort };
-    return start(dataDir, mode, https);
+    return start(dataDir, mode, https, secrets);
   }
   if (restoreCommand)
     return restore(
@@ -412,19 +415,22 @@ function createCoreOAuthTokenStore(mode: KeyProtectionMode): OAuthTokenStore {
 // OAuth のクライアント設定は環境変数から読む（クライアント ID は秘密ではない）。
 // Google はデスクトップ型でもトークンエンドポイントがシークレットを要求するため、
 // BUDDY_GOOGLE_OAUTH_CLIENT_SECRET があれば渡す（ADR 0144 追補）。シークレットは環境変数からだけ受け取り、
-// DB・KeyStore・ファイル・ログには出さない。Microsoft は公開クライアントなのでシークレットを使わない。
+// DB・KeyStore・ファイル・ログには出さず、読んだ直後に process.env から消す（takeStartupSecrets。子プロセスへ
+// 受け継がせない）。Microsoft は公開クライアントなのでシークレットを使わない。
 // 設定が無いプロバイダは認可を開始できない（接続の作成は閉じたまま、ADR 0144）。
-function oauthProvidersFromEnv(env: NodeJS.ProcessEnv) {
+function oauthProvidersFromEnv(
+  env: NodeJS.ProcessEnv,
+  googleClientSecret: string | null,
+) {
   const providers: {
     google?: { clientId: string; clientSecret?: string };
     microsoft?: { clientId: string; tenant?: string };
   } = {};
   const googleClientId = env['BUDDY_GOOGLE_OAUTH_CLIENT_ID'];
-  const googleClientSecret = env['BUDDY_GOOGLE_OAUTH_CLIENT_SECRET'];
   if (googleClientId !== undefined && googleClientId !== '')
     providers.google = {
       clientId: googleClientId,
-      ...(googleClientSecret === undefined || googleClientSecret === ''
+      ...(googleClientSecret === null
         ? {}
         : { clientSecret: googleClientSecret }),
     };
@@ -444,6 +450,7 @@ async function start(
   dataDir: string,
   mode: KeyProtectionMode,
   https: { readonly host: string; readonly port: number } | null,
+  secrets: StartupSecrets,
 ): Promise<number> {
   let handle: CoreHandle | null = null;
   let stopReason: string | null = null;
@@ -489,18 +496,10 @@ async function start(
                   }),
                 }
               : {}),
-            // レシートの写真の読み取りの鍵（ADR 0178）。起動の環境変数 BUDDY_GEMINI_API_KEY からだけ受け取り、DB・
-            // KeyStore・ファイル・ログには出さない。模擬の起動では外部のモデルへ送らない（鍵を渡さない）。鍵がなければ
-            // 読み取りは unavailable のまま。
-            ...(mode === 'os'
-              ? {
-                  household: {
-                    receiptProvider: {
-                      apiKey: receiptApiKeyFromEnv(process.env),
-                    },
-                  },
-                }
-              : {}),
+            // レシートの写真の読み取りの鍵（ADR 0178）。起動の環境変数 BUDDY_GEMINI_API_KEY からだけ受け取り（読んだ直後に
+            // process.env から消す）、DB・KeyStore・ファイル・ログには出さない。模擬の起動では外部のモデルへ送らない
+            // （鍵を渡さない）。鍵がなければ読み取りは unavailable のまま。
+            ...householdOptionsFor(mode, secrets.receiptApiKey),
           };
     try {
       handle = await startCore({
@@ -513,7 +512,10 @@ async function start(
         // クライアント設定が無いプロバイダは認可を開始できない。
         oauth: {
           tokenStore: createCoreOAuthTokenStore(mode),
-          providers: oauthProvidersFromEnv(process.env),
+          providers: oauthProvidersFromEnv(
+            process.env,
+            secrets.googleClientSecret,
+          ),
         },
         // 同期の周期起動（B08-06）。対象とトークンの出所は OAuth サービス（B03-04）が既定で用意するので、
         // 接続があれば起動時の回復に続いて実スキャンが走る。

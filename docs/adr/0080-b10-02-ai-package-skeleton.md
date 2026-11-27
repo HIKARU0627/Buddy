@@ -33,3 +33,7 @@
 - 振り分け表（役割・ジョブ→profile）、profile の検査、同時数・timeout・影モードの受付は P2。
 - 出力の検証（schema・上限・空・途中の JSON・拒否）と `ModelOutcome`、usage から予約・精算へ渡す部分は P3。
 - Gemini などの実際の provider の codec と、Core の予算の門への接続は B10-03 以降。実 API は B15 と本人の承認まで行わない。
+
+## 追補（ADR 0178: レシートの写真の読み取りの例外）
+
+「秘密」「endpoint は実行時の設定」の決めは変えない。ADR 0178 は、レシートの写真の読み取りに限り、Gemini の公開の endpoint（モデルの名前を含む URL）をコードに置き、鍵を送る宛先をホスト `generativelanguage.googleapis.com` に固定した。ほかの用途には広げない。未決事項は U372（endpoint・確かめた能力・構造化出力の形）と U375（製品の起動から実 API へ送る形につなぐこと）。

@@ -28,7 +28,9 @@ import {
   createGeminiReceiptReader,
   householdReceiptProfile,
   householdReceiptSetup,
+  HOUSEHOLD_RECEIPT_ENDPOINT,
   receiptApiKeyFromEnv,
+  receiptEndpointAllowed,
 } from './household-receipt-reader.js';
 import type { ReceiptHttpTransport } from './household-receipt-reader.js';
 import type { JsonObject } from './strict-json.js';
@@ -509,14 +511,52 @@ test('構造化出力の形は domain の応答の形と同じキーで、余計
   assert.equal(validate(missing), false);
 });
 
-test('鍵は起動の環境変数からだけ読み、空・空白・改行を含む値は鍵がないものとして扱う', () => {
+test('鍵は起動の環境変数からだけ値のまま読み、未設定・空だけを鍵がないものとして扱う', () => {
   assert.equal(receiptApiKeyFromEnv({}), null);
   assert.equal(receiptApiKeyFromEnv({ BUDDY_GEMINI_API_KEY: '' }), null);
-  assert.equal(receiptApiKeyFromEnv({ BUDDY_GEMINI_API_KEY: 'a b' }), null);
-  assert.equal(receiptApiKeyFromEnv({ BUDDY_GEMINI_API_KEY: 'a\nb' }), null);
-  assert.equal(receiptApiKeyFromEnv({ BUDDY_GEMINI_API_KEY: 'ａｂ' }), null);
   assert.equal(receiptApiKeyFromEnv({ OTHER_KEY: KEY }), null);
   assert.equal(receiptApiKeyFromEnv({ BUDDY_GEMINI_API_KEY: KEY }), KEY);
+  // 形の違う値（空白・改行・\r・全角）も落とさずに返し、起動の設定が receipt_api_key_invalid として記録する。
+  for (const value of [`${KEY}\r`, `${KEY} `, 'a b', 'a\nb', 'ａｂ'])
+    assert.equal(receiptApiKeyFromEnv({ BUDDY_GEMINI_API_KEY: value }), value);
+});
+
+test('形の違う鍵は、環境変数から起動の設定まで通すと receipt_api_key_invalid が記録され、鍵がないときは記録されない', () => {
+  const logs: string[] = [];
+  const build = (env: Record<string, string | undefined>) =>
+    householdReceiptSetup({
+      apiKey: receiptApiKeyFromEnv(env),
+      transport: new MockTransport(() => Promise.resolve(ok(envelope()))),
+      priceVersionFor: () => 'xts.gemini.v1',
+      log: (message) => logs.push(message),
+    });
+  assert.equal(build({}), null);
+  assert.equal(build({ BUDDY_GEMINI_API_KEY: '' }), null);
+  assert.deepEqual(logs, []);
+  assert.equal(build({ BUDDY_GEMINI_API_KEY: `${KEY}\r` }), null);
+  assert.deepEqual(logs, [
+    '家計簿のレシートの写真の読み取りを使えなくしました（receipt_api_key_invalid）。',
+  ]);
+  // 値は記録に出さない。
+  assert.ok(!logs.join('').includes(KEY));
+  assert.notEqual(build({ BUDDY_GEMINI_API_KEY: KEY }), null);
+});
+
+test('鍵を送ってよい宛先は generativelanguage.googleapis.com の https だけ', () => {
+  const base = 'generativelanguage.googleapis.com';
+  assert.equal(receiptEndpointAllowed(HOUSEHOLD_RECEIPT_ENDPOINT), true);
+  assert.equal(receiptEndpointAllowed(`https://${base}/v1beta/x`), true);
+  for (const endpoint of [
+    ENDPOINT,
+    `http://${base}/v1beta/x`,
+    `https://${base}.evil.invalid/v1beta/x`,
+    `https://x.${base}/v1beta/x`,
+    ['https://synthetic', ':credential', `@${base}/v1beta/x`].join(''),
+    `https://${base}:8443/v1beta/x`,
+    'not a url',
+    '',
+  ])
+    assert.equal(receiptEndpointAllowed(endpoint), false, endpoint);
 });
 
 test('起動の設定: 鍵がない・形が違う・単価の版がなければ作らない（unavailable）', () => {

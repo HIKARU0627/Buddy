@@ -222,12 +222,35 @@ export function createGeminiReceiptReader(
   };
 }
 
-// 起動の環境変数から鍵を読む。空・形の違う値は鍵がないものとして扱う（使えない）。
+// 起動の環境変数から鍵を値のまま読む。未設定・空は null（鍵がない。記録しない既定の状態）。形の違う値（末尾の空白・
+// \r など）はここでは落とさず、householdReceiptSetup が receipt_api_key_invalid として記録して使えなくする（「鍵が
+// ない」と「形が違う」を分ける。値は記録に出さない）。
 export function receiptApiKeyFromEnv(
   env: Readonly<Record<string, string | undefined>>,
 ): string | null {
   const value = env[RECEIPT_API_KEY_ENV];
-  return value !== undefined && receiptApiKeyUsable(value) ? value : null;
+  return value === undefined || value === '' ? null : value;
+}
+
+// 鍵を送ってよい宛先のホスト。製品の起動では、ここ以外へは設定の段階で送らない（U372）。
+export const HOUSEHOLD_RECEIPT_ENDPOINT_HOST =
+  'generativelanguage.googleapis.com';
+
+// 製品の宛先として許せる URL か。https で、ホストが固定で、ポート指定・ユーザー情報がないもの。
+export function receiptEndpointAllowed(endpoint: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(endpoint);
+  } catch {
+    return false;
+  }
+  return (
+    url.protocol === 'https:' &&
+    url.hostname === HOUSEHOLD_RECEIPT_ENDPOINT_HOST &&
+    url.port === '' &&
+    url.username === '' &&
+    url.password === ''
+  );
 }
 
 export interface HouseholdReceiptProviderOptions {
@@ -240,7 +263,7 @@ export interface HouseholdReceiptProviderOptions {
     readonly quantities: Readonly<Partial<Record<PriceCategory, string>>>;
     readonly timeout_ms: number;
   }) => string | null;
-  // 試験だけ: endpoint の差し替え。
+  // 試験だけ: endpoint の差し替え。製品の起動の検査（ホストの固定）は中枢の起動の設定（core.ts）にある。
   readonly endpoint?: string;
   readonly log?: (message: string) => void;
 }

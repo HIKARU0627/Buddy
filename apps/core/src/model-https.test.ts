@@ -231,3 +231,26 @@ test('接続できない・証明書を信頼できないときは unavailable',
   });
   assert.equal(server.seen.length, 0);
 });
+
+test('allowedHosts があれば、含まれないホストへは接続せずに unavailable を返す', async (t) => {
+  const server = await startServer(t, (_request, response) => {
+    response.writeHead(200);
+    response.end('{}');
+  });
+  const refused = createModelHttpsTransport({
+    agent: server.agent,
+    allowedHosts: ['generativelanguage.googleapis.com'],
+  });
+  assert.deepEqual(await refused.send(requestTo(server.url)), {
+    kind: 'unavailable',
+  });
+  assert.equal(server.seen.length, 0);
+  assert.equal(server.state.connections, 0);
+  const allowed = createModelHttpsTransport({
+    agent: server.agent,
+    allowedHosts: ['127.0.0.1'],
+  });
+  const result = await allowed.send(requestTo(server.url));
+  assert.equal(result.kind, 'response');
+  assert.equal(server.seen.length, 1);
+});

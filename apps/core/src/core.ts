@@ -93,7 +93,11 @@ import {
   receiptBudgetOf,
 } from './household-receipt.js';
 import type { ReceiptReadingSetup } from './household-receipt.js';
-import { householdReceiptSetup } from './household-receipt-reader.js';
+import {
+  HOUSEHOLD_RECEIPT_ENDPOINT_HOST,
+  householdReceiptSetup,
+  receiptEndpointAllowed,
+} from './household-receipt-reader.js';
 import type { ReceiptHttpTransport } from './household-receipt-reader.js';
 import { createModelHttpsTransport } from './model-https.js';
 import {
@@ -314,7 +318,8 @@ export interface CoreReceiptProviderOptions {
   readonly apiKey: string | null;
   // 省略すると node:https の送信（createModelHttpsTransport）。試験は模擬に差し替える。
   readonly transport?: ReceiptHttpTransport;
-  // 試験だけ: endpoint の差し替え。
+  // 試験だけ: endpoint の差し替え。transport も差し替えるときだけ任意のホストを許す。transport を省略した（製品の
+  // 送信の口の）ときは generativelanguage.googleapis.com 以外は設定の段階で拒否し、読み取りは unavailable になる。
   readonly endpoint?: string;
 }
 
@@ -1675,13 +1680,29 @@ async function startHttps(
   // 外部のモデルの鍵が起動の設定にあれば、Gemini の読み取りの口と profile を作る（ADR 0178）。単価の版は予算の設定から
   // 今の時刻で見積もれるものだけ（なければ unavailable）。
   const receiptProvider = https.household?.receiptProvider;
+  // 送信の口を差し替えない（製品の）ときは、鍵を送る宛先を generativelanguage.googleapis.com に限る。それ以外の
+  // endpoint が渡されたら、鍵を渡さずに読み取りを使えなくする（receipt_endpoint_invalid）。
+  const receiptEndpointRefused =
+    receiptProvider !== undefined &&
+    receiptProvider.transport === undefined &&
+    receiptProvider.endpoint !== undefined &&
+    !receiptEndpointAllowed(receiptProvider.endpoint);
+  if (receiptEndpointRefused)
+    log(
+      '家計簿のレシートの写真の読み取りを使えなくしました（receipt_endpoint_invalid）。',
+    );
   const receiptSetup =
     https.household?.receiptReading ??
-    (receiptProvider === undefined
+    (receiptProvider === undefined || receiptEndpointRefused
       ? null
       : householdReceiptSetup({
           apiKey: receiptProvider.apiKey,
-          transport: receiptProvider.transport ?? createModelHttpsTransport(),
+          transport:
+            receiptProvider.transport ??
+            createModelHttpsTransport({
+              allowedHosts: [HOUSEHOLD_RECEIPT_ENDPOINT_HOST],
+            }),
+
           priceVersionFor: (request) => budget.priceVersionFor(request),
           ...(receiptProvider.endpoint === undefined
             ? {}

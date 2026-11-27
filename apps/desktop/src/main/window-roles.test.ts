@@ -8,9 +8,13 @@ import { DesktopDeviceController } from './device-controller.js';
 import {
   INPUT_BAR_EXPANDED_SIZE,
   INPUT_BAR_SIZE,
+  ISLAND_EXPANDED_SIZE,
+  ISLAND_SIZE,
   UiWindowRegistry,
   channelAllowedForWindow,
   inputBarBounds,
+  islandBounds,
+  islandExpandedFor,
   notificationAllowedForWindow,
   rolesForMode,
   senderFactsOf,
@@ -211,8 +215,13 @@ test('the default stays the single legacy window; the flag or env opens the thre
   assert.equal(uiWindowMode(['--buddy-ui='], {}, DEV), 'legacy');
   assert.equal(uiWindowMode([], { BUDDY_DESKTOP_UI: 'status' }, DEV), 'legacy');
   assert.deepEqual(rolesForMode('legacy'), ['legacy']);
-  // キャンバスを先に作り、状態の層・入力バーを前に重ねる。
-  assert.deepEqual(rolesForMode('canvas'), ['canvas', 'status', 'input']);
+  // キャンバスを先に作り、状態の層・入力バー・島（ADR 0181 の段階 4）を前に重ねる。
+  assert.deepEqual(rolesForMode('canvas'), [
+    'canvas',
+    'status',
+    'input',
+    'island',
+  ]);
 });
 
 test('a packaged launch ignores the dev flag and the env and always uses the legacy window', () => {
@@ -350,6 +359,7 @@ test('the canvas description notification goes to the canvas window only, and on
 
 test('each role admits only its own channels; the rest are untrusted senders', () => {
   const registry = threeWindows();
+  registry.register(14, 'island', { name: 'island' });
   const allowed: Record<Exclude<UiWindowRole, 'legacy'>, readonly string[]> = {
     canvas: ['desktop.get_state', USER_OP, CONTENT],
     input: ['desktop.get_state', 'desktop.turn_submit', SUMMON],
@@ -359,9 +369,17 @@ test('each role admits only its own channels; the rest are untrusted senders', (
         channel !== USER_OP &&
         channel !== CONTENT,
     ),
+    // 島（ADR 0181 の段階 4・U391 の暫定 (b)）: 状態の取得・停止・パネルを出すだけ。
+    island: [
+      'desktop.get_state',
+      'desktop.get_connection',
+      'desktop.get_voice',
+      'desktop.io_stop',
+      PANEL,
+    ],
   };
-  const ids = { canvas: 11, status: 12, input: 13 } as const;
-  for (const role of ['canvas', 'status', 'input'] as const)
+  const ids = { canvas: 11, status: 12, input: 13, island: 14 } as const;
+  for (const role of ['canvas', 'status', 'input', 'island'] as const)
     for (const channel of ALL_CHANNELS) {
       const expected = allowed[role].includes(channel);
       assert.equal(
@@ -437,6 +455,110 @@ test('each role admits only its own channels; the rest are untrusted senders', (
     senderFor(registry, 12, 'desktop.operation_approve').trustedSender,
     true,
   );
+});
+
+// ADR 0181 の段階 4（U391 の暫定 (b)）: 島は前面を奪わない窓（キー入力を受けない）なので、要求はいつも前面でない窓から届く。
+// 状態の取得・停止・パネルを出すは前面でなくても受け付け、承認・取消・再開・登録・終了・発言・キャンバスを前に出すは
+// 役割の検査で拒否する（島から確認を出さない）。期待値は手で書いた。
+test('the island reaches only state reads, the stop and the panel, even without focus; everything else is an untrusted sender', () => {
+  const registry = threeWindows();
+  registry.register(14, 'island', { name: 'island' });
+  const fromIsland = (channel: string) =>
+    admitDesktopRequest(
+      channel,
+      null,
+      UNLOCKED,
+      senderFor(registry, 14, channel, { focused: false }),
+    );
+  for (const channel of [
+    'desktop.get_state',
+    'desktop.get_connection',
+    'desktop.get_voice',
+    'desktop.io_stop',
+    'desktop.status_panel',
+  ])
+    assert.deepEqual(fromIsland(channel), { ok: true }, channel);
+  for (const channel of [
+    'desktop.operation_preview',
+    'desktop.operation_approve',
+    'desktop.operation_cancel',
+    'desktop.operation_retry',
+    'desktop.operation_reconcile',
+    'desktop.operation_check',
+    'desktop.io_resume',
+    'desktop.turn_submit',
+    'desktop.canvas_summon',
+    'desktop.canvas_user_op',
+    'desktop.canvas_content',
+    'desktop.claim_decide',
+    'desktop.device_revoke',
+    'desktop.home_register',
+    'desktop.pairing_begin',
+    'desktop.window_hide',
+    'desktop.client_quit',
+    'desktop.voice_continue',
+    'desktop.voice_consent_revoke',
+    'desktop.budget_overage_decide',
+    'desktop.auto_action_undo',
+    'desktop.safety_resume',
+    'desktop.household_delete',
+  ])
+    assert.deepEqual(
+      fromIsland(channel),
+      { ok: false, reason: 'untrusted_sender' },
+      channel,
+    );
+  // 通知: 状態欄・接続の状態（確認が必要な操作の数と結果）・音声の状態（外部へ送っている印）だけ。
+  for (const [channel, expected] of [
+    ['desktop.state_changed', true],
+    ['desktop.connection_changed', true],
+    ['desktop.voice_changed', true],
+    ['desktop.power_event', false],
+    ['desktop.canvas_changed', false],
+    ['desktop.canvas_work_area', false],
+  ] as const)
+    assert.equal(
+      notificationAllowedForWindow('island', channel),
+      expected,
+      channel,
+    );
+  // 停止は 1 回で効く（確認を挟まない）。パネルを出す要求は main がパネルを出す効果になる。
+  const controller = new DesktopDeviceController({
+    contract: createDesktopContract(loadContractSchema()),
+    initial: { io_epoch: '0', stop_scope: 'none' },
+    now: () => new Date('2026-11-27T00:00:00.000Z'),
+    persist: () => undefined,
+    onNotification: () => undefined,
+    onPersistError: () => undefined,
+  });
+  controller.applyLockQuery('unlock_screen');
+  const requestOf = (channel: string, payload: unknown) => ({
+    channel,
+    request_id: '5d0e3c1a-7b2f-4a6e-8c9d-0e1f2a3b4c5d',
+    payload,
+  });
+  const stop = controller.handleIpc(
+    'desktop.io_stop',
+    requestOf('desktop.io_stop', null),
+    senderFor(registry, 14, 'desktop.io_stop', { focused: false }),
+  );
+  assert.equal(stop.response.outcome, 'ok');
+  assert.equal(controller.state.stopScope, 'local');
+  const panel = controller.handleIpc(
+    'desktop.status_panel',
+    requestOf('desktop.status_panel', { open: true }),
+    senderFor(registry, 14, 'desktop.status_panel', { focused: false }),
+  );
+  assert.equal(panel.response.outcome, 'ok');
+  assert.equal(panel.effect, 'status_panel_open');
+  // 島から再開はできない（再開はパネルから。止まった後の島は停止を出さず、再開も出さない）。
+  const resume = controller.handleIpc(
+    'desktop.io_resume',
+    requestOf('desktop.io_resume', { expected_io_epoch: '1' }),
+    senderFor(registry, 14, 'desktop.io_resume', { focused: true }),
+  );
+  assert.equal(resume.response.outcome, 'rejected');
+  assert.equal(controller.state.stopScope, 'local');
 });
 
 test('a request from an unknown window or a closed window is rejected', () => {
@@ -620,17 +742,26 @@ test('the legacy window is created with the same options as before', () => {
       alwaysOnTopLevel: null,
       maximize: false,
       focusOnShow: true,
+      showOnStart: true,
     });
 });
 
-test('all windows share sandbox, isolation and the preload; only the role argument differs', () => {
+test('all windows share sandbox, isolation and the preload; only the role argument differs (and the island reports its size)', () => {
   for (const platform of ['darwin', 'win32'])
-    for (const role of ['legacy', 'canvas', 'status', 'input'] as const)
+    for (const role of [
+      'legacy',
+      'canvas',
+      'status',
+      'input',
+      'island',
+    ] as const)
       assert.deepEqual(
         uiWindowSpec(role, platform, DISPLAY, PRELOAD).options.webPreferences,
         {
           ...SHARED_PREFS,
           additionalArguments: [`--buddy-window-role=${role}`],
+          // 島だけ、中身の高さを main へ知らせる（2 つの決まった大きさのどちらかにするため。ADR 0181 の段階 4）。
+          ...(role === 'island' ? { enablePreferredSizeMode: true } : {}),
         },
         `${platform} ${role}`,
       );
@@ -672,11 +803,12 @@ test('the Windows canvas is a frameless maximized window kept off the taskbar', 
   assert.equal(spec.focusOnShow, false);
 });
 
-test('the status tab and the input bar are small, frameless, always-on-top windows', () => {
+test('the status panel, the input bar and the island are small, frameless, always-on-top windows', () => {
   for (const platform of ['darwin', 'win32']) {
     const status = uiWindowSpec('status', platform, DISPLAY, PRELOAD);
     const input = uiWindowSpec('input', platform, DISPLAY, PRELOAD);
-    for (const spec of [status, input]) {
+    const island = uiWindowSpec('island', platform, DISPLAY, PRELOAD);
+    for (const spec of [status, input, island]) {
       assert.equal(
         spec.options.type,
         platform === 'darwin' ? 'panel' : undefined,
@@ -689,7 +821,8 @@ test('the status tab and the input bar are small, frameless, always-on-top windo
       assert.equal(spec.alwaysOnTopLevel, 'floating');
       assert.deepEqual(spec.allWorkspaces, { visibleOnFullScreen: true });
     }
-    // 右の端の中ほどのつまみ（56 × 232。UI-04 で専用の記号の分だけ高くした）。
+    // 状態の層は右の端の上から下までのパネル（440 × 作業領域の高さ）。端のつまみ（56 × 232）はやめ、窓は隠して作り、
+    // パネルを出すときだけ表示する（ADR 0181 の段階 4・U392 の暫定 (a)）。
     assert.deepEqual(
       [
         status.options.x,
@@ -697,8 +830,32 @@ test('the status tab and the input bar are small, frameless, always-on-top windo
         status.options.width,
         status.options.height,
       ],
-      [1512 - 56, 33 + Math.round((875 - 232) / 2), 56, 232],
+      [1512 - 440, 33, 440, 875],
     );
+    assert.equal(status.showOnStart, false);
+    assert.equal(input.showOnStart, true);
+    assert.equal(island.showOnStart, true);
+    // 上の中央の島（560 × 48、上端から 8）。
+    assert.deepEqual(
+      [
+        island.options.x,
+        island.options.y,
+        island.options.width,
+        island.options.height,
+      ],
+      [Math.round((1512 - 560) / 2), 33 + 8, 560, 48],
+    );
+    // 島と入力バーは角の外を透かす透明な窓（U399 の暫定 (a)）。OS の影は付けない。状態の層のパネルは四角い窓のまま。
+    for (const spec of [input, island]) {
+      assert.equal(spec.options.transparent, true);
+      assert.equal(spec.options.backgroundColor, '#00000000');
+      assert.equal(spec.options.hasShadow, false);
+    }
+    assert.equal(status.options.transparent, undefined);
+    // 島は前面を奪わず、キー入力も受けない（押してもパネル・入力バーを前面から外さない）。
+    assert.equal(island.options.focusable, false);
+    assert.equal(island.focusOnShow, false);
+    assert.equal(island.contentProtection, true);
     // 下の中ほどの帯（560 × 56、下端から 16）。
     assert.deepEqual(
       [
@@ -715,6 +872,35 @@ test('the status tab and the input bar are small, frameless, always-on-top windo
     assert.equal(status.focusOnShow, false);
     assert.equal(input.focusOnShow, true);
   }
+});
+
+// ADR 0181 の段階 4: 島は上の端を固定して下へ広がり、横の位置は変えない。大きさは 2 つだけで、画面の中身の高さが
+// 小さな島（48）より高いときだけ広げる。期待値は手で書いた。
+test('the island grows downward from a fixed top edge; it takes only two sizes chosen from the content height', () => {
+  assert.deepEqual(ISLAND_SIZE, { width: 560, height: 48 });
+  assert.deepEqual(ISLAND_EXPANDED_SIZE, { width: 560, height: 104 });
+  const compact = islandBounds(DISPLAY.workArea, false);
+  const expanded = islandBounds(DISPLAY.workArea, true);
+  assert.deepEqual(compact, { x: 476, y: 41, width: 560, height: 48 });
+  assert.deepEqual(expanded, { x: 476, y: 41, width: 560, height: 104 });
+  // 狭い・低い作業領域では作業領域に合わせる（はみ出さない）。
+  assert.deepEqual(
+    islandBounds({ x: 10, y: 20, width: 320, height: 80 }, true),
+    {
+      x: 10,
+      y: 28,
+      width: 320,
+      height: 72,
+    },
+  );
+  // 中身の高さ: 48 までは小さな島、49 からは広げた島。数でない値は小さな島。
+  assert.equal(islandExpandedFor(0), false);
+  assert.equal(islandExpandedFor(48), false);
+  assert.equal(islandExpandedFor(49), true);
+  assert.equal(islandExpandedFor(104), true);
+  assert.equal(islandExpandedFor(400), true);
+  assert.equal(islandExpandedFor(Number.NaN), false);
+  assert.equal(islandExpandedFor(Number.POSITIVE_INFINITY), false);
 });
 
 // UI-08: 入力バーは入力するときだけ上へ広がり、下の端と横の位置は変えない。作業領域からはみ出さない。
@@ -824,7 +1010,7 @@ test('the sender frame must be the current main frame of the registered window',
     );
 });
 
-test('the controller turns a summon from the status tab or the input bar into the summon effect', () => {
+test('the controller turns a summon from the status layer or the input bar into the summon effect', () => {
   const registry = threeWindows();
   const controller = new DesktopDeviceController({
     contract: createDesktopContract(loadContractSchema()),

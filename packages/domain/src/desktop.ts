@@ -317,10 +317,16 @@ export function admitDesktopRequest(
   return { ok: true };
 }
 
-// 窓の役割（ADR 0032）。キャンバス（画面ぴったりの 1 枚。AI が宣言的に置く物を描く）・状態の層（端のつまみ・
-// スライドのパネル。状態・停止・確認の一覧）・入力バー（画面の下）。窓ごとに使えるチャネルを分け、
-// main は送信元の窓の役割でも受付を絞る（UI-02 で接続する。今の窓の受付 admitDesktopRequest は変えない）。
-export const DESKTOP_WINDOW_ROLES = ['canvas', 'status', 'input'] as const;
+// 窓の役割（ADR 0032・0181）。キャンバス（画面ぴったりの 1 枚。AI が宣言的に置く物を描く）・状態の層（右の端に出す
+// パネル。状態・停止・確認の一覧）・入力バー（画面の下）・島（画面の上の中央。ADR 0181 の段階 4 で足した 4 つ目の窓）。
+// 窓ごとに使えるチャネルを分け、main は送信元の窓の役割でも受付を絞る（UI-02 で接続する。今の窓の受付
+// admitDesktopRequest は変えない）。
+export const DESKTOP_WINDOW_ROLES = [
+  'canvas',
+  'status',
+  'input',
+  'island',
+] as const;
 
 export type DesktopWindowRole = (typeof DESKTOP_WINDOW_ROLES)[number];
 
@@ -332,6 +338,8 @@ export type DesktopWindowRole = (typeof DESKTOP_WINDOW_ROLES)[number];
 // 予算の確認（超過枠の承認・見送り、M 超過の確認、手での精算。B07-05）も状態の層だけ。
 // キャンバスの物のユーザーの操作（UI-06）はキャンバスの窓だけ。承認・停止のチャネルとは別で、物の置き場所だけを変える。
 // キャンバスの物の中身（UI-07）もキャンバスの窓だけ。読み取りだけで、状態の層・入力バー・従来の窓には本文を渡さない。
+// 島（ADR 0181 の段階 4・U391 の暫定 (b)）は、状態の取得（状態欄・接続の状態・音声の状態を読むだけ）・停止・パネルを出す
+// だけ。承認・取消・再開・登録・終了・発言・キャンバスを前に出すは使えない（島から確認を出さない。確認の入口はパネルのまま）。
 export const DESKTOP_ROLE_CHANNELS: Readonly<
   Record<DesktopWindowRole, readonly DesktopIpcChannel[]>
 > = {
@@ -405,9 +413,18 @@ export const DESKTOP_ROLE_CHANNELS: Readonly<
     'desktop.household_bill_delete',
   ],
   input: ['desktop.get_state', 'desktop.turn_submit', 'desktop.canvas_summon'],
+  island: [
+    'desktop.get_state',
+    'desktop.io_stop',
+    // 確認が必要な操作の数と操作の結果（島を広げるきっかけ）を読む。内容を変えるチャネルではない。
+    'desktop.get_connection',
+    'desktop.status_panel',
+    // プライバシーと権限の専用の記号の「音声を外部へ送っている」を読む。
+    'desktop.get_voice',
+  ],
 };
 
-// 役割ごとに main から送る通知。電源・ロックの記録と接続の状態は状態の層だけ。キャンバスの記述はキャンバスの窓だけ。
+// 役割ごとに main から送る通知。電源・ロックの記録は状態の層だけ。接続の状態は状態の層と島だけ。キャンバスの記述はキャンバスの窓だけ。
 export const DESKTOP_ROLE_NOTIFICATIONS: Readonly<
   Record<
     DesktopWindowRole,
@@ -429,6 +446,13 @@ export const DESKTOP_ROLE_NOTIFICATIONS: Readonly<
     'desktop.voice_changed',
   ],
   input: ['desktop.state_changed'],
+  // 島は状態欄・接続の状態（確認が必要な操作の数と結果）・音声の状態（外部へ送っている印）だけ。電源とロックの記録・
+  // キャンバスの記述は受けない。
+  island: [
+    'desktop.state_changed',
+    'desktop.connection_changed',
+    'desktop.voice_changed',
+  ],
 };
 
 // 送信元の窓の役割がそのチャネルを使えるか。未知のチャネルは使えない。

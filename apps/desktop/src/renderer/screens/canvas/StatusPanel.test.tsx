@@ -1,4 +1,5 @@
-// 状態の層のパネル（UI-04、ADR 0032）の試験。窓の幅でパネルを描くか、ADR 0014 の 8 項目の記号と位置、専用の記号、
+// 状態の層のパネル（UI-04、ADR 0032。ADR 0181 の段階 4 で端のつまみをやめた）の試験。窓が表示されているときだけパネルを
+// 描くこと、ADR 0014 の 8 項目の記号と位置、専用の記号、
 // 停止と再開、確認が必要な操作の一覧（WorkPanel と同じ部品）、なりすまし（外部の内容の「承認しました」「ここを押して承認」
 // がボタンを作らない）を、純粋な関数とサーバー描画（react-dom/server）で確かめる。期待値は手で書く。
 // 実際の見た目・クリック・Esc・OS の確認ダイアログは Electron の画面で確かめる（docs/ui/status-layer.md）。
@@ -26,7 +27,7 @@ import {
 } from '../../state/status-panel-state.js';
 import { INITIAL_WORK_STATE } from '../../state/work-state.js';
 import type { WorkActions } from '../../state/work-state.js';
-import { statusTabView } from '../../state/window-role-state.js';
+import { statusSummaryView } from '../../state/window-role-state.js';
 import { WorkOperations } from '../work/WorkPanel.js';
 import { CanvasBoard } from './CanvasBoard.js';
 import { StatusPanel } from './StatusPanel.js';
@@ -130,9 +131,9 @@ function panel(
     connection?.visibility === 'shown' ? connection.operations : [];
   return render(
     <StatusPanel
-      tab={<span data-tab="kept" />}
+      onClose={noop}
       status={status}
-      ioLine={statusTabView(status, connection).line}
+      ioLine={statusSummaryView(status, connection).line}
       items={statusItems(status, connection, now)}
       message={message}
       onStop={noop}
@@ -156,12 +157,11 @@ function panel(
   );
 }
 
-test('the panel is drawn only when main has widened the window', () => {
-  // つまみだけの窓は 56、パネルを出した窓は 440（main の status-panel.ts）。
-  assert.equal(panelShownFor(56), false);
-  assert.equal(panelShownFor(199), false);
-  assert.equal(panelShownFor(200), true);
-  assert.equal(panelShownFor(440), true);
+test('the panel is drawn only while main shows the status window', () => {
+  // main は状態の層の窓を隠してパネルをしまい、表示して出す（ADR 0181 の段階 4。端のつまみの幅による判定はやめた）。
+  assert.equal(panelShownFor('visible'), true);
+  assert.equal(panelShownFor('hidden'), false);
+  assert.equal(panelShownFor(''), false);
 });
 
 test('the eight items of ADR 0014 keep a fixed order, and each carries a mark and a value', () => {
@@ -230,7 +230,7 @@ test('the eight items of ADR 0014 keep a fixed order, and each carries a mark an
       ['他の端末', 'neutral', 'dot', 'value'],
       // 音声を外部へ送っている・予算の保留・安全停止は、塗りと ⚠ の形（色だけで区別しない）。
       ['会話中', 'warning', 'warning', 'alert'],
-      // 記録しないモードは警告ではないが、面を塗る（つまみと同じ）。
+      // 記録しないモードは警告ではないが、面を塗る（島の専用の記号と同じ）。
       ['記録しない', 'neutral', 'square', 'notice'],
       ['保留あり', 'warning', 'warning', 'alert'],
       ['安全停止中', 'danger', 'warning', 'alert'],
@@ -322,7 +322,7 @@ test('stop is always offered (even while locked); resume only for a local stop, 
     );
 });
 
-test('the open panel: the kept tab, the IO line with stop, eight tiles and the operations needing attention', () => {
+test('the open panel: the IO line with stop and the close button, eight tiles and the operations needing attention', () => {
   const html = panel(
     shown(),
     connected([
@@ -336,8 +336,14 @@ test('the open panel: the kept tab, the IO line with stop, eight tiles and the o
       entry(3, { state: 'preparing', allowed_actions: [] }),
     ]),
   );
-  assert.match(html, /data-tab="kept"/u);
   assert.match(html, /aria-label="状態のパネル"/u);
+  // 端のつまみの代わりに、右上の「しまう」（記号だけのボタン。読み上げの名前で伝える）。
+  assert.match(html, /<button[^>]*aria-label="状態のパネルをしまう"/u);
+  // 入出力の 1 行は見せるだけで、ライブ領域は島が持つ（同じ文を 2 か所で読ませない。ADR 0181 の U394）。
+  assert.doesNotMatch(
+    html,
+    /<p[^>]*role="status"[^>]*>(?:(?!<\/p>)[\s\S])*受付中/u,
+  );
   // 8 項目は決まった順の格子。名前と値は読み上げの名前とツールチップ（フォーカス・ポインター）で出す。
   assert.deepEqual(
     [...html.matchAll(/data-item="([a-z_]+)"/gu)].map((match) => match[1]),
@@ -363,9 +369,11 @@ test('the open panel: the kept tab, the IO line with stop, eight tiles and the o
     ],
   );
   assert.equal((html.match(/border-dashed/gu) ?? []).length, 5);
-  // 押せるのは、停止と、確認が必要な操作の行のボタンだけ（承認そのものは確認の欄から main の OS の確認で 1 回）。
+  // 押せるのは、停止・しまう（記号だけで見える文字はない）と、確認が必要な操作の行のボタンだけ（承認そのものは確認の欄から
+  // main の OS の確認で 1 回）。
   assert.deepEqual(buttonTexts(html), [
     '■ 停止',
+    '',
     '内容を確認',
     '取り消す',
     '照合',
@@ -381,7 +389,8 @@ test('the open panel: the kept tab, the IO line with stop, eight tiles and the o
 
 test('while locked the panel keeps the stop and the tile positions, and shows no values or operations', () => {
   const html = panel(LOCKED, connected([entry(1, { headline: '牛乳を買う' })]));
-  assert.deepEqual(buttonTexts(html), ['■ 停止']);
+  // 停止と、しまう（記号だけ）。
+  assert.deepEqual(buttonTexts(html), ['■ 停止', '']);
   // 隠している項目は、未受信の点線とは別の形（記号のない灰色の面）。
   assert.equal((html.match(/data-shape="hidden"/gu) ?? []).length, 8);
   assert.doesNotMatch(html, /border-dashed/u);
@@ -398,11 +407,11 @@ test('while stopped the panel offers resume, and the rows offer no approval prev
     ]),
     '再開できませんでした。',
   );
-  assert.deepEqual(buttonTexts(html), ['再開', '取り消す']);
+  assert.deepEqual(buttonTexts(html), ['再開', '', '取り消す']);
   assert.match(html, /再開できませんでした。/u);
   // 切断中は操作の一覧を出さない（WorkPanel と同じ条件）。
   const offline = panel(shown(), connected([entry(1)], 'connecting'));
-  assert.deepEqual(buttonTexts(offline), ['■ 停止']);
+  assert.deepEqual(buttonTexts(offline), ['■ 停止', '']);
 });
 
 // なりすまし（UI-04 の完了条件）: 外部の内容に「承認しました」「ここを押して承認」が入っていても、キャンバスの中の文字に
@@ -434,9 +443,9 @@ test('spoofing: approval-like external text stays text on the canvas and never b
   assert.match(board, /ここを押して承認/u);
   assert.doesNotMatch(board, /<button\b|<a\b|role="button"|href=/u);
   // 状態の層のパネル: 操作の内容（外部のメールの件名など）に同じ文が入っていても、行の見出しの文字になるだけ。
-  // ボタンは決まった文言（内容を確認・取り消す・停止）だけで、数は操作の一覧から決まる。
+  // ボタンは決まった文言（内容を確認・取り消す・停止と、記号だけのしまう）だけで、数は操作の一覧から決まる。
   const html = panel(shown(), connected([entry(1, { headline: spoof })]));
-  assert.deepEqual(buttonTexts(html), ['■ 停止', '内容を確認', '取り消す']);
+  assert.deepEqual(buttonTexts(html), ['■ 停止', '', '内容を確認', '取り消す']);
   assert.equal(
     (html.match(/承認しました。ここを押して承認/gu) ?? []).length,
     3,
@@ -444,7 +453,7 @@ test('spoofing: approval-like external text stays text on the canvas and never b
   for (const text of buttonTexts(html))
     assert.doesNotMatch(text, /承認しました/u);
   // 操作の一覧がなければ、パネルに操作のボタンは 1 つもない（キャンバスの記述はパネルへ届かない）。
-  assert.deepEqual(buttonTexts(panel(shown(), connected([]))), ['■ 停止']);
+  assert.deepEqual(buttonTexts(panel(shown(), connected([]))), ['■ 停止', '']);
 });
 
 test('an old last confirmation turns into the warning shape', () => {
@@ -477,7 +486,7 @@ test('the stop shortcut mark: the keys next to stop, or the keys struck through 
   );
   assert.match(unavailable, /line-through/u);
   // 停止そのものはどちらでも押せる。印は説明文ではない（見える文字はキーだけ）。
-  assert.deepEqual(buttonTexts(unavailable), ['■ 停止']);
+  assert.deepEqual(buttonTexts(unavailable), ['■ 停止', '']);
   // ロック中も停止の横に出す。値がなければ何も出さない。
   assert.match(panel(LOCKED, null, null, 'unavailable'), /data-stop-shortcut/u);
   assert.doesNotMatch(panel(shown(), connected([])), /data-stop-shortcut/u);

@@ -174,8 +174,9 @@ test('a tag shows its card by click and moves another card to a tag; the tag can
   assert.equal(document.querySelector('[data-item="c"]'), null);
   assert.notEqual(document.querySelector('[data-overflow="c"]'), null);
   await press('見出しcを見せる');
-  // c が見える場所に出て（a の下、y 24 + 248 + 16 = 288）フォーカスを受け、b が札に回る。記述は変えない（送らない）。
-  assert.equal(card('c').style.top, '288px');
+  // c が見える場所に出て（a の下、y 72 + 248 + 16 = 336。上の端は島の場所の下 72）フォーカスを受け、b が札に回る。
+  // 記述は変えない（送らない）。
+  assert.equal(card('c').style.top, '336px');
   assert.equal(document.activeElement, card('c'));
   assert.equal(document.querySelector('[data-item="b"]'), null);
   assert.notEqual(document.querySelector('[data-overflow="b"]'), null);
@@ -195,7 +196,7 @@ test('a sent move stays where it was sent while an unrelated revision arrives, u
   const board = await mountBoard(() => '5');
   const b = item('b', { grid: { column: 7, span: 4, rows: 2 } });
   await board.render(view('3', [item('a'), b]));
-  // a は列 1（left 24）。→ で列 2 へ（left 24 + 98 = 122）。応答は当てた版 5。
+  // a は列 1（left 24）。→ で列 2 へ（left 24 + 104 = 128。列の送りは (1232 − 176) / 12 + 16 = 104）。応答は当てた版 5。
   assert.equal(card('a').style.left, '24px');
   await act(async () => {
     card('a').focus();
@@ -219,10 +220,10 @@ test('a sent move stays where it was sent while an unrelated revision arrives, u
       '3',
     ],
   ]);
-  assert.equal(card('a').style.left, '122px');
+  assert.equal(card('a').style.left, '128px');
   // ほかの物（b）だけが変わった版 4 が届く: a は送った位置のまま（守る）。
   await board.render(view('4', [item('a'), { ...b, emphasis: 'high' }]));
-  assert.equal(card('a').style.left, '122px');
+  assert.equal(card('a').style.left, '128px');
   assert.equal(card('a').getAttribute('data-source'), 'held');
   // 当てた版 5（ユーザーの置き場所を持つ）が届くと、ユーザーの置き場所として描く。
   await board.render(
@@ -232,20 +233,21 @@ test('a sent move stays where it was sent while an unrelated revision arrives, u
       ],
     }),
   );
-  assert.equal(card('a').style.left, '122px');
+  assert.equal(card('a').style.left, '128px');
   assert.equal(card('a').getAttribute('data-source'), 'user');
   board.unmount();
 });
 
-test('a tag shows its card even when it does not fit as is: a focus card shrinks at 480 × 400, a user pin steps aside at 1280 × 300', async () => {
+test('a tag shows its card even when it does not fit as is: a focus card shrinks at 480 × 448, a user pin steps aside at 1280 × 348', async () => {
   const board = await mountBoard();
-  // 480 × 400: 置ける高さ 200。焦点 f（3 行 = 248）は入らず札。見せると 2 行（160）に縮めて出る。
+  // 480 × 448: 置ける高さ (448 − 88 − 16 − 56 − 16) − 72 = 200。焦点 f（3 行 = 248）は入らず札。見せると 2 行（160）に
+  // 縮めて出る。
   await board.render(
     view('3', [
       item('a'),
       item('f', { emphasis: 'high', grid: { column: 1, span: 4, rows: 3 } }),
     ]),
-    { width: 480, height: 400 },
+    { width: 480, height: 448 },
   );
   assert.equal(document.querySelector('[data-item="f"]'), null);
   await press('見出しfを見せる');
@@ -253,8 +255,8 @@ test('a tag shows its card even when it does not fit as is: a focus card shrinks
   assert.equal(document.activeElement, card('f'));
   assert.notEqual(document.querySelector('[data-overflow="a"]'), null);
   board.unmount();
-  // 1280 × 300（2 行）: ユーザーの置き場所 p が全体を埋め、x は札。見せると x が列 1 に出て（left 24・4 列 × 2 行）、
-  // p は列 5 から 8 列 × 1 行（left 24 + 4 × 98 = 416・高さ 72）へ下がる。
+  // 1280 × 348（2 行）: ユーザーの置き場所 p が全体を埋め、x は札。見せると x が列 1 に出て（left 24・4 列 × 2 行）、
+  // p は列 5 から 8 列 × 1 行（left 24 + 4 × 104 = 440・高さ 72）へ下がる。
   const second = await mountBoard();
   await second.render(
     view(
@@ -266,19 +268,19 @@ test('a tag shows its card even when it does not fit as is: a focus card shrinks
         ],
       },
     ),
-    { width: 1280, height: 300 },
+    { width: 1280, height: 348 },
   );
   assert.equal(document.querySelector('[data-item="x"]'), null);
   await press('見出しxを見せる');
   assert.equal(card('x').style.left, '24px');
   assert.equal(card('x').style.height, '160px');
-  assert.equal(card('p').style.left, '416px');
+  assert.equal(card('p').style.left, '440px');
   assert.equal(card('p').style.height, '72px');
   assert.deepEqual(second.sent, []);
   second.unmount();
 });
 
-test('a card shown from its tag at 840 × 272 keeps a readable heading: at least 160 px wide, the heading on its own row above the controls', async () => {
+test('a card shown from its tag at 768 × 320 keeps a readable heading: at least 160 px wide, the heading on its own row above the controls', async () => {
   const board = await mountBoard();
   // ユーザーの置き場所 p が列 1 から 10 列を埋め、周辺の x（4 列）は札。最小の幅は 3 列（168）なので、残りの 2 列
   // （107）には縮めない。見せると x が列 1 から 4 列（幅 229）に出て、p が下がる。
@@ -298,7 +300,7 @@ test('a card shown from its tag at 840 × 272 keeps a readable heading: at least
         ],
       },
     ),
-    { width: 840, height: 272 },
+    { width: 768, height: 320 },
   );
   assert.equal(document.querySelector('[data-item="x"]'), null);
   await press('見出しxを見せる');
@@ -392,8 +394,8 @@ test('when only the work area changes (the window keeps its size), the canvas wi
     channel: 'desktop.canvas_changed',
     canvas: view('3', [item('a'), item('s', { placement: 'shelf' })]),
   });
-  // 作業領域の外がない: a は上 24、棚は y 800 − 16 − 56 = 728。
-  assert.equal(card('a').style.top, '24px');
+  // 作業領域の外がない: a は上 72（島の場所の下）、棚は y 800 − 16 − 56 = 728。
+  assert.equal(card('a').style.top, '72px');
   const shelf = () => {
     const found = document.querySelector('[data-shelf]');
     assert(found instanceof HTMLElement);
@@ -409,8 +411,8 @@ test('when only the work area changes (the window keeps its size), the canvas wi
   });
   assert.equal(window.innerWidth, width);
   assert.equal(window.innerHeight, height);
-  // a は上 25 + 24 = 49、棚は作業領域の下端 725 から 16 + 56 上の 653。
-  assert.equal(card('a').style.top, '49px');
+  // a は上 25 + 72 = 97、棚は作業領域の下端 725 から 16 + 56 上の 653。
+  assert.equal(card('a').style.top, '97px');
   assert.equal(shelf().style.top, '653px');
   act(() => root.unmount());
   container.remove();

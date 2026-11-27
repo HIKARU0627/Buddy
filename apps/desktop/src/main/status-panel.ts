@@ -1,37 +1,33 @@
-// 状態の層のパネル（UI-04、本人の決定 2026-10-22、ADR 0032）。
-// 状態の層の窓は、普段は画面の端のつまみ（STATUS_TAB_SIZE）だけの大きさで、つまみを押す（または全体のショートカット）と、
-// 同じ窓を画面の端から広げてパネルを出す。Esc・つまみ・外へのクリック（窓が前面でなくなる）・窓を隠す操作でしまう。
-// パネルが出ているかの正本は main（この StatusPanel）。画面（renderer）は窓の幅に合わせて描くだけで、出す・しまうの
-// 状態を別に持たない（窓の大きさと描く中身がずれない）。
+// 状態の層のパネル（UI-04、本人の決定 2026-10-22、ADR 0032。ADR 0181 の段階 4 で改めた）。
+// 状態の層の窓は、作業領域の右の端の上から下まで（幅 440）のパネルの大きさで作り、普段は隠しておく。上の中央の島の
+// 「状態のパネルを出す」（または全体のショートカット）で窓を表示してパネルを出す。Esc・パネルの「しまう」・外へのクリック
+// （窓が前面でなくなる）・窓を隠す操作・ショートカットの押し直しで窓を隠してしまう。端のつまみ（UI-04 の 56 × 232）は
+// やめた（U392 の暫定 (a)。パネルの置き場所・大きさ・確認の親・しまい方は UI-04 のまま）。
+// パネルが出ているかの正本は main（この StatusPanel）。画面（renderer）は窓が表示されているときにパネルを描くだけで、
+// 出す・しまうの状態を別に持たない。
 // OS の確認ダイアログ（承認・取消・再試行・照合・失効・自宅の登録）は、パネルが出ている間だけ、パネルの窓を親にして出す
 // （confirmDialogParent）。確認を出している間は、確認の窓へフォーカスが移っても（blur）パネルをしまわない。
 // Electron に依存しない（node:test で試験する）。窓の操作は StatusPanelWindowPort で表し、main.ts が BrowserWindow へ渡す。
+// 型だけを読む（window-roles.ts が statusPanelBounds を読むので、値を読み合わない）。
 import type { Rect } from './window-roles.js';
-import { STATUS_TAB_SIZE } from './window-roles.js';
 
-// パネルを出したときの窓の幅（つまみを含む）。承認の確認に出す変更の前後の表が読める幅にする。
+// パネルの窓の幅。承認の確認に出す変更の前後の表が読める幅にする。
 export const STATUS_PANEL_WIDTH = 440;
 
-// escape: パネルの中の Esc。tab: つまみを押し直した。shortcut: 全体のショートカットを押し直した。
-// blur: 外へのクリック・ほかのアプリへの移動（窓が前面でなくなった）。hidden: 窓を隠す操作・窓が閉じた。
+// escape: パネルの中の Esc。screen: パネルの「しまう」を押した（画面の要求 desktop.status_panel の open: false）。
+// shortcut: 全体のショートカットを押し直した。blur: 外へのクリック・ほかのアプリへの移動（窓が前面でなくなった）。
+// hidden: 窓を隠す操作・窓が閉じた。
 export type StatusPanelCloseReason =
-  'escape' | 'tab' | 'shortcut' | 'blur' | 'hidden';
+  'escape' | 'screen' | 'shortcut' | 'blur' | 'hidden';
 
-// 状態の層の窓の大きさと位置。しまっている間は作業領域の右の端の中ほどのつまみ、出している間は作業領域の右の端の
-// 上から下までのパネル（つまみはパネルの左の縁の中ほどに残る。画面が同じ位置に描く）。
-export function statusWindowBounds(open: boolean, workArea: Rect): Rect {
-  if (open)
-    return {
-      x: workArea.x + workArea.width - STATUS_PANEL_WIDTH,
-      y: workArea.y,
-      width: STATUS_PANEL_WIDTH,
-      height: workArea.height,
-    };
+// 状態の層の窓（パネル）の大きさと位置。作業領域の右の端の上から下まで。作業領域より狭くはしない。
+export function statusPanelBounds(workArea: Rect): Rect {
+  const width = Math.min(STATUS_PANEL_WIDTH, workArea.width);
   return {
-    x: workArea.x + workArea.width - STATUS_TAB_SIZE.width,
-    y: workArea.y + Math.round((workArea.height - STATUS_TAB_SIZE.height) / 2),
-    width: STATUS_TAB_SIZE.width,
-    height: STATUS_TAB_SIZE.height,
+    x: workArea.x + workArea.width - width,
+    y: workArea.y,
+    width,
+    height: workArea.height,
   };
 }
 
@@ -39,7 +35,7 @@ export function statusWindowBounds(open: boolean, workArea: Rect): Rect {
 // - 従来の窓の組み立て: 従来の窓（今までどおり）。
 // - 3 つの窓の組み立て: パネルが出ている間は状態の層の窓（パネル）。macOS はパネルに付くシート、Windows はパネルが
 //   持ち主のモーダル。ロック・停止・窓を隠す操作で閉じる仕組み（AbortSignal）は従来の窓と同じ経路を通る。
-//   パネルが出ていない（つまみだけ）なら確認を出さず、送らない（確認の入口はパネルだけ）。
+//   パネルが出ていない（窓を隠している）なら確認を出さず、送らない（確認の入口はパネルだけ。島からは出さない）。
 export function confirmDialogParent(
   mode: 'legacy' | 'canvas',
   panelOpen: boolean,
@@ -50,10 +46,11 @@ export function confirmDialogParent(
 
 // 状態の層の窓の操作（Electron のアダプターが BrowserWindow で実装する）。
 export interface StatusPanelWindowPort {
-  // 窓の大きさと位置を変える。animate は macOS で動きを付ける（Windows では効かない）。
-  setBounds(bounds: Rect, animate: boolean): void;
+  // 窓の大きさと位置を変える（出すたびに今の作業領域に合わせる）。
+  setBounds(bounds: Rect): void;
   isVisible(): boolean;
   show(): void;
+  hide(): void;
   focus(): void;
 }
 
@@ -62,8 +59,6 @@ export interface StatusPanelOptions {
   readonly window: () => StatusPanelWindowPort | null;
   // 主の画面の作業領域。
   readonly workArea: () => Rect;
-  // OS の「視差効果を減らす」（動きを減らす）。true なら動きを付けない。
-  readonly reducedMotion: () => boolean;
   // パネルをしまうとき、表示している本人の確認（OS の確認ダイアログ）を閉じて送らない。
   readonly closeConfirm: () => void;
   // 全体のショートカットで出すとき、ほかのアプリが前面にあっても Buddy を前面にする（macOS の app.focus({ steal: true })）。
@@ -71,7 +66,8 @@ export interface StatusPanelOptions {
   readonly log: (code: string) => void;
 }
 
-export type StatusPanelOpenSource = 'tab' | 'shortcut';
+// screen: 島の「状態のパネルを出す」（画面の要求 desktop.status_panel の open: true）。shortcut: 全体のショートカット。
+export type StatusPanelOpenSource = 'screen' | 'shortcut';
 
 // 出す・しまうの手順。二重に出しても・しまっても何もしない。確認を出している間の blur ではしまわない。
 export class StatusPanel {
@@ -92,9 +88,9 @@ export class StatusPanel {
     return this.#confirming > 0;
   }
 
-  // つまみの要求（desktop.status_panel）。
+  // 画面の要求（desktop.status_panel。島の「状態のパネルを出す」・パネルの「しまう」）。
   request(open: boolean): 'expand' | 'collapse' | 'none' {
-    return open ? this.show('tab') : this.hide('tab');
+    return open ? this.show('screen') : this.hide('screen');
   }
 
   // 全体のショートカット: 出ていればしまい、しまっていれば出す。
@@ -109,13 +105,11 @@ export class StatusPanel {
       return 'none';
     }
     // 出ていても、隠れていれば表示し直してフォーカスを戻す（ショートカットで呼び直したとき）。
+    // 窓の大きさは一度に変える（窓を表示する前に置き直すので、窓の動きは付けない。中身は画面が少しだけ滑り込ませ、
+    // 動きを減らす設定では付けない）。
     const expand = !this.#open;
     this.#open = true;
-    if (expand)
-      window.setBounds(
-        statusWindowBounds(true, this.#options.workArea()),
-        !this.#options.reducedMotion(),
-      );
+    if (expand) window.setBounds(statusPanelBounds(this.#options.workArea()));
     if (!window.isVisible()) window.show();
     // ショートカットはほかのアプリが前面のときに押される。Buddy を前面にしてから窓にフォーカスを渡す（Esc を受けるため）。
     if (source === 'shortcut') this.#options.activateApp?.();
@@ -131,11 +125,7 @@ export class StatusPanel {
     // しまう前に確認を閉じる（パネルが確認の親。パネルなしで確認を残さない）。
     this.#options.closeConfirm();
     const window = this.#options.window();
-    if (window !== null)
-      window.setBounds(
-        statusWindowBounds(false, this.#options.workArea()),
-        reason !== 'hidden' && !this.#options.reducedMotion(),
-      );
+    if (window !== null && window.isVisible()) window.hide();
     return 'collapse';
   }
 
@@ -150,7 +140,7 @@ export class StatusPanel {
     if (this.#confirming > 0) this.#confirming -= 1;
   }
 
-  // 状態の層の窓が閉じた・作り直した。窓はつまみの大きさで作るので、状態もしまった状態に戻す。
+  // 状態の層の窓が閉じた・作り直した。窓は隠して作るので、状態もしまった状態に戻す。
   reset(): void {
     this.#open = false;
     this.#confirming = 0;

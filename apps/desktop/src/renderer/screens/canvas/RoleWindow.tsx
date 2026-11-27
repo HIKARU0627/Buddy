@@ -1,6 +1,13 @@
-// 3 つの窓の画面の切り替え（UI-02 の試作・UI-04、ADR 0032）。preload が渡した窓の役割で、キャンバス・状態の層・入力バーの
-// どれを描くかを決める。役割で使えるチャネルは main が決め、画面は役割の表にある要求だけを送る。
-import { useCallback, useEffect, useRef, useState } from 'react';
+// キャンバス表示の窓の画面の切り替え（UI-02 の試作・UI-04、ADR 0032・0181）。preload が渡した窓の役割で、キャンバス・
+// 状態の層・入力バー・上の中央の島のどれを描くかを決める。役割で使えるチャネルは main が決め、画面は役割の表にある要求
+// だけを送る。島と入力バーは窓の地を透明にし、角の外を透かす（U399 の暫定 (a)。窓は main が透明で作る）。
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 import type {
   DesktopBudgetEntry,
   DesktopOperationEntry,
@@ -20,12 +27,15 @@ import {
   voiceStripView,
 } from '../../state/status-panel-state.js';
 import { useNow } from '../../state/use-desktop-state.js';
+import { islandView } from '../../state/island-state.js';
+import { useIslandSignals } from '../../state/use-island-signals.js';
+import type { Notice } from '../../state/work-state.js';
 import {
   useCanvasViewport,
   useInputBarExpanded,
+  usePageVisibility,
   useRoleWindowState,
   useWindowFocused,
-  useWindowWidth,
 } from '../../state/use-role-window-state.js';
 import { useBudgetState } from '../../state/use-budget-state.js';
 import { useWorkState } from '../../state/use-work-state.js';
@@ -37,7 +47,8 @@ import {
   contentShown,
   inputBarEnabled,
   inputDraftAfter,
-  statusTabView,
+  statusSummaryView,
+  transparentSurfaceFor,
 } from '../../state/window-role-state.js';
 import type { RendererWindowRole } from '../../state/window-role-state.js';
 import {
@@ -47,9 +58,9 @@ import {
 } from '../../state/input-bar-state.js';
 import { CanvasBoard } from './CanvasBoard.js';
 import { CanvasGround } from './CanvasGround.js';
+import { CanvasIsland, useIslandHold } from './CanvasIsland.js';
 import { InputBar } from './InputBar.js';
 import { StatusPanel } from './StatusPanel.js';
-import { StatusTab } from './StatusTab.js';
 import { VoiceStrip } from './VoiceStrip.js';
 
 function CanvasWindow({ api }: { readonly api: BuddyDesktopApi }) {
@@ -79,12 +90,43 @@ function CanvasWindow({ api }: { readonly api: BuddyDesktopApi }) {
 // 操作がないときの空の配列（描画のたびに新しい配列を作らない）。
 const NO_OPERATIONS: readonly DesktopOperationEntry[] = [];
 const NO_BUDGET_ITEMS: readonly DesktopBudgetEntry[] = [];
+// 島の窓には行の知らせ（パネルの WorkOperations が持つ）がない。島は結果を待っていた操作の状態の移りだけを結果にする。
+const NO_NOTICES: Readonly<Record<string, Notice>> = {};
 
-// 状態の層（UI-04）。窓の幅が main の決めたパネルの幅ならパネル、つまみの幅ならつまみだけを描く。
+// 上の中央の島（ADR 0181 の段階 4）。状態の取得・停止・パネルを出すだけ（役割 island。承認・取消・再開は使えない）。
+function IslandWindow({ api }: { readonly api: BuddyDesktopApi }) {
+  const { state, setPanel, stop } = useRoleWindowState(api, 'island');
+  const now = useNow();
+  const connection = shownConnection(state.connection);
+  // 確認が必要な操作の数と結果は、パネルと同じ条件（ロック解除済み・登録済み・中枢に接続中）で数える。
+  const live = operationsShown(state.status, connection);
+  const operations = connection?.operations ?? NO_OPERATIONS;
+  const signals = useIslandSignals(live, operations, NO_NOTICES);
+  const [holdingSince, onHoldChange] = useIslandHold();
+  const summary = statusSummaryView(state.status, state.connection);
+  return (
+    <CanvasIsland
+      view={islandView({
+        status: state.status,
+        connection: state.connection,
+        now,
+        signals,
+        holdingSince,
+      })}
+      pending={summary.pending}
+      summaryLabel={summary.label}
+      privacy={privacyMarks(state.status, state.voice)}
+      onStop={stop}
+      onOpenPanel={() => setPanel(true)}
+      onHoldChange={onHoldChange}
+    />
+  );
+}
+
+// 状態の層（UI-04）。main が窓を表示している間だけパネルを描く（窓はパネルの大きさで作り、しまうと隠す。ADR 0181 の段階 4）。
 function StatusWindow({ api }: { readonly api: BuddyDesktopApi }) {
   const {
     state,
-    summonCanvas,
     setPanel,
     stop,
     resume,
@@ -93,8 +135,8 @@ function StatusWindow({ api }: { readonly api: BuddyDesktopApi }) {
     controlVoice,
   } = useRoleWindowState(api, 'status');
   const now = useNow();
-  const width = useWindowWidth();
-  const panelOpen = panelShownFor(width);
+  const visibility = usePageVisibility();
+  const panelOpen = panelShownFor(visibility.state);
   const connection = shownConnection(state.connection);
   // 確認が必要な操作の一覧（WorkPanel と同じ持ち方。ロック・切断で内容を捨てる。ADR 0031）。
   const live = operationsShown(state.status, connection);
@@ -104,7 +146,7 @@ function StatusWindow({ api }: { readonly api: BuddyDesktopApi }) {
   const budgetItems = connection?.budget_items ?? NO_BUDGET_ITEMS;
   const budget = useBudgetState(api, live, budgetItems);
   const previewEntry = usePreviewFocus(work.state, operations);
-  const view = statusTabView(state.status, state.connection);
+  const view = statusSummaryView(state.status, state.connection);
   const stopped =
     state.status?.visibility === 'shown' && state.status.stop_scope !== 'none';
   // パネルの中の Esc: 確認の欄を開いていれば閉じ、それ以外はパネルをしまう（IME の変換中・ほかの部品が受けた Esc は除く）。
@@ -131,21 +173,12 @@ function StatusWindow({ api }: { readonly api: BuddyDesktopApi }) {
   useEffect(() => {
     if (!panelOpen && previewOpen && !approving) work.actions.closePreview();
   }, [panelOpen, previewOpen, approving, work.actions]);
-  const tab = (
-    <StatusTab
-      view={view}
-      privacy={privacyMarks(state.status, state.voice)}
-      panelOpen={panelOpen}
-      onTogglePanel={() => setPanel(!panelOpen)}
-      canSummon={canSummonCanvas(state.status)}
-      onSummon={summonCanvas}
-      className={panelOpen ? 'h-[232px] w-14' : 'h-screen w-screen'}
-    />
-  );
-  if (!panelOpen) return tab;
+  // 隠している間は描かない。出すたびに描き直し（key）、パネルの滑り込みとフォーカスの移動をやり直す。
+  if (!panelOpen) return null;
   return (
     <StatusPanel
-      tab={tab}
+      key={visibility.shownCount}
+      onClose={() => setPanel(false)}
       status={state.status}
       ioLine={view.line}
       items={statusItems(state.status, state.connection, now)}
@@ -249,7 +282,7 @@ function InputWindow({ api }: { readonly api: BuddyDesktopApi }) {
       .catch(() => setAttention(true))
       .finally(() => setSending(false));
   }, [api, enabled, sending]);
-  const view = statusTabView(state.status, null);
+  const view = statusSummaryView(state.status, null);
   return (
     <InputBar
       line={view.line}
@@ -279,7 +312,15 @@ export function RoleWindow({
   readonly api: BuddyDesktopApi;
   readonly role: Exclude<RendererWindowRole, 'legacy'>;
 }) {
+  // 描く前に地を決める（透明な窓に、テーマの地の色の四角が一瞬でも出ないように）。
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    if (transparentSurfaceFor(role))
+      root.dataset['windowSurface'] = 'transparent';
+    else delete root.dataset['windowSurface'];
+  }, [role]);
   if (role === 'canvas') return <CanvasWindow api={api} />;
   if (role === 'status') return <StatusWindow api={api} />;
+  if (role === 'island') return <IslandWindow api={api} />;
   return <InputWindow api={api} />;
 }

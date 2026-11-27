@@ -1,6 +1,6 @@
 // キャンバスを置く画面の設定（複数のモニターの設定。UI-06、ADR 0032）の試験。既定は主の画面、選んだ画面がなければ主の画面、
-// 保存は設定の項目だけで本文を持たないこと、入力バー・状態の層の窓が配置のエンジンの空けた場所に入ることを、どの画面でも
-// 確かめる。期待値は手で書いた。Electron は起動しない（画面の一覧は合成）。
+// 保存は設定の項目だけで本文を持たないこと、入力バー・上の中央の島の窓が配置のエンジンの空けた場所に入ることを、どの画面でも
+// 確かめる（ADR 0181 の段階 4 で端のつまみを島に置き換えた）。期待値は手で書いた。Electron は起動しない（画面の一覧は合成）。
 import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -21,7 +21,10 @@ import { tempDir } from './hub-test-support.js';
 import {
   INPUT_BAR_MARGIN,
   INPUT_BAR_SIZE,
-  STATUS_TAB_SIZE,
+  ISLAND_EXPANDED_SIZE,
+  ISLAND_MARGIN,
+  ISLAND_SIZE,
+  islandBounds,
   uiWindowSpec,
 } from './window-roles.js';
 import type { Rect } from './window-roles.js';
@@ -169,8 +172,58 @@ const inside = (inner: Rect, outer: Rect) =>
   inner.x + inner.width <= outer.x + outer.width &&
   inner.y + inner.height <= outer.y + outer.height;
 
-test('on every display (macOS and Windows), the input bar and status tab windows fall inside the places the layout engine keeps free', () => {
-  // main の窓の大きさは、エンジンの空ける大きさに入る（手で書いた関係: 560 + 16 × 2 = 592、56 + 16 + 16 = 88、56 ≤ 72）。
+// ADR 0181 の段階 4（U400 の暫定 (a)）: domain の空ける場所（CANVAS_LAYOUT.islandReserve）と、apps/desktop の島の窓の
+// 大きさ・余白が一致すること。値は手で書いた（560 × 48、上の余白 8、左右と下の余白 16 → 592 × 72）。
+test('the island reserve of the layout engine matches the island window of the desktop app', () => {
+  assert.deepEqual(ISLAND_SIZE, { width: 560, height: 48 });
+  assert.deepEqual(ISLAND_EXPANDED_SIZE, { width: 560, height: 104 });
+  assert.equal(ISLAND_MARGIN, 8);
+  assert.deepEqual(CANVAS_LAYOUT.islandReserve, { width: 592, height: 72 });
+  // 幅: 島の窓 560 ＋ 左右の余白 16 × 2 = 592（ちょうど）。
+  assert.equal(
+    ISLAND_SIZE.width + CANVAS_LAYOUT.gap * 2,
+    CANVAS_LAYOUT.islandReserve.width,
+  );
+  // 高さ: 上の余白 8 ＋ 小さな島 48 ＋ 下の余白 16 = 72（ちょうど）。
+  assert.equal(
+    ISLAND_MARGIN + ISLAND_SIZE.height + CANVAS_LAYOUT.gap,
+    CANVAS_LAYOUT.islandReserve.height,
+  );
+  // 広がった島（上の余白 8 ＋ 104 = 112）は空けた場所より下へ出る（一時的にカードに重なってよい。U400 の暫定 (a)）。
+  assert(
+    ISLAND_MARGIN + ISLAND_EXPANDED_SIZE.height >
+      CANVAS_LAYOUT.islandReserve.height,
+  );
+  // 入力バーと島は同じ幅（上と下の中央にそろう）。
+  assert.equal(ISLAND_SIZE.width, INPUT_BAR_SIZE.width);
+  // 窓の位置（1920 × 980 の作業領域、上 25）: x = (1920 − 560) / 2 = 680、y = 25 + 8 = 33。
+  assert.deepEqual(islandBounds(PRIMARY.workArea, false), {
+    x: 680,
+    y: 33,
+    width: 560,
+    height: 48,
+  });
+  // 広げても上の端と横の位置は変えず、下へ伸ばす。
+  assert.deepEqual(islandBounds(PRIMARY.workArea, true), {
+    x: 680,
+    y: 33,
+    width: 560,
+    height: 104,
+  });
+  // 作業領域が島より狭い・低いときは、作業領域に合わせる。
+  assert.deepEqual(
+    islandBounds({ x: 5, y: 10, width: 400, height: 60 }, true),
+    {
+      x: 5,
+      y: 18,
+      width: 400,
+      height: 52,
+    },
+  );
+});
+
+test('on every display (macOS and Windows), the input bar and island windows fall inside the places the layout engine keeps free', () => {
+  // main の窓の大きさは、エンジンの空ける大きさに入る（手で書いた関係: 560 + 16 × 2 = 592、56 + 16 + 16 = 88）。
   assert(
     INPUT_BAR_SIZE.width + INPUT_BAR_MARGIN * 2 <=
       CANVAS_LAYOUT.inputBarReserve.width,
@@ -179,7 +232,6 @@ test('on every display (macOS and Windows), the input bar and status tab windows
     INPUT_BAR_SIZE.height + INPUT_BAR_MARGIN + CANVAS_LAYOUT.gap <=
       CANVAS_LAYOUT.inputBarReserve.height,
   );
-  assert(STATUS_TAB_SIZE.width <= CANVAS_LAYOUT.statusReserveWidth);
   for (const platform of ['darwin', 'win32'])
     for (const display of [PRIMARY, RIGHT, PORTRAIT]) {
       const geometry = { bounds: display.bounds, workArea: display.workArea };
@@ -216,11 +268,17 @@ test('on every display (macOS and Windows), the input bar and status tab windows
       const input = relative(
         uiWindowSpec('input', platform, geometry, '/p').options,
       );
-      const status = relative(
-        uiWindowSpec('status', platform, geometry, '/p').options,
+      const island = relative(
+        uiWindowSpec('island', platform, geometry, '/p').options,
       );
       assert(inside(input, layout.reserved.input_bar), `${label} input`);
-      assert(inside(status, layout.reserved.status), `${label} status`);
+      assert(inside(island, layout.reserved.island), `${label} island`);
+      // 空けた場所の下の端より下に、カードの置き場所（格子の上の端）がある。
+      assert(
+        (layout.grid?.y ?? Number.POSITIVE_INFINITY) >=
+          layout.reserved.island.y + layout.reserved.island.height,
+        `${label} grid top`,
+      );
     }
 });
 

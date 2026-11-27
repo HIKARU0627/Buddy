@@ -1,4 +1,5 @@
-// 窓の役割の基盤（UI-02、ADR 0032・0014・0015）。キャンバス・状態の層・入力バーの 3 つの窓と、従来の 1 つの窓。
+// 窓の役割の基盤（UI-02、ADR 0032・0014・0015・0181）。キャンバス・状態の層・入力バー・島（ADR 0181 の段階 4 で足した
+// 上の中央の窓）の組み立てと、従来の 1 つの窓。
 // main は、送信元の webContents と窓の役割の対応（UiWindowRegistry）を持ち、送信元の検査（isTrustedSender）に
 // 役割の検査（DESKTOP_ROLE_CHANNELS）を足して受付を絞る。通知も役割ごとの表（DESKTOP_ROLE_NOTIFICATIONS）に
 // 合う窓にだけ送る。役割の正本は main の対応表で、preload に渡す引数（--buddy-window-role）は画面の切り替えと
@@ -12,6 +13,7 @@ import {
   type DesktopIpcSender,
   type DesktopWindowRole,
 } from '@buddy/domain';
+import { statusPanelBounds } from './status-panel.js';
 import { isTrustedSender, type SenderFacts } from './window-policy.js';
 
 // 従来の窓（legacy）は、今の 1 つの窓（B03・B04 の画面）。今と同じく全チャネル・全通知を使う。
@@ -35,7 +37,7 @@ const LEGACY_EXCLUDED_CHANNELS: readonly string[] = [
   'desktop.voice_control',
 ];
 
-// 窓の組み立て方。既定は従来の 1 つの窓。canvas は 3 つの役割の窓（試作）。
+// 窓の組み立て方。既定は従来の 1 つの窓。canvas はキャンバス・状態の層・入力バー・島の窓（試作）。
 export type UiWindowMode = 'legacy' | 'canvas';
 
 // 開発用のフラグ（コマンドラインの --buddy-ui=canvas、または環境変数 BUDDY_DESKTOP_UI=canvas）。
@@ -63,9 +65,11 @@ export function uiWindowMode(
   return value === 'canvas' ? 'canvas' : 'legacy';
 }
 
-// 作る窓の順番。キャンバスを先に作り、状態の層・入力バーをその前に重ねる。
+// 作る窓の順番。キャンバスを先に作り、状態の層・入力バー・島をその前に重ねる。
 export function rolesForMode(mode: UiWindowMode): readonly UiWindowRole[] {
-  return mode === 'canvas' ? ['canvas', 'status', 'input'] : ['legacy'];
+  return mode === 'canvas'
+    ? ['canvas', 'status', 'input', 'island']
+    : ['legacy'];
 }
 
 // 送信元の窓の役割がそのチャネルを使えるか。役割が分からない（対応表にない・閉じた）窓は何も使えない。
@@ -236,7 +240,8 @@ export interface DisplayGeometry {
   readonly workArea: Rect;
 }
 
-// 3 つの窓とも同じ webPreferences（sandbox・contextIsolation・同じ preload）。違いは役割の引数だけ。
+// どの窓も同じ webPreferences（sandbox・contextIsolation・同じ preload）。違いは役割の引数と、島の窓だけが中身の大きさを
+// main へ知らせる設定（enablePreferredSizeMode。main は 2 つの決まった大きさのどちらにするかだけに使う）。
 export interface UiWebPreferences {
   readonly preload: string;
   readonly sandbox: true;
@@ -250,6 +255,7 @@ export interface UiWebPreferences {
   readonly webviewTag: false;
   readonly spellcheck: false;
   readonly additionalArguments: readonly string[];
+  readonly enablePreferredSizeMode?: true;
 }
 
 // BrowserWindow に渡す値（Electron の BrowserWindowConstructorOptions の一部と同じ形）。
@@ -277,6 +283,9 @@ export interface UiWindowOptions {
   readonly roundedCorners?: boolean;
   readonly thickFrame?: boolean;
   readonly enableLargerThanScreen?: boolean;
+  // 角の外を透かす窓（島と入力バー。ADR 0181 の U399 の暫定 (a)）。背景は完全に透明（#00000000）。
+  readonly transparent?: boolean;
+  readonly backgroundColor?: string;
   readonly webPreferences: UiWebPreferences;
 }
 
@@ -293,11 +302,44 @@ export interface UiWindowSpec {
   readonly maximize: boolean;
   // 表示のときに前面に出してキー入力を受ける（入力バーと従来の窓）。それ以外は前面を奪わずに出す。
   readonly focusOnShow: boolean;
+  // 作った後・窓を表示し直すとき（トレイ・キャンバスを呼ぶ）に表示する。状態の層の窓はパネルを出すときだけ表示する
+  // （ADR 0181 の段階 4。端のつまみをやめた）。
+  readonly showOnStart: boolean;
 }
 
-// 端のつまみ（UI-04 で、プライバシーと権限の専用の記号 3 つの分だけ高くした）。パネルを出したときの大きさは
-// status-panel.ts の statusWindowBounds。
-export const STATUS_TAB_SIZE = { width: 56, height: 232 } as const;
+// 状態の層の窓の大きさは status-panel.ts の statusPanelBounds（右の端の上から下まで、幅 440）。端のつまみ
+// （UI-04 の 56 × 232）は ADR 0181 の段階 4 でやめ、パネルは上の中央の島から出す（U392 の暫定 (a)）。
+
+// 上の中央の島の窓（ADR 0181 の段階 4）。窓は透明で、窓の中の上の中央に島を描く（角の外は透ける。U399 の暫定 (a)）。
+// 幅は、島の中身の最も長い形（ロック中の隠した旨・パネルを出すボタン・停止）が 1 行に入る幅で、入力バーと同じ 560。
+// 高さは小さい形（1 行の 48）と、確認が必要な操作・操作の結果で広げた形（区切り線の下に 1 行を足した 104）の 2 つだけ。
+export const ISLAND_SIZE = { width: 560, height: 48 } as const;
+export const ISLAND_EXPANDED_SIZE = { width: 560, height: 104 } as const;
+// 作業領域の上端と島の間。
+export const ISLAND_MARGIN = 8;
+
+// 島の窓の位置と大きさ。上の端を固定し、広げるときは下へ伸ばす。作業領域に収まらない大きさは作業領域に合わせる。
+export function islandBounds(area: Rect, expanded: boolean): Rect {
+  const size = expanded ? ISLAND_EXPANDED_SIZE : ISLAND_SIZE;
+  const width = Math.min(size.width, area.width);
+  const height = Math.min(
+    size.height,
+    Math.max(0, area.height - ISLAND_MARGIN),
+  );
+  return {
+    x: area.x + Math.round((area.width - width) / 2),
+    y: area.y + ISLAND_MARGIN,
+    width,
+    height,
+  };
+}
+
+// 島の窓の中身の高さ（webContents の preferred-size-changed。画面が決めた島の形）から、広げた大きさにするかを決める。
+// 画面は 2 つの決まった大きさのどちらかを選ばせるだけで、窓の位置・幅・高さの値は main が決める。
+export function islandExpandedFor(contentHeight: number): boolean {
+  return Number.isFinite(contentHeight) && contentHeight > ISLAND_SIZE.height;
+}
+
 export const INPUT_BAR_SIZE = { width: 560, height: 56 } as const;
 // 入力するときの大きさ（UI-08）。下の端を固定して上へ伸ばす。
 export const INPUT_BAR_EXPANDED_SIZE = { width: 560, height: 176 } as const;
@@ -350,7 +392,7 @@ function webPreferences(preload: string, role: UiWindowRole): UiWebPreferences {
   };
 }
 
-// 小さな窓（状態の層・入力バー）に共通の値。枠なし・大きさと位置は固定・タスクバーに出さない・常に最前面。
+// 小さな窓（状態の層・入力バー・島）に共通の値。枠なし・大きさと位置は固定・タスクバーに出さない・常に最前面。
 // macOS はパネル型（NSPanel。全画面のアプリの上にも出せる）。
 function smallWindowBase(platform: string) {
   return {
@@ -365,6 +407,14 @@ function smallWindowBase(platform: string) {
     alwaysOnTop: true,
   };
 }
+
+// 角の外を透かす窓（島と入力バー。U399 の暫定 (a)）。OS の影は付けない（影は四角い窓の形に付くため）。
+// Windows の透明な窓は、大きさの変更・最前面・フォーカスで崩れるおそれがある（試作。実機の確認は未実施。ADR 0181）。
+const TRANSPARENT_WINDOW = {
+  transparent: true,
+  backgroundColor: '#00000000',
+  hasShadow: false,
+} as const;
 
 // 役割ごとの窓の作り方。platform は process.platform、display は主の画面。
 export function uiWindowSpec(
@@ -394,6 +444,7 @@ export function uiWindowSpec(
         alwaysOnTopLevel: null,
         maximize: false,
         focusOnShow: true,
+        showOnStart: true,
       };
     case 'canvas': {
       const common = {
@@ -427,6 +478,7 @@ export function uiWindowSpec(
           alwaysOnTopLevel: null,
           maximize: false,
           focusOnShow: false,
+          showOnStart: true,
         };
       // Windows（とその他）は、枠なしで作業領域に最大化し、タスクバーに出さない。
       return {
@@ -443,20 +495,19 @@ export function uiWindowSpec(
         alwaysOnTopLevel: null,
         maximize: true,
         focusOnShow: false,
+        showOnStart: true,
       };
     }
-    case 'status': {
-      const area = display.workArea;
-      // 作業領域の右の端の中ほどに置くつまみ。
+    case 'status':
+      // 作業領域の右の端の上から下までのパネル。作った後は隠しておき、パネルを出すとき（島のボタン・全体の
+      // ショートカット）だけ表示する（status-panel.ts）。
       return {
         role,
         options: {
           ...smallWindowBase(platform),
           show: false,
           title: 'Buddy',
-          x: area.x + area.width - STATUS_TAB_SIZE.width,
-          y: area.y + Math.round((area.height - STATUS_TAB_SIZE.height) / 2),
-          ...STATUS_TAB_SIZE,
+          ...statusPanelBounds(display.workArea),
           webPreferences: prefs,
         },
         contentProtection: true,
@@ -464,8 +515,8 @@ export function uiWindowSpec(
         alwaysOnTopLevel: 'floating',
         maximize: false,
         focusOnShow: false,
+        showOnStart: false,
       };
-    }
     case 'input': {
       // 作業領域の下の中ほどに置く帯。最初は小さく、入力するときに広げる。
       const bounds = inputBarBounds(display.workArea, false);
@@ -473,6 +524,7 @@ export function uiWindowSpec(
         role,
         options: {
           ...smallWindowBase(platform),
+          ...TRANSPARENT_WINDOW,
           show: false,
           title: 'Buddy',
           ...bounds,
@@ -483,7 +535,30 @@ export function uiWindowSpec(
         alwaysOnTopLevel: 'floating',
         maximize: false,
         focusOnShow: true,
+        showOnStart: true,
       };
     }
+    case 'island':
+      // 作業領域の上の中央に置く島。前面を奪わず、キー入力も受けない（focusable: false。押すとキーの前面の窓
+      // （パネル・入力バー）を前面から外さない）。キーボードからは全体のショートカット（停止・パネル）で同じ操作ができる。
+      // 中身の高さが変わったら、main が 2 つの決まった大きさのどちらかにする（islandExpandedFor）。
+      return {
+        role,
+        options: {
+          ...smallWindowBase(platform),
+          ...TRANSPARENT_WINDOW,
+          focusable: false,
+          show: false,
+          title: 'Buddy',
+          ...islandBounds(display.workArea, false),
+          webPreferences: { ...prefs, enablePreferredSizeMode: true },
+        },
+        contentProtection: true,
+        allWorkspaces: { visibleOnFullScreen: true },
+        alwaysOnTopLevel: 'floating',
+        maximize: false,
+        focusOnShow: false,
+        showOnStart: true,
+      };
   }
 }

@@ -1,5 +1,5 @@
-// 3 つの窓の画面（UI-02 の試作、ADR 0032）の試験。窓の役割の読み取り・最初に送る要求・端のつまみの記号と数・
-// 入力バーの有効と無効を、純粋な関数とサーバー描画（react-dom/server）で確かめる。期待値は手で書く。
+// キャンバス表示の窓の画面（UI-02 の試作、ADR 0032・0181）の試験。窓の役割の読み取り・最初に送る要求・状態の要約（記号と数）・
+// 上の中央の島（段階 4）・入力バーの有効と無効を、純粋な関数とサーバー描画（react-dom/server）で確かめる。期待値は手で書く。
 // 実際のクリック・キー入力・IME は Electron の画面で確かめる（docs/ui/window-prototype.md）。
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
@@ -19,12 +19,16 @@ import {
   inputBarEnabled,
   inputDraftAfter,
   rendererWindowRole,
-  statusTabView,
+  statusSummaryView,
+  transparentSurfaceFor,
 } from '../../state/window-role-state.js';
 import { CanvasGround } from './CanvasGround.js';
+import { CanvasIsland } from './CanvasIsland.js';
 import { InputBar } from './InputBar.js';
+
+import { islandView } from '../../state/island-state.js';
+import type { IslandSignals } from '../../state/island-state.js';
 import { privacyMarks } from '../../state/status-panel-state.js';
-import { StatusTab } from './StatusTab.js';
 
 const id = (n: number) =>
   `00000000-0000-4000-8000-${n.toString(16).padStart(12, '0')}`;
@@ -91,6 +95,8 @@ test('the window role from the preload picks the screen; unknown roles draw noth
   assert.equal(rendererWindowRole('canvas'), 'canvas');
   assert.equal(rendererWindowRole('status'), 'status');
   assert.equal(rendererWindowRole('input'), 'input');
+  // 上の中央の島（ADR 0181 の段階 4）。
+  assert.equal(rendererWindowRole('island'), 'island');
   assert.equal(rendererWindowRole(null), null);
   assert.equal(rendererWindowRole('admin'), null);
   assert.equal(rendererWindowRole('Canvas'), null);
@@ -105,23 +111,32 @@ test('each window asks only for what its role may read', () => {
     'desktop.get_connection',
     'desktop.get_voice',
   ]);
+  // 島は確認が必要な操作の数（接続の状態）と、外部へ送っている印（音声の状態）を読む（読むだけ。役割の表の U391）。
+  assert.deepEqual(initialChannelsFor('island'), [
+    'desktop.get_state',
+    'desktop.get_connection',
+    'desktop.get_voice',
+  ]);
 });
 
-test('the status tab shows one mark and the number of operations needing attention', () => {
+test('the status summary shows one mark and the number of operations needing attention', () => {
   const ops = [
     entry(1),
     entry(2, { state: 'unknown_held', allowed_actions: ['reconcile'] }),
     entry(3, { state: 'preparing', allowed_actions: [] }),
     entry(4, { state: 'succeeded', allowed_actions: [] }),
   ];
-  assert.deepEqual(statusTabView(shown(), connected(ops)), {
+  assert.deepEqual(statusSummaryView(shown(), connected(ops)), {
     line: { tone: 'success', mark: 'dot', text: '受付中' },
     pending: 2,
     // 数と単位の間は折り返さない空白（U+00A0。ADR 0024 の約束 1）。
     label: 'Buddy の状態: 受付中、確認が必要な操作 2\u00a0件',
   });
   assert.deepEqual(
-    statusTabView(shown({ stop_scope: 'local', input_permitted: false }), null),
+    statusSummaryView(
+      shown({ stop_scope: 'local', input_permitted: false }),
+      null,
+    ),
     {
       line: { tone: 'neutral', mark: 'square', text: '停止中' },
       pending: null,
@@ -130,13 +145,13 @@ test('the status tab shows one mark and the number of operations needing attenti
   );
   // 未登録では数を出さない。
   assert.equal(
-    statusTabView(shown(), connected(ops, 'unregistered')).pending,
+    statusSummaryView(shown(), connected(ops, 'unregistered')).pending,
     null,
   );
-  assert.equal(statusTabView(shown(), connected([])).pending, 0);
+  assert.equal(statusSummaryView(shown(), connected([])).pending, 0);
   // ロック中・不明・受け取る前は数を出さない。
   assert.deepEqual(
-    statusTabView(
+    statusSummaryView(
       { visibility: 'hidden', lock_state: 'locked' },
       connected(ops),
     ),
@@ -147,10 +162,11 @@ test('the status tab shows one mark and the number of operations needing attenti
     },
   );
   assert.equal(
-    statusTabView({ visibility: 'hidden', lock_state: 'unknown' }, null).label,
+    statusSummaryView({ visibility: 'hidden', lock_state: 'unknown' }, null)
+      .label,
     'Buddy の状態: ロック状態を確認中',
   );
-  assert.equal(statusTabView(null, null).line.mark, 'spinner');
+  assert.equal(statusSummaryView(null, null).line.mark, 'spinner');
 });
 
 const noop = () => undefined;
@@ -160,35 +176,61 @@ const visibleText = (html: string) =>
     .replace(/\s+/gu, ' ')
     .trim();
 
-test('the status tab draws a mark, a count and three privacy slots with no visible sentence; pressing it opens the panel', () => {
-  const html = render(
-    <StatusTab
-      view={statusTabView(shown(), connected([entry(1), entry(2)]))}
-      privacy={privacyMarks(shown())}
-      panelOpen={false}
-      onTogglePanel={noop}
-      canSummon
-      onSummon={noop}
+// ADR 0181 の段階 4: 上の中央の島（キャンバス表示）。端のつまみの中身（入出力の記号・確認が必要な操作の数・専用の記号 3 つ）
+// を島の小さい形へ移し、停止とパネルを出すボタンを置く。キャンバスを前に出す・承認・取消のボタンは島にない。
+const islandOf = (
+  status: DesktopStatusBar | null,
+  connection: DesktopConnectionView | null,
+  options: {
+    readonly signals?: IslandSignals | null;
+    readonly now?: number;
+    readonly privacy?: ReturnType<typeof privacyMarks>;
+  } = {},
+) => {
+  const summary = statusSummaryView(status, connection);
+  return render(
+    <CanvasIsland
+      view={islandView({
+        status,
+        connection,
+        now: options.now ?? 0,
+        signals: options.signals ?? null,
+        holdingSince: null,
+      })}
+      pending={summary.pending}
+      summaryLabel={summary.label}
+      privacy={options.privacy ?? privacyMarks(status)}
+      onStop={noop}
+      onOpenPanel={noop}
     />,
   );
+};
+
+test('the island draws the IO line, the panel button with the count and three privacy slots, and the stop', () => {
+  const html = islandOf(shown(), connected([entry(1), entry(2)]));
   assert.match(
     html,
-    /<aside[^>]*aria-label="Buddy の状態: 受付中、確認が必要な操作 2\u00a0件"/u,
+    /<section[^>]*aria-label="状態の島"[^>]*data-island="compact"/u,
   );
-  // UI-04: つまみ（記号・数・専用の記号）を押すとパネルが出る（本人の決定）。押す前は aria-expanded が false。
+  // 島の面は完全な丸に近い島の丸み（28px）と縁取りの線。影は使わない。
+  assert.match(html, /rounded-island border border-border bg-surface/u);
+  assert.doesNotMatch(html, /shadow/u);
+  // 入出力の 1 行はライブ領域（パネルから島へ移した。同じ文を 2 か所で読ませない）。
+  assert.match(html, /<p role="status"[^>]*>(?:(?!<\/p>)[\s\S])*受付中/u);
   const buttons = html.match(/<button[\s\S]*?<\/button>/gu) ?? [];
   assert.equal(buttons.length, 2);
-  const toggle = buttons[0] ?? '';
-  assert.match(toggle, /aria-expanded="false"/u);
-  assert.match(toggle, /aria-label="状態のパネルを出す（Buddy の状態: 受付中/u);
-  assert.match(toggle, /●/u);
-  // つまみの下に、入力バーと同じキャンバスの記号のボタン（縁つき）がある。読み上げの名前だけで、見える説明文はない。
-  const canvas = buttons[1] ?? '';
-  assert.match(canvas, /aria-label="キャンバスを前に出す"/u);
-  assert.match(canvas, /button--outline/u);
-  assert.equal((canvas.match(/<rect\b/gu) ?? []).length, 4);
-  assert.doesNotMatch(html, /<button[^>]*\bdisabled/u);
-  // 専用の記号 3 つは決まった順。値がまだない（B05・UI-05・中枢が配るまで）ので、点線の枠だけで記号は描かない。
+  // パネルを出すボタン: 読み上げの名前に要約と専用の記号の状態が入る。出す・しまうの切り替えではない（aria-expanded なし）。
+  const panelButton = buttons[0] ?? '';
+  assert.match(
+    panelButton,
+    /aria-label="状態のパネルを出す（Buddy の状態: 受付中、確認が必要な操作 2\u00a0件。音声を外部へ送っているかは未受信、記録しないモードかは未受信、安全停止中かは未受信）"/u,
+  );
+  assert.doesNotMatch(panelButton, /aria-expanded/u);
+  // 停止: 見える文字は「■ 停止」、読み上げの名前は「入出力を停止」（U396）。停止の重さ（danger-soft）。
+  const stopButton = buttons[1] ?? '';
+  assert.match(stopButton, /aria-label="入出力を停止"/u);
+  assert.match(stopButton, /button--danger-soft/u);
+  // 専用の記号 3 つは決まった順。値がまだないので点線の枠。
   assert.deepEqual(
     [...html.matchAll(/data-privacy="([a-z_]+)" data-state="([a-z]+)"/gu)].map(
       (match) => `${match[1]}:${match[2]}`,
@@ -196,50 +238,51 @@ test('the status tab draws a mark, a count and three privacy slots with no visib
     ['voice_external:unknown', 'private_mode:unknown', 'safety_stop:unknown'],
   );
   assert.equal((html.match(/border-dashed/gu) ?? []).length, 3);
-  // 見える文字は記号と数だけ。
-  assert.equal(visibleText(html), '● 2');
-  const locked = render(
-    <StatusTab
-      view={statusTabView({ visibility: 'hidden', lock_state: 'locked' }, null)}
-      privacy={privacyMarks({ visibility: 'hidden', lock_state: 'locked' })}
-      panelOpen={false}
-      onTogglePanel={noop}
-      canSummon={canSummonCanvas({
-        visibility: 'hidden',
-        lock_state: 'locked',
-      })}
-      onSummon={noop}
-    />,
-  );
-  assert.equal(visibleText(locked), '○');
-  // ロック中でもパネルは出せる（停止へ届く）。専用の記号は隠す（枠だけ）。
-  const lockedButtons = locked.match(/<button[\s\S]*?<\/button>/gu) ?? [];
-  assert.doesNotMatch(lockedButtons[0] ?? '', /^<button[^>]*\bdisabled/u);
-  assert.equal((locked.match(/data-state="hidden"/gu) ?? []).length, 3);
-  // ロック中はキャンバスを呼べない。
-  assert.match(locked, /<button[^>]*\bdisabled/u);
+  // 見える文字は入出力の 1 行・数・停止だけ。
+  assert.equal(visibleText(html), '● 受付中 2 ■ 停止');
+  // 島からキャンバスを前に出す・承認・取消はできない（ボタンを作らない）。
+  assert.doesNotMatch(html, /キャンバスを前に出す|承認|取り消す|再開/u);
+  assert.doesNotMatch(html, /<button[^>]*\bdisabled/u);
 });
 
-test('the privacy slots stay in place and fill in when the state is on', () => {
-  const on = render(
-    <StatusTab
-      view={statusTabView(shown(), null)}
-      privacy={privacyMarks(
-        shown({
-          voice_state: 'conversation_live',
-          storage_mode: 'private',
-          safety_stopped: true,
-        }),
-      )}
-      panelOpen
-      onTogglePanel={noop}
-      canSummon
-      onSummon={noop}
-    />,
+test('the island while stopped has no stop; while locked it hides the content but keeps the panel button and the stop', () => {
+  const stopped = islandOf(
+    shown({ stop_scope: 'local', input_permitted: false }),
+    connected([]),
   );
-  // パネルを出している間は、同じつまみがしまうボタンになる。
-  assert.match(on, /aria-expanded="true"/u);
-  assert.match(on, /aria-label="状態のパネルをしまう/u);
+  // 止まった後は停止を出さない（ADR 0024 UI レビュー 2 回目 1）。再開はパネルから。
+  assert.equal(visibleText(stopped), '■ 停止中 0');
+  assert.equal((stopped.match(/<button\b/gu) ?? []).length, 1);
+  assert.doesNotMatch(stopped, /aria-label="入出力を停止"/u);
+  const locked = islandOf({ visibility: 'hidden', lock_state: 'locked' }, null);
+  assert.equal(
+    visibleText(locked),
+    '画面がロックされているため、内容を隠しています。 ■ 停止',
+  );
+  assert.match(locked, /<p role="status"/u);
+  // ロック中でもパネルを出せる（停止へ届く）。数と専用の記号は描かない。
+  assert.match(
+    locked,
+    /<button[^>]*aria-label="状態のパネルを出す（Buddy の状態: ロック中。/u,
+  );
+  assert.match(locked, /aria-label="入出力を停止"/u);
+  assert.doesNotMatch(locked, /data-privacy|tabular-nums/u);
+  assert.doesNotMatch(locked, /<button[^>]*\bdisabled/u);
+  // 受け取る前も同じく停止を出す。
+  const unknown = islandOf(null, null);
+  assert.equal(visibleText(unknown), '状態を確かめています。 ■ 停止');
+});
+
+test('the island privacy slots stay in place and fill in when the state is on', () => {
+  const on = islandOf(shown(), null, {
+    privacy: privacyMarks(
+      shown({
+        voice_state: 'conversation_live',
+        storage_mode: 'private',
+        safety_stopped: true,
+      }),
+    ),
+  });
   assert.deepEqual(
     [...on.matchAll(/data-privacy="([a-z_]+)" data-state="([a-z]+)"/gu)].map(
       (match) => `${match[1]}:${match[2]}`,
@@ -251,29 +294,89 @@ test('the privacy slots stay in place and fill in when the state is on', () => {
   assert.match(on, /bg-danger-soft/u);
   // 読み上げの名前に専用の記号の状態が入る（画面には出さない）。
   assert.match(on, /音声を外部へ送っている、記録しないモード、安全停止中/u);
-  assert.equal(visibleText(on), '●');
-  const off = render(
-    <StatusTab
-      view={statusTabView(shown(), null)}
-      privacy={privacyMarks(
-        shown({
-          voice_state: 'waiting_wake_word',
-          storage_mode: 'normal',
-          safety_stopped: false,
-        }),
-      )}
-      panelOpen={false}
-      onTogglePanel={noop}
-      canSummon
-      onSummon={noop}
-    />,
-  );
+  // 未登録・接続の状態がない間は数を出さない。
+  assert.equal(visibleText(on), '● 受付中 ■ 停止');
+  const off = islandOf(shown(), null, {
+    privacy: privacyMarks(
+      shown({
+        voice_state: 'waiting_wake_word',
+        storage_mode: 'normal',
+        safety_stopped: false,
+      }),
+    ),
+  });
   assert.equal((off.match(/data-state="off"/gu) ?? []).length, 3);
   assert.doesNotMatch(
     off,
     /border-dashed|bg-warning-soft|bg-accent-soft|bg-danger-soft/u,
   );
-  assert.equal(visibleText(off), '●');
+});
+
+test('the island expands only for operations needing attention and for results; the way to the list opens the panel, never an approval', () => {
+  const attention: IslandSignals = {
+    attentionCount: 2,
+    attentionRaisedAt: 1_000,
+    attentionRaisedCount: 2,
+    result: null,
+  };
+  const ops = [entry(1), entry(2)];
+  const expanded = islandOf(shown(), connected(ops), {
+    signals: attention,
+    now: 2_000,
+  });
+  assert.match(expanded, /data-island="expanded"/u);
+  // 件数だけを polite で読む（操作の名前・時刻は入れない）。
+  assert.match(
+    expanded,
+    /<div role="status" data-island-live="status"><p data-island-line="attention"[\s\S]*確認が必要な操作が2\u00a0件あります。/u,
+  );
+  // 広がった形の動きは動きを減らす設定で付けない（motion-safe）。
+  assert.match(expanded, /motion-safe:animate-island-in/u);
+  assert.deepEqual(
+    (expanded.match(/<button[\s\S]*?<\/button>/gu) ?? []).map((button) =>
+      visibleText(button),
+    ),
+    ['2', '■ 停止', '確認が必要な操作を見る'],
+  );
+  assert.doesNotMatch(expanded, /承認|取り消す/u);
+  // 8 秒が過ぎたら畳む（件数は小さい形の数に残る）。
+  const collapsed = islandOf(shown(), connected(ops), {
+    signals: attention,
+    now: 9_000,
+  });
+  assert.match(collapsed, /data-island="compact"/u);
+  assert.doesNotMatch(collapsed, /確認が必要な操作が/u);
+  // 失敗の結果は alert で読む。
+  const failure = islandOf(shown(), connected([]), {
+    signals: {
+      attentionCount: 0,
+      attentionRaisedAt: null,
+      attentionRaisedCount: 0,
+      result: {
+        line: {
+          tone: 'warning',
+          mark: 'warning',
+          text: 'タスクを作る: 結果を確認できませんでした',
+        },
+        failure: true,
+        at: 1_000,
+        announcedNearby: false,
+      },
+    },
+    now: 2_000,
+  });
+  assert.match(
+    failure,
+    /<div role="alert" data-island-live="alert">[\s\S]*結果を確認できませんでした/u,
+  );
+  assert.doesNotMatch(failure, />確認が必要な操作を見る</u);
+});
+
+test('the island and the input bar paint no window ground; the canvas and the panel keep theirs', () => {
+  assert.equal(transparentSurfaceFor('island'), true);
+  assert.equal(transparentSurfaceFor('input'), true);
+  assert.equal(transparentSurfaceFor('canvas'), false);
+  assert.equal(transparentSurfaceFor('status'), false);
 });
 
 test('the input bar is a mark, one field and the canvas button; it is disabled while stopped or locked', () => {
@@ -305,9 +408,14 @@ test('the input bar is a mark, one field and the canvas button; it is disabled w
   assert.doesNotMatch(enabled, /<input[^>]*\bdisabled/u);
   assert.doesNotMatch(enabled, /placeholder=/u);
   assert.match(enabled, /<button[^>]*aria-label="キャンバスを前に出す"/u);
-  // つまみと同じキャンバスの記号（4 つの四角）と、押せる縁。
+  // キャンバスの記号（4 つの四角）と、押せる縁。
   assert.equal((enabled.match(/<rect\b/gu) ?? []).length, 4);
   assert.match(enabled, /button--outline/u);
+  // 小さめはカプセル（窓の高さ 56 と同じ h-14・完全な丸）。窓の地は透明で、角の外は透ける（ADR 0181 の段階 4・U399）。
+  assert.match(
+    enabled,
+    /<form class="[^"]*\bh-14\b[^"]*\brounded-full border border-border bg-surface/u,
+  );
   const disabled = render(
     <InputBar
       line={{ tone: 'neutral', mark: 'square', text: '停止中' }}
@@ -340,6 +448,12 @@ test('the input bar is a mark, one field and the canvas button; it is disabled w
     />,
   );
   assert.equal((expanded.match(/<textarea\b/gu) ?? []).length, 1);
+  // 入力中は島の丸み（28px）の面。
+  assert.match(
+    expanded,
+    /<form class="[^"]*\bh-screen\b[^"]*\brounded-island border border-border bg-surface/u,
+  );
+  assert.doesNotMatch(expanded, /<form class="[^"]*rounded-full/u);
   assert.match(expanded, /rows="5"/u);
   assert.doesNotMatch(expanded, /<input\b/u);
   assert.match(expanded, /どちらの予定ですか。/u);
@@ -375,7 +489,7 @@ test('typed text disappears when the device locks or the lock state becomes unkn
   const draw = (status: DesktopStatusBar) =>
     render(
       <InputBar
-        line={statusTabView(status, null).line}
+        line={statusSummaryView(status, null).line}
         enabled={inputBarEnabled(status)}
         value={inputDraftAfter(typed, status)}
         onChange={noop}
@@ -396,7 +510,7 @@ test('typed text disappears when the device locks or the lock state becomes unkn
   // ロック中・不明では、広がった入力バーの聞き返し本文も描かない。
   const hiddenClarification = render(
     <InputBar
-      line={statusTabView(locked, null).line}
+      line={statusSummaryView(locked, null).line}
       enabled={false}
       value=""
       onChange={noop}

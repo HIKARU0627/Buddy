@@ -357,7 +357,23 @@ const CANVAS_FORBIDDEN = [
 ];
 
 test('window roles: the canvas cannot use stop, resume, approval or quit channels', () => {
-  assert.deepEqual([...DESKTOP_WINDOW_ROLES], ['canvas', 'status', 'input']);
+  // 上の中央の島（ADR 0181 の段階 4）を 4 つ目の役割に足した。
+  assert.deepEqual(
+    [...DESKTOP_WINDOW_ROLES],
+    ['canvas', 'status', 'input', 'island'],
+  );
+  // 島は状態の取得・停止・パネルを出すだけ（U391 の暫定 (b)。承認・取消・再開・登録・終了・発言・キャンバスを前に出すを
+  // 使えない。島から確認を出さない）。
+  assert.deepEqual(
+    [...DESKTOP_ROLE_CHANNELS.island],
+    [
+      'desktop.get_state',
+      'desktop.io_stop',
+      'desktop.get_connection',
+      'desktop.status_panel',
+      'desktop.get_voice',
+    ],
+  );
   // キャンバスは状態の取得と、物のユーザーの操作（UI-06）・物の中身の読み取り（UI-07）だけ。
   assert.deepEqual(
     [...DESKTOP_ROLE_CHANNELS.canvas],
@@ -419,11 +435,30 @@ test('window roles: the canvas cannot use stop, resume, approval or quit channel
     desktopChannelAllowedForRole('status', 'desktop.turn_submit'),
     false,
   );
+  const ISLAND_ALLOWED = [
+    'desktop.io_stop',
+    'desktop.get_connection',
+    'desktop.status_panel',
+    'desktop.get_voice',
+  ];
   for (const channel of CANVAS_FORBIDDEN) {
     assert.equal(desktopChannelAllowedForRole('canvas', channel), false);
     assert.equal(desktopChannelAllowedForRole('input', channel), false);
     assert.equal(desktopChannelAllowedForRole('status', channel), true);
+    assert.equal(
+      desktopChannelAllowedForRole('island', channel),
+      ISLAND_ALLOWED.includes(channel),
+      channel,
+    );
   }
+  // 島は発言・キャンバスを前に出す・キャンバスの物の操作と中身も使えない。
+  for (const channel of [
+    'desktop.turn_submit',
+    'desktop.canvas_summon',
+    'desktop.canvas_user_op',
+    'desktop.canvas_content',
+  ])
+    assert.equal(desktopChannelAllowedForRole('island', channel), false);
   for (const role of DESKTOP_WINDOW_ROLES) {
     assert.equal(desktopChannelAllowedForRole(role, 'desktop.get_state'), true);
     assert.equal(desktopChannelAllowedForRole(role, 'desktop.unknown'), false);
@@ -451,6 +486,15 @@ test('window roles: the canvas cannot use stop, resume, approval or quit channel
   assert.deepEqual(
     [...DESKTOP_ROLE_NOTIFICATIONS.input],
     ['desktop.state_changed'],
+  );
+  // 島は状態欄・接続の状態・音声の状態だけ（電源とロックの記録・キャンバスの記述は受けない）。
+  assert.deepEqual(
+    [...DESKTOP_ROLE_NOTIFICATIONS.island],
+    [
+      'desktop.state_changed',
+      'desktop.connection_changed',
+      'desktop.voice_changed',
+    ],
   );
 });
 

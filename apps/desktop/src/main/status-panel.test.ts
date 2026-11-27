@@ -1,5 +1,6 @@
-// 状態の層のパネル（UI-04、ADR 0032）と全体のショートカットの試験。窓の大きさと位置、出す・しまう（Esc・つまみ・
-// 外へのクリック・隠す）、確認のダイアログを出している間の blur、確認の親、ショートカットの既定値を確かめる。
+// 状態の層のパネル（UI-04、ADR 0032。ADR 0181 の段階 4 で端のつまみをやめた）と全体のショートカットの試験。窓の大きさと
+// 位置、出す・しまう（島の「状態のパネルを出す」・パネルの「しまう」・Esc・外へのクリック・隠す）、確認のダイアログを
+// 出している間の blur、確認の親、ショートカットの既定値を確かめる。
 // 期待値は手で書き、実装から生成しない。Electron は起動しない（窓は模擬）。
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -21,7 +22,7 @@ import {
   StatusPanel,
   confirmDialogParent,
   runPanelConfirm,
-  statusWindowBounds,
+  statusPanelBounds,
 } from './status-panel.js';
 import type { Rect } from './window-roles.js';
 
@@ -33,8 +34,12 @@ interface FakeStatusWindow {
   visible: boolean;
 }
 
-function setup(options: { reducedMotion?: boolean; window?: boolean } = {}) {
-  const window: FakeStatusWindow = { calls: [], visible: true };
+function setup(options: { window?: boolean; visible?: boolean } = {}) {
+  // 状態の層の窓は隠して作る（パネルを出すときだけ表示する）。
+  const window: FakeStatusWindow = {
+    calls: [],
+    visible: options.visible ?? false,
+  };
   const logs: string[] = [];
   let closedConfirms = 0;
   const panel = new StatusPanel({
@@ -42,19 +47,22 @@ function setup(options: { reducedMotion?: boolean; window?: boolean } = {}) {
       options.window === false
         ? null
         : {
-            setBounds: (bounds, animate) =>
+            setBounds: (bounds) =>
               window.calls.push(
-                `bounds:${bounds.x},${bounds.y},${bounds.width},${bounds.height}:${animate ? 'animate' : 'instant'}`,
+                `bounds:${bounds.x},${bounds.y},${bounds.width},${bounds.height}`,
               ),
             isVisible: () => window.visible,
             show: () => {
               window.visible = true;
               window.calls.push('show');
             },
+            hide: () => {
+              window.visible = false;
+              window.calls.push('hide');
+            },
             focus: () => window.calls.push('focus'),
           },
     workArea: () => AREA,
-    reducedMotion: () => options.reducedMotion ?? false,
     closeConfirm: () => {
       closedConfirms += 1;
     },
@@ -63,17 +71,10 @@ function setup(options: { reducedMotion?: boolean; window?: boolean } = {}) {
   return { panel, window, logs, closedConfirms: () => closedConfirms };
 }
 
-test('the status window is the tab at the middle of the right edge, or the full-height panel at the right edge', () => {
+test('the status window is the full-height panel at the right edge (the edge tab is gone)', () => {
   assert.equal(STATUS_PANEL_WIDTH, 440);
-  // つまみ（56 × 232）は右の端の中ほど。
-  assert.deepEqual(statusWindowBounds(false, AREA), {
-    x: 1512 - 56,
-    y: 33 + Math.round((875 - 232) / 2),
-    width: 56,
-    height: 232,
-  });
   // パネル（440 × 作業領域の高さ）は右の端の上から下まで。
-  assert.deepEqual(statusWindowBounds(true, AREA), {
+  assert.deepEqual(statusPanelBounds(AREA), {
     x: 1512 - 440,
     y: 33,
     width: 440,
@@ -81,61 +82,61 @@ test('the status window is the tab at the middle of the right edge, or the full-
   });
   // 作業領域がずれた画面（左にほかの画面がある）でも、作業領域の右の端に付く。
   assert.deepEqual(
-    statusWindowBounds(true, { x: -1920, y: 0, width: 1920, height: 1040 }),
+    statusPanelBounds({ x: -1920, y: 0, width: 1920, height: 1040 }),
     { x: -440, y: 0, width: 440, height: 1040 },
+  );
+  // 作業領域が 440 より狭ければ、作業領域の幅に合わせる（はみ出さない）。
+  assert.deepEqual(
+    statusPanelBounds({ x: 10, y: 0, width: 400, height: 600 }),
+    {
+      x: 10,
+      y: 0,
+      width: 400,
+      height: 600,
+    },
   );
 });
 
-test('the tab opens the panel with a slide and focus; pressing it again or Esc puts it away', () => {
+test('the island shows the hidden panel window with focus; the panel button or Esc hides it again', () => {
   const { panel, window, closedConfirms } = setup();
   assert.equal(panel.open, false);
   assert.equal(panel.request(true), 'expand');
   assert.equal(panel.open, true);
-  assert.deepEqual(window.calls, ['bounds:1072,33,440,875:animate', 'focus']);
-  // 二重に出しても大きさは変えない（フォーカスだけ戻す）。
+  // 窓を置き直してから表示し、フォーカスを渡す（窓の動きは付けない）。
+  assert.deepEqual(window.calls, ['bounds:1072,33,440,875', 'show', 'focus']);
+  // 二重に出しても大きさは変えない（フォーカスだけ戻す。島を押し直したとき）。
   assert.equal(panel.request(true), 'none');
-  assert.deepEqual(window.calls.slice(2), ['focus']);
-  // つまみ・Esc（どちらも desktop.status_panel の open: false）でしまう。確認を閉じてから小さくする。
+  assert.deepEqual(window.calls.slice(3), ['focus']);
+  // パネルの「しまう」・Esc（どちらも desktop.status_panel の open: false）でしまう。確認を閉じてから窓を隠す。
   assert.equal(panel.request(false), 'collapse');
   assert.equal(panel.open, false);
   assert.equal(closedConfirms(), 1);
-  assert.deepEqual(window.calls.slice(3), ['bounds:1456,355,56,232:animate']);
+  assert.deepEqual(window.calls.slice(4), ['hide']);
   assert.equal(panel.request(false), 'none');
   assert.equal(closedConfirms(), 1);
 });
 
 test('the shortcut toggles the panel and brings back a hidden window', () => {
   const { panel, window } = setup();
-  window.visible = false;
   assert.equal(panel.toggle(), 'expand');
-  assert.deepEqual(window.calls, [
-    'bounds:1072,33,440,875:animate',
-    'show',
-    'focus',
-  ]);
+  assert.deepEqual(window.calls, ['bounds:1072,33,440,875', 'show', 'focus']);
   assert.equal(panel.toggle(), 'collapse');
   assert.equal(panel.open, false);
+  assert.equal(window.visible, false);
 });
 
-test('a click outside (blur) or hiding puts the panel away; hiding does not animate', () => {
+test('a click outside (blur) or hiding puts the panel away; an already hidden window is not hidden twice', () => {
   const { panel, window } = setup();
-  panel.show('tab');
+  panel.show('screen');
   assert.equal(panel.hide('blur'), 'collapse');
-  panel.show('tab');
+  assert.equal(window.visible, false);
+  panel.show('screen');
+  // 窓を隠す操作（OS・トレイ）で窓が先に隠れた後の hidden: 状態だけしまい、hide を重ねて呼ばない。
+  window.visible = false;
   window.calls.length = 0;
   assert.equal(panel.hide('hidden'), 'collapse');
-  assert.deepEqual(window.calls, ['bounds:1456,355,56,232:instant']);
-});
-
-test('with reduced motion the panel opens and closes without animation', () => {
-  const { panel, window } = setup({ reducedMotion: true });
-  panel.show('tab');
-  panel.hide('escape');
-  assert.deepEqual(window.calls, [
-    'bounds:1072,33,440,875:instant',
-    'focus',
-    'bounds:1456,355,56,232:instant',
-  ]);
+  assert.equal(panel.open, false);
+  assert.deepEqual(window.calls, []);
 });
 
 test('while the OS confirmation is attached to the panel, its blur does not put the panel away; Esc or the shortcut still close it and the confirmation', () => {
@@ -143,7 +144,7 @@ test('while the OS confirmation is attached to the panel, its blur does not put 
   // パネルが出ていなければ確認を出さない。
   assert.equal(panel.beginConfirm(), false);
   assert.equal(panel.confirming, false);
-  panel.show('tab');
+  panel.show('screen');
   assert.equal(panel.beginConfirm(), true);
   assert.equal(panel.confirming, true);
   // 確認（シート・モーダル）へフォーカスが移った blur ではしまわない。確認も閉じない。
@@ -156,13 +157,13 @@ test('while the OS confirmation is attached to the panel, its blur does not put 
   panel.endConfirm();
   assert.equal(panel.confirming, false);
   // 確認が終われば、blur でまたしまう。
-  panel.show('tab');
+  panel.show('screen');
   assert.equal(panel.hide('blur'), 'collapse');
 });
 
 test('without a status window nothing happens and the reason is logged', () => {
   const { panel, logs } = setup({ window: false });
-  assert.equal(panel.show('tab'), 'none');
+  assert.equal(panel.show('screen'), 'none');
   assert.equal(panel.open, false);
   assert.deepEqual(logs, ['status_panel_unavailable']);
   panel.reset();
@@ -261,7 +262,7 @@ function confirmSetup(options: { focused?: boolean } = {}) {
 
 test('the panel confirmation: shown once while the panel is open, true only for the approve button', async () => {
   const c = confirmSetup();
-  c.panel.show('tab');
+  c.panel.show('screen');
   const signal = new AbortController().signal;
   const pending = runPanelConfirm(c.panel, signal, c.ports);
   assert.equal(c.shown(), 1);
@@ -284,7 +285,7 @@ test('the panel confirmation is not shown while the panel is put away or the sig
     await runPanelConfirm(c.panel, new AbortController().signal, c.ports),
     CONFIRM_NOT_SHOWN,
   );
-  c.panel.show('tab');
+  c.panel.show('screen');
   const aborted = new AbortController();
   aborted.abort();
   assert.equal(
@@ -297,7 +298,7 @@ test('the panel confirmation is not shown while the panel is put away or the sig
 
 test('putting the panel away or closing the signal during the confirmation makes it false', async () => {
   const hidden = confirmSetup();
-  hidden.panel.show('tab');
+  hidden.panel.show('screen');
   const pendingHidden = runPanelConfirm(
     hidden.panel,
     new AbortController().signal,
@@ -309,7 +310,7 @@ test('putting the panel away or closing the signal during the confirmation makes
   hidden.answer(1);
   assert.equal(await pendingHidden, false);
   const aborted = confirmSetup();
-  aborted.panel.show('tab');
+  aborted.panel.show('screen');
   const controller = new AbortController();
   const pendingAborted = runPanelConfirm(
     aborted.panel,
@@ -325,7 +326,7 @@ test('putting the panel away or closing the signal during the confirmation makes
 
 test('a dialog that throws still ends the confirmation, so a later blur puts the panel away', async () => {
   const c = confirmSetup();
-  c.panel.show('tab');
+  c.panel.show('screen');
   const pending = runPanelConfirm(
     c.panel,
     new AbortController().signal,
@@ -339,7 +340,7 @@ test('a dialog that throws still ends the confirmation, so a later blur puts the
 
 test('if the user moved to another app during the confirmation, the panel is put away after it ends (not before the result)', async () => {
   const away = confirmSetup({ focused: false });
-  away.panel.show('tab');
+  away.panel.show('screen');
   const pending = runPanelConfirm(
     away.panel,
     new AbortController().signal,
@@ -354,7 +355,7 @@ test('if the user moved to another app during the confirmation, the panel is put
   assert.equal(away.panel.open, false);
   // 前面のままなら、しまわない。
   const front = confirmSetup({ focused: true });
-  front.panel.show('tab');
+  front.panel.show('screen');
   const kept = runPanelConfirm(
     front.panel,
     new AbortController().signal,
@@ -366,17 +367,17 @@ test('if the user moved to another app during the confirmation, the panel is put
   assert.equal(front.panel.open, true);
 });
 
-test('opening the panel with the shortcut brings Buddy to the front first; the tab does not', () => {
+test('opening the panel with the shortcut brings Buddy to the front first; the island does not', () => {
   const calls: string[] = [];
   const panel = new StatusPanel({
     window: () => ({
       setBounds: () => calls.push('bounds'),
       isVisible: () => true,
       show: () => calls.push('show'),
+      hide: () => calls.push('hide'),
       focus: () => calls.push('focus'),
     }),
     workArea: () => AREA,
-    reducedMotion: () => true,
     closeConfirm: () => undefined,
     activateApp: () => calls.push('activate'),
     log: () => undefined,

@@ -1,6 +1,7 @@
 // キャンバスの窓が描く記述（UI-03・UI-06、ADR 0032）の試験。配置のエンジンが決めた位置・読む順・棚・見出しのプレーンテキスト、
 // 行の数と残りの件数、強調の枠、前に出ている間だけの操作の印、ロック中に描かないことを、サーバー描画（react-dom/server）で
-// 確かめる。期待値（ピクセル）は手で計算した（1280 × 800: 左 24・上 24、列の幅 82・間 16、行の高さ 72・間 16）。
+// 確かめる。期待値（ピクセル）は手で計算した（1280 × 800: 左 24・上 72（上の中央の島の場所の下。ADR 0181 の段階 4）、
+// 置ける幅 1280 − 48 = 1232、列の幅 88・間 16（送り 104）、行の高さ 72・間 16）。
 // 実際の見た目は Electron の画面で撮って確かめる（docs/ui/canvas-layout.md）。
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
@@ -81,23 +82,23 @@ const boxOf = (html: string, id: string): string | null =>
   null;
 
 test('the layout engine decides the position in pixels from the grid hint and the emphasis', () => {
-  // 補助（normal）で焦点がない: 1 行目・ヒントの列 2 から 4 列・3 行。x = 24 + 98 = 122、幅 = 24 + 5 × 98 − 16 − 122 = 376、
+  // 補助（normal）で焦点がない: 1 行目・ヒントの列 2 から 4 列・3 行。x = 24 + 104 = 128、幅 = 24 + 5 × 104 − 16 − 128 = 400、
   // 高さ = 3 × 88 − 16 = 248。
   const html = board(view([item('errands')]));
   assert.equal(
     boxOf(html, 'errands'),
-    'left:122px;top:24px;width:376px;height:248px',
+    'left:128px;top:72px;width:400px;height:248px',
   );
   assert.match(html, /data-canvas-revision="4"/u);
   assert.match(html, /data-layout-mode="grid"/u);
-  // 焦点（high）は幅 6 以上・行 4 以上に広げ、1 行目に置く: 列 2 から 6 列（x 122、幅 = 24 + 7 × 98 − 16 − 122 = 572）・4 行（336）。
+  // 焦点（high）は幅 6 以上・行 4 以上に広げ、1 行目に置く: 列 2 から 6 列（x 128、幅 = 24 + 7 × 104 − 16 − 128 = 608）・4 行（336）。
   const focus = board(view([item('focus', { emphasis: 'high' })]));
   assert.equal(
     boxOf(focus, 'focus'),
-    'left:122px;top:24px;width:572px;height:336px',
+    'left:128px;top:72px;width:608px;height:336px',
   );
-  // ユーザーの置き場所はそのマスにそのまま置く（列 7・行 2・4 列・2 行: x = 24 + 6 × 98 = 612、y = 24 + 88 = 112、
-  // 幅 = 24 + 10 × 98 − 16 − 612 = 376、高さ 160）。
+  // ユーザーの置き場所はそのマスにそのまま置く（列 7・行 2・4 列・2 行: x = 24 + 6 × 104 = 648、y = 72 + 88 = 160、
+  // 幅 = 24 + 10 × 104 − 16 − 648 = 400、高さ 160）。
   const pinned = board(
     view([item('errands')], undefined, {
       user_pins: [
@@ -110,7 +111,7 @@ test('the layout engine decides the position in pixels from the grid hint and th
   );
   assert.equal(
     boxOf(pinned, 'errands'),
-    'left:612px;top:112px;width:376px;height:160px',
+    'left:648px;top:160px;width:400px;height:160px',
   );
   assert.match(pinned, /data-source="user"/u);
 });
@@ -191,12 +192,12 @@ test('a narrow canvas is one column in reading order and does not offer moving o
     { front: true, viewport: { width: 600, height: 900 } },
   );
   assert.match(html, /data-layout-mode="column"/u);
-  // 置ける幅 = 600 − 24 − 24 − 72 = 480。b（補助・ヒント 3 行）が上、a（焦点・ヒント 3 行なので 3 行）がその下。
-  // 高さ = 3 × 72 + 2 × 16 = 248、a の上 = 24 + 248 + 16 = 288。
-  assert.equal(boxOf(html, 'b'), 'left:24px;top:24px;width:480px;height:248px');
+  // 置ける幅 = 600 − 24 − 24 = 552。b（補助・ヒント 3 行）が上、a（焦点・ヒント 3 行なので 3 行）がその下。
+  // 高さ = 3 × 72 + 2 × 16 = 248、b の上 = 72（島の場所の下）、a の上 = 72 + 248 + 16 = 336。
+  assert.equal(boxOf(html, 'b'), 'left:24px;top:72px;width:552px;height:248px');
   assert.equal(
     boxOf(html, 'a'),
-    'left:24px;top:288px;width:480px;height:248px',
+    'left:24px;top:336px;width:552px;height:248px',
   );
   assert.doesNotMatch(html, /data-resize-grip/u);
   // 閉じる・片付けるは 1 列でも使える。
@@ -230,7 +231,7 @@ test('emphasis is shown by shape, not by words: focus is size and a left accent 
   assert.doesNotMatch(normal, /border-l-accent/u);
 });
 
-test('an overflow tag offers show, shelve and close while in front; below the minimum height the shelf is a small strip at the top', () => {
+test('an overflow tag offers show, shelve and close while in front; below the minimum height the shelf is a small strip below the island', () => {
   // 480 × 800 の 1 列で a・b（3 行ずつ）が入り、c は札。
   const three = view(
     ['a', 'b', 'c'].map((id) =>
@@ -255,7 +256,8 @@ test('an overflow tag offers show, shelve and close while in front; below the mi
     /aria-label="見出しcを見せる"[^>]*disabled=""|disabled=""[^>]*aria-label="見出しcを見せる"/u,
   );
   assert.doesNotMatch(back, /見出しcを閉じる/u);
-  // 高さ 200（最小の 272 に満たない）: 物は置かず、すべて札。棚は上の端の小さな帯（y 4・高さ 32）。
+  // 高さ 200（最小の 320 に満たない）: 物は置かず、すべて札。棚は上の島の場所（72）の下の小さな帯（y 76・高さ 32・
+  // 幅 1280 − 48 = 1232）。
   const low = board(three, {
     front: true,
     viewport: { width: 1280, height: 200 },
@@ -264,7 +266,7 @@ test('an overflow tag offers show, shelve and close while in front; below the mi
   assert.doesNotMatch(low, /data-item=/u);
   assert.match(
     low,
-    /data-shelf="compact" style="left:24px;top:4px;width:1160px;height:32px"/u,
+    /data-shelf="compact" style="left:24px;top:76px;width:1232px;height:32px"/u,
   );
   // 最小の表示では見せられないので、札は見出しだけ（「見せる」のボタンと「…」の印を出さない）。片付ける・閉じるは残す。
   assert.doesNotMatch(low, /を見せる/u);
@@ -298,19 +300,20 @@ test('no items or no view draws nothing; the locked ground draws nothing inside'
   assert.match(unlocked, /今日の用事/u);
 });
 
-// UI-07（Issue #99 の持ち越し、PR #121 の P3）: 1 列でもカードの最小の幅 160 を守る。置ける幅は画面の幅 − 120。
+// UI-07（Issue #99 の持ち越し、PR #121 の P3）: 1 列でもカードの最小の幅 160 を守る。置ける幅は画面の幅 − 48（右の端の
+// 状態の層の 72 は ADR 0181 の段階 4 で外した）。
 test('a screen too narrow for a 160px card shows the minimal layout instead of squeezing the card; the narrowest column is exactly 160', () => {
   const canvas = view([item('a'), item('b')]);
-  // 画面の幅 279（置ける幅 159）: 最小の表示。物は置かず、札だけ。
-  const narrow = board(canvas, { viewport: { width: 279, height: 800 } });
+  // 画面の幅 207（置ける幅 159）: 最小の表示。物は置かず、札だけ。
+  const narrow = board(canvas, { viewport: { width: 207, height: 800 } });
   assert.match(narrow, /data-layout-mode="minimal"/u);
   assert.doesNotMatch(narrow, /data-item=/u);
   assert.equal((narrow.match(/data-overflow="/gu) ?? []).length, 2);
-  // 画面の幅 280（置ける幅 160）: 1 列で、幅はちょうど 160。
-  const edge = board(canvas, { viewport: { width: 280, height: 800 } });
+  // 画面の幅 208（置ける幅 160）: 1 列で、幅はちょうど 160。上の端は島の場所の下（72）。
+  const edge = board(canvas, { viewport: { width: 208, height: 800 } });
   assert.match(edge, /data-layout-mode="column"/u);
   assert.match(
     edge,
-    /data-item="a"[^>]*style="left:24px;top:24px;width:160px;/u,
+    /data-item="a"[^>]*style="left:24px;top:72px;width:160px;/u,
   );
 });

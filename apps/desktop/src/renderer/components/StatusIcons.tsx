@@ -148,3 +148,17 @@ export function PrivacyIcon({
 }) {
   return <Svg className={className}>{PRIVACY_PATHS[mark]}</Svg>;
 }
+
+// 状態のパネルを出す記号（右側に区切りのある窓。パネルが画面の右の端に出ることを形で示す。ADR 0181 の段階 4）。
+export function PanelIcon({
+  className = 'size-4',
+}: {
+  readonly className?: string;
+}) {
+  return (
+    <Svg className={className}>
+      <rect x="2" y="2.5" width="12" height="11" rx="1.5" />
+      <path d="M9.5 2.5v11" />
+    </Svg>
+  );
+}

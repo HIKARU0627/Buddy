@@ -1,6 +1,7 @@
 // キャンバスの窓の配置とユーザーの操作の状態（UI-06、ADR 0032）の試験。作業領域の外の幅、ドラッグの間の保護（新しい記述が
 // 届いても守る・なくなったらやめる）、送信中の位置、ロック・停止で捨てること、キーボードの操作を確かめる。期待値は手で書いた
-// （1280 × 800: 左 24・上 24、列の幅 82・間 16（1 列分の送り 98）、行の高さ 72・間 16（1 行分の送り 88）、7 行）。
+// （1280 × 800: 左 24・上 72（上の中央の島の場所の下。ADR 0181 の段階 4）、列の幅 88・間 16（1 列分の送り 104）、
+// 行の高さ 72・間 16（1 行分の送り 88）、7 行）。
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { DesktopCanvasView } from '@buddy/contracts';
@@ -106,9 +107,9 @@ test('while dragging, the dragged item keeps its place even if a new revision fr
   const a = boxIn(first, NO_INTERACTION, 'a');
   assert.deepEqual(a.cell, { row: 1, column: 1, span: 4, rows: 2 });
   let state = beginDrag(NO_INTERACTION, a, 'move', { x: 100, y: 50 });
-  // 右へ 2 列分（196）・下へ 1 行分（88）動かす → 列 3・行 2。
+  // 右へ 2 列分（208）・下へ 1 行分（88）動かす → 列 3・行 2。
   state = dragTo(state, layoutForView(first, WIDE, NO_INSETS, state).grid, {
-    x: 296,
+    x: 308,
     y: 138,
   });
   assert.deepEqual(state.drag?.cell, { column: 3, row: 2, span: 4, rows: 2 });
@@ -169,8 +170,8 @@ test('resizing by the corner snaps to whole cells within the grid', () => {
   assert.deepEqual(box.cell, { row: 1, column: 9, span: 4, rows: 2 });
   const grid = layoutForView(canvas, WIDE, NO_INSETS, NO_INTERACTION).grid;
   let state = beginDrag(NO_INTERACTION, box, 'resize', { x: 0, y: 0 });
-  // 左へ 2 列分（−196）・下へ 2 行分（176）。
-  state = dragTo(state, grid, { x: -196, y: 176 });
+  // 左へ 2 列分（−208）・下へ 2 行分（176）。
+  state = dragTo(state, grid, { x: -208, y: 176 });
   assert.deepEqual(state.drag?.cell, { row: 1, column: 9, span: 2, rows: 4 });
   // 右へはみ出す幅は 12 列に収める（列 9 からは 4 列まで）。下は 7 行まで。
   state = dragTo(state, grid, { x: 2000, y: 2000 });
@@ -271,7 +272,7 @@ test('a rejection releases the hold; a late answer of an earlier operation or of
 });
 
 test('a card chosen from its overflow tag is shown first; closing or shelving it, or its disappearance, ends the choice', () => {
-  // 480 × 800 の 1 列（置ける高さ 600）。a・b・c は 248（3 行）ずつ: a と b が入り、c は札。
+  // 480 × 800 の 1 列（置ける高さ 624 − 72 = 552）。a・b・c は 248（3 行）ずつ: a と b が入り、c は札。
   const items = ['a', 'b', 'c'].map((id) =>
     item(id, { grid: { column: 1, span: 4, rows: 3 } }),
   );
@@ -287,8 +288,8 @@ test('a card chosen from its overflow tag is shown first; closing or shelving it
   assert.deepEqual(
     after.boxes.map((box) => [box.item_id, box.rect.y]),
     [
-      ['a', 24],
-      ['c', 288],
+      ['a', 72],
+      ['c', 336],
     ],
   );
   assert.deepEqual(after.overflow, ['b']);

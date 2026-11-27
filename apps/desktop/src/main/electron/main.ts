@@ -18,7 +18,6 @@ import {
   screen,
   session,
   shell,
-  systemPreferences,
   type IpcMainInvokeEvent,
 } from 'electron';
 import { lstat, open, readFile, rm, stat } from 'node:fs/promises';
@@ -86,7 +85,7 @@ import {
   StatusPanel,
   confirmDialogParent,
   runPanelConfirm,
-  statusWindowBounds,
+  statusPanelBounds,
 } from '../status-panel.js';
 import type { SecretProtector } from '../credential-store.js';
 import { DesktopDeviceController } from '../device-controller.js';
@@ -119,6 +118,8 @@ import {
   rolesForMode,
   senderFactsOf,
   inputBarBounds,
+  islandBounds,
+  islandExpandedFor,
   uiWindowMode,
   uiWindowSpec,
   windowSender,
@@ -236,8 +237,9 @@ const summoner = new CanvasSummoner({
       blur: () => canvas.blur(),
     };
   },
+  // 表示し直すのは入力バーと島（状態の層の窓はパネルを出すときだけ表示する。ADR 0181 の段階 4）。
   companions: () =>
-    (['status', 'input'] as const).flatMap((role) => {
+    (['input', 'island'] as const).flatMap((role) => {
       const window = liveWindow(role);
       return window === null
         ? []
@@ -258,20 +260,14 @@ const statusPanel = new StatusPanel({
     const window = liveWindow('status');
     if (window === null) return null;
     return {
-      setBounds: (bounds, animate) => window.setBounds(bounds, animate),
+      setBounds: (bounds) => window.setBounds(bounds),
       isVisible: () => window.isVisible(),
       show: () => window.show(),
+      hide: () => window.hide(),
       focus: () => window.focus(),
     };
   },
   workArea: () => uiDisplay().workArea,
-  reducedMotion: () => {
-    try {
-      return systemPreferences.getAnimationSettings().prefersReducedMotion;
-    } catch {
-      return true;
-    }
-  },
   // パネルをしまうときは、パネルを親にした確認を閉じて送らない。
   closeConfirm: () => link?.closeConfirm(),
   // 全体のショートカットで出すとき、ほかのアプリが前面でも Buddy を前面にする（macOS）。
@@ -286,6 +282,8 @@ let stopShortcut: StopShortcutState = 'registered';
 const windows = new UiWindowRegistry<BrowserWindow>();
 // 入力バーを広げているか（UI-08）。main が正本で、focus で広げ、blur・非表示で縮める。
 let inputBarExpanded = false;
+// 島の窓を広げているか（ADR 0181 の段階 4）。画面が描いた島の高さ（preferred-size-changed）から main が決める。
+let islandExpanded = false;
 let tray: Tray | null = null;
 let controller: DesktopDeviceController | null = null;
 let link: DesktopCoreLink | null = null;
@@ -328,10 +326,15 @@ function showWindow(): void {
   for (const role of rolesForMode(uiMode)) {
     const window = liveWindow(role) ?? createWindow(role);
     if (window.isMinimized()) window.restore();
-    if (
-      uiWindowSpec(role, process.platform, uiDisplay(), PRELOAD_PATH)
-        .focusOnShow
-    ) {
+    const spec = uiWindowSpec(
+      role,
+      process.platform,
+      uiDisplay(),
+      PRELOAD_PATH,
+    );
+    // 状態の層の窓はパネルを出すときだけ表示する（ADR 0181 の段階 4）。
+    if (!spec.showOnStart) continue;
+    if (spec.focusOnShow) {
       window.show();
       window.focus();
     } else window.showInactive();
@@ -382,7 +385,7 @@ function senderFacts(event: IpcMainInvokeEvent, ui: BrowserWindow | null) {
   );
 }
 
-// キャンバスを前に出す（全体のショートカット・端のつまみ・入力バー）。ロック中・不明は出さない。
+// キャンバスを前に出す（全体のショートカット・入力バー）。ロック中・不明は出さない。
 function summonCanvas(source: CanvasSummonSource): void {
   summoner.summon(source);
 }
@@ -439,7 +442,15 @@ function setInputBarExpanded(expanded: boolean): void {
   window.setBounds(inputBarBounds(uiDisplay().workArea, expanded));
 }
 
-// 画面の追加・取り外し・大きさの変更（UI-06）。置く画面を選び直し、3 つの窓をその画面へ置き直す。
+// 島の窓の大きさを切り替える（ADR 0181 の段階 4）。上の端は固定したまま、広げるときは下へ伸ばす。窓の動きは付けない
+// （窓は透明で、見える島の伸び縮みは画面が描く。動きを減らす設定では画面も動かさない）。
+function setIslandExpanded(expanded: boolean): void {
+  if (uiMode !== 'canvas' || islandExpanded === expanded) return;
+  islandExpanded = expanded;
+  liveWindow('island')?.setBounds(islandBounds(uiDisplay().workArea, expanded));
+}
+
+// 画面の追加・取り外し・大きさの変更（UI-06）。置く画面を選び直し、キャンバス・状態の層・入力バー・島をその画面へ置き直す。
 function placeRoleWindows(): void {
   if (uiMode !== 'canvas') return;
   const display = uiDisplay();
@@ -460,8 +471,9 @@ function placeRoleWindows(): void {
       window.setBounds({ x, y, width, height });
     if (role === 'canvas' && process.platform !== 'darwin') window.maximize();
   }
-  liveWindow('status')?.setBounds(
-    statusWindowBounds(statusPanel.open, display.workArea),
+  liveWindow('status')?.setBounds(statusPanelBounds(display.workArea));
+  liveWindow('island')?.setBounds(
+    islandBounds(display.workArea, islandExpanded),
   );
   pushCanvasWorkArea();
 }
@@ -510,6 +522,8 @@ function createWindow(role: UiWindowRole): BrowserWindow {
     window.setAlwaysOnTop(true, spec.alwaysOnTopLevel);
   window.once('ready-to-show', () => {
     if (spec.maximize) window.maximize();
+    // 状態の層の窓は隠したまま作る（パネルを出すときだけ表示する。ADR 0181 の段階 4）。
+    if (!spec.showOnStart) return;
     if (spec.focusOnShow) window.show();
     else window.showInactive();
   });
@@ -528,12 +542,20 @@ function createWindow(role: UiWindowRole): BrowserWindow {
     windows.unregister(contentsId);
     if (role === 'canvas') presence.reset();
     if (role === 'status') statusPanel.reset();
+    if (role === 'island') islandExpanded = false;
   });
   if (role === 'status') {
     // 状態の層のパネルは、外へのクリック・ほかのアプリへの移動（前面でなくなる）・窓を隠す操作でしまう（UI-04）。
     // 確認のダイアログ（パネルを親にしたシート・モーダル）へフォーカスが移った blur ではしまわない（status-panel.ts）。
     window.on('blur', () => statusPanel.hide('blur'));
     window.on('hide', () => statusPanel.hide('hidden'));
+  }
+  if (role === 'island') {
+    // 画面が島を広げた・畳んだ（中身の高さが変わった）: 2 つの決まった大きさのどちらかにする（ADR 0181 の段階 4）。
+    // 画面は高さの値を選ばせるだけで、位置と大きさは main が決める。
+    window.webContents.on('preferred-size-changed', (_event, size) =>
+      setIslandExpanded(islandExpandedFor(size.height)),
+    );
   }
   if (role === 'input') {
     // 入力するときだけ広げる（UI-08）。下端は固定したまま上へ伸ばし、離れると縮める。
@@ -730,7 +752,8 @@ function registerIpc(): void {
         });
       // 応答を返してからウィンドウを隠す・終了する。入出力の状態と中枢は変えない。
       if (outcome.effect === 'hide_window') setImmediate(hideWindows);
-      // 状態の層のパネルを出す・しまう（つまみ・パネルの中の Esc。UI-04）。応答を返してから窓の大きさを変える。
+      // 状態の層のパネルを出す・しまう（島の「状態のパネルを出す」・パネルの「しまう」と Esc。UI-04・ADR 0181）。
+      // 応答を返してから窓を表示する・隠す。
       if (outcome.effect === 'status_panel_open')
         setImmediate(() => {
           statusPanel.request(true);
@@ -739,7 +762,7 @@ function registerIpc(): void {
         });
       if (outcome.effect === 'status_panel_close')
         setImmediate(() => statusPanel.request(false));
-      // キャンバスを前に出す（端のつまみ・入力バー）。応答を返してから出す。
+      // キャンバスを前に出す（入力バー。状態の層の役割の表にも残る）。応答を返してから出す。
       if (outcome.effect === 'summon_canvas') {
         const source: CanvasSummonSource =
           entry?.role === 'input' ? 'input' : 'status';
@@ -1382,7 +1405,7 @@ async function start(): Promise<void> {
   await link.start(controller.state.lockState);
   // 全体のショートカット（global-shortcuts.ts）。全体の停止（トレイの停止と同じ処理）はどの組み立てでも、状態の層の
   // パネル・キャンバスを呼ぶは 3 つの窓の組み立てのときだけ。ほかのアプリが使っていれば登録できず、ショートカットなしで
-  // 続ける（トレイ・つまみ・パネル・入力バーから同じ操作ができる）。停止を登録できなければ、トレイと画面に印を出すので、
+  // 続ける（トレイ・島・パネル・入力バーから同じ操作ができる）。停止を登録できなければ、トレイと画面に印を出すので、
   // 窓とトレイを作る前に登録する。
   const run: Record<GlobalShortcutId, () => void> = {
     stop: () => controller?.stopFromMain(),

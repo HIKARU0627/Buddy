@@ -71,6 +71,7 @@ import {
   resolveCanvasDisplay,
 } from '../canvas-display.js';
 import { CREDENTIAL_FILE } from '../credential-store.js';
+import { FORGET_LEDGER_REPLICA_FILE } from '../forget-ledger-replica-store.js';
 import {
   STOP_SHORTCUT_ARG,
   registerGlobalShortcuts,
@@ -922,6 +923,11 @@ function createLink(
     canvasFront: () => presence.layer === 'front',
     onCanvas: (notification) =>
       sendToRenderer(notification.channel, notification),
+    // 忘却台帳の複製（B06-07b-3、ADR 0182）。device-io-state.json と同じ userData 配下に置く。
+    forgetLedgerReplicaPath: join(
+      app.getPath('userData'),
+      FORGET_LEDGER_REPLICA_FILE,
+    ),
   });
 }
 

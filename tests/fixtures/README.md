@@ -5,3 +5,4 @@
 - `storage-cases.json`: 保存案 0001 の一意制約・CHECK・外部キー・trigger の期待値（ADR 0010）。手書きで、SQLite の実行結果から生成していません。
 - `retention-sweep-cases.json`: 保存期限の掃除の計画・時計の巻き戻り・派生物の期限・保存モードの変更・起動時のゲートの期待値（ADR 0043、B06-02）。手書きで、domain の出力から生成していません。
 - `backup-restore-cases.json`: バックアップの中身・古いバックアップの世代・鍵の運用・復元の 6 段階・復元の後の保留の期待値（ADR 0047、B06-05）。手書きで、domain の出力から生成していない。HKDF の既知値は Python で RFC 5869 を別に実装して求めた。
+- `forget-ledger-replica-cases.json`: 端末の忘却台帳の複製と追いつき（知らせ・接続のたびの同期・頁ごとの保存・拒否と取り直し・diverged の退避・replica_ahead・読めない複製・再起動・復元の後）の期待値（ADR 0182、B06-07b-3、#179）。手書きで、packages/client の ForgetLedgerSync の出力から生成していない。entry_hash の既知値は packages/storage の ledgerEntryHash と Python で手で組んだ JCS の文字列で確かめた。

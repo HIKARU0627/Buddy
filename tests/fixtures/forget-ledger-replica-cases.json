@@ -1,0 +1,613 @@
+{
+  "status": "specification_only",
+  "description": "端末の忘却台帳の複製と追いつき（B06-07b-3、Issue #179、設計 03、09 X15・X16、ADR 0040・0180・0182）の期待値。手で書いたもので、packages/client の ForgetLedgerSync の出力から生成していない。中枢は domain の forgetLedgerDelta（製品の Core と同じ判定）を使う模擬で、台帳の連鎖は試験の中で決まった規則から作る（lineage は系譜の名前、length は世代の数、fork_at はその世代から先の項目を別の内容にした枝）。sent は端末が送った head の世代の順、saved は端末の保存先に残った複製（null は何も保存していない）、matches は保存した複製がどちらの連鎖と同じか（core: 今の中枢、replica: 初めの端末の複製）、saves は続きの保存の回数、replaces は退避してからの保存の回数、set_aside は退避したファイルの数、issue は最後に残した理由のコード。faults の request は、その場合の中で何回目の要求に故障を入れるか（1 から）。entry_hash の既知値は packages/storage の ledgerEntryHash と、Python で手で組んだ JCS の文字列の SHA-256 の 2 つで同じ値になることを確かめた。",
+  "lineages": {
+    "A": "a1a1a1a1-0000-4000-8000-00000000000a",
+    "B": "b2b2b2b2-0000-4000-8000-00000000000b"
+  },
+  "known_hash": {
+    "id": "x16-replica-entry-hash-known-value",
+    "entry": {
+      "schema": "buddy.forget-ledger.v1",
+      "entry_id": "e0000000-0000-4000-8000-000000000001",
+      "forgetting_generation": "1",
+      "recorded_at": "2031-01-01T00:00:01.000Z",
+      "forgotten": [
+        {
+          "source_kind": "memory",
+          "source_id": "c0000000-0000-4000-8000-000000000001"
+        },
+        {
+          "source_kind": "source_item",
+          "source_id_hmac": "a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7"
+        }
+      ],
+      "blocked_source_hmacs": [
+        "b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8"
+      ],
+      "blocked_content_keys": []
+    },
+    "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "entry_hash": "66b9d099fb5d1dd513771efd98bd2439acfca46f747e930deff71f4a77c377d7"
+  },
+  "sync_cases": [
+    {
+      "id": "x15-replica-forget-notice-saves-from-next-generation",
+      "replica": { "lineage": "A", "length": 2 },
+      "core": { "lineage": "A", "length": 5 },
+      "steps": [{ "do": "notice", "generation": "5" }],
+      "expected": {
+        "sent": ["2"],
+        "saved": { "lineage": "A", "length": 5 },
+        "matches": "core",
+        "saves": 1,
+        "replaces": 0,
+        "set_aside": 0,
+        "issue": null
+      }
+    },
+    {
+      "id": "x16-replica-empty-device-receives-all-on-connect",
+      "replica": null,
+      "core": { "lineage": "A", "length": 3 },
+      "steps": [{ "do": "connected" }],
+      "expected": {
+        "sent": ["0"],
+        "saved": { "lineage": "A", "length": 3 },
+        "matches": "core",
+        "saves": 1,
+        "replaces": 0,
+        "set_aside": 0,
+        "issue": null
+      }
+    },
+    {
+      "id": "x16-replica-empty-core-saves-nothing",
+      "replica": null,
+      "core": { "lineage": null, "length": 0 },
+      "steps": [{ "do": "connected" }],
+      "expected": {
+        "sent": ["0"],
+        "saved": null,
+        "saves": 0,
+        "replaces": 0,
+        "set_aside": 0,
+        "issue": null
+      }
+    },
+    {
+      "id": "x16-replica-pages-saved-one-by-one",
+      "replica": null,
+      "core": { "lineage": "A", "length": 5 },
+      "page_limit": 2,
+      "steps": [{ "do": "connected" }],
+      "expected": {
+        "sent": ["0", "2", "4"],
+        "saved": { "lineage": "A", "length": 5 },
+        "matches": "core",
+        "saves": 3,
+        "replaces": 0,
+        "set_aside": 0,
+        "issue": null
+      }
+    },
+    {
+      "id": "x16-replica-cut-midway-continues-from-last-saved",
+      "replica": null,
+      "core": { "lineage": "A", "length": 5 },
+      "page_limit": 2,
+      "faults": [{ "request": 2, "kind": "unreachable" }],
+      "steps": [
+        {
+          "do": "connected",
+          "expect": {
+            "saved": { "lineage": "A", "length": 2 },
+            "issue": "unreachable"
+          }
+        },
+        { "do": "connected" }
+      ],
+      "expected": {
+        "sent": ["0", "2", "2", "4"],
+        "saved": { "lineage": "A", "length": 5 },
+        "matches": "core",
+        "saves": 3,
+        "replaces": 0,
+        "set_aside": 0,
+        "issue": null
+      }
+    },
+    {
+      "id": "x16-replica-outcome-unknown-continues-from-last-saved",
+      "replica": { "lineage": "A", "length": 1 },
+      "core": { "lineage": "A", "length": 3 },
+      "faults": [{ "request": 1, "kind": "unknown" }],
+      "steps": [
+        {
+          "do": "connected",
+          "expect": {
+            "saved": { "lineage": "A", "length": 1 },
+            "issue": "unreachable"
+          }
+        },
+        { "do": "connected" }
+      ],
+      "expected": {
+        "sent": ["1", "1"],
+        "saved": { "lineage": "A", "length": 3 },
+        "matches": "core",
+        "saves": 1,
+        "replaces": 0,
+        "set_aside": 0,
+        "issue": null
+      }
+    },
+    {
+      "id": "x16-replica-caught-up-sends-once-and-takes-nothing-more",
+      "replica": { "lineage": "A", "length": 3 },
+      "core": { "lineage": "A", "length": 3 },
+      "steps": [{ "do": "connected" }],
+      "expected": {
+        "sent": ["3"],
+        "saved": { "lineage": "A", "length": 3 },
+        "matches": "replica",
+        "saves": 0,
+        "replaces": 0,
+        "set_aside": 0,
+        "issue": null
+      }
+    },
+    {
+      "id": "x16-replica-notice-already-held-sends-nothing",
+      "replica": { "lineage": "A", "length": 3 },
+      "core": { "lineage": "A", "length": 3 },
+      "steps": [{ "do": "notice", "generation": "3" }],
+      "expected": {
+        "sent": [],
+        "saved": { "lineage": "A", "length": 3 },
+        "matches": "replica",
+        "saves": 0,
+        "replaces": 0,
+        "set_aside": 0,
+        "issue": null
+      }
+    },
+    {
+      "id": "x16-replica-notice-older-than-held-sends-nothing",
+      "replica": { "lineage": "A", "length": 4 },
+      "core": { "lineage": "A", "length": 4 },
+      "steps": [{ "do": "notice", "generation": "2" }],
+      "expected": {
+        "sent": [],
+        "saved": { "lineage": "A", "length": 4 },
+        "matches": "replica",
+        "saves": 0,
+        "replaces": 0,
+        "set_aside": 0,
+        "issue": null
+      }
+    },
+    {
+      "id": "x16-replica-notice-with-other-lineage-asks-core",
+      "replica": { "lineage": "A", "length": 2 },
+      "core": { "lineage": "A", "length": 2 },
+      "steps": [{ "do": "notice", "generation": "2", "lineage": "B" }],
+      "expected": {
+        "sent": ["2"],
+        "saved": { "lineage": "A", "length": 2 },
+        "matches": "replica",
+        "saves": 0,
+        "replaces": 0,
+        "set_aside": 0,
+        "issue": null
+      }
+    },
+    {
+      "id": "x16-replica-malformed-notice-ignored",
+      "replica": { "lineage": "A", "length": 1 },
+      "core": { "lineage": "A", "length": 3 },
+      "steps": [{ "do": "notice_malformed" }],
+      "expected": {
+        "sent": [],
+        "saved": { "lineage": "A", "length": 1 },
+        "matches": "replica",
+        "saves": 0,
+        "replaces": 0,
+        "set_aside": 0,
+        "issue": null
+      }
+    },
+    {
+      "id": "x16-replica-partial-delta-rejected-and-refetched",
+      "replica": { "lineage": "A", "length": 1 },
+      "core": { "lineage": "A", "length": 4 },
+      "faults": [{ "request": 1, "kind": "drop_first_entry" }],
+      "steps": [
+        {
+          "do": "connected",
+          "expect": {
+            "saved": { "lineage": "A", "length": 1 },
+            "issue": "chain_invalid"
+          }
+        },
+        { "do": "connected" }
+      ],
+      "expected": {
+        "sent": ["1", "1"],
+        "saved": { "lineage": "A", "length": 4 },
+        "matches": "core",
+        "saves": 1,
+        "replaces": 0,
+        "set_aside": 0,
+        "issue": null
+      }
+    },
+    {
+      "id": "x16-replica-entry-hash-mismatch-rejected",
+      "replica": null,
+      "core": { "lineage": "A", "length": 3 },
+      "faults": [{ "request": 1, "kind": "tamper_entry_hash" }],
+      "steps": [
+        {
+          "do": "connected",
+          "expect": { "saved": null, "issue": "chain_invalid" }
+        },
+        { "do": "connected" }
+      ],
+      "expected": {
+        "sent": ["0", "0"],
+        "saved": { "lineage": "A", "length": 3 },
+        "matches": "core",
+        "saves": 1,
+        "replaces": 0,
+        "set_aside": 0,
+        "issue": null
+      }
+    },
+    {
+      "id": "x16-replica-rewritten-entry-rejected",
+      "replica": { "lineage": "A", "length": 1 },
+      "core": { "lineage": "A", "length": 3 },
+      "faults": [{ "request": 1, "kind": "rewrite_entry_keep_hash" }],
+      "steps": [
+        {
+          "do": "connected",
+          "expect": {
+            "saved": { "lineage": "A", "length": 1 },
+            "issue": "chain_invalid"
+          }
+        }
+      ],
+      "expected": {
+        "sent": ["1"],
+        "saved": { "lineage": "A", "length": 1 },
+        "matches": "replica",
+        "saves": 0,
+        "replaces": 0,
+        "set_aside": 0,
+        "issue": "chain_invalid"
+      }
+    },
+    {
+      "id": "x16-replica-broken-previous-hash-rejected",
+      "replica": { "lineage": "A", "length": 2 },
+      "core": { "lineage": "A", "length": 4 },
+      "faults": [{ "request": 1, "kind": "break_previous_hash" }],
+      "steps": [{ "do": "connected" }],
+      "expected": {
+        "sent": ["2"],
+        "saved": { "lineage": "A", "length": 2 },
+        "matches": "replica",
+        "saves": 0,
+        "replaces": 0,
+        "set_aside": 0,
+        "issue": "chain_invalid"
+      }
+    },
+    {
+      "id": "x16-replica-other-lineage-in-entries-rejected",
+      "replica": { "lineage": "A", "length": 2 },
+      "core": { "lineage": "A", "length": 4 },
+      "faults": [{ "request": 1, "kind": "other_lineage" }],
+      "steps": [{ "do": "connected" }],
+      "expected": {
+        "sent": ["2"],
+        "saved": { "lineage": "A", "length": 2 },
+        "matches": "replica",
+        "saves": 0,
+        "replaces": 0,
+        "set_aside": 0,
+        "issue": "chain_invalid"
+      }
+    },
+    {
+      "id": "x16-replica-head-not-reached-without-has-more-rejected",
+      "replica": null,
+      "core": { "lineage": "A", "length": 3 },
+      "faults": [{ "request": 1, "kind": "head_overstated" }],
+      "steps": [{ "do": "connected" }],
+      "expected": {
+        "sent": ["0"],
+        "saved": null,
+        "saves": 0,
+        "replaces": 0,
+        "set_aside": 0,
+        "issue": "chain_invalid"
+      }
+    },
+    {
+      "id": "x15-replica-entry-with-body-field-rejected",
+      "replica": null,
+      "core": { "lineage": "A", "length": 2 },
+      "faults": [{ "request": 1, "kind": "body_field" }],
+      "steps": [{ "do": "connected" }],
+      "expected": {
+        "sent": ["0"],
+        "saved": null,
+        "saves": 0,
+        "replaces": 0,
+        "set_aside": 0,
+        "issue": "response_invalid"
+      }
+    },
+    {
+      "id": "x16-replica-core-unavailable-retried-next-connection",
+      "replica": { "lineage": "A", "length": 1 },
+      "core": { "lineage": "A", "length": 2 },
+      "faults": [{ "request": 1, "kind": "status_503" }],
+      "steps": [
+        {
+          "do": "connected",
+          "expect": {
+            "saved": { "lineage": "A", "length": 1 },
+            "issue": "response_invalid"
+          }
+        },
+        { "do": "connected" }
+      ],
+      "expected": {
+        "sent": ["1", "1"],
+        "saved": { "lineage": "A", "length": 2 },
+        "matches": "core",
+        "saves": 1,
+        "replaces": 0,
+        "set_aside": 0,
+        "issue": null
+      }
+    },
+    {
+      "id": "x16-replica-save-failure-keeps-previous-and-retries",
+      "replica": { "lineage": "A", "length": 1 },
+      "core": { "lineage": "A", "length": 3 },
+      "faults": [{ "save": 1, "kind": "save_fails" }],
+      "steps": [
+        {
+          "do": "connected",
+          "expect": {
+            "saved": { "lineage": "A", "length": 1 },
+            "issue": "save_failed"
+          }
+        },
+        { "do": "connected" }
+      ],
+      "expected": {
+        "sent": ["1", "1"],
+        "saved": { "lineage": "A", "length": 3 },
+        "matches": "core",
+        "saves": 1,
+        "replaces": 0,
+        "set_aside": 0,
+        "issue": null
+      }
+    },
+    {
+      "id": "x16-replica-ahead-of-core-not-rolled-back",
+      "replica": { "lineage": "A", "length": 5 },
+      "core": { "lineage": "A", "length": 3 },
+      "steps": [{ "do": "connected" }, { "do": "connected" }],
+      "expected": {
+        "sent": ["5", "5"],
+        "saved": { "lineage": "A", "length": 5 },
+        "matches": "replica",
+        "saves": 0,
+        "replaces": 0,
+        "set_aside": 0,
+        "issue": "replica_ahead"
+      }
+    },
+    {
+      "id": "x16-replica-diverged-hash-refetched-from-zero-and-old-set-aside",
+      "replica": { "lineage": "A", "length": 3 },
+      "core": { "lineage": "A", "length": 4, "fork_at": 3 },
+      "steps": [{ "do": "connected" }],
+      "expected": {
+        "sent": ["3", "0"],
+        "saved": { "lineage": "A", "length": 4, "fork_at": 3 },
+        "matches": "core",
+        "saves": 0,
+        "replaces": 1,
+        "set_aside": 1,
+        "issue": null
+      }
+    },
+    {
+      "id": "x16-replica-diverged-lineage-new-hub-old-set-aside",
+      "replica": { "lineage": "A", "length": 3 },
+      "core": { "lineage": "B", "length": 2 },
+      "steps": [{ "do": "connected" }],
+      "expected": {
+        "sent": ["3", "0"],
+        "saved": { "lineage": "B", "length": 2 },
+        "matches": "core",
+        "saves": 0,
+        "replaces": 1,
+        "set_aside": 1,
+        "issue": null
+      }
+    },
+    {
+      "id": "x16-replica-diverged-refetch-cut-then-resumes",
+      "replica": { "lineage": "A", "length": 3 },
+      "core": { "lineage": "B", "length": 5 },
+      "page_limit": 2,
+      "faults": [{ "request": 3, "kind": "unreachable" }],
+      "steps": [
+        {
+          "do": "connected",
+          "expect": {
+            "saved": { "lineage": "B", "length": 2 },
+            "issue": "unreachable"
+          }
+        },
+        { "do": "connected" }
+      ],
+      "expected": {
+        "sent": ["3", "0", "2", "2", "4"],
+        "saved": { "lineage": "B", "length": 5 },
+        "matches": "core",
+        "saves": 2,
+        "replaces": 1,
+        "set_aside": 1,
+        "issue": null
+      }
+    },
+    {
+      "id": "x16-replica-diverged-refetch-fails-before-save-keeps-old",
+      "replica": { "lineage": "A", "length": 3 },
+      "core": { "lineage": "A", "length": 3, "fork_at": 2 },
+      "faults": [{ "request": 2, "kind": "drop_first_entry" }],
+      "steps": [
+        {
+          "do": "connected",
+          "expect": {
+            "saved": { "lineage": "A", "length": 3 },
+            "issue": "chain_invalid"
+          }
+        },
+        { "do": "connected" }
+      ],
+      "expected": {
+        "sent": ["3", "0", "0"],
+        "saved": { "lineage": "A", "length": 3, "fork_at": 2 },
+        "matches": "core",
+        "saves": 0,
+        "replaces": 1,
+        "set_aside": 1,
+        "issue": null
+      }
+    },
+    {
+      "id": "x16-replica-unreadable-file-refetched-and-set-aside",
+      "replica": "unreadable",
+      "core": { "lineage": "A", "length": 2 },
+      "steps": [{ "do": "connected" }],
+      "expected": {
+        "sent": ["0"],
+        "saved": { "lineage": "A", "length": 2 },
+        "matches": "core",
+        "saves": 0,
+        "replaces": 1,
+        "set_aside": 1,
+        "issue": null
+      }
+    },
+    {
+      "id": "x16-replica-unreadable-file-kept-while-core-is-empty",
+      "replica": "unreadable",
+      "core": { "lineage": null, "length": 0 },
+      "steps": [{ "do": "connected" }],
+      "expected": {
+        "sent": ["0"],
+        "saved": "unreadable",
+        "saves": 0,
+        "replaces": 0,
+        "set_aside": 0,
+        "issue": null,
+        "replace_pending": true
+      }
+    },
+    {
+      "id": "x16-replica-restart-keeps-replica-and-asks-once",
+      "replica": null,
+      "core": { "lineage": "A", "length": 3 },
+      "steps": [
+        {
+          "do": "connected",
+          "expect": { "saved": { "lineage": "A", "length": 3 }, "issue": null }
+        },
+        { "do": "restart" },
+        { "do": "connected" }
+      ],
+      "expected": {
+        "sent": ["0", "3"],
+        "saved": { "lineage": "A", "length": 3 },
+        "matches": "core",
+        "saves": 1,
+        "replaces": 0,
+        "set_aside": 0,
+        "issue": null
+      }
+    },
+    {
+      "id": "x16-restore-ledger-kept-continues-to-newer-head",
+      "replica": null,
+      "core": { "lineage": "A", "length": 2 },
+      "steps": [
+        { "do": "connected" },
+        { "do": "core_becomes", "core": { "lineage": "A", "length": 4 } },
+        { "do": "connected" }
+      ],
+      "expected": {
+        "sent": ["0", "2"],
+        "saved": { "lineage": "A", "length": 4 },
+        "matches": "core",
+        "saves": 2,
+        "replaces": 0,
+        "set_aside": 0,
+        "issue": null
+      }
+    },
+    {
+      "id": "x16-restore-core-rolled-back-replica-not-rolled-back",
+      "replica": null,
+      "core": { "lineage": "A", "length": 4 },
+      "steps": [
+        { "do": "connected" },
+        { "do": "core_becomes", "core": { "lineage": "A", "length": 2 } },
+        { "do": "connected" },
+        { "do": "notice", "generation": "2" }
+      ],
+      "expected": {
+        "sent": ["0", "4"],
+        "saved": { "lineage": "A", "length": 4 },
+        "matches": "first_core",
+        "saves": 1,
+        "replaces": 0,
+        "set_aside": 0,
+        "issue": "replica_ahead"
+      }
+    },
+    {
+      "id": "x16-restore-branch-after-rollback-old-replica-set-aside",
+      "replica": null,
+      "core": { "lineage": "A", "length": 4 },
+      "steps": [
+        { "do": "connected" },
+        {
+          "do": "core_becomes",
+          "core": { "lineage": "A", "length": 5, "fork_at": 3 }
+        },
+        { "do": "connected" }
+      ],
+      "expected": {
+        "sent": ["0", "4", "0"],
+        "saved": { "lineage": "A", "length": 5, "fork_at": 3 },
+        "matches": "core",
+        "saves": 1,
+        "replaces": 1,
+        "set_aside": 1,
+        "issue": null
+      }
+    }
+  ]
+}

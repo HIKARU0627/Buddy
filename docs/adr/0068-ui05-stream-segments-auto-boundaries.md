@@ -31,7 +31,7 @@
 | 2-ii | 区切りの指示（`user_requested`）。`S:SessionControlAction` の追加（契約の変更）と照合表・画面の操作。契約のマージの順番待ち                                                                                                                                 | 未着手               |
 | 3    | 期限切れ・忘却でキャンバスの物を消す・知らせの運搬（U40。WSS の `notice`。ADR 0069 で決める）                                                                                                                                                               | 済み（ADR 0187）     |
 | 4    | 表示のリース（キャンバスの窓が `POST /v1/leases/renew` の `display` を保持し、失効で描かない）                                                                                                                                                              | 済み（ADR 0188）     |
-| 5    | 端末の移動（流れの表示先を移す。経路は U167）                                                                                                                                                                                                               | 未着手               |
+| 5    | 端末の移動（流れの表示先を移す。経路は U167）                                                                                                                                                                                                               | 済み（ADR 0193）     |
 | 6    | 記録しないモードの UI と保存モードの変更（B06-07a-2・#184 のマージ後。`private_started`・`private_ended`・`storage_mode_changed`）。切り替えは流れの `POST /v1/stream/storage-mode`（B06-07a-2 の段階 2 が作る。U170 は (A)。**本人が 2026-11-03 に決定**） | 済み（ADR 0189）     |
 
 段階 4 は Core を変えない見込み（Core の `VoiceControl.renewLease` は `kind: 'display'` を既に扱う）。段階 5 の経路は、端末に会話の ID を渡さない方針（UI-01）を守るため、流れ用の経路にすることを推奨する（U167）。

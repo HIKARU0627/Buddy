@@ -326,3 +326,52 @@ test('an answer for another request is not used, and a new scope or core io epoc
   assert.equal(last?.previous_nonce, null);
   assert.equal(s.keeper.state, 'held');
 });
+
+// 表示先をこの端末へ移した（UI-05 の段階 5、ADR 0193）。失っている間、取り直しの間隔（4・8・16・30 秒）を待たずにすぐ取り直す。
+test('retryNow takes a new lease at once while lost, and does nothing otherwise', async () => {
+  // 最初の 2 回（取得と最初の取り直し）は、表示先が他の端末にあるため拒否。3 回目から受け付ける。
+  const s = setup((body, n) =>
+    n <= 2 ? rejected(body, ['display_owned_elsewhere']) : renewed(body),
+  );
+  // 条件が揃っていない・まだ失っていないときは何もしない。
+  s.keeper.retryNow();
+  assert.equal(s.bodies.length, 0);
+  s.keeper.update();
+  await s.clock.advance(10);
+  assert.equal(s.keeper.state, 'lost');
+  assert(s.logs.includes('display_lease_lost:renewal_rejected'));
+  // 2 秒後の最初の取り直しも拒否される。次は 4 秒後のはず。
+  await s.clock.advance(2000);
+  assert.equal(s.bodies.length, 2);
+  // 取り直しの答えを待っている間は、重ねて取りに行かない。
+  s.keeper.retryNow();
+  assert.equal(s.bodies.length, 2);
+  await s.clock.advance(10);
+  assert.equal(s.keeper.state, 'lost');
+  // 次の間隔（4 秒）を待たずに、すぐ新しい lease_id で取り直す。
+  const before = s.clock.mono;
+  s.keeper.retryNow();
+  assert.equal(s.bodies.length, 3);
+  assert.equal(s.sentAt[2], before);
+  assert.notEqual(s.bodies[2]?.lease_id, s.bodies[1]?.lease_id);
+  assert.equal(s.bodies[2]?.previous_nonce, null);
+  await s.clock.advance(10);
+  assert.equal(s.keeper.state, 'held');
+  // 取れた後は何もしない（余計な取得を送らず、予約した取り直しも残らない）。
+  s.keeper.retryNow();
+  await s.clock.advance(3990);
+  assert.equal(s.bodies.length, 4);
+  assert.equal(s.bodies[3]?.lease_id, s.bodies[2]?.lease_id);
+});
+
+test('retryNow while the conditions are gone stops the keeper instead of sending', async () => {
+  const s = setup((body) => rejected(body, ['display_owned_elsewhere']));
+  s.keeper.update();
+  await s.clock.advance(10);
+  assert.equal(s.keeper.state, 'lost');
+  s.setContext(null);
+  s.keeper.retryNow();
+  assert.equal(s.keeper.state, 'idle');
+  await s.clock.advance(60_000);
+  assert.equal(s.bodies.length, 1);
+});

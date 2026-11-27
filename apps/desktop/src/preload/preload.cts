@@ -66,6 +66,7 @@ const REQUEST_CHANNELS: readonly string[] = [
   'desktop.forget_execute',
   'desktop.memory_settings_change',
   'desktop.storage_mode_change',
+  'desktop.display_handoff',
 ];
 const NOTIFICATION_CHANNELS: readonly string[] = [
   'desktop.state_changed',

@@ -129,6 +129,22 @@ export class DisplayLeaseKeeper {
     void this.#acquire(this.#generation);
   }
 
+  // 失っている間、取り直しの間隔を待たずにすぐ取り直す（本人が「このPCに出す」で表示先をこの端末へ移したとき。ADR 0193）。
+  // 失っていないとき・取り直しの途中のときは何もしない。条件が外れていれば止める。
+  retryNow(): void {
+    if (this.#state !== 'lost' || this.#retry === null) return;
+    const context = this.#options.port.wanted();
+    if (context === null) {
+      this.#halt();
+      return;
+    }
+    this.#retry();
+    this.#retry = null;
+    this.#context = context;
+    this.#failures = 0;
+    void this.#acquire(this.#generation);
+  }
+
   // 更新をやめる（終了）。
   stop(): void {
     this.#halt();

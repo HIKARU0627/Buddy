@@ -39,6 +39,9 @@ export interface RoleWindowHandle {
   ) => void;
   // 保存モードを切り替える（状態の層のパネルだけ。UI-05 の段階 6、ADR 0189）。表示は状態欄の通知で変わる。
   readonly changeStorageMode: (mode: StorageMode) => void;
+  // 流れの表示先をこの端末へ移す「このPCに出す」（状態の層のパネルだけ。UI-05 の段階 5、ADR 0193）。移す先・版・端末の ID は
+  // main が持ち、画面は何も送らない。表示は状態欄の通知で変わる。
+  readonly handoffDisplay: () => void;
   // キャンバスの物のユーザーの操作（キャンバスの窓だけ。UI-06）。受け付けたら中枢が当てた後の版、拒否・失敗は null
   // （記述は main が取り直す）。
   readonly canvasUserOp: (
@@ -131,6 +134,10 @@ export function useRoleWindowState(
       send(request('desktop.storage_mode_change', { storage_mode: mode })),
     [send],
   );
+  const handoffDisplay = useCallback(
+    () => send(request('desktop.display_handoff', null)),
+    [send],
+  );
   const canvasUserOp = useCallback(
     (op: CanvasUserOp, expectedRevision: string) =>
       api
@@ -178,6 +185,7 @@ export function useRoleWindowState(
     revokeVoiceConsent,
     controlVoice,
     changeStorageMode,
+    handoffDisplay,
     canvasUserOp,
     canvasContent,
   };

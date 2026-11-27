@@ -110,6 +110,8 @@ const AUTO_ACTIONS = [
   'desktop.memory_settings_change',
   // 保存モードの切り替え（UI-05 の段階 6、ADR 0189。従来の窓と状態の層。キャンバス・入力バー・島は使わない）。
   'desktop.storage_mode_change',
+  // 流れの表示先の移動（UI-05 の段階 5、ADR 0193。状態の層のパネルから。キャンバス・入力バー・島は使わない）。
+  'desktop.display_handoff',
 ];
 const ALL_CHANNELS = [
   ...LEGACY_CHANNELS,
@@ -1241,4 +1243,62 @@ test('storage mode change: only the legacy window and the status panel switch it
   // 入出力の停止中（この端末・来客・全体）も受け付ける（外部へは送らない。記録しないモードに入るのを止めない）。
   for (const stopScope of ['local', 'guest', 'global'] as const)
     assert.deepEqual(admit(32, true, { stopScope }), { ok: true }, stopScope);
+});
+
+// 流れの表示先の移動「このPCに出す」（UI-05 の段階 5、ADR 0193）。従来の窓（legacy）と状態の層のパネルだけが、前面の
+// ロック解除済みの画面操作として送れる（従来の窓は表示のリースを取らない組み立てで main が断る。core-link の試験）。
+// キャンバス・入力バー・島からは、前面でもロック解除済みでも untrusted_sender。期待値は手で書いた。
+test('display handoff: only the legacy window and the status panel move the display, by a screen operation', () => {
+  const registry = new UiWindowRegistry<FakeWindow>();
+  registry.register(41, 'legacy', { name: 'legacy' });
+  registry.register(42, 'status', { name: 'status' });
+  registry.register(43, 'canvas', { name: 'canvas' });
+  registry.register(44, 'input', { name: 'input' });
+  registry.register(45, 'island', { name: 'island' });
+  const channel = 'desktop.display_handoff';
+  const admit = (
+    id: number,
+    focused: boolean,
+    state: {
+      readonly lockState?: 'unlocked' | 'locked' | 'unknown';
+      readonly stopScope?: 'none' | 'local' | 'guest' | 'global';
+    } = {},
+  ) =>
+    admitDesktopRequest(
+      channel,
+      null,
+      { ...UNLOCKED, ...state },
+      senderFor(registry, id, channel, { focused }),
+    );
+  assert.deepEqual(admit(41, true), { ok: true });
+  assert.deepEqual(admit(42, true), { ok: true });
+  for (const [id, role] of [
+    [43, 'canvas'],
+    [44, 'input'],
+    [45, 'island'],
+  ] as const) {
+    assert.equal(channelAllowedForWindow(role, channel), false, role);
+    assert.deepEqual(
+      admit(id, true),
+      { ok: false, reason: 'untrusted_sender' },
+      role,
+    );
+  }
+  // 前面でない窓からは受け付けない。
+  assert.deepEqual(admit(42, false), {
+    ok: false,
+    reason: 'screen_operation_required',
+  });
+  // ロック中・不明は拒否。
+  assert.deepEqual(admit(42, true, { lockState: 'locked' }), {
+    ok: false,
+    reason: 'device_locked',
+  });
+  assert.deepEqual(admit(42, true, { lockState: 'unknown' }), {
+    ok: false,
+    reason: 'device_locked',
+  });
+  // 入出力の停止中の判断は中枢が持つ（受付は止めない。中枢が io_suspended で断る）。
+  for (const stopScope of ['local', 'guest', 'global'] as const)
+    assert.deepEqual(admit(42, true, { stopScope }), { ok: true }, stopScope);
 });

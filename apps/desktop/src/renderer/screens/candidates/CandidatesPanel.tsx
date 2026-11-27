@@ -34,6 +34,7 @@ import type {
   CandidateViewState,
 } from '../../state/candidate-state.js';
 import type { StatusLine } from '../../tones.js';
+import { BADGE_CLASS, FRAME_CLASS } from '../../shapes.js';
 
 const FETCH_LINES: Readonly<Record<string, StatusLine>> = {
   loaded: { tone: 'success', mark: 'dot', text: FETCH_LABELS.loaded },
@@ -67,7 +68,7 @@ function SnoozeChoices({
     <div
       role="group"
       aria-label={`${CANDIDATE_LABELS.snooze}（${entry.title}）`}
-      className="flex flex-col gap-2 rounded-md border border-separator p-3"
+      className={`flex flex-col gap-2 p-3 ${FRAME_CLASS}`}
     >
       <div className="flex flex-wrap gap-2">
         <Button
@@ -156,9 +157,7 @@ function CandidateRow({
       className="flex flex-col gap-1.5 py-3"
     >
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <span className="rounded-md border border-separator px-1.5 py-0.5 text-xs font-semibold">
-          {KIND_LABELS[entry.kind]}
-        </span>
+        <span className={BADGE_CLASS}>{KIND_LABELS[entry.kind]}</span>
         <span
           className={`text-xs ${entry.state === 'new' ? 'font-semibold' : 'text-muted'}`}
         >

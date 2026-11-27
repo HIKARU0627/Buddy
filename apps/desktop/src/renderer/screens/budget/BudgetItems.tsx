@@ -30,6 +30,7 @@ import type {
   BudgetBar,
   BudgetViewState,
 } from '../../state/budget-state.js';
+import { BADGE_CLASS } from '../../shapes.js';
 
 // 帯の幅（5% きざみ。literal の class だけが CSS に入る）。
 const WIDTH: Readonly<Record<number, string>> = {
@@ -188,9 +189,7 @@ function ItemRow({
   return (
     <li data-kind={entry.kind} className="flex flex-col gap-2.5 py-3">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <span className="rounded-md border border-separator px-1.5 py-0.5 text-xs font-semibold">
-          {KIND_LABELS[entry.kind]}
-        </span>
+        <span className={BADGE_CLASS}>{KIND_LABELS[entry.kind]}</span>
         <span className="text-xs font-semibold">{poolText(entry)}</span>
         <span className="text-xs tabular-nums text-muted">
           {entry.budget_month}

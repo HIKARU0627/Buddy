@@ -20,6 +20,7 @@ import type {
 import { InlineNotice } from '../../components/InlineNotice.js';
 import { Section } from '../../components/Section.js';
 import { StatusText } from '../../components/StatusText.js';
+import { FIELD_CLASS, FRAME_CLASS, FRAME_DANGER_CLASS } from '../../shapes.js';
 import {
   DIRECTION_LABELS,
   FETCH_LABELS,
@@ -234,7 +235,7 @@ function EntryRow({
                   event.currentTarget.value as HouseholdCategoryId,
                 )
               }
-              className="rounded-md border border-separator bg-transparent px-2 py-1 text-sm text-foreground"
+              className={FIELD_CLASS}
             >
               {choices.map((choice) => (
                 <option key={choice.id} value={choice.id}>
@@ -276,7 +277,7 @@ function EntryRow({
         <div
           role="group"
           aria-label={HOUSEHOLD_LABELS.delete}
-          className="flex flex-col gap-2 rounded-md border border-danger-soft-foreground p-3"
+          className={`flex flex-col gap-2 p-3 ${FRAME_DANGER_CLASS}`}
         >
           <p className="text-sm">{HOUSEHOLD_LABELS.deleteConfirm}</p>
           <div className="flex flex-wrap justify-end gap-2">
@@ -415,8 +416,15 @@ function IntakeBlock({
   );
 }
 
-const FIELD_CLASS =
-  'rounded-md border border-separator bg-transparent px-2 py-1 text-sm text-foreground';
+// 入れた文字が保存できない形のときの 1 行（tones.ts の danger。記号 ⚠ と文言で示し、色だけに頼らない）。
+const INVALID_LINE = {
+  add: { tone: 'danger', mark: 'warning', text: HOUSEHOLD_LABELS.addInvalid },
+  budget: {
+    tone: 'danger',
+    mark: 'warning',
+    text: HOUSEHOLD_LABELS.budgetInvalid,
+  },
+} as const satisfies Record<string, StatusLine>;
 
 const EMPTY_INPUT: ManualEntryInput = {
   direction: 'expense',
@@ -492,7 +500,7 @@ function EntryForm({
     <div
       role="group"
       aria-label={title}
-      className="flex flex-col gap-2 rounded-md border border-separator p-3"
+      className={`flex flex-col gap-2 p-3 ${FRAME_CLASS}`}
     >
       <p className="text-xs text-muted">
         {typeof note === 'string' ? note : note(input.direction)}
@@ -558,7 +566,9 @@ function EntryForm({
       </div>
       {entry === null &&
       (input.amount !== '' || input.date !== '' || input.time !== '') ? (
-        <p className="text-xs text-danger">{HOUSEHOLD_LABELS.addInvalid}</p>
+        <p className="text-xs">
+          <StatusText line={INVALID_LINE.add} />
+        </p>
       ) : null}
       <div className="flex flex-wrap justify-end gap-2">
         <Button
@@ -735,7 +745,7 @@ function ReceiptBlock({
       )}
       {result === null || result.candidate === null ? null : (
         <div
-          className="flex flex-col gap-1.5 rounded-md border border-separator p-2"
+          className={`flex flex-col gap-1.5 p-2 ${FRAME_CLASS}`}
           data-receipt-candidate
         >
           <p className="text-sm font-semibold">
@@ -811,7 +821,7 @@ function BudgetEditor({
     <div
       role="group"
       aria-label={HOUSEHOLD_LABELS.budgetEdit}
-      className="flex flex-col gap-2 rounded-md border border-separator p-3"
+      className={`flex flex-col gap-2 p-3 ${FRAME_CLASS}`}
     >
       <p className="text-xs text-muted">{HOUSEHOLD_LABELS.budgetNote}</p>
       <div className="grid grid-cols-1 gap-x-4 gap-y-1 sm:grid-cols-2">
@@ -833,14 +843,16 @@ function BudgetEditor({
                   const value = event.currentTarget.value;
                   setInput((prev) => ({ ...prev, [choice.id]: value }));
                 }}
-                className="w-32 rounded-md border border-separator bg-transparent px-2 py-1 text-right text-sm tabular-nums text-foreground"
+                className={`${FIELD_CLASS} w-32 text-right tabular-nums`}
               />
             </label>
           );
         })}
       </div>
       {items === null ? (
-        <p className="text-xs text-danger">{HOUSEHOLD_LABELS.budgetInvalid}</p>
+        <p className="text-xs">
+          <StatusText line={INVALID_LINE.budget} />
+        </p>
       ) : null}
       <div className="flex flex-wrap justify-end gap-2">
         <Button
@@ -920,15 +932,18 @@ function BudgetBlock({
                 className="flex flex-wrap justify-between gap-2"
               >
                 <span>{categoryLabel(use.category)}</span>
-                <span
-                  className={
-                    use.remaining_yen < 0
-                      ? 'tabular-nums text-danger'
-                      : 'tabular-nums'
-                  }
-                >
-                  {budgetUseText(use)}
-                </span>
+                {use.remaining_yen < 0 ? (
+                  <StatusText
+                    className="tabular-nums"
+                    line={{
+                      tone: 'danger',
+                      mark: 'warning',
+                      text: budgetUseText(use),
+                    }}
+                  />
+                ) : (
+                  <span className="tabular-nums">{budgetUseText(use)}</span>
+                )}
               </li>
             ))}
           </ul>
@@ -1088,7 +1103,7 @@ function BillRow({
         <div
           role="group"
           aria-label={HOUSEHOLD_LABELS.billDelete}
-          className="flex flex-col gap-2 rounded-md border border-danger-soft-foreground p-3"
+          className={`flex flex-col gap-2 p-3 ${FRAME_DANGER_CLASS}`}
         >
           <p className="text-sm">{HOUSEHOLD_LABELS.billDeleteConfirm}</p>
           <div className="flex flex-wrap justify-end gap-2">
@@ -1194,7 +1209,7 @@ function ExportBlock({
             onChange={(event) =>
               setRangeId(event.currentTarget.value as ExportRangeId)
             }
-            className="rounded-md border border-separator bg-transparent px-2 py-1 text-sm text-foreground"
+            className={FIELD_CLASS}
           >
             {EXPORT_RANGES.map((choice) => (
               <option key={choice.id} value={choice.id}>

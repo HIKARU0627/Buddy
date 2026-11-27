@@ -19,6 +19,32 @@
     -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Hiragino Sans',
     'Hiragino Kaku Gothic ProN', 'Yu Gothic Medium', 'Yu Gothic', Meiryo,
     Roboto, 'Noto Sans JP', sans-serif;
+
+  /*
+   * 角の丸みの 4 段（ADR 0181。上の中央の島に合わせて全体の丸みをそろえる）。画面のソースで使うクラスは
+   * rounded-part・rounded-box・rounded-island・rounded-full の 4 つだけ（scripts/renderer-shape.test.mjs で確かめる）。
+   * - 小（rounded-part、6px）: 箱の中の小さな面（記号の枠・予定の帯・チェックボックス）。
+   * - 箱（rounded-box、12px）: カード・枠・Alert・入力欄・ツールチップ・状態のタイル。
+   * - 島（rounded-island、28px）: 上の中央の島が広がった形と、島に準じる大きな浮いた面（段階 2 以降で使う）。
+   * - 完全な丸（rounded-full）: ボタン・札・島の小さな形・円の印・細い棒（高さの決まった物だけ）。
+   */
+  --radius-part: 6px;
+  --radius-box: 12px;
+  --radius-island: 28px;
+  /* HeroUI・Tailwind の既定の段（HeroUI の部品が中で使う rounded-* を含む）を、4 段のどれかへ寄せる。 */
+  --radius-xs: var(--radius-part);
+  --radius-sm: var(--radius-part);
+  --radius-md: var(--radius-part);
+  --radius-lg: var(--radius-box);
+  --radius-xl: var(--radius-box);
+  --radius-2xl: var(--radius-island);
+  --radius-3xl: var(--radius-island);
+  --radius-4xl: var(--radius-island);
+  --radius-field: var(--radius-box);
+
+  /* 島の伸び縮みと、物の位置・大きさの動きの曲線（ADR 0181）。時間は下の --motion-* で、動きを減らす設定では 0 にする。 */
+  --ease-island: cubic-bezier(0.32, 0.72, 0, 1);
+  --animate-status-panel-in: status-panel-in var(--motion-panel) ease-out;
 }
 
 /*
@@ -28,10 +54,25 @@
 @layer base {
   :root,
   :host {
-    /* 角丸を落ち着かせる（カード・ボタン・入力欄の丸み）。 */
-    --radius: 0.375rem;
+    /* HeroUI が calc(var(--radius) * n) で直に使う基準と入力欄の丸みを、4 段の「箱」にそろえる（ADR 0181）。 */
+    --radius: var(--radius-box);
+    --field-radius: var(--radius-box);
     /* 入力欄に境界を付ける（色はテーマごと）。 */
     --field-border-width: 1px;
+    /* 動きの時間（ADR 0181）。move: 物の位置・大きさ、panel: パネルの滑り込み、island: 島の伸び縮み（段階 2 以降）。 */
+    --motion-move: 150ms;
+    --motion-panel: 180ms;
+    --motion-island: 320ms;
+  }
+
+  /* 動きを減らす設定では動かさない（時間を 0 にする。クラスの motion-safe・motion-reduce と二重に止める）。 */
+  @media (prefers-reduced-motion: reduce) {
+    :root,
+    :host {
+      --motion-move: 0s;
+      --motion-panel: 0s;
+      --motion-island: 0s;
+    }
   }
 
   :root:not(.dark):not([data-theme='dark']) {
@@ -56,17 +97,35 @@
   }
 }
 
-/* 部品の形: 角丸を 1 段階に、ボタンの錠剤型と影をやめ、カードは境界線で区切る（ADR 0024 の約束）。 */
+/*
+ * 部品の形: 角の丸みを 4 段のどれかにし（ADR 0181。ADR 0024 の「角丸は 1 段階・ボタンの錠剤型をやめる」を改めた）、
+ * 影はやめ、カードは境界線で区切る（ADR 0024 の約束のまま）。
+ * - 箱: カード・Alert・確認のダイアログ・ツールチップ・キーの形。
+ * - 完全な丸: ボタン・札（Chip）・閉じるボタン・ダイアログの記号・Tabs（一覧・タブ・選ばれた印）・進み具合の棒。
+ */
 @layer components {
+  .card,
+  .alert,
+  .alert-dialog__dialog,
+  .tooltip,
+  .kbd {
+    border-radius: var(--radius-box);
+  }
   .button,
-  .alert {
-    border-radius: var(--radius-lg);
+  .chip,
+  .close-button,
+  .alert-dialog__icon,
+  .tabs__list-container,
+  .tabs__tab,
+  .tabs__indicator,
+  .progress-bar__track,
+  .progress-bar__fill {
+    border-radius: 9999px;
   }
   .button {
     box-shadow: none;
   }
   .card {
-    border-radius: var(--radius-lg);
     box-shadow: none;
     border: 1px solid var(--border);
   }
@@ -104,20 +163,10 @@
     content: '*' / '必須';
   }
 
-  /* Tabs と確認のダイアログの角丸を --radius の段にそろえ、錠剤型と影をやめる（R2 の低 1）。 */
-  .tabs__list-container,
-  .tabs__tab,
-  .tabs__indicator {
-    border-radius: var(--radius-lg);
-  }
+  /* Tabs の選ばれた印の影をやめ、境界線で示す（R2 の低 1。丸みは上の「完全な丸」）。 */
   .tabs__indicator {
     box-shadow: none;
     border: 1px solid var(--border);
-  }
-  .alert-dialog__dialog,
-  .alert-dialog__icon,
-  .close-button {
-    border-radius: var(--radius-lg);
   }
   /* outline のボタン（一覧を更新）の縁は入力欄の境界と同じ色にし、地・カードに対して 3:1 以上にする（R2-M2）。 */
   .button--outline {
@@ -182,7 +231,7 @@ body {
 }
 
 /* 状態の層のパネルが画面の端から出るときの動き（UI-04）。窓の大きさは main が変え、中身は右から少しだけ滑り込む。
-   動きを減らす設定では付けない（motion-safe）。 */
+   動きを減らす設定では付けない（motion-safe。時間の --motion-panel も 0 になる）。 */
 @keyframes status-panel-in {
   from {
     opacity: 0;

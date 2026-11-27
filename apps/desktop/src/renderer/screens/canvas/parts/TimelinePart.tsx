@@ -121,7 +121,7 @@ export function TimelinePart({
                 left: `calc(${AXIS_WIDTH}px + (100% - ${AXIS_WIDTH}px) * ${slot.lane} / ${slot.lanes})`,
                 width: `calc((100% - ${AXIS_WIDTH}px) * ${laneWidth} / 100 - ${LANE_GAP}px)`,
               }}
-              className={`absolute overflow-hidden rounded-md border-l-4 bg-accent-soft px-1.5 py-0.5 text-accent-soft-foreground ${
+              className={`absolute overflow-hidden rounded-part border-l-4 bg-accent-soft px-1.5 py-0.5 text-accent-soft-foreground ${
                 overlapping ? 'border-l-accent' : 'border-l-separator'
               }`}
             >

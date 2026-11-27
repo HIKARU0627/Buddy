@@ -108,7 +108,7 @@ function PlacedCard({
       onFocus={() => onSelect(item.item_id)}
       onKeyDown={(event) => onKey(event, box)}
       style={rectStyle(box.rect)}
-      className={`group absolute rounded-3xl outline-none transition-[left,top,width,height] duration-150 motion-reduce:transition-none ${
+      className={`group absolute rounded-box outline-none transition-[left,top,width,height] duration-(--motion-move) motion-reduce:transition-none ${
         dragging ? 'z-10 shadow-overlay' : ''
       } ${front && selected ? 'ring-2 ring-focus ring-offset-2 ring-offset-background' : ''}`}
     >

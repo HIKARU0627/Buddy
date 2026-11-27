@@ -24,6 +24,7 @@ import type {
   AutoActionViewState,
 } from '../../state/auto-action-state.js';
 import type { StatusLine } from '../../tones.js';
+import { FRAME_DANGER_CLASS } from '../../shapes.js';
 
 const FETCH_LINES: Readonly<Record<string, StatusLine>> = {
   loaded: { tone: 'success', mark: 'dot', text: FETCH_LABELS.loaded },
@@ -88,7 +89,7 @@ function SafetyBlock({
       role="group"
       aria-label={AUTO_ACTION_LABELS.stoppedTitle}
       data-safety="stopped"
-      className="flex flex-col gap-2 rounded-md border border-danger-soft-foreground p-3"
+      className={`flex flex-col gap-2 p-3 ${FRAME_DANGER_CLASS}`}
     >
       <StatusText
         className="text-sm font-semibold"

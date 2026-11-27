@@ -73,7 +73,7 @@ function ItemTile({ item }: { readonly item: StatusItem }) {
         aria-label={`${item.label}: ${item.line.text}`}
         data-item={item.key}
         data-shape={item.shape}
-        className={`flex h-14 flex-col items-center justify-center gap-1 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-accent ${shapeClass}`}
+        className={`flex h-14 flex-col items-center justify-center gap-1 rounded-box outline-none focus-visible:ring-2 focus-visible:ring-accent ${shapeClass}`}
       >
         <StatusItemIcon
           item={item.key}
@@ -107,7 +107,7 @@ function HiddenTile({ itemKey }: { readonly itemKey: StatusItem['key'] }) {
       aria-label={`${STATUS_ITEM_LABELS[itemKey]}: ${PANEL_LABELS.hidden}`}
       data-item={itemKey}
       data-shape="hidden"
-      className="flex h-14 rounded-md bg-default"
+      className="flex h-14 rounded-box bg-default"
     />
   );
 }
@@ -159,7 +159,7 @@ export function StatusPanel({
         ref={regionRef}
         tabIndex={-1}
         aria-label={PANEL_LABELS.region}
-        className="flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto p-4 outline-none motion-safe:animate-[status-panel-in_180ms_ease-out]"
+        className="flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto p-4 outline-none motion-safe:animate-status-panel-in"
       >
         <div className="flex items-center justify-between gap-3">
           <p role="status" className="text-base font-semibold">
@@ -169,7 +169,7 @@ export function StatusPanel({
             <span className="flex items-center gap-2">
               <StopShortcutMark mark={stopShortcut} keys={stopKeys} />
               <Button
-                variant="danger"
+                variant="danger-soft"
                 size="sm"
                 aria-label={PANEL_LABELS.stopName}
                 onPress={onStop}

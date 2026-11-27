@@ -88,6 +88,28 @@ test('the InputOTP style is built into CSS instead of injected at run time', () 
   );
 });
 
+test('the built CSS has the four radius steps and stops motion when it is reduced', () => {
+  // ADR 0181 の段階 1。角の丸みは 6px・12px・28px・完全な丸の 4 段で、動きを減らす設定では動きの時間を 0 にする。
+  // ソースの側の約束は scripts/renderer-shape.test.mjs が確かめる。ここではビルドの結果に出ていることを確かめる。
+  const css = files(rendererDir)
+    .filter((path) => path.endsWith('.css'))
+    .map((path) => readFileSync(path, 'utf8'))
+    .join('\n');
+  assert.match(css, /--radius-part:\s*6px[;}]/u);
+  assert.match(css, /--radius-box:\s*12px[;}]/u);
+  assert.match(css, /--radius-island:\s*28px[;}]/u);
+  assert.match(css, /--radius-3xl:\s*var\(--radius-island\)/u);
+  assert.match(
+    css,
+    /\.card,\s*\.alert,[^{]*\{\s*border-radius:\s*var\(--radius-box\)/u,
+  );
+  assert.match(css, /\.button,\s*\.chip,[^{]*\{\s*border-radius:\s*9999px/u);
+  assert.match(
+    css,
+    /@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{\s*:root,\s*:host\s*\{\s*--motion-move:\s*0s;\s*--motion-panel:\s*0s;\s*--motion-island:\s*0s;?\s*\}/u,
+  );
+});
+
 test('every file the page refers to is served by the app scheme', () => {
   const html = readPage();
   const refs = [...html.matchAll(/\b(?:src|href)="([^"]+)"/gu)].map(

@@ -780,7 +780,7 @@ const countingProvider = () => {
 
 const PRIVATE_SEGMENT = '00000000-0000-4000-8000-00000000a001';
 
-test('in a private segment the turn routes never touch the DB; reads go to the provider, while tasks, labels and research are refused without any call', async () => {
+test('in a private segment the turn routes never touch the DB; reads go to the provider, while tasks, labels, research and consult are refused without any call', async () => {
   const touched = touchedStore();
   const reads = countingProvider();
   const accepted: string[] = [];
@@ -803,6 +803,14 @@ test('in a private segment the turn routes never touch the DB; reads go to the p
     now: () => CLOCK.getTime(),
     backgroundJobs: {
       acceptResearch: (job) => {
+        accepted.push(job.workflow_id);
+        return Promise.resolve({
+          kind: 'accepted' as const,
+          workflow_id: job.workflow_id,
+        });
+      },
+      // 相談の受付の口があっても、記録しない区切りでは呼ばない（U562、ADR 0195）。
+      acceptConsult: (job) => {
         accepted.push(job.workflow_id);
         return Promise.resolve({
           kind: 'accepted' as const,
@@ -838,6 +846,7 @@ test('in a private segment the turn routes never touch the DB; reads go to the p
     '「牛乳を買う」を用事に登録して',
     'mail-001 に follow-up を付けて',
     '合成の話題について調べて',
+    '合成の悩みについて相談したい',
   ]) {
     const response = await turn(text, current);
     assert.equal(response?.status, 200, JSON.stringify(response?.body));
@@ -878,7 +887,7 @@ test('in a private segment the turn routes never touch the DB; reads go to the p
     409,
   );
   assert.deepEqual(touched.calls, []);
-  assert.equal(routes.privateConversation.held().replays, 4);
+  assert.equal(routes.privateConversation.held().replays, 5);
 
   // 記録しない区切りの間に届いた Live の委譲は保存しない（DB に触れない）。
   const live = await routes.commitLive({

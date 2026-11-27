@@ -56,12 +56,14 @@
 | #345 | 0186        | 忘却の命令の後に WAL を切り詰め、忘れた暗号文を WAL に残さない（U440）                |
 | #346 | 0187        | 知らせを WSS で端末へ運び、期限切れ・忘却でキャンバスの物を閉じる（UI-05 の段階 3）   |
 | #347 | なし        | 忘却の公開ゲートを閉じたままにする本人の決定の記録（U431）                            |
+| #349 | 0188        | 表示のリースを保ち、失ったらキャンバスを描かない（UI-05 の段階 4）                    |
+| #350 | なし        | Windows の shard 1 の時間切れを、DB の準備の共有と shard の重みで防ぐ（#348）         |
 
 ## 作業中の PR
 
-- UI-05 の段階 4: キャンバスの窓が見えている間だけ表示のリースを保ち、失ったらキャンバスの物を描かない（ADR 0188、U470〜U474。Core は変えていない。キャンバス表示だけで、配布版の従来の窓は対象外）。U470（中枢の世代が進むと接続し直すまで表示のリースを取り直せない）は本人に確かめる。
+- UI-05 の段階 6: 記録しないモードの UI と保存モードの切り替え（ADR 0189、U475〜U479）。切り替えは本人の画面操作だけ（従来の窓とキャンバス表示の状態の層のパネル）。記録しない間は島に常に表示する。別の端末での切り替えは `StorageModeNotice` の知らせで届き、知らせを取り逃して記録された発言は 1 文で知らせる（U477）。2c（記録しない間の発言の RAM での保持）まで、記録しない間の発言は Core が断る。
 - 本人の決定（2026-11-27、U431）: 忘却の公開ゲートは閉じたままにする。開くのは、記憶を保存する経路と保存してよい種類の設定ができ、U385・U383 を決め、実機（合成データ）で計画から実行まで確かめた後に、改めて本人が決める。
-- Windows の CI の shard 1 の時間切れ（Issue #348）を別の作業で調べている。
+- Windows の CI の shard 1 の時間切れ（Issue #348）は #350 で大きく縮めた。voice-budget の「再起動の照合」が 1 回だけ時間切れになったので Issue は開けたまま。
 - B04・B05・B07 の模擬証拠は、main の現行のソースと一致しない（`pnpm run evidence:check`。この期間より前からの食い違いを含む）。それぞれの工程か main の記録の更新のときに作り直す。
 
 CI が通ればマージしてよいと本人から許可を受けている。マージの状態は GitHub の PR の画面で確かめる。
@@ -144,5 +146,5 @@ CI が通ればマージしてよいと本人から許可を受けている。�
 - コミットの前に `pnpm run security:staged`、push の前に `pnpm run security:scan`。
 - 公開物の検査は、`example.com`・`example.org`・`example.net`・`example.invalid` 以外のメールアドレスの形を拒む。試験の送り主は合成の一覧を引数で渡している（`checkHouseholdNoticeSender` の第 2 引数、`createHouseholdMailIntake` の `issuers`）。検査を避ける書き方はしない。
 - マイグレーションを足すときは、`packages/storage/src/migrations.test.ts` の一覧・hash・表の数、`packages/domain/src/backup-plan.ts` の表の分類、`packages/storage/src/policy.ts`、`tests/fixtures/backup-restore-cases.json`、`packages/storage/migrations/README.md` をそろえ、試験の中の DB の版（`store-binding`・`db-worker`・`backup-ops`・`backup-store`・`operation-retention`・`voice-store`・`restore-aftermath-store`・`apps/core` の `backup`・`restore`・`forget-ledger` の試験、`tests/integration/b05-expectations.json`・`b07-expectations.json`）を上げる。除外する表なら `backup-store.test.ts` と `apps/core/src/backup.test.ts` の除外の一覧も直す。
-- 次の ADR の番号は 0189、次の未決事項の番号は U475（U411〜U429・U441〜U459 は空き）。
+- 次の ADR の番号は 0190、次の未決事項の番号は U480（U411〜U429・U441〜U459 は空き）。
 - この環境の既定の Node.js が 22 のときは、24 系を PATH の先頭に置いてから pnpm を使う（`pnpm install` が版の違いで止まる）。clone の履歴が浅いと push の前の検査（`pnpm run security:scan`）が止まるので、`git fetch --unshallow` で全履歴を取ってから検査する。

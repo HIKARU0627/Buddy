@@ -21,6 +21,7 @@ import {
 } from '@buddy/domain';
 import type {
   StorageBoundaryCommand,
+  StorageBoundaryEvent,
   StorageBoundaryRejection,
   StorageBoundaryState,
   StorageModeName,
@@ -60,6 +61,25 @@ export type StorageGateFailure =
 
 export type StorageGateResult =
   { readonly ok: true; readonly origin: StorageOrigin } | StorageGateFailure;
+
+// 独立した確認の事象（B06-07a-2 の 2d、ADR 0192）。外部変更の頼み・画面での承認・取り下げ。
+export type StorageConfirmationEvent = Extract<
+  StorageBoundaryEvent,
+  {
+    readonly type:
+      | 'external_change_requested'
+      | 'confirmation_approved'
+      | 'confirmation_declined';
+  }
+>;
+
+export type StorageConfirmationResult<T> =
+  | { readonly ok: true; readonly value: T }
+  | {
+      readonly ok: false;
+      readonly reason: StorageBoundaryRejection | 'closed';
+      readonly errors: readonly string[];
+    };
 
 const iso = (ms: number): string => new Date(ms).toISOString();
 
@@ -251,6 +271,54 @@ export class StorageModeGate {
       this.#state = result.state;
       await this.#run(result.commands);
       return { ok: true, origin: this.origin() } as const;
+    });
+  }
+
+  // ---- 独立した確認（B06-07a-2 の 2d、ADR 0192） -------------------------------------------------------------------
+
+  // 承認を待つ独立した確認の数（試験・診断の口。中身は返さない）。
+  pendingConfirmations(): number {
+    return this.#state.pending_confirmations.length;
+  }
+
+  // 独立した確認の事象を domain の遷移に当て、返った命令（確認を出す・最小の操作記録）を run に渡す。入る・出ると同じ順に
+  // 1 つずつ行う（承認と記録の書き込みの間に出る・入るが割り込まない）。拒否されたら状態も命令も変えない（domain が
+  // 確認の ID の使用済みを記録した状態は進める）。命令の実行は呼び出し側が行い、その失敗で状態を戻さない（承認済みの確認を
+  // 承認前へ戻すと、同じ承認で 2 回記録し得る）。
+  confirmation<T>(
+    event: StorageConfirmationEvent,
+    run: (commands: readonly StorageBoundaryCommand[]) => Promise<T>,
+  ): Promise<StorageConfirmationResult<T>> {
+    return this.#exclusive(async () => {
+      if (this.#closed)
+        return { ok: false, reason: 'closed', errors: [] } as const;
+      const result = applyStorageBoundaryEvent(this.#state, event);
+      this.#state = result.state;
+      if (result.rejected !== null)
+        return {
+          ok: false,
+          reason: result.rejected,
+          errors: [...result.errors],
+        } as const;
+      return { ok: true, value: await run(result.commands) } as const;
+    });
+  }
+
+  // 承認を待つ確認をすべて取り下げる（ロックの申告・忘却の知らせで記録しない区切りの中身を捨てるとき。ADR 0192）。
+  // 取り下げた確認の ID を返す。取り下げた確認への後の承認は confirmation_not_found で、記録も外部変更も作らない。
+  dropConfirmations(): Promise<readonly string[]> {
+    return this.#exclusive(() => {
+      const dropped: string[] = [];
+      for (const pending of this.#state.pending_confirmations) {
+        const result = applyStorageBoundaryEvent(this.#state, {
+          type: 'confirmation_declined',
+          confirmation_id: pending.confirmation_id,
+        });
+        if (result.rejected !== null) continue;
+        this.#state = result.state;
+        dropped.push(pending.confirmation_id);
+      }
+      return Promise.resolve(dropped);
     });
   }
 

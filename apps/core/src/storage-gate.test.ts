@@ -416,6 +416,119 @@ test('after close(), enter and exit are refused', async () => {
   });
 });
 
+// 独立した確認の事象（B06-07a-2 の 2d、ADR 0192）。確定済みの変更は ADR 0045 のラベルの変更の形を手で書いた値（hash は
+// 形だけを検査するので 64 桁の値）。
+test('confirmation events: refused outside a private segment without running anything; in a private segment a request shows one confirmation, a lock-style drop declines every pending one, and close() refuses', async () => {
+  const clock = new FakeBoundaryClock({
+    status: 'ok',
+    record: { segment_generation: '3', private_open: false },
+  });
+  const gate = await open(clock, {
+    newId: ids(SEG_A, SEG_B, SEG_C, SEG_D),
+  });
+  const draft = (operationId: string) => ({
+    operation: {
+      schema: 'buddy.operation.v1',
+      operation_id: operationId,
+      content_version: '1',
+      permission_revision: '1',
+      provider: 'mock',
+      account_id: '00000000-0000-4000-8000-000000000002',
+      target: { remote_id: 'mail-001', source_revision: 'r1' },
+      action: { kind: 'mail.labels.change', add: ['合成'], remove: [] },
+      effects: { external_recipients: [], reconcile_scope: 'exact_target' },
+    },
+    content_hash: 'a'.repeat(64),
+  });
+  const ran: string[][] = [];
+  const run = (commands: readonly { readonly type: string }[]) => {
+    ran.push(commands.map((command) => command.type));
+    return Promise.resolve('done');
+  };
+  const request = (confirmationId: string, operationId: string) =>
+    gate.confirmation(
+      {
+        type: 'external_change_requested',
+        confirmation_id: confirmationId,
+        origin: gate.origin(),
+        draft: draft(operationId),
+      },
+      run,
+    );
+  const OP_1 = '00000000-0000-4000-8000-0000000000a1';
+  const OP_2 = '00000000-0000-4000-8000-0000000000a2';
+  const CONF_1 = '00000000-0000-4000-8000-0000000000b1';
+  const CONF_2 = '00000000-0000-4000-8000-0000000000b2';
+  const CONF_3 = '00000000-0000-4000-8000-0000000000b3';
+  // 通常の区切りでは外部変更を確認にしない（命令を実行しない）。
+  assert.deepEqual(await request(CONF_1, OP_1), {
+    ok: false,
+    reason: 'not_private',
+    errors: [],
+  });
+  assert.deepEqual(ran, []);
+  assert.equal((await gate.enterPrivate()).ok, true);
+  // 形の違う確定済みの変更（ラベルの追加と削除が両方空）は確認にしない。
+  const empty = await gate.confirmation(
+    {
+      type: 'external_change_requested',
+      confirmation_id: CONF_1,
+      origin: gate.origin(),
+      draft: {
+        ...draft(OP_1),
+        operation: {
+          ...draft(OP_1).operation,
+          action: { kind: 'mail.labels.change', add: [], remove: [] },
+        },
+      },
+    },
+    run,
+  );
+  assert.equal(empty.ok, false);
+  assert.equal(empty.ok ? '' : empty.reason, 'confirmation_invalid');
+  assert.deepEqual(ran, []);
+  // 2 件の確認を出す（確認の ID は世代の中で 1 回だけ使える）。
+  assert.deepEqual(await request(CONF_2, OP_1), { ok: true, value: 'done' });
+  assert.deepEqual(await request(CONF_3, OP_2), { ok: true, value: 'done' });
+  assert.deepEqual(ran, [
+    ['show_independent_confirmation'],
+    ['show_independent_confirmation'],
+  ]);
+  assert.equal(gate.pendingConfirmations(), 2);
+  // ロック・忘却の取り下げ: 承認を待つ確認をすべて取り下げる。後の承認は確認が無い。
+  assert.deepEqual(await gate.dropConfirmations(), [CONF_2, CONF_3]);
+  assert.equal(gate.pendingConfirmations(), 0);
+  assert.deepEqual(await gate.dropConfirmations(), []);
+  const approval = await gate.confirmation(
+    {
+      type: 'confirmation_approved',
+      confirmation_id: CONF_2,
+      approval: {
+        route: 'screen',
+        device_id: '00000000-0000-4000-8000-0000000000d1',
+        approved_at: '2031-06-01T00:00:00Z',
+        segment_generation: gate.origin().segment_generation,
+        operation_id: OP_1,
+        content_version: '1',
+        content_hash: 'a'.repeat(64),
+      },
+    },
+    run,
+  );
+  assert.deepEqual(approval, {
+    ok: false,
+    reason: 'confirmation_not_found',
+    errors: [],
+  });
+  assert.equal(ran.length, 2);
+  await gate.close();
+  assert.deepEqual(await request(CONF_1, OP_2), {
+    ok: false,
+    reason: 'closed',
+    errors: [],
+  });
+});
+
 // ---- 書き込みの結果が不確かな失敗（置き換えは済み、その後の fsync が失敗した場合など） ----------------------------
 
 // ディスクの中身を持つ模擬。計画の各項目が 1 回の書き込みの結果: ok（書いて成功）・throw（書かずに失敗）・

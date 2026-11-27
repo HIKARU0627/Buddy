@@ -110,6 +110,16 @@ export interface CreateOperationCommand extends DbCommandBase<'operation.create'
     // 予定のカレンダー。予定以外は null。
     readonly calendar_id: string | null;
   } | null;
+  // 記録しない会話の独立した確認の承認から作る最小の操作記録（ADR 0045・0192、U42）。あれば operations.record_kind を
+  // private_minimal にし、同じ transaction で画面の承認を記録して approved から始める（preview_id は確認の ID）。
+  // 依頼（workflow_id）・方針による自動承認・取り消し・候補の起点とは一緒に使わない（会話・依頼へのつながりを持たない）。
+  readonly private_minimal?: {
+    readonly approval_id: string;
+    // 承認した端末（登録済みで失効していないこと）。
+    readonly device_id: string;
+    // 独立した確認の ID（Core の RAM の確認。画面の承認の preview_id に使う）。
+    readonly confirmation_id: string;
+  } | null;
 }
 
 export interface ApproveOperationCommand extends DbCommandBase<'operation.approve'> {
@@ -412,6 +422,27 @@ export function commandShapeReasons(command: DbCommand): string[] {
           reasons.push('candidate_origin_invalid');
         // 候補の起点は方針による自動承認の判定の記録。画面の承認や取り消しには付けない（ADR 0148）。
         else if (auto === null) reasons.push('candidate_origin_without_auto');
+      }
+      const minimal = command.private_minimal;
+      if (minimal !== undefined && minimal !== null) {
+        if (
+          typeof minimal !== 'object' ||
+          !isId(minimal.approval_id) ||
+          !isId(minimal.device_id) ||
+          !isId(minimal.confirmation_id)
+        )
+          reasons.push('private_minimal_invalid');
+        // 最小の操作記録は会話・依頼へつながらない外部変更だけ（ADR 0045 の U64）。依頼・自動承認・取り消し・候補の
+        // 起点・端末からの要求の受付と一緒に作らない。
+        else if (
+          command.workflow_id !== null ||
+          command.effect_route !== 'remote_mutation' ||
+          auto !== null ||
+          (undo !== undefined && undo !== null) ||
+          (origin !== undefined && origin !== null) ||
+          command.request !== null
+        )
+          reasons.push('private_minimal_conflict');
       }
       break;
     }

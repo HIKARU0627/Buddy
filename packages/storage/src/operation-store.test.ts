@@ -1074,3 +1074,159 @@ test('a retry prepare starts only from not_executed (review P2)', async () => {
     });
   });
 });
+
+// 記録しない会話の独立した確認の承認から作る最小の操作記録（ADR 0192、U42）。期待値は 0010 の record_kind の制約と
+// ADR 0045 の「最小の操作記録」から手で書いた値。
+test('a private minimal record is created approved with record_kind private_minimal, no workflow and a screen approval, and continues to prepare', async () => {
+  await withStore((db) => {
+    const confirmationId = randomUUID();
+    const approvalId = randomUUID();
+    assert.equal(
+      committed(
+        run(db, {
+          ...createCommand('op-pm'),
+          private_minimal: {
+            approval_id: approvalId,
+            device_id: 'dev-1',
+            confirmation_id: confirmationId,
+          },
+        }),
+      ),
+      '1',
+    );
+    assert.deepEqual(
+      {
+        ...(db
+          .prepare(
+            'SELECT workflow_id, kind, effect_route, state, state_revision, record_kind FROM operations WHERE operation_id = ?',
+          )
+          .get('op-pm') as object),
+      },
+      {
+        workflow_id: null,
+        kind: 'mail.labels.change',
+        effect_route: 'remote_mutation',
+        state: 'approved',
+        state_revision: 1,
+        record_kind: 'private_minimal',
+      },
+    );
+    assert.deepEqual(
+      db
+        .prepare(
+          'SELECT approval_id, content_version, content_hash, route, device_id, preview_id, policy_version, status FROM approvals WHERE operation_id = ?',
+        )
+        .all('op-pm')
+        .map((row) => ({ ...(row as object) })),
+      [
+        {
+          approval_id: approvalId,
+          content_version: 1,
+          content_hash: CONTENT_HASH,
+          route: 'screen',
+          device_id: 'dev-1',
+          preview_id: confirmationId,
+          policy_version: null,
+          status: 'valid',
+        },
+      ],
+    );
+    // 承認済みの操作として、通常の操作と同じ状態機械で準備へ進む。
+    assert.equal(committed(run(db, prepareCommand('op-pm', '1'))), '2');
+    // 最小の操作記録を通常の記録へ戻せない（0010 の制約）。
+    assert.throws(
+      () =>
+        db
+          .prepare(
+            "UPDATE operations SET record_kind = 'normal' WHERE operation_id = ?",
+          )
+          .run('op-pm'),
+      /operation_record_kind_fixed/u,
+    );
+  });
+});
+
+test('a private minimal record is refused with a workflow, an automatic approval, a local command, a device request, a malformed field or an unregistered device', async () => {
+  await withStore((db) => {
+    const minimal = () => ({
+      approval_id: randomUUID(),
+      device_id: 'dev-1',
+      confirmation_id: randomUUID(),
+    });
+    const conflict = ['private_minimal_conflict'];
+    assert.deepEqual(
+      reasons(
+        run(db, {
+          ...createCommand('op-pw', { workflow_id: 'wf-1' }),
+          private_minimal: minimal(),
+        }),
+      ),
+      conflict,
+    );
+    assert.deepEqual(
+      reasons(
+        run(db, {
+          ...createCommand('op-pa', { auto: true }),
+          private_minimal: minimal(),
+        }),
+      ),
+      conflict,
+    );
+    assert.deepEqual(
+      reasons(
+        run(db, {
+          ...createCommand('op-pl', {
+            effect_route: 'local_command',
+            operation_kind: 'task.create',
+          }),
+          private_minimal: minimal(),
+        }),
+      ),
+      conflict,
+    );
+    assert.deepEqual(
+      reasons(
+        run(db, {
+          ...createCommand('op-pr', {
+            request: {
+              command_scope_id: randomUUID(),
+              request_id: randomUUID(),
+              request_hash: 'c'.repeat(64),
+            },
+          }),
+          private_minimal: minimal(),
+        }),
+      ),
+      conflict,
+    );
+    assert.deepEqual(
+      reasons(
+        run(db, {
+          ...createCommand('op-pi'),
+          private_minimal: { ...minimal(), approval_id: '' },
+        }),
+      ),
+      ['private_minimal_invalid'],
+    );
+    assert.deepEqual(
+      reasons(
+        run(db, {
+          ...createCommand('op-pd'),
+          private_minimal: { ...minimal(), device_id: 'dev-9' },
+        }),
+      ),
+      ['device_not_registered'],
+    );
+    // どれも行を作っていない。
+    assert.equal(
+      (
+        db
+          .prepare(
+            "SELECT count(*) AS n FROM operations WHERE record_kind = 'private_minimal'",
+          )
+          .get() as { n: number }
+      ).n,
+      0,
+    );
+  });
+});

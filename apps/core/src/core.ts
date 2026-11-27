@@ -119,6 +119,10 @@ import { createClockStateFile } from './clock-state.js';
 import type { NoticeSink } from './notice-sink.js';
 import { NoticeRelay } from './notice-relay.js';
 import { StorageModeGate } from './storage-gate.js';
+import {
+  PRIVATE_CONFIRMATION_SCREEN_OPEN,
+  PrivateConfirmationDesk,
+} from './private-confirmations.js';
 import type { PrivateDiscardReason } from './private-turns.js';
 import {
   RestoreInstallError,
@@ -363,6 +367,9 @@ export interface CoreTurnOptions {
   }) => void;
   // 影モードの比較の入口（ADR 0092）。既定は無し（OFF。D4）。発言の解釈を保存した後に呼ばれる。
   readonly onInterpreted?: TurnRoutesOptions['onInterpreted'];
+  // 記録しない会話の独立した確認の口（B06-07a-2 の 2d、ADR 0192）。試験の組み立てだけが渡す。既定は
+  // PRIVATE_CONFIRMATION_SCREEN_OPEN（false。確認を画面に出して承認を受ける経路がまだない。U503）。
+  readonly privateConfirmationScreen?: () => boolean;
 }
 
 export interface CoreHttpsInfo {
@@ -559,6 +566,9 @@ export interface CoreHandle {
   readonly privateConversation: {
     held(): PrivateConversationHeld;
   } | null;
+  // 記録しない会話の独立した確認（B06-07a-2 の 2d、ADR 0192）。確認を画面に出して承認を受ける経路（契約・画面）はまだない
+  // ので（U503）、試験と次の段階の経路がここを呼ぶ。HTTPS を設定しなければ null。
+  readonly privateConfirmations: PrivateConfirmationHandle | null;
   // 知らせの中継（UI-05 の段階 3、ADR 0187）。掃除の job・保存境界の保持者・忘却の経路が知らせを渡す口で、流れの表示の
   // 後始末と WSS の購読へ運ぶ。試験は保存層の命令で直接忘れた後の台帳の知らせをここへ渡す（忘却の公開ゲートは閉じたまま）。
   readonly notices: NoticeSink;
@@ -586,7 +596,18 @@ interface PrivateConversationHooks {
   run(command: StorageBoundaryCommand): void;
   clear(reason: 'locked' | 'forgotten' | 'core_stopped'): void;
   held(): PrivateConversationHeld;
+  readonly confirmations: PrivateConfirmationHandle;
 }
+
+// 記録しない会話の独立した確認の口（ADR 0192）。承認は画面の承認（端末は認証した端末の ID）。
+export type PrivateConfirmationHandle = Pick<
+  PrivateConfirmationDesk,
+  'list' | 'approve' | 'decline' | 'held'
+>;
+
+// 忘却台帳の世代を読むための照会の候補 ID（どの候補とも一致しない値。候補を起点にした自動実行の照会が同じ transaction で
+// 返す忘却台帳の世代だけを使う。ADR 0192）。
+const FORGETTING_PROBE_CANDIDATE = 'private-minimal-record';
 
 const GENERATION_LABEL: Readonly<Record<StoreGenerationSource, string>> = {
   database: 'DB の値',
@@ -1517,6 +1538,10 @@ export async function startCore(
       privateHooks === null
         ? null
         : { held: () => (privateHooks as PrivateConversationHooks).held() },
+    privateConfirmations:
+      privateHooks === null
+        ? null
+        : (privateHooks as PrivateConversationHooks).confirmations,
     notices,
     pairing,
     get state() {
@@ -1915,6 +1940,27 @@ async function startHttps(
     schema: { valid: () => false },
     now: () => now().getTime(),
   });
+  // 記録しない会話の独立した確認（B06-07a-2 の 2d、ADR 0192）。確認は RAM にだけ持ち、承認の後の最小の操作記録だけを DB に
+  // 書いて実行担当へ渡す（通常の承認の後と同じ）。口は試験の組み立てだけが開く（製品は PRIVATE_CONFIRMATION_SCREEN_OPEN）。
+  const privateDesk = new PrivateConfirmationDesk({
+    gate: storage,
+    store: watched,
+    keyStore,
+    forgettingGeneration: async () =>
+      (
+        await store.query({
+          kind: 'auto_execution_state',
+          candidate_id: FORGETTING_PROBE_CANDIDATE,
+        })
+      ).forgetting_generation,
+    contract: createApiContract(),
+    now: () => now().getTime(),
+    afterRecord: (operationId) => {
+      feed.notify();
+      runner.afterApproval(operationId);
+    },
+    log,
+  });
   // 流れの区切り（UI-05）は、上の turns より後に作る。保存した発言の期限は、この口を通して区切りへ渡す。
   let streamRecordTurn:
     | ((event: {
@@ -1980,6 +2026,12 @@ async function startHttps(
       ledgerKey: memoryLedgerKey ?? (() => Promise.resolve(null)),
       forgetGate: () => FORGET_PUBLIC_GATE_OPEN,
     },
+    privateConfirmations: {
+      open:
+        turnOptions.privateConfirmationScreen ??
+        (() => PRIVATE_CONFIRMATION_SCREEN_OPEN),
+      desk: privateDesk,
+    },
   });
   // 連携の口座と許可の版を一度確かめておく（発言の入力の時点の版を外部へ問い合わせずに持つ。B04-07）。
   await turns.prime().catch(() => undefined);
@@ -2011,12 +2063,18 @@ async function startHttps(
       else if (command.type === 'discard_private_ram') {
         turns.privateConversation.discard('private_ended');
         stream.privateConversation.discard();
+        // 承認前の確認は保存境界の保持者が出るときに捨てた。RAM の確認と承認の結果の控えも捨てる（ADR 0192）。
+        privateDesk.discard();
       }
     },
     clear: (reason) => {
       turns.privateConversation.discard(reason);
       stream.privateConversation.reset();
+      // 停止では RAM ごと失う。ロック・忘却では承認前の確認を取り下げる（記録しない区切りのまま。ADR 0192）。
+      if (reason === 'core_stopped') privateDesk.discard();
+      else void privateDesk.drop().catch(() => undefined);
     },
+    confirmations: privateDesk,
     held: () => {
       const ram = turns.privateConversation.held();
       const shown = stream.privateConversation.held();

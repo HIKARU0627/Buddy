@@ -385,3 +385,38 @@ test('items that look the same carry their order in the confirmation, in the sam
     ].join('\n'),
   );
 });
+
+// 忘却の実行の確認（UI-10、ADR 0183）。値は main が中枢から読んだ一覧と計画の値だけ。期待値は手で書いた。
+test('the forget confirmation shows the memory, what goes and what stays, that it cannot be undone, with cancel first', () => {
+  const text = adminConfirmText({
+    action: 'forget_memory',
+    memoryText: '返信は短めが好み‮',
+    removedTotal: 5,
+    memoryCount: 3,
+    directiveCount: 1,
+    keptOperations: 1,
+  });
+  assert.equal(text.title, '記憶の忘却');
+  assert.equal(text.message, 'この記憶と、計画に出した物を忘れますか');
+  assert.equal(
+    text.detail,
+    [
+      '忘れる記憶: 返信は短めが好み',
+      '消える物: 合計 5 件（記憶 3 件・本人の指示 1 件を含む）',
+      '残る操作: 1 件（外部への送出だけを止めます）',
+      '',
+      '忘れた物は元に戻せません。同じ内容は、これからも保存しません。',
+    ].join('\n'),
+  );
+  assert.deepEqual(text.buttons, ['やめる', '忘れる']);
+  // 残る操作がなければ、その行を出さない。
+  const none = adminConfirmText({
+    action: 'forget_memory',
+    memoryText: '毎朝 7 時に散歩する',
+    removedTotal: 1,
+    memoryCount: 1,
+    directiveCount: 0,
+    keptOperations: 0,
+  });
+  assert(!none.detail.includes('残る操作'));
+});

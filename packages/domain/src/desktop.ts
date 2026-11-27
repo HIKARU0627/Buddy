@@ -83,6 +83,10 @@ export const DESKTOP_IPC_CHANNELS = [
   'desktop.household_receipt_read',
   // 請求予定を消す（ADR 0179）。
   'desktop.household_bill_delete',
+  // 忘却の画面（UI-10、ADR 0183）: 記憶の一覧・忘却の計画を作らせる・確かめた計画の実行。従来の窓と状態の層から。
+  'desktop.memories_list',
+  'desktop.forget_plan',
+  'desktop.forget_execute',
 ] as const;
 
 export type DesktopIpcChannel = (typeof DESKTOP_IPC_CHANNELS)[number];
@@ -150,6 +154,9 @@ export const DESKTOP_IPC_REJECT_REASONS = [
   'voice_unavailable',
   // 自動実行の取り消しで、対象がその後に変わっていたため中枢が自動では戻さなかった（B13-05、ADR 0153・0154）。
   'undo_target_changed',
+  // 中枢が忘却の計画・実行を受け付けなかった（503。忘却の公開ゲートが閉じている・台帳の鍵がない・計画の数の上限など。
+  // 理由は区別しない。UI-10、ADR 0183）。何も消していない。
+  'forget_unavailable',
 ] as const;
 
 export type DesktopIpcRejectReason =
@@ -249,6 +256,10 @@ export const DESKTOP_PAIRING_SCREEN_CHANNELS: readonly DesktopIpcChannel[] = [
   // 請求予定を消す（ADR 0179）も本人の画面操作。中枢へ記録するだけで外部へは送らないので、この端末の入出力の停止中も
   // 受け付ける（家計の記録の削除と同じ）。
   'desktop.household_bill_delete',
+  // 忘却の計画を作らせる・確かめた計画の実行（UI-10、ADR 0183）も本人の画面操作。中枢の記録を消すだけで外部へは送らない
+  // ので、この端末の入出力の停止中も受け付ける（停止の検査はしない）。実行は main が OS の確認ダイアログを 1 回挟む。
+  'desktop.forget_plan',
+  'desktop.forget_execute',
 ];
 
 // 外部へ送る画面操作（ADR 0177）。この端末の入出力の停止中は受け付けない（停止は外部への送信を止める操作なので）。
@@ -275,6 +286,8 @@ export const DESKTOP_UNLOCKED_CHANNELS: readonly DesktopIpcChannel[] = [
   'desktop.auto_actions_list',
   // 家計簿の月ごとの合計と 1 か月の記録（ADR 0162）。金額・店名は内容なので、ロック中・不明は出さない。前面は求めない。
   'desktop.household_view',
+  // 記憶の一覧（UI-10、ADR 0183）。記憶の本文は内容なので、ロック中・不明は出さない。前面は求めない（画面を開いたときに読む）。
+  'desktop.memories_list',
 ];
 
 // 要求を受け付けてよいか。最初に満たさない検査の拒否を返す。
@@ -411,6 +424,11 @@ export const DESKTOP_ROLE_CHANNELS: Readonly<
     'desktop.household_receipt_setting',
     'desktop.household_receipt_read',
     'desktop.household_bill_delete',
+    // 忘却の画面（UI-10、ADR 0183）。画面は従来の窓に置く。キャンバスの部品・入力バー・島が記憶の一覧を読んだり、忘却の
+    // 計画・実行に見せかけたりできないよう、状態の層（と従来の窓）だけに渡す。
+    'desktop.memories_list',
+    'desktop.forget_plan',
+    'desktop.forget_execute',
   ],
   input: ['desktop.get_state', 'desktop.turn_submit', 'desktop.canvas_summon'],
   island: [

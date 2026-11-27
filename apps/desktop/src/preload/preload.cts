@@ -61,6 +61,9 @@ const REQUEST_CHANNELS: readonly string[] = [
   'desktop.household_receipt_setting',
   'desktop.household_receipt_read',
   'desktop.household_bill_delete',
+  'desktop.memories_list',
+  'desktop.forget_plan',
+  'desktop.forget_execute',
 ];
 const NOTIFICATION_CHANNELS: readonly string[] = [
   'desktop.state_changed',

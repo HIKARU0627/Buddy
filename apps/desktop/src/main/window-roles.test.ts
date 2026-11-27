@@ -102,6 +102,10 @@ const AUTO_ACTIONS = [
   'desktop.household_receipt_read',
   // 請求予定を消す（ADR 0179）。
   'desktop.household_bill_delete',
+  // 忘却の画面の記憶の一覧・計画・実行（UI-10、ADR 0183。従来の窓と状態の層。キャンバス・入力バー・島は使わない）。
+  'desktop.memories_list',
+  'desktop.forget_plan',
+  'desktop.forget_execute',
 ];
 const ALL_CHANNELS = [
   ...LEGACY_CHANNELS,
@@ -1066,4 +1070,96 @@ test('the controller turns a summon from the status layer or the input bar into 
   );
   // 入出力の状態は変えない。
   assert.equal(controller.state.stopScope, 'none');
+});
+
+// 忘却の画面（UI-10、ADR 0183）: 記憶の一覧・計画・実行のチャネルは、従来の窓と状態の層のパネルだけが使える。
+// キャンバス・入力バー・島からは、前面でもロック解除済みでも untrusted_sender。期待値は手で書いた。
+test('forget screen channels: only the legacy window and the status panel reach them', () => {
+  const registry = new UiWindowRegistry<FakeWindow>();
+  registry.register(21, 'legacy', { name: 'legacy' });
+  registry.register(22, 'status', { name: 'status' });
+  registry.register(23, 'canvas', { name: 'canvas' });
+  registry.register(24, 'input', { name: 'input' });
+  registry.register(25, 'island', { name: 'island' });
+  const memory = [
+    'desktop.memories_list',
+    'desktop.forget_plan',
+    'desktop.forget_execute',
+  ];
+  for (const channel of memory) {
+    for (const [id, role] of [
+      [21, 'legacy'],
+      [22, 'status'],
+    ] as const) {
+      assert.equal(channelAllowedForWindow(role, channel), true, channel);
+      assert.deepEqual(
+        admitDesktopRequest(
+          channel,
+          null,
+          UNLOCKED,
+          senderFor(registry, id, channel, { focused: true }),
+        ),
+        { ok: true },
+        `${role} ${channel}`,
+      );
+    }
+    for (const [id, role] of [
+      [23, 'canvas'],
+      [24, 'input'],
+      [25, 'island'],
+    ] as const) {
+      assert.equal(channelAllowedForWindow(role, channel), false, channel);
+      assert.deepEqual(
+        admitDesktopRequest(
+          channel,
+          null,
+          UNLOCKED,
+          senderFor(registry, id, channel, { focused: true }),
+        ),
+        { ok: false, reason: 'untrusted_sender' },
+        `${role} ${channel}`,
+      );
+    }
+  }
+  // 一覧はロック解除済みなら前面でなくても読める。計画と実行は前面の画面操作だけ。ロック中・不明はどれも拒否。
+  const back = (channel: string) =>
+    admitDesktopRequest(
+      channel,
+      null,
+      UNLOCKED,
+      senderFor(registry, 21, channel, { focused: false }),
+    );
+  assert.deepEqual(back('desktop.memories_list'), { ok: true });
+  assert.deepEqual(back('desktop.forget_plan'), {
+    ok: false,
+    reason: 'screen_operation_required',
+  });
+  assert.deepEqual(back('desktop.forget_execute'), {
+    ok: false,
+    reason: 'screen_operation_required',
+  });
+  for (const lockState of ['locked', 'unknown'] as const)
+    for (const channel of memory)
+      assert.deepEqual(
+        admitDesktopRequest(
+          channel,
+          null,
+          { ...UNLOCKED, lockState },
+          senderFor(registry, 21, channel, { focused: true }),
+        ),
+        { ok: false, reason: 'device_locked' },
+        `${lockState} ${channel}`,
+      );
+  // 中枢の記録を消すだけで外部へは送らないので、この端末の入出力の停止中も計画・実行を受け付ける。
+  for (const channel of ['desktop.forget_plan', 'desktop.forget_execute'])
+    assert.deepEqual(
+      admitDesktopRequest(
+        channel,
+        null,
+        { ...UNLOCKED, stopScope: 'local' },
+        senderFor(registry, 21, channel, { focused: true }),
+      ),
+      { ok: true },
+      channel,
+    );
 });

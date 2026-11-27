@@ -32,12 +32,14 @@ import { useIslandSignals } from './state/use-island-signals.js';
 import { useCandidateState } from './state/use-candidate-state.js';
 import { useAutoActionState } from './state/use-auto-action-state.js';
 import { useHouseholdState } from './state/use-household-state.js';
+import { useMemoryState } from './state/use-memory-state.js';
 import { canStartAddFrom } from './state/household-state.js';
 import { inputFromCandidate } from './state/household-candidate.js';
 import { useConnectionsState } from './state/use-connections-state.js';
 import { CandidatesPanel } from './screens/candidates/CandidatesPanel.js';
 import { AutoActionsPanel } from './screens/auto-actions/AutoActionsPanel.js';
 import { HouseholdPanel } from './screens/household/HouseholdPanel.js';
+import { MemoryPanel } from './screens/memory/MemoryPanel.js';
 import { WorkPanel } from './screens/work/WorkPanel.js';
 import { StopShortcutMark } from './components/StopShortcutMark.js';
 import {
@@ -109,6 +111,8 @@ function ConnectedApp({ api }: { readonly api: BuddyDesktopApi }) {
   const autoActions = useAutoActionState(api, workLive);
   // 家計簿（ADR 0162）。自動実行と同じく、ロック解除済みで中枢に接続している間だけ内容を持つ（切断・ロックで捨てる）。
   const household = useHouseholdState(api, workLive);
+  // 忘却の画面（UI-10、ADR 0183）。家計簿と同じく、ロック解除済みで中枢に接続している間だけ内容を持つ（切断・ロックで捨てる）。
+  const memories = useMemoryState(api, workLive);
   // 連携アカウント（B08-02 P3・B09-05、ADR 0142）。中枢の画面で中枢に接続している間だけ内容を持つ
   // （中枢の画面かどうかは main が確かめる。接続を待つ間は欄だけ出し、操作を止める）。
   const linked = useConnectionsState(api, mode === 'live');
@@ -177,6 +181,12 @@ function ConnectedApp({ api }: { readonly api: BuddyDesktopApi }) {
             <HouseholdPanel
               state={household.state}
               actions={household.actions}
+              now={now}
+            />
+            {/* 切断中も欄を出し、取得できていないことを示す（「記憶はありません」と言わない）。 */}
+            <MemoryPanel
+              state={memories.state}
+              actions={memories.actions}
               now={now}
             />
           </>

@@ -183,6 +183,7 @@ export type BuddyContract =
   | ForgetPlanView
   | ForgetExecuteRequest
   | ForgetExecuteResult
+  | MemoryListResponse
   | ForgetLedgerSyncRequest
   | ForgetLedgerDelta
   | ForgetLedgerNotice
@@ -1671,6 +1672,25 @@ export type DesktopIpcRequest =
       payload: {
         ref: Id;
       };
+    }
+  | {
+      channel: 'desktop.memories_list';
+      request_id: Id;
+      payload: null;
+    }
+  | {
+      channel: 'desktop.forget_plan';
+      request_id: Id;
+      payload: {
+        ref: Id;
+      };
+    }
+  | {
+      channel: 'desktop.forget_execute';
+      request_id: Id;
+      payload: {
+        ref: Id;
+      };
     };
 export type DesktopHubHost = string;
 export type DesktopHubHost1 = string;
@@ -1877,6 +1897,15 @@ export type DesktopIpcResponse =
       receipt: DesktopHouseholdReceiptView;
     }
   | {
+      request_id: Id;
+      channel:
+        | 'desktop.memories_list'
+        | 'desktop.forget_plan'
+        | 'desktop.forget_execute';
+      outcome: 'ok';
+      memories: DesktopMemoryView;
+    }
+  | {
       request_id: Id | null;
       channel: DesktopIpcChannel | null;
       outcome: 'rejected';
@@ -1906,7 +1935,8 @@ export type DesktopIpcResponse =
         | 'content_unavailable'
         | 'canvas_conflict'
         | 'voice_unavailable'
-        | 'undo_target_changed';
+        | 'undo_target_changed'
+        | 'forget_unavailable';
       /**
        * outcome_unknown のときだけ: 結果が分からなかった時点の一覧の通し番号（自宅の登録では自宅の要求の通し番号）。画面はこれより大きい番号の同じ種類の一覧・自宅の読み取りを受け取るまで、その行・登録を操作させない（ADR 0022・0026）。
        */
@@ -2116,7 +2146,24 @@ export type DesktopVoiceView =
       reply_mode: 'voice' | 'text';
     };
 /**
- * UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014・0025）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。中枢との接続・ペアリングは用途別のチャネルだけで、要求の宛先・本文を Renderer が決められない。音声レンダラーの IPC（B05）は別に定める。 発言・承認表示の準備・承認・取消・照合は用途別のチャネルで、操作は main が持つ参照（ref）で指す（B04-05、ADR 0031）。 キャンバスを前に出す（canvas_summon）は状態の層と入力バーからだけ使う（UI-02、ADR 0032）。状態の層のパネルを出す・しまう（status_panel）は状態の層と島からだけ使う（UI-04、ADR 0032・0181）。 島（画面の上の中央の島の窓。ADR 0181 の段階 4）は、状態の取得（get_state・get_connection・get_voice）・この端末の入出力の停止（io_stop）・パネルを出す（status_panel）だけを使う。承認・取消・再開・登録・終了・発言・キャンバスを前に出すは使えず、島から確認を出さない（確認の入口は状態の層のパネルのまま）。キャンバスのユーザーの操作（canvas_user_op）はキャンバスの窓からだけ、キャンバスが前に出ている間だけ使う（UI-06、ADR 0032）。 予算の確認（超過枠の承認・見送り budget_overage_decide、M 超過の確認 budget_overrun_review、不明な費用の手での精算 budget_manual_settle）は状態の層からだけ使う。承認・確認・精算は main の OS の確認ダイアログを 1 回だけ挟み、画面が持つのは main が作る参照（ref）だけ（B07-05、ADR 0039）。 音声（B05-06、ADR 0050）: 音声の状態の取得（get_voice）・呼びかけなしで音声の会話を始める「続ける」（voice_continue）・外部への送信の同意の取り消し（voice_consent_revoke）は状態の層からだけ使う（音声の状態の取得だけは島も使う。ADR 0181）。外部への送信の同意は main の OS の確認ダイアログで 1 回だけ取り、画面は同意を作れない。音声レンダラーへの IPC は VoiceRendererRequest で、このチャネルとは別。 気づき（B11-05、ADR 0132）: 一覧の取得（candidates_list）と状態の変更（candidate_state。開く・今回は扱わない・再通知）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バーは使えない。候補は main が作る参照（ref）で指し、候補 ID・expected_state・接続範囲は main が持つ。 連携の接続（B08-02 P3・B09-05、ADR 0142）: 一覧の取得（connections_list）と取得範囲の変更（connection_targets_update）は中枢の画面（接続・端末）でだけ使い、キャンバス・入力バーは使えない。接続は main が作る参照（ref）で指し、接続 ID・permission_revision は main が持つ。画面が送れるのは今の保存値と、この世代で中枢から読んだ選べる対象（connection_targets_discover）のうちの選択と、期間・添付の範囲だけ（ADR 0145）。選べる対象の読み取りは提供元への読み取りを伴うので、中枢の画面のロック解除済みの画面操作だけ。 自動実行（B13-05、ADR 0154）: 一覧と安全停止の状態の取得（auto_actions_list）・取り消し（auto_action_undo）・安全停止の解除（safety_resume）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バーは使えない。自動実行した操作と安全停止の状態は main が作る参照（ref）で指し、操作 ID・state_revision・safety_revision・接続範囲は main が持つ。 家計簿（ADR 0162）: 月ごとの合計と 1 か月の記録の取得（household_view）・分類の変更（household_category）・削除（household_delete）・利用通知の取り込みの入・切（household_intake、ADR 0163）・書き出しの取り込み（household_import、ADR 0164。ファイルは main が OS のファイル選択で本人に選ばせ、画面はパスも中身も渡さない）・分類ごとの予算の変更（household_budget、ADR 0166）・記録の手入力（household_add、ADR 0167）・記録の中身の変更（household_edit、ADR 0169）・記録の CSV への書き出し（household_export、ADR 0172。保存先は main が OS の保存先の選択で本人に選ばせ、画面はパスも中身も渡さない）・レシートの写真の読み取りの入・切（household_receipt_setting、ADR 0177。入にするときは main の OS の確認ダイアログを挟む）・レシートの写真の読み取り（household_receipt_read、ADR 0177。写真は main が OS のファイル選択で本人に選ばせ、画面はパスも中身も渡さない。結果は手入力の欄に入れる候補だけ）・請求予定を消す（household_bill_delete、ADR 0179）は従来の窓（標準の端末画面）から使い、キャンバス・入力バーは使えない。記録と請求予定は main が作る参照（ref）で指し、記録・請求予定の ID・内容版・接続範囲は main が持つ。
+ * 忘却で消える物の種類（domain の FORGET_DELETE_ORDER と、確定内容の暗号文を消す操作の operation_content。ADR 0180）。
+ */
+export type ForgetRemovedKind =
+  | 'intent_shadow'
+  | 'canvas_item'
+  | 'notification_candidate'
+  | 'related_analysis'
+  | 'request_entity'
+  | 'async_guard'
+  | 'carried_summary'
+  | 'session_summary'
+  | 'memory'
+  | 'user_directive'
+  | 'turn'
+  | 'source_item'
+  | 'operation_content';
+/**
+ * UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014・0025）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。中枢との接続・ペアリングは用途別のチャネルだけで、要求の宛先・本文を Renderer が決められない。音声レンダラーの IPC（B05）は別に定める。 発言・承認表示の準備・承認・取消・照合は用途別のチャネルで、操作は main が持つ参照（ref）で指す（B04-05、ADR 0031）。 キャンバスを前に出す（canvas_summon）は状態の層と入力バーからだけ使う（UI-02、ADR 0032）。状態の層のパネルを出す・しまう（status_panel）は状態の層と島からだけ使う（UI-04、ADR 0032・0181）。 島（画面の上の中央の島の窓。ADR 0181 の段階 4）は、状態の取得（get_state・get_connection・get_voice）・この端末の入出力の停止（io_stop）・パネルを出す（status_panel）だけを使う。承認・取消・再開・登録・終了・発言・キャンバスを前に出すは使えず、島から確認を出さない（確認の入口は状態の層のパネルのまま）。キャンバスのユーザーの操作（canvas_user_op）はキャンバスの窓からだけ、キャンバスが前に出ている間だけ使う（UI-06、ADR 0032）。 予算の確認（超過枠の承認・見送り budget_overage_decide、M 超過の確認 budget_overrun_review、不明な費用の手での精算 budget_manual_settle）は状態の層からだけ使う。承認・確認・精算は main の OS の確認ダイアログを 1 回だけ挟み、画面が持つのは main が作る参照（ref）だけ（B07-05、ADR 0039）。 音声（B05-06、ADR 0050）: 音声の状態の取得（get_voice）・呼びかけなしで音声の会話を始める「続ける」（voice_continue）・外部への送信の同意の取り消し（voice_consent_revoke）は状態の層からだけ使う（音声の状態の取得だけは島も使う。ADR 0181）。外部への送信の同意は main の OS の確認ダイアログで 1 回だけ取り、画面は同意を作れない。音声レンダラーへの IPC は VoiceRendererRequest で、このチャネルとは別。 気づき（B11-05、ADR 0132）: 一覧の取得（candidates_list）と状態の変更（candidate_state。開く・今回は扱わない・再通知）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バーは使えない。候補は main が作る参照（ref）で指し、候補 ID・expected_state・接続範囲は main が持つ。 連携の接続（B08-02 P3・B09-05、ADR 0142）: 一覧の取得（connections_list）と取得範囲の変更（connection_targets_update）は中枢の画面（接続・端末）でだけ使い、キャンバス・入力バーは使えない。接続は main が作る参照（ref）で指し、接続 ID・permission_revision は main が持つ。画面が送れるのは今の保存値と、この世代で中枢から読んだ選べる対象（connection_targets_discover）のうちの選択と、期間・添付の範囲だけ（ADR 0145）。選べる対象の読み取りは提供元への読み取りを伴うので、中枢の画面のロック解除済みの画面操作だけ。 自動実行（B13-05、ADR 0154）: 一覧と安全停止の状態の取得（auto_actions_list）・取り消し（auto_action_undo）・安全停止の解除（safety_resume）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バーは使えない。自動実行した操作と安全停止の状態は main が作る参照（ref）で指し、操作 ID・state_revision・safety_revision・接続範囲は main が持つ。 家計簿（ADR 0162）: 月ごとの合計と 1 か月の記録の取得（household_view）・分類の変更（household_category）・削除（household_delete）・利用通知の取り込みの入・切（household_intake、ADR 0163）・書き出しの取り込み（household_import、ADR 0164。ファイルは main が OS のファイル選択で本人に選ばせ、画面はパスも中身も渡さない）・分類ごとの予算の変更（household_budget、ADR 0166）・記録の手入力（household_add、ADR 0167）・記録の中身の変更（household_edit、ADR 0169）・記録の CSV への書き出し（household_export、ADR 0172。保存先は main が OS の保存先の選択で本人に選ばせ、画面はパスも中身も渡さない）・レシートの写真の読み取りの入・切（household_receipt_setting、ADR 0177。入にするときは main の OS の確認ダイアログを挟む）・レシートの写真の読み取り（household_receipt_read、ADR 0177。写真は main が OS のファイル選択で本人に選ばせ、画面はパスも中身も渡さない。結果は手入力の欄に入れる候補だけ）・請求予定を消す（household_bill_delete、ADR 0179）は従来の窓（標準の端末画面）から使い、キャンバス・入力バーは使えない。記録と請求予定は main が作る参照（ref）で指し、記録・請求予定の ID・内容版・接続範囲は main が持つ。 忘却の画面（UI-10、ADR 0183）: 記憶の一覧の取得（memories_list）・忘却の計画を作らせる（forget_plan）・確かめた計画の実行（forget_execute。main の OS の確認ダイアログを 1 回だけ挟む）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バー・島は使えない。記憶と計画は main が作る参照（ref）で指し、記憶 ID・計画 ID・台帳の世代の照合・接続範囲は main が持つ。計画は中枢が作り、承認・実行権限・閉包の判定の正本は中枢にある。
  */
 export type DesktopIpcChannel =
   | 'desktop.get_state'
@@ -2173,7 +2220,10 @@ export type DesktopIpcChannel =
   | 'desktop.household_export'
   | 'desktop.household_receipt_setting'
   | 'desktop.household_receipt_read'
-  | 'desktop.household_bill_delete';
+  | 'desktop.household_bill_delete'
+  | 'desktop.memories_list'
+  | 'desktop.forget_plan'
+  | 'desktop.forget_execute';
 /**
  * main から UI レンダラーへの通知（設計 10 §1、07 §2、ADR 0014）。本文・端末 ID・認証情報を含めない。
  */
@@ -2563,23 +2613,6 @@ export type ExternalSendConsentChange =
         confirmed_at: UtcTime;
       } | null;
     };
-/**
- * 忘却で消える物の種類（domain の FORGET_DELETE_ORDER と、確定内容の暗号文を消す操作の operation_content。ADR 0180）。
- */
-export type ForgetRemovedKind =
-  | 'intent_shadow'
-  | 'canvas_item'
-  | 'notification_candidate'
-  | 'related_analysis'
-  | 'request_entity'
-  | 'async_guard'
-  | 'carried_summary'
-  | 'session_summary'
-  | 'memory'
-  | 'user_directive'
-  | 'turn'
-  | 'source_item'
-  | 'operation_content';
 /**
  * 忘却台帳の端末への配信（B06-07b-2。端末側の保存は #179。ADR 0180）。entries は端末の世代の次から最大 256 件で、続きがあれば has_more。diverged は端末の複製が中枢の台帳の続きでない（系譜か hash が違う）ことで、端末は保存せずに世代 0 から取り直す。replica_ahead は端末が中枢より新しい世代を持つことで、端末は複製を巻き戻さない。本文・生の元サービス ID を持たない（台帳の 1 件は ForgetLedgerEntry のまま）。
  */
@@ -8386,6 +8419,514 @@ export interface DesktopHouseholdBill {
   delivery_unknown: boolean;
 }
 /**
+ * 忘却の画面（UI-10、ADR 0183）の表示用の値。左の記憶の一覧、右の計画、下の確認の帯の材料。
+ */
+export interface DesktopMemoryView {
+  /**
+   * 取得の状態（DesktopAutoActionView と同じ意味。「記憶なし」と区別する）。
+   */
+  fetch: 'loaded' | 'stale' | 'unavailable';
+  fetched_at: UtcTime | null;
+  /**
+   * 忘却の操作を使えるか。closed は中枢の一覧が公開ゲートの閉を返した、unavailable は中枢が計画・実行に 503 を返した（理由は区別しない）か一覧を読めていない。open 以外の間、画面は計画・実行の操作を無効にする。
+   */
+  forget: 'open' | 'closed' | 'unavailable';
+  truncated: boolean;
+  /**
+   * @maxItems 1000
+   */
+  entries: DesktopMemoryEntry[];
+  plan: DesktopForgetPlanView | null;
+  result: DesktopForgetResultView | null;
+  /**
+   * main が付ける一覧の通し番号。画面はこれより小さい番号の応答を反映しない。
+   */
+  list_seq: number;
+}
+/**
+ * 忘却の画面の記憶の 1 行（UI-10、ADR 0183）。記憶 ID の代わりに main が作る参照（ref）を持つ。
+ */
+export interface DesktopMemoryEntry {
+  ref: Id;
+  kind: MemoryKind;
+  origin: 'auto_extraction' | 'explicit_request';
+  text: string;
+  status: 'active' | 'review_pending';
+  created_at: UtcTime;
+  review_at: UtcTime;
+  delete_at: UtcTime | null;
+  /**
+   * 由来の種類ごとの件数（発言・元情報・別の記憶）。由来の ID・元サービスの生の ID・HMAC は出さない（UI-10、ADR 0183）。
+   */
+  source_counts: {
+    turn: number;
+    source_item: number;
+    memory: number;
+  };
+}
+/**
+ * 忘却の計画の表示用の値（UI-10、ADR 0180・0183）。中枢の ForgetPlanView から、計画 ID・記憶 ID・指示 ID・操作 ID を main の参照・件数に置き換えた形。計画を作ったのは中枢で、画面は見せて確認を返すだけ。
+ */
+export interface DesktopForgetPlanView {
+  /**
+   * B00初版のランダムUUID v4。認証情報ではない。
+   */
+  ref: string;
+  /**
+   * B00初版のランダムUUID v4。認証情報ではない。
+   */
+  target_ref: string;
+  /**
+   * 忘却台帳の世代（設計 03、08 §1・§6）。
+   */
+  forgetting_generation: string;
+  expires_at: UtcTime;
+  removed: {
+    /**
+     * @minItems 1
+     * @maxItems 13
+     */
+    counts:
+      | [
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+        ]
+      | [
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+        ]
+      | [
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+        ]
+      | [
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+        ]
+      | [
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+        ]
+      | [
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+        ]
+      | [
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+        ]
+      | [
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+        ]
+      | [
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+        ]
+      | [
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+        ]
+      | [
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+        ]
+      | [
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+        ]
+      | [
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+          {
+            kind: ForgetRemovedKind;
+            count: number;
+          },
+        ];
+    /**
+     * 消える記憶のうち、一覧にある行の参照。
+     *
+     * @maxItems 1000
+     */
+    memory_refs: Id[];
+    /**
+     * 消える記憶のうち、一覧にない（上限で切った・一覧の後に増えた）ものの数。
+     */
+    unlisted_memory_count: number;
+    /**
+     * 消える本人の指示の数（U112）。指示の本文はこの画面に出さない（U433）。
+     */
+    directive_count: number;
+  };
+  kept: {
+    /**
+     * 残る操作の状態（送出禁止の印だけを付け、状態・承認・試行は変えない）。操作 ID は出さない。
+     *
+     * @maxItems 1000
+     */
+    operation_states: (
+      | 'awaiting_approval'
+      | 'approved'
+      | 'preparing'
+      | 'dispatching'
+      | 'reconciling'
+      | 'unknown_held'
+      | 'not_executed'
+      | 'unknown'
+    )[];
+    lineage_only: number;
+  };
+  blocked_source_count: number;
+}
+/**
+ * 最後に実行した忘却の結果（UI-10、ADR 0183）。消えた記憶の本文は持たない。
+ */
+export interface DesktopForgetResultView {
+  /**
+   * forgotten は中枢が忘却を適用した。outcome_unknown は送ったが結果が分からない（消えたかもしれない。自動では送り直さない）。
+   */
+  outcome: 'forgotten' | 'outcome_unknown';
+  /**
+   * 計画で消える物の件数の合計（見せた計画の値）。
+   */
+  removed_total: number;
+  at: UtcTime;
+}
+/**
  * 画面へ渡すキャンバスの今の記述（ADR 0032）。main が中枢から取り、形式（CanvasDocument）と意味（domain）の検査を通してから、参照を不透明な参照に置き換えて渡す。ロック・切断・世代の変化では渡した記述を捨てる（canvas を null にして通知する）。
  */
 export interface DesktopCanvasView {
@@ -9266,6 +9807,45 @@ export interface ForgetExecuteResult {
   schema: 'buddy.forget-execute-result.v1';
   plan_id: Id;
   forgetting_generation: ForgettingGeneration;
+}
+/**
+ * 記憶の一覧（UI-10 の忘却の画面の左の一覧。ADR 0040 U40・0183）。並びは保存の新しい順。本文を返すので、ロック解除済みの本人の画面操作だけに返す。本文の封筒を開けない行があれば一覧全体を 503 にする（黙って落とさない）。
+ */
+export interface MemoryListResponse {
+  schema: 'buddy.memory-list.v1';
+  /**
+   * 忘却の公開ゲート（U112・U382）の今の値。closed の間、中枢は忘却の計画も実行もしない（503）。画面は計画・実行の操作を「まだ使えません」と無効にする。開けるのは中枢のコードの定数だけで、この値は表示のためだけに返す。
+   */
+  forget_gate: 'open' | 'closed';
+  /**
+   * @maxItems 1000
+   */
+  items: MemoryListItem[];
+  /**
+   * 上限（1000 件）で切った（ほかにも記憶がある）か。
+   */
+  truncated: boolean;
+}
+/**
+ * 記憶の一覧の 1 行（UI-10、ADR 0183）。本文（text）は保存した記憶の要約で、対象キー・内容の HMAC（dedupe_key）・由来の ID は返さない。status は保存中（active）か見直し待ち（review_pending）。削除済み・削除の期限を過ぎた記憶は一覧に出さない。
+ */
+export interface MemoryListItem {
+  memory_id: Id;
+  origin: 'auto_extraction' | 'explicit_request';
+  kind: MemoryKind;
+  text: string;
+  status: 'active' | 'review_pending';
+  created_at: UtcTime;
+  review_at: UtcTime;
+  delete_at: UtcTime | null;
+  /**
+   * 由来の種類ごとの件数（発言・元情報・別の記憶）。由来の ID・元サービスの生の ID・HMAC は出さない（UI-10、ADR 0183）。
+   */
+  source_counts: {
+    turn: number;
+    source_item: number;
+    memory: number;
+  };
 }
 /**
  * 端末が最後に保存できた忘却台帳の head（B06-07b-2・#179、ADR 0180）。何も持たない端末は系譜 null・世代 0・64 個の 0 を送る。

@@ -9,6 +9,7 @@ import {
 } from '@buddy/domain';
 import type { BudgetConfirmRequest } from './budget-bridge.js';
 import type { AdminConfirmRequest, HomeConfirmRequest } from './core-link.js';
+import type { ForgetConfirmRequest } from './memory-bridge.js';
 import type { OperationConfirmRequest } from './operation-bridge.js';
 
 const PLATFORMS: Readonly<Record<string, string>> = {
@@ -295,10 +296,34 @@ export function budgetConfirmText(
   }
 }
 
+// 忘却の実行の確認（UI-10、ADR 0183）。値は main が中枢から読んだ一覧と計画の値だけ。忘れる記憶の本文・消える物と残る物の
+// 件数・元に戻せないことを書く。本文は制御文字を除いて 60 文字で切る。
+export function forgetConfirmText(
+  request: ForgetConfirmRequest,
+): AdminConfirmText {
+  const nb = '\u00a0';
+  const lines = [
+    `忘れる記憶: ${displayText(request.memoryText) || '（本文なし）'}`,
+    `消える物: 合計${nb}${request.removedTotal}${nb}件（記憶${nb}${request.memoryCount}${nb}件・本人の指示${nb}${request.directiveCount}${nb}件を含む）`,
+    request.keptOperations === 0
+      ? null
+      : `残る操作: ${request.keptOperations}${nb}件（外部への送出だけを止めます）`,
+    '',
+    '忘れた物は元に戻せません。同じ内容は、これからも保存しません。',
+  ].filter((line): line is string => line !== null);
+  return {
+    title: '記憶の忘却',
+    message: 'この記憶と、計画に出した物を忘れますか',
+    detail: lines.join('\n'),
+    buttons: ['やめる', '忘れる'],
+  };
+}
+
 export function adminConfirmText(
   request: AdminConfirmRequest,
 ): AdminConfirmText {
   if (request.action === 'register_home') return homeConfirmText(request);
+  if (request.action === 'forget_memory') return forgetConfirmText(request);
   if ('operationKind' in request) return operationConfirmText(request);
   if ('poolId' in request) return budgetConfirmText(request);
   const name = displayText(request.deviceName) || '（名前なし）';

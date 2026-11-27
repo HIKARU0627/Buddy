@@ -377,3 +377,61 @@ test('local invariants of memory and evaluation records are checked semantically
     ['stop_reason_mismatch'],
   );
 });
+
+// Issue #180 の Q10（保存してよい記憶の種類の設定）は暫定で別の Issue に分けた（ADR 0183、U432）。既定は空なので、その設定が
+// できるまでは、会話からの自動の抽出のどの種類も保存しない。保存の直前の検査（memoryAdmission）が、許可した種類が空のとき
+// 6 つの種類をすべて kind_not_allowed で拒否することを、fixture の基本の候補（台帳と関係のない由来）で確かめる。期待値は手で書いた。
+test('with no allowed memory kinds (the default until the setting exists) automatic extraction saves nothing', () => {
+  const { base_candidate, base_context, source_hmacs } = memorySpec.admission;
+  const sourceHmac = (source) =>
+    source_hmacs[`${source.source_kind}:${source.source_id}`];
+  for (const kind of [
+    'preference',
+    'goal',
+    'person',
+    'routine',
+    'lexicon',
+    'progress',
+  ]) {
+    assert.deepEqual(
+      memoryAdmission(
+        { ...base_candidate, origin: 'auto_extraction', kind },
+        { ...base_context, allowedKinds: [], sourceHmac },
+      ),
+      {
+        action: 'reject',
+        reasons: ['kind_not_allowed'],
+        conflictingMemoryIds: [],
+      },
+      kind,
+    );
+  }
+  // 同じ候補は、種類を許せば保存へ進む（拒否の理由が種類だけであることの確かめ）。
+  assert.equal(
+    memoryAdmission(
+      { ...base_candidate, origin: 'auto_extraction', kind: 'preference' },
+      { ...base_context, allowedKinds: ['preference'], sourceHmac },
+    ).action,
+    'save',
+  );
+});
+
+// 同じく Q10 の暫定（U432）: 製品の Core のソース（試験を除く）に、記憶を保存する命令（memory.save）を呼ぶ所がまだないこと。
+// 自動の抽出から記憶を保存する経路を足すときは、この試験を外す前に、保存してよい記憶の種類の設定（既定は空）を通すこと。
+test('no product Core source issues memory.save yet, so nothing is saved from automatic extraction', async () => {
+  const { readdir } = await import('node:fs/promises');
+  const dir = new URL('../apps/core/src/', import.meta.url);
+  const sources = (await readdir(dir)).filter(
+    (name) =>
+      name.endsWith('.ts') &&
+      !name.endsWith('.test.ts') &&
+      !name.includes('test-support'),
+  );
+  assert(sources.length > 0);
+  const callers = [];
+  for (const name of sources) {
+    const text = await readFile(new URL(name, dir), 'utf8');
+    if (/kind:\s*'memory\.save'/u.test(text)) callers.push(name);
+  }
+  assert.deepEqual(callers, []);
+});

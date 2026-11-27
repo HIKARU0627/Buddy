@@ -354,6 +354,11 @@ const CANVAS_FORBIDDEN = [
   'desktop.household_receipt_read',
   // 請求予定を消す（ADR 0179）。
   'desktop.household_bill_delete',
+  // 忘却の画面の記憶の一覧・計画・実行（UI-10、ADR 0183）。従来の窓と状態の層。キャンバスの部品・入力バー・島が記憶を
+  // 読む・忘却の計画や実行に見せかけることはできない。
+  'desktop.memories_list',
+  'desktop.forget_plan',
+  'desktop.forget_execute',
 ];
 
 test('window roles: the canvas cannot use stop, resume, approval or quit channels', () => {
@@ -512,14 +517,14 @@ test('window roles: every request and notification channel of the schema has a r
     [...notifications].sort(),
     [...DESKTOP_NOTIFICATION_CHANNELS].sort(),
   );
-  // 手で数えた数（現在の DesktopIpcChannel は 55 個。B04-05 の 7 個と UI-02 の canvas_summon、UI-04 の
+  // 手で数えた数（現在の DesktopIpcChannel は 58 個。B04-05 の 7 個と UI-02 の canvas_summon、UI-04 の
   // status_panel、UI-06 の canvas_user_op、UI-07 の canvas_content、B07-05 の予算の確認 3 個、B05-06 の音声 3 個、
   // B05-05 の音声の会話の操作 1 個、B11-05 の気づき 2 個、B08-02 P3・B09-05 の連携 2 個、ADR 0145 の選べる対象 1 個、B13-05 の自動実行 3 個、
-  // ADR 0162〜0172・0177・0179 の家計簿 12 個を含む）。
-  // 禁止の一覧 50 ＋ 全員の get_state ＋ 入力バーの turn_submit・canvas_summon ＋
+  // ADR 0162〜0172・0177・0179 の家計簿 12 個、UI-10 の忘却の画面 3 個（ADR 0183）を含む）。
+  // 禁止の一覧 53 ＋ 全員の get_state ＋ 入力バーの turn_submit・canvas_summon ＋
   // キャンバスの canvas_user_op・canvas_content。
-  assert.equal(channels.size, 55);
-  assert.equal(CANVAS_FORBIDDEN.length + 5, 55);
+  assert.equal(channels.size, 58);
+  assert.equal(CANVAS_FORBIDDEN.length + 5, 58);
 });
 
 // PR #102 のレビュー（ADR 0032）: 見出しのマークアップ・URL、既存の text の更新、記録しない区切りの一時の記述、

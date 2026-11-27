@@ -47,6 +47,7 @@ import {
   ADMIN_CHANNELS,
   AUTO_ACTION_CHANNELS,
   HOUSEHOLD_CHANNELS,
+  MEMORY_CHANNELS,
   CANDIDATE_CHANNELS,
   CANVAS_CHANNELS,
   CONNECTION_CHANNELS,
@@ -726,6 +727,12 @@ function registerIpc(): void {
       if (AUTO_ACTION_CHANNELS.includes(channel))
         return link
           .handleAutoActionIpc(channel, raw, sender, controller.state)
+          .then((outcome) => outcome.response);
+      // 忘却の画面の一覧・計画・実行（UI-10、ADR 0183）。記憶 ID・計画 ID は main が持ち、画面は参照だけ。実行は main の
+      // OS の確認ダイアログで 1 回だけ確かめる。
+      if (MEMORY_CHANNELS.includes(channel))
+        return link
+          .handleMemoryIpc(channel, raw, sender, controller.state)
           .then((outcome) => outcome.response);
       // 家計簿の月ごとの合計・1 か月の記録・分類の変更・削除（ADR 0162）。記録の ID・内容版は main が持ち、画面は参照だけ。
       if (HOUSEHOLD_CHANNELS.includes(channel))

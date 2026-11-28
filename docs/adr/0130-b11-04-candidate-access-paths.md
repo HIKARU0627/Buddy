@@ -36,7 +36,7 @@
 ## 残ること
 
 - 本人の IANA タイムゾーンの出所: ADR 0131 で解決（端末（OS）、要求ごとに読む。取得不能・不正なときだけ 503）。
-- `fetchEvidence` の実装（B08・B09 の connector から許可範囲で取り直す）。
+- `fetchEvidence` の実装（B08・B09 の connector から許可範囲で取り直す）。（追記 2026-11-28: ADR 0201 で Google の connector につないだ。根拠の位置は `sources`（配列）に変えた。Outlook は残り（U682）。）
 - B08-06 の公開 transaction での解析計画の無効化（main に入った後に、根拠の観測との関係を確かめる）。
 - `Snapshot` の `candidates` の充填（今回は触らない）。
 - 一覧の続きを読む経路（`next_cursor` を受け取るクエリー。任意クエリーの仕組みが要る）。

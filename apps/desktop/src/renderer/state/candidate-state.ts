@@ -12,9 +12,13 @@
 // - 自動実行の結果（ADR 0199）: 行に、候補に結び付いた自動実行の行（自動実行の欄と同じ参照・種類・取り消しの状態）と、
 //   自動実行の一覧に無い件数が来る。「取り消す」は自動実行の欄と同じ desktop.auto_action_undo に自動実行の参照を載せて
 //   送り（別の実行の経路を作らない）、結果にかかわらず一覧を読み直す。取り消せない行は送らない（正本は main と中枢の検査）。
+// - 根拠を見る（ADR 0201）: 行の参照を desktop.candidate_evidence で送り、main が返す表示用の値（確かめた・未確認・変わった、
+//   引用・未読・抄録）を、その行を開いている間だけ持つ。閉じる・一覧から消える・ロックで捨てる（保存しない）。根拠を
+//   確かめられないときは「未確認」と出し、推測で埋めない。変わったときは一覧を読み直す。
 // 理由のコード・API の名前は画面に出さない。
 import type {
   DesktopCandidateEntry,
+  DesktopCandidateEvidenceView,
   DesktopCandidateView,
   DesktopIpcRequest,
   DesktopIpcResponse,
@@ -77,6 +81,24 @@ export const CANDIDATE_LABELS = {
     '自動実行の結果をまだ読めていません。「読み直す」を押してください。',
   autoActionUndone:
     '取り消しを受け付けました。元に戻ったかは、この欄を読み直すと確かめられます。',
+} as const;
+
+// 根拠を見る（ADR 0201）の文言。
+export const EVIDENCE_LABELS = {
+  show: '根拠を見る',
+  hide: '根拠を閉じる',
+  reading: '元の情報から根拠を取り直しています…',
+  confirmed:
+    '元の情報から取り直した根拠です。この画面を閉じると消え、Buddy には保存しません。',
+  quotes: '根拠の引用',
+  noQuote:
+    '元の情報は確かめましたが、引用の位置は示せません（推測で補っていません）。',
+  unread: '元の情報の一部は未読です。',
+  excerpt: '気づきを作ったときの抄録',
+  unconfirmed:
+    '根拠を確かめられませんでした（未確認）。元の情報を取り直せなかったため、この気づきの根拠は確かめていません。接続や記録しない会話を確かめてから、もう一度押してください。',
+  changed:
+    '根拠の元が変わったか、気づきの状態が変わりました（未確認）。一覧を読み直しました。',
 } as const;
 
 // 結び付いた操作のうち、自動実行の一覧に無い件数の文言（ADR 0199）。
@@ -259,6 +281,18 @@ export interface CandidateViewState {
   readonly snooze: SnoozeDraft | null;
   // OS の通知の入・切を送って結果を待っている、または断られて読み直しを待っている（押させない）。
   readonly alertBusy: boolean;
+  // 根拠を見ている行（ADR 0201）。取り直した引用は、この行を開いている間だけ持つ。
+  readonly evidence: EvidenceShown | null;
+}
+
+export interface EvidenceShown {
+  readonly ref: string;
+  // 取り直しを待っている。
+  readonly loading: boolean;
+  // main が返した表示用の値。断られた・まだのときは null。
+  readonly view: DesktopCandidateEvidenceView | null;
+  // 断られたときの文言。
+  readonly problem: string | null;
 }
 
 export const INITIAL_CANDIDATE_STATE: CandidateViewState = {
@@ -269,7 +303,56 @@ export const INITIAL_CANDIDATE_STATE: CandidateViewState = {
   notice: null,
   snooze: null,
   alertBusy: false,
+  evidence: null,
 };
+
+// 根拠の表示の行（ADR 0201）。画面はこの値だけを描く。確かめられないときは未確認の文言だけで、引用を出さない。
+export function evidenceLines(shown: EvidenceShown): {
+  readonly tone: 'success' | 'warning' | 'muted';
+  readonly text: string;
+  readonly quotes: readonly string[];
+  readonly notes: readonly string[];
+  readonly excerpt: string | null;
+} {
+  if (shown.loading)
+    return {
+      tone: 'muted',
+      text: EVIDENCE_LABELS.reading,
+      quotes: [],
+      notes: [],
+      excerpt: null,
+    };
+  const view = shown.view;
+  if (view === null)
+    return {
+      tone: 'warning',
+      text: shown.problem ?? EVIDENCE_LABELS.unconfirmed,
+      quotes: [],
+      notes: [],
+      excerpt: null,
+    };
+  if (view.status !== 'confirmed')
+    return {
+      tone: 'warning',
+      text:
+        view.status === 'changed'
+          ? EVIDENCE_LABELS.changed
+          : EVIDENCE_LABELS.unconfirmed,
+      quotes: [],
+      notes: [],
+      excerpt: null,
+    };
+  const notes: string[] = [];
+  if (view.quotes.length === 0) notes.push(EVIDENCE_LABELS.noQuote);
+  if (view.unread === true) notes.push(EVIDENCE_LABELS.unread);
+  return {
+    tone: 'success',
+    text: EVIDENCE_LABELS.confirmed,
+    quotes: [...view.quotes],
+    notes,
+    excerpt: view.excerpt,
+  };
+}
 
 const ALERT_SUCCESS_TEXT: Readonly<Record<'on' | 'off', string>> = {
   on: 'OS の通知を入にしました。これから新しくできた気づきを知らせます（今ある気づきは知らせません）。',
@@ -356,6 +439,42 @@ function withView(
       state.notice.tone === 'warning'
         ? null
         : state.notice,
+    // 一覧から消えた行の根拠は捨てる（引用を残さない）。
+    evidence:
+      state.evidence !== null && refs.has(state.evidence.ref)
+        ? state.evidence
+        : null,
+  };
+}
+
+// 根拠を見る（ADR 0201）の応答を反映する。開いている行が変わっていたら反映しない（別の行の根拠を出さない）。
+export function applyEvidenceResponse(
+  state: CandidateViewState,
+  ref: string,
+  response: DesktopIpcResponse,
+): CandidateViewState {
+  if (state.evidence === null || state.evidence.ref !== ref) return state;
+  if (response.outcome === 'rejected')
+    return {
+      ...state,
+      evidence: {
+        ref,
+        loading: false,
+        view: null,
+        problem:
+          response.reason === 'entry_not_found'
+            ? 'この気づきは一覧から無くなりました。一覧を読み直しています。'
+            : candidateFailureText(response.reason),
+      },
+    };
+  if (!('evidence' in response) || response.evidence.ref !== ref)
+    return {
+      ...state,
+      evidence: { ref, loading: false, view: null, problem: null },
+    };
+  return {
+    ...state,
+    evidence: { ref, loading: false, view: response.evidence, problem: null },
   };
 }
 
@@ -436,6 +555,9 @@ export interface CandidateActions {
     candidateRef: string,
     autoActionRef: string,
   ) => void;
+  // 根拠を見る・閉じる（ADR 0201）。
+  readonly showEvidence: (ref: string) => void;
+  readonly hideEvidence: () => void;
 }
 
 export interface CandidateApi {
@@ -487,7 +609,51 @@ export class CandidateStore {
       setAlert: (value) => this.#setAlert(value),
       undoAutoAction: (candidateRef, autoActionRef) =>
         this.#undoAutoAction(candidateRef, autoActionRef),
+      showEvidence: (ref) => this.#showEvidence(ref),
+      hideEvidence: () => this.#set({ ...this.#state, evidence: null }),
     };
+  }
+
+  // 根拠を見る（ADR 0201）。押すたびに中枢が許可範囲から取り直す（前の結果を使い回さない）。
+  #showEvidence(ref: string): void {
+    if (this.#state.evidence?.ref === ref && this.#state.evidence.loading)
+      return;
+    if (!(this.#state.view?.entries.some((item) => item.ref === ref) ?? false))
+      return;
+    const epoch = this.#epoch;
+    let reread = false;
+    this.#set({
+      ...this.#state,
+      evidence: { ref, loading: true, view: null, problem: null },
+    });
+    void this.#send(
+      request('desktop.candidate_evidence', { ref }),
+      (state, response) => {
+        reread =
+          (response.outcome === 'rejected' &&
+            (response.reason === 'entry_not_found' ||
+              response.reason === 'preview_stale')) ||
+          (response.outcome === 'ok' &&
+            'evidence' in response &&
+            response.evidence.status === 'changed');
+        return applyEvidenceResponse(state, ref, response);
+      },
+      (state) =>
+        state.evidence?.ref === ref
+          ? {
+              ...state,
+              evidence: {
+                ref,
+                loading: false,
+                view: null,
+                problem: CANDIDATE_IPC_FAILURE_MESSAGE,
+              },
+            }
+          : state,
+    ).then(() => {
+      // 根拠や状態が変わった・行が無くなった（main が読み直した）: 読み直した一覧を受け取る。
+      if (reread && epoch === this.#epoch) this.#reread();
+    });
   }
 
   // 結び付いた自動実行を取り消す。押下が確認（J12、ADR 0153・0154）。今の一覧で取り消せると読めた行だけを送り、

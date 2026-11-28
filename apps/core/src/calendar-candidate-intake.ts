@@ -528,6 +528,17 @@ export function createCalendarCandidateIntake(
         initial_import: target.published_generation === '1',
         // 由来は同期が保存した予定の remote_id（events.list の singleEvents の回の ID）。
         originOf: (event) => event.event_id,
+        // 根拠を取り直す先（ADR 0201）: この接続・口座・取得集合と、予定を読んだカレンダー。
+        locationOf: (event) => ({
+          source_id: event.event_id,
+          provider: 'google',
+          connection_id: target.connection_id,
+          account_id: target.account_id,
+          scope_id: target.scope_id,
+          resource: 'calendar',
+          container_id: event.calendar_id,
+          quote: null,
+        }),
       },
     );
     // 下書きを送る前ごとに、記録しない会話に入っていないか・区切りが変わっていないかを照合する。

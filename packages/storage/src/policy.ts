@@ -355,6 +355,13 @@ export const TABLE_POLICIES: Readonly<Record<string, TablePolicy>> = {
     retention: 'until_replaced',
     transaction: 'delivery',
   },
+  // 0026（ADR 0201）。気づきの由来の位置（根拠を取り直す先。接続・口座・取得集合・カレンダーの ID・メールの引用の位置）。
+  // 本文・引用は持たない。候補の作成と同じ transaction で書き、候補の題・抄録（7 日）・行（97 日・忘却）と一緒に消える。
+  candidate_origin_locations: {
+    body: 'none',
+    retention: 'candidate_excerpt',
+    transaction: 'analysis',
+  },
   // 0019（ADR 0166）。分類ごとの予算（1 行だけ。金額は暗号文）。
   household_budgets: {
     body: 'sealed_refs',

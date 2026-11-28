@@ -310,6 +310,27 @@ test('an overlap of two busy events becomes one candidate whose title holds only
         { source_kind: 'source_item', source_id: 'e2' },
       ],
     );
+    // 根拠を取り直す先（ADR 0201）: 予定ごとに、この接続・口座・取得集合と読んだカレンダー。引用の位置は持たない。
+    assert.deepEqual(
+      h.db
+        .prepare(
+          'SELECT source_id, provider, connection_id, account_id, scope_id, resource, container_id, quote_part, quote_start, quote_end FROM candidate_origin_locations ORDER BY source_id',
+        )
+        .all()
+        .map((row) => ({ ...(row as object) })),
+      ['e1', 'e2'].map((sourceId) => ({
+        source_id: sourceId,
+        provider: 'google',
+        connection_id: 'c-1',
+        account_id: 'acct-1',
+        scope_id: 'sc-cal',
+        resource: 'calendar',
+        container_id: 'cal-a',
+        quote_part: null,
+        quote_start: null,
+        quote_end: null,
+      })),
+    );
     // 題の封筒は時刻だけ。予定の題は DB のどこにも残らない。
     const blob = h.db
       .prepare(

@@ -9,6 +9,7 @@ import test from 'node:test';
 import { deleteForgetNode, executeCandidateOp } from './index.js';
 import type {
   CandidateCreateInput,
+  CandidateOriginLocationInput,
   CandidateOp,
   CandidateOpValue,
   CandidateOpValues,
@@ -926,7 +927,7 @@ test('list returns the sealed titles in receipt order, honours the states and th
     assert.ok(got.candidate?.excerpt !== null);
     assert.deepEqual(
       run(db, { kind: 'candidate.get', candidate_id: randomUUID() }).value,
-      { candidate: null, origins: [] },
+      { candidate: null, origins: [], locations: [] },
     );
     for (const bad of [0, 1001, 1.5]) {
       assert.deepEqual(
@@ -1399,6 +1400,226 @@ test('forgetting removes a candidate whose sealed content was already swept, and
         db,
         "SELECT count(*) FROM sealed_blobs WHERE owner_table = 'notification_candidates'",
       ),
+      0,
+    );
+  });
+});
+
+// --- 由来の位置（マイグレーション 0026、ADR 0201） ---
+
+const MAIL_LOCATION = {
+  source_id: 'msg-1',
+  provider: 'google',
+  connection_id: 'conn-1',
+  account_id: 'acct-1',
+  scope_id: 'sc-1',
+  resource: 'mail',
+  container_id: '',
+  quote: { part: 'body', start: 3, end: 9 },
+} as const;
+const EVENT_LOCATION = {
+  source_id: 'msg-2',
+  provider: 'google',
+  connection_id: 'conn-1',
+  account_id: 'acct-1',
+  scope_id: 'sc-2',
+  resource: 'calendar',
+  container_id: 'cal-1',
+  quote: null,
+} as const;
+
+function locationsOf(db: SqliteDatabase, id: string): unknown {
+  return (
+    run(db, { kind: 'candidate.get', candidate_id: id })
+      .value as CandidateOpValues['candidate.get']
+  ).locations;
+}
+
+test('the origin locations are written with the candidate, read back by get, and never changed', async () => {
+  await withDb((db) => {
+    create(db, {
+      origins: [
+        { source_kind: 'source_item', source_id: 'msg-1' },
+        { source_kind: 'source_item', source_id: 'msg-2' },
+        { source_kind: 'turn', source_id: TURN },
+      ],
+      locations: [EVENT_LOCATION, MAIL_LOCATION],
+    });
+    // 並びは source_id の順。
+    assert.deepEqual(locationsOf(db, C1), [
+      {
+        source_id: 'msg-1',
+        provider: 'google',
+        connection_id: 'conn-1',
+        account_id: 'acct-1',
+        scope_id: 'sc-1',
+        resource: 'mail',
+        container_id: '',
+        quote: { part: 'body', start: 3, end: 9 },
+      },
+      {
+        source_id: 'msg-2',
+        provider: 'google',
+        connection_id: 'conn-1',
+        account_id: 'acct-1',
+        scope_id: 'sc-2',
+        resource: 'calendar',
+        container_id: 'cal-1',
+        quote: null,
+      },
+    ]);
+    // 位置を控えない候補（省略）は空。
+    create(db, { candidate_id: C2, notification_key: KEY_B });
+    assert.deepEqual(locationsOf(db, C2), []);
+    // 書いた後は変えない。
+    assert.throws(
+      () =>
+        db
+          .prepare(
+            "UPDATE candidate_origin_locations SET container_id = 'cal-2' WHERE candidate_id = ?",
+          )
+          .run(C1),
+      /candidate_origin_location_fixed/u,
+    );
+    // 元情報の期限（source_items の行の削除）では消えない（由来の辺と同じ。U280）。
+    db.prepare("DELETE FROM source_items WHERE remote_id = 'msg-2'").run();
+    assert.equal(
+      count(
+        db,
+        'SELECT count(*) FROM candidate_origin_locations WHERE candidate_id = ?',
+        C1,
+      ),
+      2,
+    );
+  });
+});
+
+test('a location must belong to one source item origin of the candidate and keep its shape, or nothing is written', async () => {
+  await withDb((db) => {
+    const refused = (
+      locations: unknown,
+      origins: CandidateCreateInput['origins'] = [
+        { source_kind: 'source_item', source_id: 'msg-1' },
+        { source_kind: 'turn', source_id: TURN },
+      ],
+    ): readonly string[] | undefined =>
+      run(db, {
+        kind: 'candidate.create',
+        input: {
+          ...input(),
+          origins,
+          locations: locations as readonly CandidateOriginLocationInput[],
+        },
+      }).reasons;
+    const cases: unknown[] = [
+      'not-a-list',
+      // 由来に無い元情報・発言の由来・同じ元情報の 2 行。
+      [{ ...MAIL_LOCATION, source_id: 'msg-2' }],
+      [{ ...MAIL_LOCATION, source_id: TURN }],
+      [MAIL_LOCATION, MAIL_LOCATION],
+      // 予定にカレンダーが無い・メールにカレンダーがある・予定に引用の位置がある。
+      [{ ...EVENT_LOCATION, source_id: 'msg-1', container_id: '' }],
+      [{ ...MAIL_LOCATION, container_id: 'cal-1' }],
+      [{ ...EVENT_LOCATION, source_id: 'msg-1', quote: MAIL_LOCATION.quote }],
+      // 空の範囲・負の位置・知らない部分・知らない提供元・空の口座。
+      [{ ...MAIL_LOCATION, quote: { part: 'body', start: 4, end: 4 } }],
+      [{ ...MAIL_LOCATION, quote: { part: 'body', start: -1, end: 4 } }],
+      [{ ...MAIL_LOCATION, quote: { part: 'attachment', start: 0, end: 4 } }],
+      [{ ...MAIL_LOCATION, provider: 'yahoo' }],
+      [{ ...MAIL_LOCATION, account_id: '' }],
+      [{ ...MAIL_LOCATION, quote: undefined }],
+    ];
+    for (const locations of cases)
+      assert.deepEqual(
+        refused(locations),
+        ['locations_invalid'],
+        JSON.stringify(locations),
+      );
+    assert.equal(count(db, 'SELECT count(*) FROM notification_candidates'), 0);
+    assert.equal(
+      count(db, 'SELECT count(*) FROM candidate_origin_locations'),
+      0,
+    );
+    // 表そのものも、由来の辺の無い元情報の位置を受けない。
+    create(db);
+    assert.throws(
+      () =>
+        db
+          .prepare(
+            "INSERT INTO candidate_origin_locations (candidate_id, source_id, provider, connection_id, account_id, scope_id, resource, container_id, quote_part, quote_start, quote_end) VALUES (?, 'msg-2', 'google', 'conn-1', 'acct-1', 'sc-1', 'mail', '', NULL, NULL, NULL)",
+          )
+          .run(C1),
+      /candidate_origin_location_edge_missing/u,
+    );
+    // 予定のカレンダーの無い行・メールの欠けた引用の位置は CHECK で拒む。
+    for (const sql of [
+      "INSERT INTO candidate_origin_locations (candidate_id, source_id, provider, connection_id, account_id, scope_id, resource, container_id, quote_part, quote_start, quote_end) VALUES (?, 'msg-1', 'google', 'conn-1', 'acct-1', 'sc-1', 'calendar', '', NULL, NULL, NULL)",
+      "INSERT INTO candidate_origin_locations (candidate_id, source_id, provider, connection_id, account_id, scope_id, resource, container_id, quote_part, quote_start, quote_end) VALUES (?, 'msg-1', 'google', 'conn-1', 'acct-1', 'sc-1', 'mail', '', 'body', 3, NULL)",
+    ])
+      assert.throws(() => db.prepare(sql).run(C1), /CHECK constraint failed/u);
+  });
+});
+
+test('the origin locations leave with the title at 7 days, with the row at 97 days, and with forgetting', async () => {
+  await withDb((db) => {
+    create(db, {
+      candidate_id: C1,
+      notification_key: KEY_A,
+      locations: [MAIL_LOCATION],
+    });
+    create(db, {
+      candidate_id: C2,
+      notification_key: KEY_B,
+      locations: [MAIL_LOCATION],
+    });
+    create(db, {
+      candidate_id: C3,
+      notification_key: KEY_C,
+      locations: [MAIL_LOCATION],
+    });
+    assert.equal(transition(db, C1, 'resolve', 'new', T0).ok, true);
+    assert.equal(transition(db, C2, 'dismiss', 'new', T0).ok, true);
+    // 7 日の 1 秒前は残る。
+    sweep(db, at(T0_MS + 7 * DAY - 1000));
+    assert.equal(
+      count(db, 'SELECT count(*) FROM candidate_origin_locations'),
+      3,
+    );
+    // 閉じた C1・C2 の題と抄録を消すときに、位置も消える。活動中の C3 は残る。
+    assert.deepEqual(sweep(db, at(T0_MS + 7 * DAY)), {
+      content_deleted: [C1, C2],
+      deleted: [],
+    });
+    assert.deepEqual(locationsOf(db, C1), []);
+    assert.deepEqual(locationsOf(db, C2), []);
+    assert.equal(
+      count(
+        db,
+        'SELECT count(*) FROM candidate_origin_locations WHERE candidate_id = ?',
+        C3,
+      ),
+      1,
+    );
+    // 忘却の削除で候補と一緒に消える。
+    assert.equal(
+      deleteForgetNode(db, { kind: 'notification_candidate', id: C3 }),
+      1,
+    );
+    assert.equal(
+      count(db, 'SELECT count(*) FROM candidate_origin_locations'),
+      0,
+    );
+  });
+  // 掃除が 97 日を過ぎてから初めて回るとき（題と行を 1 回で消す）も、行と一緒に消える。
+  await withDb((db) => {
+    create(db, { locations: [MAIL_LOCATION] });
+    assert.equal(transition(db, C1, 'resolve', 'new', T0).ok, true);
+    assert.deepEqual(sweep(db, at(T0_MS + KEY_RETENTION_MS)), {
+      content_deleted: [],
+      deleted: [C1],
+    });
+    assert.equal(
+      count(db, 'SELECT count(*) FROM candidate_origin_locations'),
       0,
     );
   });

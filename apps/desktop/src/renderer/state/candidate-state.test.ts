@@ -10,11 +10,14 @@ import type {
   DesktopIpcResponse,
 } from '@buddy/contracts';
 import {
+  CANDIDATE_IPC_FAILURE_MESSAGE,
   CandidateStore,
+  EVIDENCE_LABELS,
   INITIAL_CANDIDATE_STATE,
   applyListResponse,
   candidateSections,
   deadlineText,
+  evidenceLines,
   headerOf,
   rowActions,
   rowNotes,
@@ -711,4 +714,143 @@ test('reload from the automatic-operation panel re-reads the list and keeps the 
   // 取り消し済みになった写しでは送らない。
   store.actions.undoAutoAction(id(1), AUTO_REF);
   assert.equal(pending.length, 0);
+});
+
+// --- 根拠を見る（ADR 0201） ---
+
+const evidenceOf = (
+  ref: string,
+  status: 'confirmed' | 'unconfirmed' | 'changed',
+  quotes: string[] = [],
+) => ({
+  outcome: 'ok' as const,
+  evidence: {
+    ref,
+    status,
+    quotes,
+    unread: status === 'confirmed' ? false : null,
+    excerpt: null,
+  },
+});
+
+test('the evidence sends the row ref only, shows what main returned while the row is open, and is dropped on close', async () => {
+  const { store, pending, answer } = harness();
+  store.actions.refresh();
+  await answer(listed(view(SIX)));
+  store.actions.showEvidence(id(1));
+  // 取り直している間は同じ行で二重に送らない。
+  store.actions.showEvidence(id(1));
+  assert.deepEqual(
+    pending.map((item) => [item.request.channel, item.request.payload]),
+    [['desktop.candidate_evidence', { ref: id(1) }]],
+  );
+  assert.deepEqual(store.snapshot().evidence, {
+    ref: id(1),
+    loading: true,
+    view: null,
+    problem: null,
+  });
+  await answer(evidenceOf(id(1), 'confirmed', ['合成の打ち合わせ']));
+  assert.deepEqual(store.snapshot().evidence, {
+    ref: id(1),
+    loading: false,
+    view: {
+      ref: id(1),
+      status: 'confirmed',
+      quotes: ['合成の打ち合わせ'],
+      unread: false,
+      excerpt: null,
+    },
+    problem: null,
+  });
+  assert.deepEqual(evidenceLines(store.snapshot().evidence as never), {
+    tone: 'success',
+    text: EVIDENCE_LABELS.confirmed,
+    quotes: ['合成の打ち合わせ'],
+    notes: [],
+    excerpt: null,
+  });
+  // 閉じたら引用を持たない。
+  store.actions.hideEvidence();
+  assert.equal(store.snapshot().evidence, null);
+  // 一覧に無い参照は送らない。
+  store.actions.showEvidence(id(99));
+  assert.equal(pending.length, 0);
+});
+
+test('unconfirmed evidence stays unconfirmed, a change re-reads the list, and a late answer for another row is dropped', async () => {
+  const { store, pending, answer } = harness();
+  store.actions.refresh();
+  await answer(listed(view(SIX)));
+  store.actions.showEvidence(id(1));
+  await answer(evidenceOf(id(1), 'unconfirmed'));
+  assert.deepEqual(evidenceLines(store.snapshot().evidence as never), {
+    tone: 'warning',
+    text: EVIDENCE_LABELS.unconfirmed,
+    quotes: [],
+    notes: [],
+    excerpt: null,
+  });
+  assert.equal(pending.length, 0);
+  // 変わった: 一覧を読み直す。行が残れば文言も残る。
+  store.actions.showEvidence(id(1));
+  await answer(evidenceOf(id(1), 'changed'));
+  assert.deepEqual(
+    pending.map((item) => item.request.channel),
+    ['desktop.candidates_list'],
+  );
+  await answer(listed(view(SIX, { list_seq: 3 })));
+  assert.equal(store.snapshot().evidence?.view?.status, 'changed');
+  // 行が一覧から消えたら根拠も捨てる。
+  store.actions.refresh();
+  await answer(
+    listed(
+      view(
+        SIX.filter((item) => item.position !== 1),
+        { list_seq: 4 },
+      ),
+    ),
+  );
+  assert.equal(store.snapshot().evidence, null);
+  // 別の行を開いた後に届いた前の行の答えは反映しない。
+  store.actions.showEvidence(id(2));
+  store.actions.showEvidence(id(3));
+  await answer(evidenceOf(id(2), 'confirmed', ['前の行の引用']));
+  assert.equal(store.snapshot().evidence?.ref, id(3));
+  assert.equal(store.snapshot().evidence?.loading, true);
+  await answer(evidenceOf(id(3), 'confirmed', []));
+  assert.deepEqual(evidenceLines(store.snapshot().evidence as never).notes, [
+    EVIDENCE_LABELS.noQuote,
+  ]);
+});
+
+test('a refused or failed evidence request says so without quotes, and hide drops a late answer', async () => {
+  const { store, pending, answer } = harness();
+  store.actions.refresh();
+  await answer(listed(view(SIX)));
+  store.actions.showEvidence(id(1));
+  await answer({ outcome: 'rejected', reason: 'entry_not_found' });
+  assert.equal(store.snapshot().evidence?.view, null);
+  assert.match(
+    evidenceLines(store.snapshot().evidence as never).text,
+    /一覧から無くなりました/u,
+  );
+  // 行が無くなった: 一覧を読み直す。
+  assert.deepEqual(
+    pending.map((item) => item.request.channel),
+    ['desktop.candidates_list'],
+  );
+  await answer(listed(view(SIX, { list_seq: 3 })));
+  store.actions.showEvidence(id(2));
+  pending.shift()?.reject(new Error('ipc'));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(
+    store.snapshot().evidence?.problem,
+    CANDIDATE_IPC_FAILURE_MESSAGE,
+  );
+  // ロック（hide）の後に届いた根拠は反映しない。
+  store.actions.showEvidence(id(2));
+  store.hide();
+  await answer(evidenceOf(id(2), 'confirmed', ['ロック後の引用']));
+  assert.deepEqual(store.snapshot(), INITIAL_CANDIDATE_STATE);
 });

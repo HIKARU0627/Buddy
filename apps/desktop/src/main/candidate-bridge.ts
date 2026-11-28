@@ -21,15 +21,21 @@
 //   読めた行（自動実行の欄と同じ参照・種類・取り消しの状態）と、一覧に無い件数だけを画面へ渡す。操作 ID は渡さない。
 //   画面を開いたとき・読み直すとき（list）に、結び付いた操作がある候補があれば自動実行の一覧も読み直す。取り消しは画面が
 //   desktop.auto_action_undo で自動実行の経路を通す（ここから送らない）。
+// - 根拠を見る（ADR 0201）: 画面の参照から候補 ID を引き、中枢の POST /v1/candidates/{candidate_id}/evidence へ送る。中枢が
+//   許可範囲から取り直した根拠の引用・未読・抄録だけを表示用の値にして返し、main には残さない（候補 ID・元情報の ID・版・
+//   位置は画面へ渡さない）。根拠を確かめられない（503・結果が分からない・形の違う応答）ときは未確認（unconfirmed）、
+//   根拠や状態が変わった（409）ときは一覧を読み直して changed にする。推測で埋めない。
 // Electron に依存しない（node:test で試験する）。
 import { randomUUID } from 'node:crypto';
 import type {
   CandidateAlertSettings,
+  CandidateEvidence,
   CandidateListResponse,
   CandidateSnapshot,
   CandidateStateCounts,
   DesktopAutoActionEntry,
   DesktopCandidateEntry,
+  DesktopCandidateEvidenceView,
   DesktopCandidateView,
 } from '@buddy/contracts';
 import type { ClientConnection } from '@buddy/client';
@@ -77,6 +83,16 @@ interface CandidateRecord {
   // 中枢が並べた順。
   readonly position: number;
 }
+
+// 画面へ渡す引用 1 つの長さの上限（コードポイント。契約の DesktopCandidateEvidenceView.quotes の maxLength）。
+const EVIDENCE_QUOTE_MAX = 2000;
+
+const clipQuote = (quote: string): string => {
+  const points = [...quote];
+  return points.length <= EVIDENCE_QUOTE_MAX
+    ? quote
+    : `${points.slice(0, EVIDENCE_QUOTE_MAX - 1).join('')}…`;
+};
 
 const counts = (value: CandidateStateCounts): CandidateStateCounts => ({
   new: value.new,
@@ -496,6 +512,79 @@ export class CandidateBridge {
     // 状態が変わっていた（古い画面・時間による遷移）。読み直して、新しい状態から操作し直させる。
     void this.refresh();
     return fail(outcome.status === 409 ? 'preview_stale' : 'core_rejected');
+  }
+
+  // --- 根拠を見る（ADR 0201） ---
+
+  async evidence(
+    ref: string,
+  ): Promise<CandidateOutcome<DesktopCandidateEvidenceView>> {
+    const gen = this.#gen;
+    const connection = this.#host.connection();
+    const scope = connection?.state.commandScopeId ?? null;
+    if (connection === null || scope === null) return fail('not_connected');
+    const candidateId = this.#candidateOf(ref);
+    if (candidateId === null || !this.#records.has(candidateId))
+      return fail('entry_not_found');
+    const unconfirmed = (
+      status: 'unconfirmed' | 'changed',
+    ): CandidateOutcome<DesktopCandidateEvidenceView> => ({
+      ok: true,
+      value: { ref, status, quotes: [], unread: null, excerpt: null },
+    });
+    const outcome = await connection.request({
+      method: 'POST',
+      path: `/v1/candidates/${encodeURIComponent(candidateId)}/evidence`,
+      body: {},
+      scoped: true,
+      expectedScopeId: scope,
+    });
+    if (outcome.kind === 'not_sent') return fail('not_connected');
+    // ロック・切断をまたいだ根拠は渡さない。
+    if (gen !== this.#gen) return fail('not_connected');
+    if (outcome.kind === 'unknown') {
+      this.#host.log('candidate_evidence_unconfirmed');
+      return unconfirmed('unconfirmed');
+    }
+    if (
+      outcome.status === 200 &&
+      this.#host.contract.valid('CandidateEvidence', outcome.body) &&
+      (outcome.body as CandidateEvidence).candidate_id === candidateId
+    ) {
+      const body = outcome.body as CandidateEvidence;
+      return {
+        ok: true,
+        value: {
+          ref,
+          status: 'confirmed',
+          quotes: body.sources.map((source) =>
+            clipQuote(source.quote),
+          ) as DesktopCandidateEvidenceView['quotes'],
+          unread: body.unread,
+          excerpt: body.excerpt,
+        },
+      };
+    }
+    // 根拠の元が新しい版になった・取得範囲から外れた・消えた・重複が解消した（状態が変わり得た）。一覧を読み直す。
+    if (outcome.status === 409) {
+      await this.refresh();
+      if (gen !== this.#gen) return fail('not_connected');
+      return unconfirmed('changed');
+    }
+    // 候補が無くなった（忘却・掃除）。一覧を読み直す。
+    if (outcome.status === 422) {
+      void this.refresh();
+      return fail('entry_not_found');
+    }
+    // 取り直せない（503）・形の違う 2xx: 根拠を確かめられなかった（状態は変えていない）。
+    if (
+      outcome.status >= 500 ||
+      (outcome.status >= 200 && outcome.status < 300)
+    ) {
+      this.#host.log('candidate_evidence_unconfirmed');
+      return unconfirmed('unconfirmed');
+    }
+    return fail('core_rejected');
   }
 
   #hold(candidateId: string): void {

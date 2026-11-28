@@ -1,7 +1,8 @@
 // 気づき（候補）の一覧を開くたびの状態の見直し（B11-05 P1、ADR 0132。設計 11 §4、ADR 0120）。
 //
 // 一覧の取得（GET /v1/candidates）の前に、保守（runCandidateMaintenance）の 1・3（時間による遷移と保持の掃除）を回す。
-// 根拠の再確認（checkEvidence）は渡さない（取り直す connector は B08・B09）。
+// 根拠の再確認（checkEvidence。candidate-evidence.ts、ADR 0201）は、渡されたときだけ、前の再確認から一定の間隔（既定 15 分。
+// U681）が空いた回に保守の 2 として回す（一覧を開くたびに提供元を読み直さない）。再確認を回した回の終わりの時刻を控える。
 // - 本人のタイムゾーンが決まっていない（zone() が null）ときは保守を回さず、一覧の処理にそのまま渡す（一覧が 503 で閉じる）。
 // - 時計の巻き戻りの保留は呼び出し側の clock が確かめる（candidate-maintenance.ts の約束）。確かめられなければ保守を
 //   回さない（スキップ）。
@@ -37,7 +38,13 @@ export interface CandidateListRefreshOptions {
   readonly maintain?: (
     ports: CandidateMaintenancePorts,
   ) => Promise<MaintenanceReport>;
+  // 根拠を許可範囲から取り直す（ADR 0201）。省略は再確認しない。
+  readonly checkEvidence?: CandidateMaintenancePorts['checkEvidence'];
+  // 根拠の再確認の間隔（ミリ秒。既定 15 分）。前の再確認を始めてからこの間隔が空くまで、再確認を渡さない。
+  readonly evidenceIntervalMs?: number;
 }
+
+export const CANDIDATE_EVIDENCE_INTERVAL_MS = 15 * 60_000;
 
 export interface CandidateListRefresh {
   // 保守を 1 回回す（進行中なら相乗りする）。例外を投げない。
@@ -62,6 +69,10 @@ export function createCandidateListRefresh(
     options.maintain ??
     ((ports: CandidateMaintenancePorts) => runCandidateMaintenance(ports));
   let running: Promise<CandidateRefreshOutcome> | null = null;
+  const evidenceInterval =
+    options.evidenceIntervalMs ?? CANDIDATE_EVIDENCE_INTERVAL_MS;
+  // 前の根拠の再確認を始めた時刻（確かめた時計のミリ秒）。まだなら null。
+  let evidenceCheckedAt: number | null = null;
 
   const once = async (): Promise<CandidateRefreshOutcome> => {
     let zone: string | null;
@@ -82,12 +93,23 @@ export function createCandidateListRefresh(
       return { kind: 'skipped', reason: clock.reason };
     }
     const now = clock.now;
+    const nowMs = Date.parse(now);
+    // 根拠の再確認は間隔が空いた回だけ。時計が前の再確認より前に戻っていたら、間隔が空いたものとして扱わない。
+    const checkEvidence =
+      options.checkEvidence !== undefined &&
+      Number.isFinite(nowMs) &&
+      (evidenceCheckedAt === null ||
+        nowMs - evidenceCheckedAt >= evidenceInterval)
+        ? options.checkEvidence
+        : undefined;
+    if (checkEvidence !== undefined) evidenceCheckedAt = nowMs;
     let report: MaintenanceReport;
     try {
       report = await maintain({
         client: options.client,
         zone,
         now: () => now,
+        ...(checkEvidence === undefined ? {} : { checkEvidence }),
       });
     } catch {
       options.log('candidate_refresh_skipped:maintenance_failed');

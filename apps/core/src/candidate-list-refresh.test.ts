@@ -218,3 +218,35 @@ test('一覧の処理の失敗応答（503）はそのまま返す', async () =>
     body: { error: 'dependency_unavailable' },
   });
 });
+
+test('根拠の再確認は渡されたときだけ、前の再確認を始めてから 15 分空いた回に保守へ渡す（ADR 0201、U681）', async () => {
+  const h = harness();
+  let now = NOW;
+  const checkEvidence = async () => 'available' as const;
+  const refresh = build(h, {
+    clock: async () => ({ ok: true, now }),
+    checkEvidence,
+  });
+  const passed = (): (boolean | undefined)[] =>
+    h.ports.map((ports) => ports.checkEvidence === checkEvidence);
+  await refresh.refresh();
+  // 14 分 59 秒後は渡さない（時間による遷移と掃除だけ）。
+  now = '2030-10-09T03:14:59.000Z';
+  await refresh.refresh();
+  // 15 分ちょうどで渡す。
+  now = '2030-10-09T03:15:00.000Z';
+  await refresh.refresh();
+  // 時計が前の再確認より前に戻っても渡さない。
+  now = '2030-10-09T03:10:00.000Z';
+  await refresh.refresh();
+  assert.deepEqual(passed(), [true, false, true, false]);
+  // 間隔を指定できる（0 なら毎回）。
+  const every = harness();
+  const always = build(every, { checkEvidence, evidenceIntervalMs: 0 });
+  await always.refresh();
+  await always.refresh();
+  assert.deepEqual(
+    every.ports.map((ports) => ports.checkEvidence === checkEvidence),
+    [true, true],
+  );
+});

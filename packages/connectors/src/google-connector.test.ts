@@ -1148,3 +1148,67 @@ test('Gmail listLabels: labels の省略は空、id・name の無い項目は in
     );
   }
 });
+
+test('Calendar getEvent: 控えたカレンダーと予定の ID で 1 件だけ読み、最小の fields で求め、本人の出欠だけを写す（ADR 0201）', async () => {
+  const { connector, urls } = setup([
+    json({
+      id: 'ev_20301010T010000Z',
+      status: 'confirmed',
+      etag: '"3"',
+      summary: '合成の打ち合わせ',
+      start: { dateTime: '2030-10-10T10:00:00+09:00' },
+      end: { dateTime: '2030-10-10T11:00:00+09:00' },
+      description: '本文は求めていないので写さない',
+      attendees: [
+        { email: 'other@example.com', responseStatus: 'accepted' },
+        { email: 'me@example.com', self: true, responseStatus: 'tentative' },
+      ],
+    }),
+  ]);
+
+  const event = await connector.calendar.getEvent({
+    calendarId: 'cal/1@example.com',
+    eventId: 'ev_20301010T010000Z',
+  });
+
+  assert.deepEqual(event, {
+    id: 'ev_20301010T010000Z',
+    status: 'confirmed',
+    etag: '"3"',
+    summary: '合成の打ち合わせ',
+    start: { dateTime: '2030-10-10T10:00:00+09:00' },
+    end: { dateTime: '2030-10-10T11:00:00+09:00' },
+    selfResponseStatus: 'tentative',
+  });
+  const [url] = urls();
+  assert.ok(url !== undefined);
+  assert.equal(
+    url.pathname,
+    '/calendar/v3/calendars/cal%2F1%40example.com/events/ev_20301010T010000Z',
+  );
+  assert.equal(
+    url.searchParams.get('fields'),
+    'id,status,updated,etag,iCalUID,summary,start,end,recurringEventId,originalStartTime,sequence,transparency,eventType,attendees(self,responseStatus)',
+  );
+  // 一覧の条件（窓・削除済みの表示・頁）は付けない。
+  assert.equal(url.searchParams.get('timeMin'), null);
+  assert.equal(url.searchParams.get('showDeleted'), null);
+});
+
+test('Calendar getEvent: 404 は再試行せず状態付きで失敗し、id の無い応答は invalid_response', async () => {
+  const missing = setup([status(404)]);
+  await assert.rejects(
+    missing.connector.calendar.getEvent({ calendarId: 'c', eventId: 'e' }),
+    (error: unknown) => {
+      assertNoToken(error);
+      return error instanceof GoogleApiError && error.status === 404;
+    },
+  );
+  assert.equal(missing.requests.length, 1);
+  const broken = setup([json({ status: 'confirmed' })]);
+  await assert.rejects(
+    broken.connector.calendar.getEvent({ calendarId: 'c', eventId: 'e' }),
+    (error: unknown) =>
+      error instanceof GoogleApiError && error.kind === 'invalid_response',
+  );
+});

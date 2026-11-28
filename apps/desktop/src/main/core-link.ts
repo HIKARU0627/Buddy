@@ -162,6 +162,8 @@ export const CANDIDATE_CHANNELS: readonly DesktopIpcChannel[] = [
   'desktop.candidate_state',
   // 気づきの OS 通知の入・切の変更（ADR 0196）。
   'desktop.candidate_alert_setting',
+  // 気づきの根拠を見る（ADR 0201）。
+  'desktop.candidate_evidence',
 ];
 
 // 自動実行の一覧・取り消し・安全停止の解除のチャネル（B13-05、ADR 0154）。登録済みでロック解除済みの端末なら、
@@ -1563,7 +1565,8 @@ export class DesktopCoreLink {
       raw.channel !== ipcChannel ||
       (raw.channel !== 'desktop.candidates_list' &&
         raw.channel !== 'desktop.candidate_state' &&
-        raw.channel !== 'desktop.candidate_alert_setting')
+        raw.channel !== 'desktop.candidate_alert_setting' &&
+        raw.channel !== 'desktop.candidate_evidence')
     )
       return this.#reject(
         echoRequestId(raw),
@@ -1581,6 +1584,20 @@ export class DesktopCoreLink {
     )
       return this.#reject(raw.request_id, raw.channel, 'not_connected');
     const generation = this.#viewGeneration;
+    // 根拠を見る（ADR 0201）: 中枢が取り直した根拠を、表示用の値にしてそのまま返す（main は持たない）。ロック・切断を
+    // またいだ根拠は渡さない。
+    if (raw.channel === 'desktop.candidate_evidence') {
+      const evidence = await this.#candidates.evidence(raw.payload.ref);
+      return this.#withinGeneration(
+        generation,
+        this.#operationOutcome(
+          raw.request_id,
+          raw.channel,
+          evidence,
+          (value) => ({ evidence: value }),
+        ),
+      );
+    }
     const result =
       raw.channel === 'desktop.candidates_list'
         ? await this.#candidates.list()

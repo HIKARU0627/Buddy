@@ -116,15 +116,154 @@
         "candidate_id": "00000000-0000-4000-8000-000000000601",
         "request_entity_id": "00000000-0000-4000-8000-000000000611",
         "request_revision": "2",
+        "sources": [
+          {
+            "source_id": "synthetic-message-1",
+            "source_revision": "r1",
+            "quote": "参加可否をご返信ください",
+            "start": 0,
+            "end": 13
+          }
+        ],
+        "unread": true,
+        "excerpt": "参加可否をご返信ください。期限は10月7日です。"
+      }
+    },
+    {
+      "id": "candidate-evidence-overlap-two-titles",
+      "schema": "CandidateEvidence",
+      "valid": true,
+      "value": {
+        "candidate_id": "00000000-0000-4000-8000-000000000602",
+        "request_entity_id": null,
+        "request_revision": null,
+        "sources": [
+          {
+            "source_id": "synthetic-event-1",
+            "source_revision": "e1",
+            "quote": "合成の打ち合わせ",
+            "start": 0,
+            "end": 8
+          },
+          {
+            "source_id": "synthetic-event-2",
+            "source_revision": "e2",
+            "quote": "合成の通院",
+            "start": 0,
+            "end": 5
+          }
+        ],
+        "unread": false,
+        "excerpt": null
+      }
+    },
+    {
+      "id": "candidate-evidence-no-located-quote",
+      "schema": "CandidateEvidence",
+      "valid": true,
+      "value": {
+        "candidate_id": "00000000-0000-4000-8000-000000000602",
+        "request_entity_id": null,
+        "request_revision": null,
+        "sources": [],
+        "unread": false,
+        "excerpt": "同じ予定の写しかどうかを確認できません（重複候補）"
+      }
+    },
+    {
+      "id": "candidate-evidence-single-source-field",
+      "schema": "CandidateEvidence",
+      "valid": false,
+      "value": {
+        "candidate_id": "00000000-0000-4000-8000-000000000601",
+        "request_entity_id": null,
+        "request_revision": null,
         "source": {
           "source_id": "synthetic-message-1",
           "source_revision": "r1",
           "quote": "参加可否をご返信ください",
           "start": 0,
-          "end": 13
+          "end": 12
         },
-        "unread": true,
-        "excerpt": "参加可否をご返信ください。期限は10月7日です。"
+        "unread": false,
+        "excerpt": null
+      }
+    },
+    {
+      "id": "candidate-evidence-too-many-sources",
+      "schema": "CandidateEvidence",
+      "valid": false,
+      "value": {
+        "candidate_id": "00000000-0000-4000-8000-000000000601",
+        "request_entity_id": null,
+        "request_revision": null,
+        "sources": [
+          {
+            "source_id": "s1",
+            "source_revision": "r",
+            "quote": "q",
+            "start": 0,
+            "end": 1
+          },
+          {
+            "source_id": "s2",
+            "source_revision": "r",
+            "quote": "q",
+            "start": 0,
+            "end": 1
+          },
+          {
+            "source_id": "s3",
+            "source_revision": "r",
+            "quote": "q",
+            "start": 0,
+            "end": 1
+          },
+          {
+            "source_id": "s4",
+            "source_revision": "r",
+            "quote": "q",
+            "start": 0,
+            "end": 1
+          },
+          {
+            "source_id": "s5",
+            "source_revision": "r",
+            "quote": "q",
+            "start": 0,
+            "end": 1
+          },
+          {
+            "source_id": "s6",
+            "source_revision": "r",
+            "quote": "q",
+            "start": 0,
+            "end": 1
+          },
+          {
+            "source_id": "s7",
+            "source_revision": "r",
+            "quote": "q",
+            "start": 0,
+            "end": 1
+          },
+          {
+            "source_id": "s8",
+            "source_revision": "r",
+            "quote": "q",
+            "start": 0,
+            "end": 1
+          },
+          {
+            "source_id": "s9",
+            "source_revision": "r",
+            "quote": "q",
+            "start": 0,
+            "end": 1
+          }
+        ],
+        "unread": false,
+        "excerpt": null
       }
     },
     {
@@ -135,13 +274,15 @@
         "candidate_id": "00000000-0000-4000-8000-000000000601",
         "request_entity_id": "00000000-0000-4000-8000-000000000611",
         "request_revision": "2",
-        "source": {
-          "source_id": "synthetic-message-1",
-          "source_revision": "r1",
-          "quote": "参加可否をご返信ください",
-          "start": 0,
-          "end": 13
-        },
+        "sources": [
+          {
+            "source_id": "synthetic-message-1",
+            "source_revision": "r1",
+            "quote": "参加可否をご返信ください",
+            "start": 0,
+            "end": 13
+          }
+        ],
         "unread": false,
         "excerpt": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
       }
@@ -154,13 +295,15 @@
         "candidate_id": "00000000-0000-4000-8000-000000000601",
         "request_entity_id": "00000000-0000-4000-8000-000000000611",
         "request_revision": "2",
-        "source": {
-          "source_id": "synthetic-message-1",
-          "source_revision": "r1",
-          "quote": "参加可否をご返信ください",
-          "start": 0,
-          "end": 13
-        },
+        "sources": [
+          {
+            "source_id": "synthetic-message-1",
+            "source_revision": "r1",
+            "quote": "参加可否をご返信ください",
+            "start": 0,
+            "end": 13
+          }
+        ],
         "unread": false,
         "excerpt": null,
         "body": "メールの本文全体"
@@ -175,13 +318,15 @@
         "candidate_id": "00000000-0000-4000-8000-000000000601",
         "request_entity_id": "00000000-0000-4000-8000-000000000611",
         "request_revision": "2",
-        "source": {
-          "source_id": "synthetic-message-1",
-          "source_revision": "r1",
-          "quote": "参加可否をご返信ください",
-          "start": 5,
-          "end": 2
-        },
+        "sources": [
+          {
+            "source_id": "synthetic-message-1",
+            "source_revision": "r1",
+            "quote": "参加可否をご返信ください",
+            "start": 5,
+            "end": 2
+          }
+        ],
         "unread": true,
         "excerpt": "参加可否をご返信ください。期限は10月7日です。"
       }

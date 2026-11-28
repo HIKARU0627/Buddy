@@ -31451,6 +31451,115 @@
     }
   },
   {
+    "id": "desktop-ipc-candidate-evidence",
+    "schema": "DesktopIpcRequest",
+    "valid": true,
+    "value": {
+      "channel": "desktop.candidate_evidence",
+      "request_id": "00000000-0000-4000-8000-000000000c91",
+      "payload": { "ref": "00000000-0000-4000-8000-000000000c11" }
+    }
+  },
+  {
+    "id": "desktop-ipc-candidate-evidence-with-candidate-id",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.candidate_evidence",
+      "request_id": "00000000-0000-4000-8000-000000000c91",
+      "payload": {
+        "ref": "00000000-0000-4000-8000-000000000c11",
+        "candidate_id": "00000000-0000-4000-8000-000000000601"
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-candidate-evidence-response-confirmed",
+    "schema": "DesktopIpcResponse",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000c91",
+      "channel": "desktop.candidate_evidence",
+      "outcome": "ok",
+      "evidence": {
+        "ref": "00000000-0000-4000-8000-000000000c11",
+        "status": "confirmed",
+        "quotes": ["合成の打ち合わせ", "合成の通院"],
+        "unread": false,
+        "excerpt": null
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-candidate-evidence-response-unconfirmed",
+    "schema": "DesktopIpcResponse",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000c91",
+      "channel": "desktop.candidate_evidence",
+      "outcome": "ok",
+      "evidence": {
+        "ref": "00000000-0000-4000-8000-000000000c11",
+        "status": "unconfirmed",
+        "quotes": [],
+        "unread": null,
+        "excerpt": null
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-candidate-evidence-response-unknown-status",
+    "schema": "DesktopIpcResponse",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000c91",
+      "channel": "desktop.candidate_evidence",
+      "outcome": "ok",
+      "evidence": {
+        "ref": "00000000-0000-4000-8000-000000000c11",
+        "status": "probably_fine",
+        "quotes": [],
+        "unread": null,
+        "excerpt": null
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-candidate-evidence-response-with-source-id",
+    "schema": "DesktopIpcResponse",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000c91",
+      "channel": "desktop.candidate_evidence",
+      "outcome": "ok",
+      "evidence": {
+        "ref": "00000000-0000-4000-8000-000000000c11",
+        "status": "confirmed",
+        "quotes": ["合成の打ち合わせ"],
+        "unread": false,
+        "excerpt": null,
+        "source_id": "synthetic-event-1"
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-candidate-evidence-response-empty-quote",
+    "schema": "DesktopIpcResponse",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000c91",
+      "channel": "desktop.candidate_evidence",
+      "outcome": "ok",
+      "evidence": {
+        "ref": "00000000-0000-4000-8000-000000000c11",
+        "status": "confirmed",
+        "quotes": [""],
+        "unread": false,
+        "excerpt": null
+      }
+    }
+  },
+  {
     "id": "desktop-ipc-candidate-alert-setting-with-revision",
     "schema": "DesktopIpcRequest",
     "valid": false,

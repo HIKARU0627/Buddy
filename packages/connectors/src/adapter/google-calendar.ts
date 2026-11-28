@@ -66,6 +66,12 @@ export interface GoogleCalendarReader {
   listEventsPage(
     request: ListCalendarEventsRequest & { readonly pageToken?: string },
   ): Promise<GoogleCalendarEventsPage>;
+  // 1 件の予定（events.get、ADR 0201）。気づきの根拠を取り直すのに使う。カレンダーと予定の ID は呼び出し側が控えた値だけで、
+  // ほかのカレンダーを探さない。消えた予定は GoogleApiError（404・410）。取り消された予定は status が cancelled。
+  getEvent(request: {
+    readonly calendarId: string;
+    readonly eventId: string;
+  }): Promise<GoogleCalendarEvent>;
 }
 
 const CALENDAR_PAGE_SIZE = '250';
@@ -73,6 +79,10 @@ const CALENDAR_PAGE_SIZE = '250';
 const CALENDAR_LIST_PAGE_SIZE = '250';
 const CALENDAR_LIST_FIELDS =
   'items(id,summary,summaryOverride,primary,accessRole),nextPageToken';
+// events.get で求める項目（ADR 0201）。根拠の判定に要る最小の集合で、本文（description）・場所・参加者のアドレスは求めない
+// （参加者は本人の出欠だけを写すために self と responseStatus だけ）。
+const EVENT_FIELDS =
+  'id,status,updated,etag,iCalUID,summary,start,end,recurringEventId,originalStartTime,sequence,transparency,eventType,attendees(self,responseStatus)';
 
 function toEventTime(value: unknown): GoogleCalendarEventTime | undefined {
   if (value === undefined || value === null) return undefined;
@@ -253,6 +263,16 @@ export function createGoogleCalendarReader(
       );
     },
     listEventsPage,
+    async getEvent(request) {
+      return toEvent(
+        await client.getJson(
+          `/calendar/v3/calendars/${encodeURIComponent(
+            request.calendarId,
+          )}/events/${encodeURIComponent(request.eventId)}`,
+          { fields: EVENT_FIELDS },
+        ),
+      );
+    },
     async listEvents(request) {
       return collectPages(async (pageToken) =>
         listEventsPage(

@@ -3089,13 +3089,15 @@
         "candidate_id": "00000000-0000-4000-8000-000000000601",
         "request_entity_id": "00000000-0000-4000-8000-000000000611",
         "request_revision": "2",
-        "source": {
-          "source_id": "synthetic-message-1",
-          "source_revision": "r1",
-          "quote": "参加可否をご返信ください",
-          "start": 0,
-          "end": 12
-        },
+        "sources": [
+          {
+            "source_id": "synthetic-message-1",
+            "source_revision": "r1",
+            "quote": "参加可否をご返信ください",
+            "start": 0,
+            "end": 12
+          }
+        ],
         "unread": false,
         "excerpt": "参加可否をご返信ください。"
       },

@@ -28,6 +28,7 @@ import { sealBlob } from '@buddy/storage';
 import type {
   CandidateCreateInput,
   CandidateOriginInput,
+  CandidateOriginLocationInput,
   CandidateRelatedAnalysisInput,
   DataKeyMaterial,
   DbWorkerClient,
@@ -69,6 +70,8 @@ export interface CandidateDraft {
   // 受信（予定の重複では作った時刻）。UTC。
   readonly received_at: string;
   readonly origins: readonly CandidateOriginInput[];
+  // 由来の元情報の位置（根拠を許可範囲から取り直す先。ADR 0201）。取り込みが接続・口座・取得集合を知っているときだけ。
+  readonly locations?: readonly CandidateOriginLocationInput[];
 }
 
 export type DraftSkipReason =
@@ -95,7 +98,23 @@ export interface MailCandidateContext {
   // 差出人の表示名。アドレスは渡さない（@ を含むものは使わない）。
   readonly sender_label: string | null;
   readonly related_analysis?: CandidateRelatedAnalysisInput | null;
+  // メールを読んだ接続・口座・取得集合（根拠を取り直す先。ADR 0201）。無ければ位置を控えない（根拠は未確認になる）。
+  readonly location?: MailOriginScope | null;
 }
+
+export interface MailOriginScope {
+  readonly provider: 'google' | 'microsoft';
+  readonly connection_id: string;
+  readonly account_id: string;
+  readonly scope_id: string;
+}
+
+// 抽出の入力の件名・本文の source_id（packages/ai の SUBJECT_SOURCE_ID・BODY_SOURCE_ID と同じ値）。添付の引用は位置を
+// 控えない（添付は取り直さない）。
+const QUOTE_PARTS: Readonly<Record<string, 'subject' | 'body'>> = {
+  subject: 'subject',
+  body: 'body',
+};
 
 function deadlineLabel(deadline: Deadline): string | null {
   const unpad = (value: string): number => Number(value);
@@ -157,15 +176,44 @@ export function mailCandidateTitle(input: {
   return build(FALLBACK_TITLE[input.kind]);
 }
 
-function excerptOf(request: ExtractedRequest): string | null {
+// 抄録に使う根拠（要約の根拠の引用、無ければ最初の根拠の引用）。
+function excerptRefOf(request: ExtractedRequest) {
   const preferred = request.fields.find(
     (field) => field.field === 'summary' && field.refs.length > 0,
   );
   const any = request.fields.find((field) => field.refs.length > 0);
-  const quote = (preferred ?? any)?.refs[0]?.quote;
+  return (preferred ?? any)?.refs[0];
+}
+
+function excerptOf(request: ExtractedRequest): string | null {
+  const quote = excerptRefOf(request)?.quote;
   if (quote === undefined) return null;
   const text = clip(squash(quote), CANDIDATE_EXCERPT_LIMIT);
   return text === '' ? null : text;
+}
+
+// メールの由来の位置。抄録と同じ根拠の位置を控える（取り直した本文から切り出した引用を、抄録と照合できる）。件名・本文の
+// 根拠でなければ・位置が空なら、引用の位置は控えない。
+function mailLocationOf(
+  request: ExtractedRequest,
+  messageId: string,
+  scope: MailOriginScope,
+): CandidateOriginLocationInput {
+  const ref = excerptRefOf(request);
+  const part = ref === undefined ? undefined : QUOTE_PARTS[ref.source_id];
+  return {
+    source_id: messageId,
+    provider: scope.provider,
+    connection_id: scope.connection_id,
+    account_id: scope.account_id,
+    scope_id: scope.scope_id,
+    resource: 'mail',
+    container_id: '',
+    quote:
+      ref === undefined || part === undefined || !(ref.end > ref.start)
+        ? null
+        : { part, start: ref.start, end: ref.end },
+  };
 }
 
 export function mailCandidateDrafts(
@@ -246,6 +294,13 @@ export function mailCandidateDrafts(
       related_analysis: context.related_analysis ?? null,
       received_at: context.received_at,
       origins: [{ source_kind: 'source_item', source_id: result.message_id }],
+      ...(context.location === undefined || context.location === null
+        ? {}
+        : {
+            locations: [
+              mailLocationOf(request, result.message_id, context.location),
+            ],
+          }),
     });
   }
   return { drafts, skipped };
@@ -261,6 +316,11 @@ export interface OverlapCandidateContext {
     readonly calendar_id: string;
     readonly event_id: string;
   }) => string;
+  // 予定の由来の位置（根拠を取り直す先。ADR 0201）。省略は位置を控えない。
+  readonly locationOf?: (event: {
+    readonly calendar_id: string;
+    readonly event_id: string;
+  }) => CandidateOriginLocationInput;
 }
 
 const pad2 = (value: string): string => value.padStart(2, '0');
@@ -279,6 +339,20 @@ function overlapTitle(overlap: ScheduleOverlap, zone: string): string | null {
   const day = from.date.slice(5, 10).split('-');
   const range = `${Number(from.time.slice(0, 2))}:${pad2(from.time.slice(3, 5))}–${Number(to.time.slice(0, 2))}:${pad2(to.time.slice(3, 5))}`;
   return `予定の重複：${Number(day[0])}/${Number(day[1])} ${range}`;
+}
+
+// 由来ごとに 1 つの位置（同じ由来が 2 つあれば先の予定のカレンダー）。
+function overlapLocations(
+  overlap: ScheduleOverlap,
+  locationOf: NonNullable<OverlapCandidateContext['locationOf']>,
+): CandidateOriginLocationInput[] {
+  const locations = new Map<string, CandidateOriginLocationInput>();
+  for (const event of overlap.events) {
+    const location = locationOf(event);
+    if (!locations.has(location.source_id))
+      locations.set(location.source_id, location);
+  }
+  return [...locations.values()];
 }
 
 export function scheduleOverlapDrafts(
@@ -331,6 +405,9 @@ export function scheduleOverlapDrafts(
         source_kind: 'source_item' as const,
         source_id: sourceId,
       })),
+      ...(context.locationOf === undefined
+        ? {}
+        : { locations: overlapLocations(overlap, context.locationOf) }),
     });
   }
   return { drafts, skipped };
@@ -484,6 +561,9 @@ export async function persistCandidateDrafts(
         title,
         excerpt,
         origins: draft.origins,
+        ...(draft.locations === undefined
+          ? {}
+          : { locations: draft.locations }),
       },
     });
     if (!outcome.ok) {

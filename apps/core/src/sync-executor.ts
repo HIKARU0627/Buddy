@@ -151,12 +151,12 @@ function queryFingerprint(parts: {
 }
 
 // 予定の版。etag → updated の順で使い、どちらも無ければ ID から決まる固定値にする（存在の差分だけは追える）。
-function eventRevision(event: GoogleCalendarEvent): string {
+export function eventRevision(event: GoogleCalendarEvent): string {
   return event.etag ?? event.updated ?? `no-revision:${event.id}`;
 }
 
 // メールの版。messages.get の historyId（そのメールの最後の変更の履歴 ID）を使う。
-function messageRevision(message: {
+export function messageRevision(message: {
   readonly id: string;
   readonly historyId?: string;
 }): string {

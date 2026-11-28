@@ -10,7 +10,8 @@
 //   candidateDueEvent が同じ遷移を返すときだけ書く（時計の判断を呼び出し側だけに任せない）。閉じる遷移は
 //   閉じた時刻と識別子の削除日（7 日 + 90 日）を同時に書く。
 // - candidate.list / candidate.get / candidate.counts: 読み取り。題・抄録は暗号化した封筒のまま返す（復号は Core）。
-//   candidate.get は由来の辺（origins）も返す（根拠の再取得の取り直し先。ADR 0130）。
+//   candidate.get は由来の辺（origins）と由来の位置（locations。0026、ADR 0201）も返す（根拠の再取得の取り直し先。ADR 0130）。
+//   由来の位置は候補の作成と同じ transaction で書き、候補の行・題と抄録と一緒に消える（0026 の外部キーと trigger）。
 // - candidate.sweep: 閉じた候補の保持の掃除。解決・却下から 7 日で題・抄録（封筒）を消し、97 日で識別子の行ごと消す
 //   （段階は domain の candidateRetentionPhase）。活動中の候補は消さない。元情報（source_item）の期限では消えない
 //   （期限の掃除は元情報を由来の期限に数えない。expiry-store・ADR 0118）。
@@ -110,6 +111,25 @@ export interface CandidateOriginInput {
   readonly source_id: string;
 }
 
+// 由来の元情報の位置（マイグレーション 0026、ADR 0201）。根拠を許可範囲から取り直す先で、候補を作った取り込みが控える。
+// 予定はカレンダーの ID（container_id）、メールは空文字。メールの引用の位置（quote）は抽出の根拠の位置をそのまま写す。
+export interface CandidateOriginLocationInput {
+  // 由来の辺（source_kind が source_item）の source_id（remote_id）。
+  readonly source_id: string;
+  readonly provider: 'google' | 'microsoft';
+  readonly connection_id: string;
+  readonly account_id: string;
+  readonly scope_id: string;
+  readonly resource: 'calendar' | 'mail';
+  readonly container_id: string;
+  // メールの根拠の引用の位置（コードポイント、end は含まない）。予定と、位置を控えないメールは null。
+  readonly quote: {
+    readonly part: 'subject' | 'body';
+    readonly start: number;
+    readonly end: number;
+  } | null;
+}
+
 export interface CandidateCreateInput {
   readonly candidate_id: string;
   readonly candidate_kind: CandidateKind;
@@ -129,6 +149,8 @@ export interface CandidateCreateInput {
   readonly title: SealedBlobInput;
   readonly excerpt: SealedBlobInput | null;
   readonly origins: readonly CandidateOriginInput[];
+  // 由来の元情報の位置（ADR 0201）。省略・空は位置を控えない（根拠を取り直せず、未確認になる）。
+  readonly locations?: readonly CandidateOriginLocationInput[];
 }
 
 export interface CandidateTransitionInput {
@@ -285,9 +307,11 @@ export interface CandidateOpValues {
     readonly next_after: CandidateListCursor | null;
   };
   // origins は由来の辺（derivations）。候補が無いときは空。根拠の再取得で取り直す先を引く（ADR 0130）。
+  // locations は由来の元情報の位置（ADR 0201）。控えていない候補・題と抄録を消した候補は空。
   'candidate.get': {
     readonly candidate: CandidateRow | null;
     readonly origins: readonly CandidateOriginInput[];
+    readonly locations: readonly CandidateOriginLocationInput[];
   };
   'candidate.origin_scopes': {
     readonly origins: readonly {
@@ -474,7 +498,57 @@ function createReasons(input: unknown): string[] {
     );
     if (new Set(keys).size !== keys.length) reasons.push('origins_invalid');
   } else reasons.push('origins_invalid');
+  if (item.locations !== undefined) reasons.push(...locationReasons(item));
   return reasons;
+}
+
+const SHORT_TEXT = (value: unknown, max: number): boolean =>
+  typeof value === 'string' && value !== '' && value.length <= max;
+
+// 由来の位置の形。由来の元情報（source_item の辺）ごとに高々 1 つ。予定はカレンダーの ID を持ち、引用の位置はメールだけ。
+function locationReasons(item: Partial<CandidateCreateInput>): string[] {
+  const locations = item.locations;
+  if (!Array.isArray(locations) || locations.length > 64)
+    return ['locations_invalid'];
+  const sourceItems = new Set(
+    (Array.isArray(item.origins) ? item.origins : [])
+      .filter((origin) => origin?.source_kind === 'source_item')
+      .map((origin) => origin.source_id),
+  );
+  const seen = new Set<string>();
+  for (const location of locations as readonly unknown[]) {
+    if (location === null || typeof location !== 'object')
+      return ['locations_invalid'];
+    const entry = location as Partial<CandidateOriginLocationInput>;
+    const quote = entry.quote;
+    const quoteOk =
+      quote === null ||
+      (quote !== undefined &&
+        typeof quote === 'object' &&
+        entry.resource === 'mail' &&
+        (quote.part === 'subject' || quote.part === 'body') &&
+        Number.isSafeInteger(quote.start) &&
+        Number.isSafeInteger(quote.end) &&
+        quote.start >= 0 &&
+        quote.end > quote.start);
+    if (
+      !SHORT_TEXT(entry.source_id, 256) ||
+      !sourceItems.has(entry.source_id as string) ||
+      seen.has(entry.source_id as string) ||
+      (entry.provider !== 'google' && entry.provider !== 'microsoft') ||
+      !SHORT_TEXT(entry.connection_id, 256) ||
+      !SHORT_TEXT(entry.account_id, 256) ||
+      !SHORT_TEXT(entry.scope_id, 256) ||
+      (entry.resource !== 'calendar' && entry.resource !== 'mail') ||
+      typeof entry.container_id !== 'string' ||
+      entry.container_id.length > 1024 ||
+      (entry.resource === 'calendar') !== (entry.container_id !== '') ||
+      !quoteOk
+    )
+      return ['locations_invalid'];
+    seen.add(entry.source_id as string);
+  }
+  return [];
 }
 
 function transitionReasons(input: unknown): string[] {
@@ -827,7 +901,7 @@ function getCandidate(
       `SELECT ${COLUMNS} FROM notification_candidates WHERE candidate_id = ?`,
     )
     .get(candidateId) as SqlRow | undefined;
-  if (row === undefined) return { candidate: null, origins: [] };
+  if (row === undefined) return { candidate: null, origins: [], locations: [] };
   const origins = readDerivationsByArtifact(db, {
     artifact_kind: 'notification_candidate',
     artifact_id: candidateId,
@@ -840,7 +914,47 @@ function getCandidate(
   return {
     candidate: toRow(db, row, true, linked.get(candidateId) ?? []),
     origins,
+    locations: readLocations(db, candidateId),
   };
+}
+
+interface LocationSqlRow {
+  source_id: string;
+  provider: 'google' | 'microsoft';
+  connection_id: string;
+  account_id: string;
+  scope_id: string;
+  resource: 'calendar' | 'mail';
+  container_id: string;
+  quote_part: 'subject' | 'body' | null;
+  quote_start: number | null;
+  quote_end: number | null;
+}
+
+function readLocations(
+  db: SqliteDatabase,
+  candidateId: string,
+): CandidateOriginLocationInput[] {
+  const rows = db
+    .prepare(
+      'SELECT source_id, provider, connection_id, account_id, scope_id, resource, container_id, quote_part, quote_start, quote_end FROM candidate_origin_locations WHERE candidate_id = ? ORDER BY source_id',
+    )
+    .all(candidateId) as LocationSqlRow[];
+  return rows.map((row) => ({
+    source_id: row.source_id,
+    provider: row.provider,
+    connection_id: row.connection_id,
+    account_id: row.account_id,
+    scope_id: row.scope_id,
+    resource: row.resource,
+    container_id: row.container_id,
+    quote:
+      row.quote_part === null ||
+      row.quote_start === null ||
+      row.quote_end === null
+        ? null
+        : { part: row.quote_part, start: row.quote_start, end: row.quote_end },
+  }));
 }
 
 export function countCandidates(
@@ -1003,6 +1117,24 @@ function createCandidate(
       source_id: origin.source_id,
       created_at: created,
     });
+  // 由来の位置は辺の後に書く（0026 の trigger が辺のある元情報だけを受ける）。
+  const writeLocation = db.prepare(
+    'INSERT INTO candidate_origin_locations (candidate_id, source_id, provider, connection_id, account_id, scope_id, resource, container_id, quote_part, quote_start, quote_end) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+  );
+  for (const location of input.locations ?? [])
+    writeLocation.run(
+      input.candidate_id,
+      location.source_id,
+      location.provider,
+      location.connection_id,
+      location.account_id,
+      location.scope_id,
+      location.resource,
+      location.container_id,
+      location.quote?.part ?? null,
+      location.quote?.start ?? null,
+      location.quote?.end ?? null,
+    );
   return { result: 'created', candidate_id: input.candidate_id };
 }
 

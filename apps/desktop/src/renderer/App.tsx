@@ -143,11 +143,16 @@ function ConnectedApp({ api }: { readonly api: BuddyDesktopApi }) {
         mark: boundary.line.mark === 'square' ? 'square' : 'dot',
       });
   }, [storageMode, markBoundary]);
-  // 気づき（B11-05、ADR 0132）。会話と同じく、ロック解除済みで中枢に接続している間だけ内容を持つ（切断・ロックで捨てる）。
-  const candidates = useCandidateState(api, workLive);
   // 自動実行の一覧・安全停止・取り消し（B13-05、ADR 0154）。気づきと同じく、ロック解除済みで中枢に接続している間だけ
   // 内容を持つ（切断・ロックで捨てる）。
   const autoActions = useAutoActionState(api, workLive);
+  // 気づき（B11-05、ADR 0132）。会話と同じく、ロック解除済みで中枢に接続している間だけ内容を持つ（切断・ロックで捨てる）。
+  // 気づきの欄で自動実行を取り消したら、自動実行の欄も読み直す（ADR 0199）。
+  const candidates = useCandidateState(
+    api,
+    workLive,
+    autoActions.actions.refresh,
+  );
   // 家計簿（ADR 0162）。自動実行と同じく、ロック解除済みで中枢に接続している間だけ内容を持つ（切断・ロックで捨てる）。
   const household = useHouseholdState(api, workLive);
   // 忘却の画面（UI-10、ADR 0183）。家計簿と同じく、ロック解除済みで中枢に接続している間だけ内容を持つ（切断・ロックで捨てる）。

@@ -7992,6 +7992,10 @@ export interface DesktopCandidateView {
    * 気づきの OS 通知の入・切（ADR 0196）。中枢から読めたことがなければ null（「切」と区別する）。
    */
   alert: DesktopCandidateAlertView | null;
+  /**
+   * 行の auto_actions の元にした自動実行の一覧の取得の状態（ADR 0199。DesktopAutoActionView の fetch と同じ意味）。unavailable のとき、結び付いた操作はすべて auto_actions_unlisted に数える（「結果なし」と言わない）。
+   */
+  auto_action_fetch: 'loaded' | 'stale' | 'unavailable';
 }
 /**
  * 気づきの一覧の 1 行の表示用の値（B11-05、ADR 0132）。候補 ID・通知キー・依頼の版・根拠の版・期待する状態は main の中にだけ持ち、画面へ渡さない。
@@ -8022,7 +8026,47 @@ export interface DesktopCandidateEntry {
    */
   has_operations: boolean;
   /**
+   * この候補に結び付いた自動実行のうち、自動実行の一覧（GET /v1/auto-actions）で読めた操作の行（ADR 0199）。参照（ref）は自動実行の欄と同じ main の参照で、取り消しは desktop.auto_action_undo にそのまま渡す。並びは自動実行の一覧の順。操作 ID・版は渡さない。
+   */
+  auto_actions: DesktopAutoActionEntry[];
+  /**
+   * 結び付いた操作のうち、自動実行の一覧に無い件数（まだ完了していない・止まった・一覧の上限の外・一覧を読めていない）。この欄では結果を確かめられない（ADR 0199）。
+   */
+  auto_actions_unlisted: number;
+  /**
    * この候補への状態の変更の結果が分からない。次に一覧を読み直せるまで操作させない（自動では送り直さない）。
+   */
+  delivery_unknown: boolean;
+}
+/**
+ * 自動実行した操作の 1 行の表示用の値（B13-05、ADR 0154）。操作 ID・state_revision・方針の版・取り消しの対象の内容版は main の中にだけ持ち、画面へ渡さない。本文は中枢も返さない。
+ */
+export interface DesktopAutoActionEntry {
+  /**
+   * B00初版のランダムUUID v4。認証情報ではない。
+   */
+  ref: string;
+  /**
+   * 中枢が並べた順（0 から）。
+   */
+  position: number;
+  kind:
+    | 'create_task'
+    | 'create_note'
+    | 'label_mail'
+    | 'draft_reply'
+    | 'create_event';
+  completed_at: UtcTime;
+  undo_state:
+    | 'available'
+    | 'target_changed'
+    | 'expired'
+    | 'in_progress'
+    | 'undone'
+    | 'unavailable';
+  undo_deadline: UtcTime;
+  /**
+   * この操作の取り消しの結果が分からない。次に一覧を読み直せるまで取り消させない（自動では送り直さない）。
    */
   delivery_unknown: boolean;
 }
@@ -8151,38 +8195,6 @@ export interface DesktopSafetyView {
       )
     | null;
   stopped_at: UtcTime | null;
-}
-/**
- * 自動実行した操作の 1 行の表示用の値（B13-05、ADR 0154）。操作 ID・state_revision・方針の版・取り消しの対象の内容版は main の中にだけ持ち、画面へ渡さない。本文は中枢も返さない。
- */
-export interface DesktopAutoActionEntry {
-  /**
-   * B00初版のランダムUUID v4。認証情報ではない。
-   */
-  ref: string;
-  /**
-   * 中枢が並べた順（0 から）。
-   */
-  position: number;
-  kind:
-    | 'create_task'
-    | 'create_note'
-    | 'label_mail'
-    | 'draft_reply'
-    | 'create_event';
-  completed_at: UtcTime;
-  undo_state:
-    | 'available'
-    | 'target_changed'
-    | 'expired'
-    | 'in_progress'
-    | 'undone'
-    | 'unavailable';
-  undo_deadline: UtcTime;
-  /**
-   * この操作の取り消しの結果が分からない。次に一覧を読み直せるまで取り消させない（自動では送り直さない）。
-   */
-  delivery_unknown: boolean;
 }
 /**
  * 家計簿の表示用の値（ADR 0162）。月ごとの合計と、1 か月の記録と集計。記録の ID・内容版・出所の識別子は含めない。

@@ -447,6 +447,64 @@ test('the list stops at the page cap with an opaque cursor, and fails closed on 
   });
 });
 
+// 候補を起点にした方針による自動承認の承認の行（ADR 0148 の 7 列）を直接置く。操作の行の作り方は保存層の試験
+// （candidate-operation-link.test.ts）が受け持つので、ここは外部キーを外して承認の行だけを置き、経路の写し方を見る。
+function linkApproval(
+  db: SqliteDatabase,
+  candidateId: string,
+  operationId: string,
+  approvedAt: number,
+): void {
+  db.pragma('foreign_keys = OFF');
+  try {
+    db.prepare(
+      "INSERT INTO approvals (approval_id, operation_id, content_version, content_hash, route, device_id, preview_id, policy_version, status, approved_at, candidate_id, request_entity_id, request_revision, related_group_id, analysis_revision, source_set_hash, published_generation) VALUES (?, ?, 1, ?, 'policy_auto', NULL, NULL, 1, 'consumed', ?, ?, ?, 1, 'group-1', 1, ?, 0)",
+    ).run(
+      randomUUID(),
+      operationId,
+      'a'.repeat(64),
+      approvedAt,
+      candidateId,
+      nextEntity(),
+      'b'.repeat(64),
+    );
+  } finally {
+    db.pragma('foreign_keys = ON');
+  }
+}
+
+test('operation_ids carry the automatic operations approved from each candidate, in the list and in the re-read snapshot', async () => {
+  await withWorld(async (world) => {
+    const linked = await make(world, { received_at: '2030-10-02T00:00:00Z' });
+    const plain = await make(world);
+    const OP_1 = 'e5000000-0000-4000-8000-000000000002';
+    const OP_2 = 'e5000000-0000-4000-8000-000000000001';
+    // 承認の古い順（OP_1 が先）。ID の順と逆にして、並びが承認の時刻で決まることを見る。
+    linkApproval(world.db, linked, OP_1, 1000);
+    linkApproval(world.db, linked, OP_2, 2000);
+    const routes = world.routes();
+    const listed = await call(routes.listCandidates);
+    assert.equal(listed.status, 200);
+    assert.deepEqual(
+      (listed.body['candidates'] as Json[]).map((item) => [
+        item['candidate_id'],
+        item['operation_ids'],
+      ]),
+      [
+        [linked, [OP_1, OP_2]],
+        [plain, []],
+      ],
+    );
+    const opened = await call(
+      routes.changeCandidateState,
+      { candidate_id: linked },
+      command('open', 'new'),
+    );
+    assert.equal(opened.status, 200);
+    assert.deepEqual(opened.body['operation_ids'], [OP_1, OP_2]);
+  });
+});
+
 test('state changes by the person move one step and return the re-read snapshot', async () => {
   await withWorld(async (world) => {
     const routes = world.routes();

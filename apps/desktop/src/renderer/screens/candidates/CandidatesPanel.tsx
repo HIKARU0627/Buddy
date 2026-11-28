@@ -4,6 +4,8 @@
 // （メールは「対応済みかは未確認」、一部未読、自動実行の操作）。操作は「開く」「今回は扱わない」「再通知」（明日・来週・
 // 日時を指定）。未取得・取得の失敗を「気づきはありません」と言わない。理由のコード・API の名前は出さない。
 // 「根拠を見る」「相談する」は後の段階（ADR 0132 の残論点）。
+// 自動実行の操作が結び付いた行には「この気づきから自動で行った操作」の欄（ADR 0199）: 種類・実行からの経過・取り消しの
+// 状態と「取り消す」（自動実行の欄と同じ経路）。取り消せない行は押せないボタンと理由を出す。一覧に無い操作は件数だけ。
 // 頭の下に「新しい気づきを OS の通知で知らせる」の選択（ADR 0196。既定は切）。設定を読めていない間は選択を置かない。
 import {
   Button,
@@ -16,7 +18,10 @@ import {
   Label,
   TextField,
 } from '@heroui/react';
-import type { DesktopCandidateEntry } from '@buddy/contracts';
+import type {
+  DesktopAutoActionEntry,
+  DesktopCandidateEntry,
+} from '@buddy/contracts';
 import { InlineNotice } from '../../components/InlineNotice.js';
 import { Section } from '../../components/Section.js';
 import { StatusText } from '../../components/StatusText.js';
@@ -31,7 +36,16 @@ import {
   rowActions,
   rowNotes,
   snoozePreview,
+  unlistedText,
 } from '../../state/candidate-state.js';
+import {
+  AUTO_ACTION_KIND_LABELS,
+  AUTO_ACTION_LABELS,
+  UNDO_EFFECT_LABELS,
+  canUndo,
+  elapsedText,
+  undoStateText,
+} from '../../state/auto-action-state.js';
 import type {
   CandidateActions,
   CandidateSection,
@@ -177,6 +191,127 @@ function SnoozeChoices({
   );
 }
 
+// 取り消しの状態のうち、押せないボタンで「今は取り消せない」ことを見せるもの（取り消し中・取り消し済みは文言だけ）。
+const UNDO_BLOCKED: ReadonlySet<DesktopAutoActionEntry['undo_state']> = new Set(
+  ['available', 'unavailable', 'expired', 'target_changed'],
+);
+
+function LinkedAutoAction({
+  candidate,
+  auto,
+  state,
+  actions,
+  now,
+}: {
+  readonly candidate: DesktopCandidateEntry;
+  readonly auto: DesktopAutoActionEntry;
+  readonly state: CandidateViewState;
+  readonly actions: CandidateActions;
+  readonly now: number;
+}) {
+  const kind = AUTO_ACTION_KIND_LABELS[auto.kind];
+  const elapsed = elapsedText(auto.completed_at, now);
+  const undoable = canUndo(auto, now);
+  const mine = state.busy === auto.ref;
+  return (
+    <li
+      data-kind={auto.kind}
+      data-undo={auto.undo_state}
+      className="flex flex-col gap-1"
+    >
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <span className="text-sm">{kind}</span>
+        {elapsed === null ? null : (
+          <span className="ml-auto text-xs tabular-nums text-muted">{`${AUTO_ACTION_LABELS.completed} ${elapsed}`}</span>
+        )}
+      </div>
+      {auto.delivery_unknown ? (
+        <StatusText
+          className="text-sm"
+          line={{
+            tone: 'danger',
+            mark: 'warning',
+            text: AUTO_ACTION_LABELS.unknown,
+          }}
+        />
+      ) : (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-xs text-muted">{undoStateText(auto, now)}</span>
+          {UNDO_BLOCKED.has(auto.undo_state) ? (
+            <Button
+              size="sm"
+              variant="secondary"
+              isDisabled={!undoable || state.busy !== null}
+              aria-label={`${AUTO_ACTION_LABELS.undo}（${kind}・${candidate.title}）`}
+              onPress={() => actions.undoAutoAction(candidate.ref, auto.ref)}
+            >
+              {mine ? AUTO_ACTION_LABELS.undoing : AUTO_ACTION_LABELS.undo}
+            </Button>
+          ) : null}
+        </div>
+      )}
+      {undoable && UNDO_EFFECT_LABELS[auto.kind] !== undefined ? (
+        <p className="text-xs text-muted">{UNDO_EFFECT_LABELS[auto.kind]}</p>
+      ) : null}
+    </li>
+  );
+}
+
+function LinkedAutoActions({
+  entry,
+  state,
+  actions,
+  now,
+}: {
+  readonly entry: DesktopCandidateEntry;
+  readonly state: CandidateViewState;
+  readonly actions: CandidateActions;
+  readonly now: number;
+}) {
+  if (!entry.has_operations) return null;
+  const fetch = state.view?.auto_action_fetch ?? 'unavailable';
+  return (
+    <div
+      role="group"
+      aria-label={`${CANDIDATE_LABELS.autoActions}（${entry.title}）`}
+      data-auto-actions={fetch}
+      className={`flex flex-col gap-2 px-3 py-2.5 ${FRAME_CLASS}`}
+    >
+      <p className="text-xs font-semibold text-muted">
+        {CANDIDATE_LABELS.autoActions}
+      </p>
+      {fetch === 'unavailable' ? (
+        <p className="text-xs text-muted">
+          {CANDIDATE_LABELS.autoActionsUnread}
+        </p>
+      ) : fetch === 'stale' ? (
+        <p className="text-xs text-muted">
+          {CANDIDATE_LABELS.autoActionsStale}
+        </p>
+      ) : null}
+      {entry.auto_actions.length === 0 ? null : (
+        <ul className="flex flex-col gap-2">
+          {entry.auto_actions.map((auto) => (
+            <LinkedAutoAction
+              key={auto.ref}
+              candidate={entry}
+              auto={auto}
+              state={state}
+              actions={actions}
+              now={now}
+            />
+          ))}
+        </ul>
+      )}
+      {entry.auto_actions_unlisted === 0 ? null : (
+        <p className="text-xs text-muted">
+          {unlistedText(entry.auto_actions_unlisted)}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function CandidateRow({
   entry,
   state,
@@ -225,6 +360,12 @@ function CandidateRow({
           ))}
         </ul>
       )}
+      <LinkedAutoActions
+        entry={entry}
+        state={state}
+        actions={actions}
+        now={now}
+      />
       {waiting ? (
         <StatusText
           className="text-sm"

@@ -16,6 +16,8 @@
 //   safety_revision で、中枢も同じ値で照合し直す。結果が分からなければ送り直さず、読み直して確かめさせる。
 // - 世代（ロック・切断）: reset で一覧・参照・保留を捨て、非同期の処理は await の後に世代を照合する（またいだ読み取りは
 //   反映しない。またいだ変更は結果不明として返す）。
+// - 気づきの欄（ADR 0199）: 候補に結び付いた操作の行を、この欄と同じ参照で気づきの経路へ渡す（linked）。気づきの欄の
+//   「取り消す」も desktop.auto_action_undo でこの経路の undo を通る（別の実行の経路を作らない）。
 // Electron に依存しない（node:test で試験する）。
 import type {
   AutoActionItem,
@@ -100,22 +102,61 @@ export class AutoActionBridge {
     this.#listSeq += 1;
   }
 
+  #entry(
+    operationId: string,
+    record: AutoActionRecord,
+  ): DesktopAutoActionEntry {
+    const item = record.item;
+    return {
+      ref: this.#refs.get(operationId) as string,
+      position: record.position,
+      kind: item.action_kind,
+      completed_at: item.completed_at,
+      undo_state: item.undo_state,
+      undo_deadline: item.undo_deadline,
+      delivery_unknown: this.#held.has(operationId),
+    };
+  }
+
+  // 一覧の取得の状態（view の fetch と同じ）。
+  fetchState(): DesktopAutoActionView['fetch'] {
+    return this.#fetchedAt === null
+      ? 'unavailable'
+      : this.#failed
+        ? 'stale'
+        : 'loaded';
+  }
+
+  // 気づきの候補に結び付いた操作（ADR 0199）のうち、今の一覧で読めた行（一覧の順。参照はこの欄と同じ）と、一覧に無い
+  // 件数。操作 ID は main の中（気づきの経路）から渡され、画面へは参照と表示用の値だけを返す。同じ ID が重なっても 1 件。
+  linked(operationIds: readonly string[]): {
+    readonly entries: readonly DesktopAutoActionEntry[];
+    readonly unlisted: number;
+  } {
+    const unique = [...new Set(operationIds)];
+    const found = unique
+      .map((operationId) => ({
+        operationId,
+        record: this.#records.get(operationId),
+      }))
+      .filter(
+        (pair): pair is { operationId: string; record: AutoActionRecord } =>
+          pair.record !== undefined,
+      )
+      .sort((a, b) => a.record.position - b.record.position);
+    return {
+      entries: found.map(({ operationId, record }) =>
+        this.#entry(operationId, record),
+      ),
+      unlisted: unique.length - found.length,
+    };
+  }
+
   // 画面に出す値。
   view(): DesktopAutoActionView {
     const entries = [...this.#records.entries()]
       .sort((a, b) => a[1].position - b[1].position)
-      .map(([operationId, record]): DesktopAutoActionEntry => {
-        const item = record.item;
-        return {
-          ref: this.#refs.get(operationId) as string,
-          position: record.position,
-          kind: item.action_kind,
-          completed_at: item.completed_at,
-          undo_state: item.undo_state,
-          undo_deadline: item.undo_deadline,
-          delivery_unknown: this.#held.has(operationId),
-        };
-      });
+      .map(([operationId, record]) => this.#entry(operationId, record));
     const safety: DesktopSafetyView | null =
       this.#safety === null || this.#safetyRef === null
         ? null
@@ -126,12 +167,7 @@ export class AutoActionBridge {
             stopped_at: this.#safety.stopped_at,
           };
     return {
-      fetch:
-        this.#fetchedAt === null
-          ? 'unavailable'
-          : this.#failed
-            ? 'stale'
-            : 'loaded',
+      fetch: this.fetchState(),
       fetched_at: this.#fetchedAt,
       safety,
       entries,

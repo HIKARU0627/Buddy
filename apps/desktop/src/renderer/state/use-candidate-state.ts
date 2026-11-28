@@ -16,11 +16,16 @@ export interface CandidateStateHandle {
   readonly actions: CandidateActions;
 }
 
+// autoActionsChanged は気づきの欄で自動実行を取り消した後に呼ぶ（自動実行の欄を読み直させる。ADR 0199）。
 export function useCandidateState(
   api: BuddyDesktopApi,
   shown: boolean,
+  autoActionsChanged?: () => void,
 ): CandidateStateHandle {
-  const store = useMemo(() => new CandidateStore(api), [api]);
+  const store = useMemo(
+    () => new CandidateStore(api, undefined, autoActionsChanged),
+    [api, autoActionsChanged],
+  );
   const state = useSyncExternalStore(store.subscribe, store.snapshot);
   useEffect(() => {
     if (shown) store.actions.refresh();

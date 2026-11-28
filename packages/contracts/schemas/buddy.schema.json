@@ -17754,6 +17754,18 @@
           "type": "boolean",
           "description": "自動実行の操作が結び付いている（CandidateSnapshot の operation_ids が空でない）。操作 ID そのものは渡さない。"
         },
+        "auto_actions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DesktopAutoActionEntry"
+          },
+          "description": "この候補に結び付いた自動実行のうち、自動実行の一覧（GET /v1/auto-actions）で読めた操作の行（ADR 0199）。参照（ref）は自動実行の欄と同じ main の参照で、取り消しは desktop.auto_action_undo にそのまま渡す。並びは自動実行の一覧の順。操作 ID・版は渡さない。"
+        },
+        "auto_actions_unlisted": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "結び付いた操作のうち、自動実行の一覧に無い件数（まだ完了していない・止まった・一覧の上限の外・一覧を読めていない）。この欄では結果を確かめられない（ADR 0199）。"
+        },
         "delivery_unknown": {
           "type": "boolean",
           "description": "この候補への状態の変更の結果が分からない。次に一覧を読み直せるまで操作させない（自動では送り直さない）。"
@@ -17769,6 +17781,8 @@
         "initial_import",
         "unread_partial",
         "has_operations",
+        "auto_actions",
+        "auto_actions_unlisted",
         "delivery_unknown"
       ],
       "additionalProperties": false,
@@ -17835,6 +17849,11 @@
             { "type": "null" }
           ],
           "description": "気づきの OS 通知の入・切（ADR 0196）。中枢から読めたことがなければ null（「切」と区別する）。"
+        },
+        "auto_action_fetch": {
+          "type": "string",
+          "enum": ["loaded", "stale", "unavailable"],
+          "description": "行の auto_actions の元にした自動実行の一覧の取得の状態（ADR 0199。DesktopAutoActionView の fetch と同じ意味）。unavailable のとき、結び付いた操作はすべて auto_actions_unlisted に数える（「結果なし」と言わない）。"
         }
       },
       "required": [
@@ -17845,7 +17864,8 @@
         "entries",
         "truncated",
         "list_seq",
-        "alert"
+        "alert",
+        "auto_action_fetch"
       ],
       "additionalProperties": false,
       "description": "気づきの画面に出す値（B11-05、ADR 0132。設計 01 気づき、11 §4）。見出しは画面が domain の orderCandidates で zone と fetched_at から分ける。"

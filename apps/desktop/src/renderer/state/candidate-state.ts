@@ -9,6 +9,9 @@
 // - OS の通知の入・切（ADR 0196）: 画面は main が渡す設定の参照と入・切だけを持ち、変更の要求に参照を載せる（版は main）。
 //   別の画面で変わった・結果が分からないときは、一覧を読み直し終えるまで選択を押させない（ADR 0191 の設定と同じ）。
 //   設定を読めていない間は選択を出さない（「切」と言わない）。
+// - 自動実行の結果（ADR 0199）: 行に、候補に結び付いた自動実行の行（自動実行の欄と同じ参照・種類・取り消しの状態）と、
+//   自動実行の一覧に無い件数が来る。「取り消す」は自動実行の欄と同じ desktop.auto_action_undo に自動実行の参照を載せて
+//   送り（別の実行の経路を作らない）、結果にかかわらず一覧を読み直す。取り消せない行は送らない（正本は main と中枢の検査）。
 // 理由のコード・API の名前は画面に出さない。
 import type {
   DesktopCandidateEntry,
@@ -27,6 +30,7 @@ import {
 import type { CandidateHeading, CandidateSnoozeChoice } from '@buddy/domain';
 import { request } from '../desktop-api.js';
 import { REJECT_MESSAGES } from '../labels.js';
+import { autoActionFailureText, canUndo } from './auto-action-state.js';
 
 type Rejected = Extract<DesktopIpcResponse, { outcome: 'rejected' }>;
 type RejectReason = Rejected['reason'];
@@ -55,7 +59,6 @@ export const CANDIDATE_LABELS = {
   unknown: '結果を確認できませんでした',
   dateOnly: '日付のみの期限',
   noDeadline: '期限なし',
-  hasOperations: '自動実行の操作があります',
   empty: '今は気づきはありません。',
   truncated:
     '件数が多いため、一部だけを表示しています。対応した気づきが減ると、残りが表示されます。',
@@ -67,7 +70,19 @@ export const CANDIDATE_LABELS = {
   alertUnavailable:
     'OS の通知の設定をまだ読めていません。「読み直す」を押してください。',
   alertBusy: '設定を送っています…',
+  autoActions: 'この気づきから自動で行った操作',
+  autoActionsStale:
+    '自動実行の最新の取得に失敗しました。前回の内容を表示しています。',
+  autoActionsUnread:
+    '自動実行の結果をまだ読めていません。「読み直す」を押してください。',
+  autoActionUndone:
+    '取り消しを受け付けました。元に戻ったかは、この欄を読み直すと確かめられます。',
 } as const;
+
+// 結び付いた操作のうち、自動実行の一覧に無い件数の文言（ADR 0199）。
+export function unlistedText(count: number): string {
+  return `ほかに ${count}\u00a0件の操作は、結果をこの欄では確かめられません（実行中・止まった・古い操作など）。`;
+}
 
 export const KIND_LABELS: Readonly<
   Record<DesktopCandidateEntry['kind'], string>
@@ -143,12 +158,10 @@ export function deadlineText(
   }
 }
 
-// 行に添える注記。メールの候補は常に「対応済みかは未確認」、一部未読なら「本文・添付の一部は未読」（domain の規則）、
-// 操作が結び付いていれば自動実行の操作がある旨。
+// 行に添える注記。メールの候補は常に「対応済みかは未確認」、一部未読なら「本文・添付の一部は未読」（domain の規則）。
+// 結び付いた自動実行の操作は、注記ではなく行の中の欄（「この気づきから自動で行った操作」）で出す（ADR 0199）。
 export function rowNotes(entry: DesktopCandidateEntry): string[] {
-  const notes = candidateRowNotes(entry);
-  if (entry.has_operations) notes.push(CANDIDATE_LABELS.hasOperations);
-  return notes;
+  return candidateRowNotes(entry);
 }
 
 // 行に出す操作。状態の遷移表（domain）で許される操作だけを出す（acted は開く・扱わない・再通知を出さない）。
@@ -239,7 +252,7 @@ export interface CandidateViewState {
   // 反映した一覧の main の通し番号（0 はまだ反映していない）。これより小さい番号の一覧は反映しない。
   readonly seq: number;
   readonly reading: boolean;
-  // 状態の変更を送って結果を待っている行の参照（二重に押させない）。
+  // 状態の変更を送って結果を待っている行の参照、または取り消しを送って結果を待っている自動実行の参照（二重に押させない）。
   readonly busy: string | null;
   readonly notice: CandidateNotice | null;
   // 再通知の日時を選んでいる行。
@@ -416,6 +429,11 @@ export interface CandidateActions {
   readonly snooze: (ref: string, choice: CandidateSnoozeChoice['kind']) => void;
   // OS の通知の入・切（ADR 0196）。
   readonly setAlert: (value: 'on' | 'off') => void;
+  // 行に結び付いた自動実行の取り消し（ADR 0199）。候補の参照と自動実行の参照。
+  readonly undoAutoAction: (
+    candidateRef: string,
+    autoActionRef: string,
+  ) => void;
 }
 
 export interface CandidateApi {
@@ -432,9 +450,17 @@ export class CandidateStore {
   #epoch = 0;
   readonly actions: CandidateActions;
 
-  constructor(api: CandidateApi, now: () => number = () => Date.now()) {
+  // 気づきの欄で取り消した後に呼ぶ（自動実行の欄を読み直させる）。
+  readonly #autoActionsChanged: () => void;
+
+  constructor(
+    api: CandidateApi,
+    now: () => number = () => Date.now(),
+    autoActionsChanged: () => void = () => undefined,
+  ) {
     this.#api = api;
     this.#now = now;
+    this.#autoActionsChanged = autoActionsChanged;
     this.actions = {
       refresh: () => this.#list(),
       open: (ref) => this.#change(ref, 'open', null),
@@ -456,7 +482,57 @@ export class CandidateStore {
       },
       snooze: (ref, kind) => this.#snooze(ref, kind),
       setAlert: (value) => this.#setAlert(value),
+      undoAutoAction: (candidateRef, autoActionRef) =>
+        this.#undoAutoAction(candidateRef, autoActionRef),
     };
+  }
+
+  // 結び付いた自動実行を取り消す。押下が確認（J12、ADR 0153・0154）。今の一覧で取り消せると読めた行だけを送り、
+  // 結果にかかわらず一覧を読み直す（main は受け付けた後・断った後に自動実行の一覧を読み直している）。
+  #undoAutoAction(candidateRef: string, autoActionRef: string): void {
+    if (this.#state.busy !== null) return;
+    const candidate = this.#state.view?.entries.find(
+      (item) => item.ref === candidateRef,
+    );
+    const auto = candidate?.auto_actions.find(
+      (item) => item.ref === autoActionRef,
+    );
+    if (auto === undefined || !canUndo(auto, this.#now())) return;
+    const epoch = this.#epoch;
+    this.#set({ ...this.#state, busy: autoActionRef, notice: null });
+    void this.#send(
+      request('desktop.auto_action_undo', { ref: autoActionRef }),
+      (state, response) => ({
+        ...state,
+        busy: state.busy === autoActionRef ? null : state.busy,
+        notice:
+          response.outcome === 'rejected'
+            ? {
+                tone: 'warning',
+                // 自動実行の欄と同じ文言。
+                text: autoActionFailureText('undo', response.reason),
+                ref: candidateRef,
+              }
+            : {
+                tone: 'success',
+                text: CANDIDATE_LABELS.autoActionUndone,
+                ref: candidateRef,
+              },
+      }),
+      (state) => ({
+        ...state,
+        busy: state.busy === autoActionRef ? null : state.busy,
+        notice: {
+          tone: 'warning',
+          text: CANDIDATE_IPC_FAILURE_MESSAGE,
+          ref: candidateRef,
+        },
+      }),
+    ).then(() => {
+      if (epoch !== this.#epoch) return;
+      this.#reread();
+      this.#autoActionsChanged();
+    });
   }
 
   #setAlert(value: 'on' | 'off'): void {

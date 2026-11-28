@@ -257,8 +257,8 @@ function candidateSnapshot(
             source_set_hash: related.source_set_hash,
             published_generation: String(related.published_generation),
           },
-    // 候補と操作の結び付きは B13 で足す（U282 の暫定 (a)）。
-    operation_ids: [],
+    // 候補を起点に方針で自動承認した操作（保存層が承認の行の candidate_id から読む。ADR 0199、U282）。
+    operation_ids: [...row.operation_ids],
   };
 }
 

@@ -178,6 +178,7 @@ test('before any read the view says unavailable, not "no candidates"', () => {
     truncated: false,
     list_seq: 1,
     alert: null,
+    auto_action_fetch: 'unavailable',
   });
 });
 
@@ -228,6 +229,9 @@ test('the list keeps the hub order and gives the screen only refs and display va
           initial_import: false,
           unread_partial: false,
           has_operations: true,
+          // 自動実行の経路を持たない組み立てでは、結び付いた操作はすべて一覧に無い件数（ADR 0199）。
+          auto_actions: [],
+          auto_actions_unlisted: 1,
           delivery_unknown: false,
         },
         {
@@ -244,17 +248,27 @@ test('the list keeps the hub order and gives the screen only refs and display va
           initial_import: false,
           unread_partial: true,
           has_operations: false,
+          auto_actions: [],
+          auto_actions_unlisted: 0,
           delivery_unknown: false,
         },
       ],
       truncated: false,
       list_seq: 3,
       alert: { ref: 'a', os_notification: 'off' },
+      auto_action_fetch: 'unavailable',
     },
   );
   // 参照は main が作った値で、候補 ID・通知キー・版・操作 ID は画面へ出ない。
   const text = JSON.stringify(view);
-  for (const secret of [MAIL, OVERLAP, '1'.repeat(64), uuid(0x611), 'r1'])
+  for (const secret of [
+    MAIL,
+    OVERLAP,
+    '1'.repeat(64),
+    uuid(0x611),
+    'r1',
+    uuid(0x701),
+  ])
     assert(!text.includes(secret), secret);
   assert.notEqual(view.entries[0]?.ref, view.entries[1]?.ref);
   // 応答は IPC の契約に合う。

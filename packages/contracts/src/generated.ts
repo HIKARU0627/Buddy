@@ -4275,7 +4275,7 @@ export interface ResponsePlan {
   facts: ResultFact[];
   speech: ResponseSpeech | null;
   /**
-   * モデルが出した配置のヒント（UI-09、ADR 0200）。配置の候補だけで、承認・実行権限・処理状態・表示してよい内容の正本にならない。キャンバスへ置く時点で意味を検査し、反すれば捨ててコードの配置に戻す。なければ null。
+   * モデルが出した配置のヒント（UI-09、ADR 0200）。配置の候補だけで、承認・実行権限・処理状態・表示してよい内容の正本にならない。Core は形の検査（CanvasLayoutHint）に通ったヒントだけをここへ入れ、通らなければ null にして理由 schema を記録する（計画全体を Schema 違反にしない）。キャンバスへ置く時点で意味を検査し、反すれば捨ててコードの配置に戻す。なければ null。
    */
   layout_hint: CanvasLayoutHint | null;
 }
@@ -4294,7 +4294,7 @@ export interface ResponseSpeech {
   parts: [string] | [string, string] | [string, string, string];
 }
 /**
- * モデルが出す配置のヒント（UI-09、ADR 0200）。今のキャンバスにある見える物の名前だけを指し、強調・読む順・まとまりの候補だけを持つ。物の追加・閉じる・動かす・棚への出し入れ・見出し・本文・承認・実行・処理状態の項目を持たない。Core は置く時点の記述で意味を検査し、反すればヒントを捨ててコードの配置に戻す。base_canvas_revision はモデルが見た記述の版。
+ * モデルが出す配置のヒント（UI-09、ADR 0200）。今のキャンバスにある見える物の名前だけを指し、強調・読む順・まとまりの候補だけを持つ。物の追加・閉じる・動かす・棚への出し入れ・見出し・本文・承認・実行・処理状態の項目を持たない。Core は置く時点の記述で意味を検査し、反すればヒントを捨ててコードの配置に戻す。ヒントはその発言だけの上乗せで、次の発言ではコードの強調・まとまりへ戻す。まとまりの名前は記述へ入れず、Core が g1〜g4 に付け直す。base_canvas_revision はモデルが見た記述の版。
  */
 export interface CanvasLayoutHint {
   base_canvas_revision: CanvasRevision;
@@ -4305,9 +4305,9 @@ export interface CanvasLayoutHint {
    */
   focus: [] | [CanvasItemId] | [CanvasItemId, CanvasItemId];
   /**
-   * 周辺に回す（強調を low にする）物の候補。Core の配置が high にした物は指せない（意味の検査）。
+   * 周辺に回す（強調を low にする）物の候補。Core が守る物（コードが焦点にした物・文字の結果・保留を捨てた知らせ）は指せない（意味の検査）。
    *
-   * @maxItems 12
+   * @maxItems 10
    */
   peripheral:
     | []
@@ -4365,33 +4365,6 @@ export interface CanvasLayoutHint {
         CanvasItemId,
         CanvasItemId,
         CanvasItemId,
-      ]
-    | [
-        CanvasItemId,
-        CanvasItemId,
-        CanvasItemId,
-        CanvasItemId,
-        CanvasItemId,
-        CanvasItemId,
-        CanvasItemId,
-        CanvasItemId,
-        CanvasItemId,
-        CanvasItemId,
-        CanvasItemId,
-      ]
-    | [
-        CanvasItemId,
-        CanvasItemId,
-        CanvasItemId,
-        CanvasItemId,
-        CanvasItemId,
-        CanvasItemId,
-        CanvasItemId,
-        CanvasItemId,
-        CanvasItemId,
-        CanvasItemId,
-        CanvasItemId,
-        CanvasItemId,
       ];
   /**
    * 読む順の候補。空なら変えない。空でなければ、Core の配置を当てた後の見える物をちょうど 1 回ずつ含む（意味の検査）。
@@ -4415,7 +4388,7 @@ export interface CanvasLayoutHint {
       ];
 }
 /**
- * 配置のヒントのまとまりの候補（UI-09、ADR 0200）。members の物に、まとまりの名前 group を付ける候補。名前は画面に出さない。
+ * 配置のヒントのまとまりの候補（UI-09、ADR 0200）。members の物を 1 つのまとまりにする候補。group はヒントの中の対応付けにだけ使い、記述には Core が付け直した名前（g1〜g4）を入れる。
  */
 export interface CanvasLayoutHintGroup {
   group: CanvasGroupId;

@@ -236,25 +236,27 @@ assert(
   validators['CanvasDocument'](layoutHintCases.base.canvas),
   JSON.stringify(validators['CanvasDocument'].errors),
 );
-assert(
-  validators['CanvasOpBatch'](layoutHintCases.base.batch),
-  JSON.stringify(validators['CanvasOpBatch'].errors),
-);
+for (const item of Object.values(layoutHintCases.base.items))
+  assert(
+    validators['CanvasItem'](item),
+    JSON.stringify(validators['CanvasItem'].errors),
+  );
 for (const entry of layoutHintCases.evaluation) {
   assert(!ids.has(entry.id), `Duplicate fixture id: ${entry.id}`);
   ids.add(entry.id);
-  assert.equal(
-    validators['CanvasLayoutHint'](entry.hint),
-    entry.schema_valid,
-    `${entry.id}: ${JSON.stringify(validators['CanvasLayoutHint'].errors)}`,
-  );
-  // 形の検査で戻る例の理由は schema だけ。
-  if (!entry.schema_valid) assert.equal(entry.expected.reason, 'schema');
-  if (entry.batch !== undefined)
-    assert(
-      validators['CanvasOpBatch'](entry.batch),
-      `${entry.id}: ${JSON.stringify(validators['CanvasOpBatch'].errors)}`,
+  for (const turn of entry.turns) {
+    if (turn.hint === null) {
+      assert.equal(turn.expected.outcome, 'none', entry.id);
+      continue;
+    }
+    assert.equal(
+      validators['CanvasLayoutHint'](turn.hint),
+      turn.schema_valid,
+      `${entry.id}: ${JSON.stringify(validators['CanvasLayoutHint'].errors)}`,
     );
+    // 形の検査で戻る例の理由は schema だけ。
+    if (!turn.schema_valid) assert.equal(turn.expected.reason, 'schema');
+  }
 }
 // connector の能力と再試行の契約（B08-01、ADR 0027・0071）。読み取り・書込みの宣言と、
 // トークン・本文を返さない同期の状態の形式を検査する。規則との一致は scripts/connector-capability.test.mjs が確かめる。

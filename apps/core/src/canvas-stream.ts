@@ -25,6 +25,7 @@
 import { randomUUID } from 'node:crypto';
 import type {
   CanvasCell,
+  CanvasLayoutHint,
   CanvasOp,
   CanvasContentRequest,
   CanvasContentResponse,
@@ -43,17 +44,18 @@ import type {
 import {
   CANVAS_OPS_LIMIT,
   applyCanvasBatch,
-  applyCanvasLayoutHint,
   applyCanvasUserOp,
   automaticSegmentBoundary,
   canvasBatchPlacementTargets,
   canvasContentErrors,
+  decideCanvasTurnLayout,
   endPrivateCanvas,
   nextCarriedSummary,
   streamSegmentErrors,
 } from '@buddy/domain';
 import type {
   AutomaticSegmentBoundaryReason,
+  CanvasCodeLayout,
   CanvasLayoutHintFallbackReason,
   CanvasLayoutHintLike,
 } from '@buddy/domain';
@@ -117,14 +119,34 @@ export interface CanvasLayoutHintRecordEntry {
 }
 
 export const CANVAS_LAYOUT_HINT_RECORD_LIMIT = 64;
-// 忘却・期限切れ・記録しない区切りの終わりで記述から消えた物の名前を覚える数（ヒントの拒否の理由を分けるためだけ）。
+// 忘却・期限切れで記述から消えた物の名前を覚える数（ヒントの拒否の理由を分けるためだけ）。
 export const CANVAS_WITHDRAWN_LIMIT = 64;
 
-// ヒントつきで当てた結果。batch は実際に当てた束（ヒントを捨てたときはコードの束）。
+// ヒントつきで当てた結果。batch は実際に当てた最初の束（ヒントを捨てたときはコードの束。コードの強調・まとまりへ戻す
+// update を足すことがある）。
 export interface CanvasHintedApplyOutcome {
   readonly outcome: CanvasApplyOutcome;
   readonly batch: CanvasOpBatch;
 }
+
+// モデルの出力の配置のヒントを、計画（ResponsePlan.layout_hint）へ入れてよい形にする（UI-09、ADR 0200）。形の検査
+// （CanvasLayoutHint）に通ったヒントだけを返し、通らなければ null と rejected（理由 schema を記録する印）を返す。
+// 計画の layout_hint は必須の項目なので、形の悪いヒントで計画全体を Schema 違反にしない。
+export function admitLayoutHint(
+  contract: ApiContract,
+  raw: unknown,
+): { readonly hint: CanvasLayoutHint | null; readonly rejected: boolean } {
+  if (raw === null || raw === undefined) return { hint: null, rejected: false };
+  return contract.valid('CanvasLayoutHint', raw)
+    ? { hint: raw as CanvasLayoutHint, rejected: false }
+    : { hint: null, rejected: true };
+}
+
+// Core が名前で守る物（文字の結果・保留を捨てた知らせ）。コードが焦点にした物（重なる予定の確認など）は domain が守る。
+const PROTECTED_ITEM_IDS: readonly string[] = [
+  REPLY_ITEM_ID,
+  HELD_DROPPED_ITEM_ID,
+];
 
 // キャンバスの正本（Core の RAM）。1 人に 1 本の流れの、今の記述。
 export class CanvasHub {
@@ -136,6 +158,8 @@ export class CanvasHub {
   #record: CanvasUserRecordEntry[] = [];
   #hintRecord: CanvasLayoutHintRecordEntry[] = [];
   #withdrawn: string[] = [];
+  // 物ごとのコードの強調・まとまり（UI-09）。ヒントはその発言だけの上乗せで、次の発言でここの値へ戻す。
+  #code = new Map<string, CanvasCodeLayout>();
   // 物の本文（U120）。記述・イベント・ログには載せず、content の経路でだけ返す（ADR 0032・0066）。
   #texts = new Map<string, string>();
   // 記録しない区切りに入る前の記述（ADR 0032 の persisted。B06-07a-2 の 2c、ADR 0190）。記録しない間の変更は、AI の束・
@@ -146,11 +170,27 @@ export class CanvasHub {
     readonly placedAt: Map<string, string>;
     readonly record: CanvasUserRecordEntry[];
     readonly hintRecord: CanvasLayoutHintRecordEntry[];
+    readonly withdrawn: string[];
+    readonly code: Map<string, CanvasCodeLayout>;
     readonly texts: Map<string, string>;
   } | null = null;
 
-  constructor(contract: ApiContract = createApiContract()) {
+  // initial は始めの記述（試験用。Schema に反すれば使わない）。その強調・まとまりをコードの値とする。
+  constructor(
+    contract: ApiContract = createApiContract(),
+    initial?: CanvasDocument,
+  ) {
     this.#contract = contract;
+    if (initial !== undefined) {
+      if (!contract.valid('CanvasDocument', initial))
+        throw new Error('canvas_initial_invalid');
+      this.#document = initial;
+      for (const item of initial.items)
+        this.#code.set(item.item_id, {
+          emphasis: item.emphasis,
+          group: item.group,
+        });
+    }
   }
 
   get document(): CanvasDocument {
@@ -188,6 +228,8 @@ export class CanvasHub {
       placedAt: new Map(this.#placedAt),
       record: [...this.#record],
       hintRecord: [...this.#hintRecord],
+      withdrawn: [...this.#withdrawn],
+      code: new Map(this.#code),
       texts: new Map(this.#texts),
     };
   }
@@ -204,17 +246,13 @@ export class CanvasHub {
       ephemeral: this.#document,
     });
     const next = ended.persisted as CanvasDocument;
-    // 一時の記述にだけあった物は、記録しない区切りの終わりで消えた物として覚える（名前だけ。ヒントの拒否の理由に使う）。
-    const kept = new Set(next.items.map((item) => item.item_id));
-    this.#rememberWithdrawn(
-      this.#document.items
-        .map((item) => item.item_id)
-        .filter((itemId) => !kept.has(itemId)),
-    );
     this.#placedAt = saved.placedAt;
     this.#record = saved.record;
-    // 記録しない区切りの間のヒントの記録も捨てる（入る前の記録に戻す）。
+    // 記録しない区切りの間のヒントの記録・消えた物の名前・コードの値も捨てる（入る前に戻す。記録しない区切りにだけ
+    // あった物の名前を区切りの後に残さない）。
     this.#hintRecord = saved.hintRecord;
+    this.#withdrawn = saved.withdrawn;
+    this.#code = saved.code;
     this.#texts = saved.texts;
     this.#commit(next);
     return next.canvas_revision;
@@ -226,7 +264,34 @@ export class CanvasHub {
   }
 
   // 変更の束を当てる。Schema・意味の検査・当てた後の記述の Schema のどれかに反すれば何も当てない（前の版が残る）。
+  // 束が足した物・強調やまとまりを決めた物の値を、コードの値として覚える（Core が作る束はコードの束）。
   apply(batch: CanvasOpBatch): CanvasApplyOutcome {
+    const before = this.#document;
+    const outcome = this.#applyBatch(batch);
+    if (outcome.ok)
+      for (const op of batch.ops)
+        if (op.op === 'add')
+          this.#code.set(op.item.item_id, {
+            emphasis: op.item.emphasis,
+            group: op.item.group,
+          });
+        else if (op.op === 'update') {
+          const previous =
+            this.#code.get(op.item_id) ??
+            before.items.find((entry) => entry.item_id === op.item_id);
+          if (previous !== undefined)
+            this.#code.set(op.item_id, {
+              emphasis: op.changes.emphasis ?? previous.emphasis,
+              group:
+                'group' in op.changes
+                  ? (op.changes.group ?? null)
+                  : previous.group,
+            });
+        }
+    return outcome;
+  }
+
+  #applyBatch(batch: CanvasOpBatch): CanvasApplyOutcome {
     if (!this.#contract.valid('CanvasOpBatch', batch))
       return { ok: false, reason: 'schema' };
     const result = applyCanvasBatch(this.#document, batch);
@@ -243,35 +308,61 @@ export class CanvasHub {
     return { ok: true, revision: next.canvas_revision };
   }
 
-  // コードの配置者の束を、モデルの配置のヒント（UI-09、ADR 0200）つきで当てる。ヒントは信頼しない入力として、形
-  // （CanvasLayoutHint）と意味（applyCanvasLayoutHint）を確かめ、どちらかに反する・当てた束が検査に反するときは、
-  // ヒントを捨ててコードの束をそのまま当てる（コードの配置に戻す）。使ったか戻したかと理由のコードだけを記録する。
-  // hint が null・undefined なら、ヒントなしで当てる（記録しない）。
-  applyHinted(batch: CanvasOpBatch, hint: unknown): CanvasHintedApplyOutcome {
-    if (hint === null || hint === undefined)
+  // コードの配置者の束を、モデルの配置のヒント（UI-09、ADR 0200）つきで当てる（発言の配置はすべてここを通る）。
+  // 1. コードの束を確かめる。当たらなければ（版が古い・検査に反する）ヒントの問題ではないので、ヒントの記録をせずに
+  //    当てようとする（前の版が残る）。
+  // 2. 前の発言のヒントで変わった強調・まとまりを、コードの値へ戻す update を束に足す（ヒントはその発言だけの上乗せ）。
+  // 3. ヒントは信頼しない入力として、形（admitLayoutHint）と意味（decideCanvasTurnLayout）を確かめ、反すれば捨てて
+  //    コードの束を当てる。使ったか戻したかと理由のコードだけを記録する。ヒントがなければ記録しない。
+  applyHinted(batch: CanvasOpBatch, raw: unknown): CanvasHintedApplyOutcome {
+    // 形に反するコードの束は domain へ渡さない（前の版が残る）。
+    if (!this.#contract.valid('CanvasOpBatch', batch))
       return { outcome: this.apply(batch), batch };
-    if (!this.#contract.valid('CanvasLayoutHint', hint)) {
-      this.recordLayoutHint('schema');
-      return { outcome: this.apply(batch), batch };
+    const admitted = admitLayoutHint(this.#contract, raw);
+    const present = new Set(this.#document.items.map((item) => item.item_id));
+    const decide = (hint: CanvasLayoutHintLike | null) =>
+      decideCanvasTurnLayout({
+        canvas: this.#document,
+        batch,
+        hint,
+        code: this.#code,
+        protected: new Set(PROTECTED_ITEM_IDS),
+        withdrawn: new Set(
+          this.#withdrawn.filter((itemId) => !present.has(itemId)),
+        ),
+      });
+    const decision = decide(admitted.hint);
+    if (!decision.ok) return { outcome: this.apply(batch), batch };
+    if (admitted.rejected) this.recordLayoutHint('schema');
+    let chosen = decision;
+    let outcome = this.#applyBatch(decision.batch as CanvasOpBatch);
+    if (decision.hint === 'applied') {
+      if (outcome.ok) this.recordLayoutHint(null);
+      else {
+        // 当てた束が Core の検査（Schema）に反したら、ヒントを捨ててコードの束を当てる。
+        this.recordLayoutHint('apply_rejected');
+        const fallback = decide(null);
+        if (!fallback.ok) return { outcome, batch };
+        chosen = fallback;
+        outcome = this.#applyBatch(fallback.batch as CanvasOpBatch);
+      }
+    } else if (decision.hint !== 'none') this.recordLayoutHint(decision.hint);
+    if (!outcome.ok) return { outcome, batch };
+    this.#code = new Map(chosen.code);
+    // コードの値へ戻す update が 1 つの束に入りきらなかったら、続く束で当てる（Core が作る束。版がさらに進む）。
+    for (let index = 0; index < chosen.rest.length; index += CANVAS_OPS_LIMIT) {
+      const base = this.#document.canvas_revision;
+      this.#applyBatch({
+        base_canvas_revision: base,
+        canvas_revision: (BigInt(base) + 1n).toString(),
+        ops: chosen.rest.slice(
+          index,
+          index + CANVAS_OPS_LIMIT,
+        ) as CanvasOpBatch['ops'],
+        reading_order: [...this.#document.reading_order],
+      });
     }
-    const hinted = applyCanvasLayoutHint({
-      canvas: this.#document,
-      batch,
-      hint: hint as CanvasLayoutHintLike,
-      withdrawn: new Set(this.#withdrawn),
-    });
-    if (!hinted.ok) {
-      this.recordLayoutHint(hinted.reason);
-      return { outcome: this.apply(batch), batch };
-    }
-    const hintedBatch = hinted.batch as CanvasOpBatch;
-    const outcome = this.apply(hintedBatch);
-    if (outcome.ok) {
-      this.recordLayoutHint(null);
-      return { outcome, batch: hintedBatch };
-    }
-    this.recordLayoutHint('apply_rejected');
-    return { outcome: this.apply(batch), batch };
+    return { outcome, batch: chosen.batch as CanvasOpBatch };
   }
 
   // 配置のヒントの結果を記録する（null は使った）。理由のコードだけ。
@@ -430,6 +521,10 @@ export class CanvasHub {
 
   #commit(next: CanvasDocument): void {
     this.#document = next;
+    // 記述から消えた物のコードの値を捨てる。
+    const alive = new Set(next.items.map((item) => item.item_id));
+    for (const itemId of [...this.#code.keys()])
+      if (!alive.has(itemId)) this.#code.delete(itemId);
     for (const listener of [...this.#listeners]) {
       try {
         listener(next.canvas_revision);

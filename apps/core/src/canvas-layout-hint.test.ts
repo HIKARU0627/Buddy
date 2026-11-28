@@ -1,18 +1,26 @@
-// モデルが出す配置のヒント（UI-09、ADR 0200）を Core が当てる・捨てる試験。ヒントは模擬（試験の中で手で書いた値）で、
-// 実 LLM は使わない。期待値（版・強調・読む順・ユーザーの置き場所・記録の理由のコード）は手で書いた値で、実装から作らない。
+// モデルが出す配置のヒント（UI-09、ADR 0200）を Core が当てる・捨てる試験と、プロンプトインジェクションの評価セットの実行。
+// 評価セット（packages/contracts/fixtures/layout-hint-cases.json）の各例を CanvasHub.applyHinted に通し、その後の
+// hub.document を手で書いた期待値（強調・読む順・まとまり・記録の理由のコード）と比べ、配置のエンジンでも描いて比べる。
+// ヒントは模擬（手で書いた値）で、実 LLM は使わない。期待値は手で書いた値で、実装から作らない。
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import type {
+  CanvasDocument,
   CanvasItem,
+  CanvasOp,
   CanvasOpBatch,
+  ResponsePlan,
   StreamTurnResponse,
 } from '@buddy/contracts';
+import { canvasLayoutOnlyChange, layoutCanvas } from '@buddy/domain';
 import { sharedApiContract } from './api-test-support.js';
 import type { ApiHandlerRequest, ApiRouteHandler } from './api-server.js';
 import { API_ROUTES } from './api-routes.js';
 import {
   CANVAS_LAYOUT_HINT_RECORD_LIMIT,
   CanvasHub,
+  admitLayoutHint,
   createStreamRoutes,
   placeCanvasForTurn,
 } from './canvas-stream.js';
@@ -20,207 +28,531 @@ import type { StreamStorageGate } from './canvas-stream.js';
 
 const contract = sharedApiContract();
 
-const id = (n: number) =>
-  `00000000-0000-4000-8000-${n.toString(16).padStart(12, '0')}`;
+interface Expected {
+  readonly outcome: 'applied' | 'fallback' | 'none';
+  readonly reason?: string;
+  readonly emphasis: Record<string, string>;
+  readonly reading_order: string[];
+  readonly groups?: Record<string, string>;
+}
 
-const card = (
-  itemId: string,
-  overrides: Partial<CanvasItem> = {},
-): CanvasItem => ({
-  item_id: itemId,
-  kind: 'card',
-  component: 'list',
-  heading: '合成の見出し',
-  emphasis: 'normal',
-  group: null,
-  relations: [],
-  grid: { column: 7, span: 4, rows: 2 },
-  placement: 'canvas',
-  data: { item_refs: [], more_count: 0 },
-  ...overrides,
-});
+interface Turn {
+  readonly code?: 'review';
+  readonly ops?: (string | Record<string, unknown>)[];
+  readonly reading_order?: string[];
+  readonly schema_valid?: boolean;
+  readonly hint: unknown;
+  readonly expected: Expected;
+}
 
-const scheduleView = {
-  intent: 'query_schedule',
-  kind: 'schedule_cards',
-  status: 'ready',
-  item_refs: [{ kind: 'calendar_event', id: id(1) }],
-  more_count: 0,
+interface Case {
+  readonly id: string;
+  readonly before?: {
+    readonly canvas_revision?: string;
+    readonly extra_items?: string[];
+    readonly reading_order?: string[];
+    readonly steps?: Record<string, unknown>[];
+  };
+  readonly turns: Turn[];
+}
+
+const cases = JSON.parse(
+  readFileSync(
+    new URL(
+      '../../../packages/contracts/fixtures/layout-hint-cases.json',
+      import.meta.url,
+    ),
+    'utf8',
+  ),
+) as {
+  base: {
+    canvas: CanvasDocument;
+    ops: CanvasOp[];
+    review_ops: CanvasOp[];
+    items: Record<string, CanvasItem>;
+  };
+  evaluation: Case[];
 };
+const base = cases.base;
 
 const next = (revision: string) => (BigInt(revision) + 1n).toString();
 
-// 用事（errands。コードの配置者が置く）・メール（mail）・ニュース（news。ユーザーが置いた）・棚の旅行の案（trip）を作る。
-// 版: errands 1、mail・news・trip 2、news を動かす 3。
-function seededHub(): CanvasHub {
-  const hub = new CanvasHub(contract);
-  const first = placeCanvasForTurn(hub.document, scheduleView);
-  assert(first !== null);
-  assert.equal(hub.apply(first).ok, true);
-  assert.equal(
-    hub.apply({
-      base_canvas_revision: '1',
-      canvas_revision: '2',
-      ops: [
-        { op: 'add', item: card('mail', { component: 'mail_card' }) },
-        {
-          op: 'add',
-          item: card('news', {
-            emphasis: 'low',
-            grid: { column: 9, span: 4, rows: 2 },
-          }),
-        },
-        { op: 'add', item: card('trip', { placement: 'shelf' }) },
-      ],
-      reading_order: ['errands', 'mail', 'news'],
-    }).ok,
-    true,
-  );
-  assert.equal(
-    hub.applyUser(
-      {
-        kind: 'move',
-        item_id: 'news',
-        cell: { column: 9, row: 6, span: 4, rows: 2 },
-      },
-      '2',
-    ).ok,
-    true,
-  );
-  assert.equal(hub.document.canvas_revision, '3');
+const opOf = (op: string | Record<string, unknown>): CanvasOp => {
+  if (op === 'base') return base.ops[0] as CanvasOp;
+  if (typeof op === 'string') throw new Error(op);
+  if (op['op'] === 'add' && typeof op['item'] === 'string')
+    return { op: 'add', item: base.items[op['item']] as CanvasItem };
+  return op as unknown as CanvasOp;
+};
+
+const batchFor = (
+  hub: CanvasHub,
+  ops: CanvasOp[],
+  readingOrder?: string[],
+): CanvasOpBatch => ({
+  base_canvas_revision: hub.document.canvas_revision,
+  canvas_revision: next(hub.document.canvas_revision),
+  ops: ops as CanvasOpBatch['ops'],
+  reading_order: readingOrder ?? [...hub.document.reading_order],
+});
+
+// 例の始めの記述と、発言の前の手順（忘却・記録しない区切り）を当てた hub。
+function prepared(entry: Case): CanvasHub {
+  const before = entry.before ?? {};
+  const canvas: CanvasDocument = {
+    ...base.canvas,
+    canvas_revision: before.canvas_revision ?? base.canvas.canvas_revision,
+    items: [
+      ...base.canvas.items,
+      ...(before.extra_items ?? []).map((name) => base.items[name]),
+    ] as CanvasDocument['items'],
+    reading_order: (before.reading_order ??
+      base.canvas.reading_order) as CanvasDocument['reading_order'],
+  };
+  const hub = new CanvasHub(contract, canvas);
+  for (const step of before.steps ?? []) {
+    if ('forget' in step)
+      assert.notEqual(
+        hub.removeItems(new Set(step['forget'] as string[])),
+        false,
+      );
+    else if ('begin_private' in step) hub.beginPrivate();
+    else if ('end_private' in step) assert.notEqual(hub.endPrivate(), null);
+    else if ('add' in step)
+      assert.equal(
+        hub.apply(
+          batchFor(
+            hub,
+            [
+              {
+                op: 'add',
+                item: base.items[step['add'] as string] as CanvasItem,
+              },
+            ],
+            step['reading_order'] as string[],
+          ),
+        ).ok,
+        true,
+        entry.id,
+      );
+  }
   return hub;
 }
 
-// 次の発言のコードの束（errands の中身だけを変える）。
-const codeBatch = (hub: CanvasHub): CanvasOpBatch => {
-  const batch = placeCanvasForTurn(hub.document, scheduleView);
-  assert(batch !== null);
-  return batch;
-};
+const opsOf = (turn: Turn): CanvasOp[] =>
+  turn.ops !== undefined
+    ? turn.ops.map(opOf)
+    : turn.code === 'review'
+      ? base.review_ops
+      : base.ops;
 
-const hint = (revision: string, overrides: Record<string, unknown> = {}) => ({
-  base_canvas_revision: revision,
-  focus: [],
-  peripheral: [],
-  order: [],
-  groups: [],
-  ...overrides,
+// 1 つの発言を当てる（hint を差し替えられる。null はヒントなし）。
+const runTurn = (hub: CanvasHub, turn: Turn, hint: unknown) =>
+  hub.applyHinted(batchFor(hub, opsOf(turn), turn.reading_order), hint);
+
+const fieldOf = (document: CanvasDocument, field: 'emphasis' | 'group') =>
+  Object.fromEntries(document.items.map((item) => [item.item_id, item[field]]));
+
+test('UI-09 evaluation set: every turn through CanvasHub ends as written, and only emphasis, groups and order change', () => {
+  const tally: Record<string, number> = {};
+  let turns = 0;
+  for (const entry of cases.evaluation) {
+    const hub = prepared(entry);
+    // ヒントのない同じ手順（コードの配置。別の hub で、ヒントだけを null にした入力）。
+    const plain = prepared(entry);
+    for (const [index, turn] of entry.turns.entries()) {
+      const label = `${entry.id} #${index + 1}`;
+      turns += 1;
+      const recorded = hub.layoutHintRecord.length;
+      const applied = runTurn(hub, turn, turn.hint);
+      assert.equal(applied.outcome.ok, true, label);
+      assert.equal(runTurn(plain, turn, null).outcome.ok, true, label);
+      const { expected } = turn;
+      const key =
+        expected.outcome === 'fallback'
+          ? `fallback:${String(expected.reason)}`
+          : expected.outcome;
+      tally[key] = (tally[key] ?? 0) + 1;
+      // 記録: ヒントなしは記録しない。使った・戻したは理由のコードだけ。
+      if (expected.outcome === 'none')
+        assert.equal(hub.layoutHintRecord.length, recorded, label);
+      else
+        assert.deepEqual(
+          hub.layoutHintRecord.at(-1),
+          expected.outcome === 'applied'
+            ? { outcome: 'applied', reason: null }
+            : { outcome: 'fallback', reason: expected.reason },
+          label,
+        );
+      // 当てた後の記述（手で書いた値）。
+      const document = hub.document;
+      assert.deepEqual(fieldOf(document, 'emphasis'), expected.emphasis, label);
+      assert.deepEqual(document.reading_order, expected.reading_order, label);
+      assert.deepEqual(
+        fieldOf(document, 'group'),
+        Object.fromEntries(
+          document.items.map((item) => [
+            item.item_id,
+            expected.groups?.[item.item_id] ?? null,
+          ]),
+        ),
+        label,
+      );
+      // 配置以外（物の集合・見出し・部品・データ・関係・格子のヒント・棚・ユーザーの置き場所）はヒントなしと同じ。
+      assert.equal(
+        canvasLayoutOnlyChange(plain.document, document),
+        true,
+        label,
+      );
+      assert.equal(
+        document.canvas_revision,
+        plain.document.canvas_revision,
+        label,
+      );
+      // モデルが付けたまとまりの名前は、記述に入らない。
+      if (typeof turn.hint === 'object' && turn.hint !== null) {
+        const groups = (turn.hint as { groups?: { group: string }[] }).groups;
+        for (const group of groups ?? [])
+          assert(!JSON.stringify(document).includes(`"${group.group}"`), label);
+      }
+      // 1 発言だけの例で戻したときは、記述そのものがヒントなしと同じ。
+      if (entry.turns.length === 1 && expected.outcome === 'fallback')
+        assert.deepEqual(document, plain.document, label);
+    }
+  }
+  // 評価セットの集計（docs/ui/layout-hint.md に記録した値。手で数えた）。
+  assert.equal(turns, 34);
+  assert.deepEqual(tally, {
+    applied: 11,
+    none: 1,
+    'fallback:schema': 4,
+    'fallback:unknown_item': 3,
+    'fallback:protected_demoted': 3,
+    'fallback:protected_moved': 2,
+    'fallback:protected_grouped': 1,
+    'fallback:focus_limit': 1,
+    'fallback:shelved_item': 2,
+    'fallback:order_mismatch': 1,
+    'fallback:withdrawn_item': 1,
+    'fallback:stale_revision': 2,
+    'fallback:duplicate_item': 2,
+  });
 });
 
-const emphasisOf = (hub: CanvasHub) =>
-  Object.fromEntries(
-    hub.document.items.map((item) => [item.item_id, item.emphasis]),
-  );
-
-const NEWS_PIN = [
-  { item_id: 'news', cell: { column: 9, row: 6, span: 4, rows: 2 } },
-];
-
-test('UI-09: a valid hint changes only emphasis and order; the user pin and the shelf stay', () => {
-  const hub = seededHub();
-  const batch = codeBatch(hub);
-  const applied = hub.applyHinted(
-    batch,
-    hint('3', { focus: ['mail'], order: ['mail', 'errands', 'news'] }),
-  );
-  assert.deepEqual(applied.outcome, { ok: true, revision: '4' });
-  assert.notEqual(applied.batch, batch);
-  assert.deepEqual(emphasisOf(hub), {
-    errands: 'normal',
-    mail: 'high',
-    news: 'low',
-    trip: 'normal',
+// 見た目の回帰（hub.document を配置のエンジンで描く）。1280 × 800 の手計算（scripts/canvas-layout.test.mjs と同じ寸法）:
+// 左 24・上 72、列の送り 104、行の送り 88、行の数 7。x = 24 + (列 − 1) × 104、幅 = 列の数 × 104 − 16、
+// y = 72 + (行 − 1) × 88、高さ = 行数 × 88 − 16。600 × 800 は 1 列（置ける幅 552、上 72、高さの余り 552）。
+const layoutOf = (
+  document: CanvasDocument,
+  viewport: { width: number; height: number },
+) =>
+  layoutCanvas({
+    items: document.items,
+    reading_order: document.reading_order,
+    user_pins: document.user_pins ?? [],
+    held: null,
+    viewport,
   });
-  assert.deepEqual(hub.document.reading_order, ['mail', 'errands', 'news']);
-  assert.deepEqual(hub.document.user_pins, NEWS_PIN);
-  assert.equal(
-    hub.document.items.find((item) => item.item_id === 'trip')?.placement,
-    'shelf',
+
+const boxesOf = (result: ReturnType<typeof layoutCanvas>) =>
+  Object.fromEntries(
+    result.boxes.map((box) => [
+      box.item_id,
+      { cell: box.cell, rect: box.rect, source: box.source },
+    ]),
   );
-  // 強調だけの update は置き場所の版を進めない（古い版へのユーザーの操作を捨てない）。
-  assert.equal(hub.placedAt('mail'), '2');
-  assert.equal(hub.placedAt('news'), '3');
+
+const caseOf = (id: string): Case => {
+  const found = cases.evaluation.find((entry) => entry.id === id);
+  assert(found !== undefined, id);
+  return found;
+};
+
+test('UI-09 visual regression through the hub: the code layout without a hint, the mail focus with it, the pin stays', () => {
+  const entry = caseOf('ui09-injection-mail-asks-to-be-first');
+  const [turn] = entry.turns;
+  assert(turn !== undefined);
+  const plain = prepared(entry);
+  runTurn(plain, turn, null);
+  const hinted = prepared(entry);
+  runTurn(hinted, turn, turn.hint);
+  const grid = { width: 1280, height: 800 };
+  assert.deepEqual(boxesOf(layoutOf(plain.document, grid)), {
+    errands: {
+      cell: { row: 1, column: 2, span: 4, rows: 3 },
+      rect: { x: 128, y: 72, width: 400, height: 248 },
+      source: 'engine',
+    },
+    mail: {
+      cell: { row: 1, column: 7, span: 4, rows: 2 },
+      rect: { x: 648, y: 72, width: 400, height: 160 },
+      source: 'engine',
+    },
+    news: {
+      cell: { row: 6, column: 9, span: 4, rows: 2 },
+      rect: { x: 856, y: 512, width: 400, height: 160 },
+      source: 'user',
+    },
+  });
+  // mail は焦点（6 列 × 4 行）、errands は焦点の左の列 3、news はユーザーの置き場所のまま。
+  assert.deepEqual(boxesOf(layoutOf(hinted.document, grid)), {
+    errands: {
+      cell: { row: 1, column: 3, span: 4, rows: 3 },
+      rect: { x: 232, y: 72, width: 400, height: 248 },
+      source: 'engine',
+    },
+    mail: {
+      cell: { row: 1, column: 7, span: 6, rows: 4 },
+      rect: { x: 648, y: 72, width: 608, height: 336 },
+      source: 'engine',
+    },
+    news: {
+      cell: { row: 6, column: 9, span: 4, rows: 2 },
+      rect: { x: 856, y: 512, width: 400, height: 160 },
+      source: 'user',
+    },
+  });
+  // 1 列: ヒントなしは errands・mail・news（y 72・336・512）。ヒントありは mail（焦点 3 行 248）・errands（248）で、
+  // news（72）を足すと 600 > 552 なので入りきらない物になる。
+  const column = { width: 600, height: 800 };
+  const plainColumn = layoutOf(plain.document, column);
+  assert.deepEqual(
+    plainColumn.boxes.map((box) => [box.item_id, box.rect.y, box.rect.height]),
+    [
+      ['errands', 72, 248],
+      ['mail', 336, 160],
+      ['news', 512, 72],
+    ],
+  );
+  assert.deepEqual(plainColumn.overflow, []);
+  const hintedColumn = layoutOf(hinted.document, column);
+  assert.deepEqual(
+    hintedColumn.boxes.map((box) => [box.item_id, box.rect.y, box.rect.height]),
+    [
+      ['mail', 72, 248],
+      ['errands', 336, 248],
+    ],
+  );
+  assert.deepEqual(hintedColumn.overflow, ['news']);
+});
+
+test('UI-09 visual regression: the overlap card kept as the focus stays where the code put it while another card is raised', () => {
+  // 重なる予定の確認（errands。コードの焦点）があるとき、mail を焦点にするヒントは使うが、errands の箱は変わらない。
+  const entry = caseOf('ui09-overlap-kept-while-another-focus');
+  const [turn] = entry.turns;
+  assert(turn !== undefined);
+  const plain = prepared(entry);
+  runTurn(plain, turn, null);
+  const hinted = prepared(entry);
+  runTurn(hinted, turn, turn.hint);
+  for (const viewport of [
+    { width: 1280, height: 800 },
+    { width: 1280, height: 600 },
+    { width: 600, height: 800 },
+    { width: 480, height: 600 },
+  ]) {
+    const was = layoutOf(plain.document, viewport).boxes.find(
+      (box) => box.item_id === 'errands',
+    );
+    const now = layoutOf(hinted.document, viewport).boxes.find(
+      (box) => box.item_id === 'errands',
+    );
+    assert.deepEqual(now?.rect, was?.rect, `${viewport.width}`);
+  }
+  // 1280 × 800: errands は焦点（6 列 × 4 行）で 1 行目の列 2。
+  assert.deepEqual(
+    layoutOf(hinted.document, { width: 1280, height: 800 }).boxes.find(
+      (box) => box.item_id === 'errands',
+    )?.cell,
+    { row: 1, column: 2, span: 6, rows: 4 },
+  );
+});
+
+test('UI-09 visual regression: every rejected one-turn case renders the same as the hub without a hint', () => {
+  for (const entry of cases.evaluation.filter(
+    (item) =>
+      item.turns.length === 1 && item.turns[0]?.expected.outcome === 'fallback',
+  )) {
+    const [turn] = entry.turns;
+    assert(turn !== undefined);
+    const plain = prepared(entry);
+    runTurn(plain, turn, null);
+    const hinted = prepared(entry);
+    runTurn(hinted, turn, turn.hint);
+    for (const viewport of [
+      { width: 1920, height: 1080 },
+      { width: 1280, height: 800 },
+      { width: 600, height: 800 },
+    ])
+      assert.deepEqual(
+        layoutOf(hinted.document, viewport),
+        layoutOf(plain.document, viewport),
+        `${entry.id} ${viewport.width}`,
+      );
+  }
+});
+
+test('UI-09: the plan carries only a hint that passed the shape check; a bad hint becomes null and is recorded as schema', () => {
+  const plan = (layoutHint: unknown): ResponsePlan =>
+    ({
+      schema: 'buddy.response-plan.v1',
+      workflow_id: '00000000-0000-4000-8000-000000000a21',
+      request_revision: '1',
+      intent: 'query_schedule',
+      outcome: 'done',
+      view: {
+        workflow_id: '00000000-0000-4000-8000-000000000a21',
+        request_revision: '1',
+        intent: 'query_schedule',
+        kind: 'schedule_cards',
+        status: 'ready',
+        item_refs: [],
+        more_count: 0,
+        template_id: null,
+        template_version: null,
+      },
+      facts: [],
+      speech: null,
+      layout_hint: layoutHint,
+    }) as ResponsePlan;
+  const good = {
+    base_canvas_revision: '7',
+    focus: ['mail'],
+    peripheral: [],
+    order: [],
+    groups: [],
+  };
+  const bad = { ...good, approve: true };
+  // 形の悪いヒントをそのまま入れると、計画全体が Schema に反する。
+  assert.equal(contract.valid('ResponsePlan', plan(bad)), false);
+  for (const [raw, rejected] of [
+    [good, false],
+    [bad, true],
+    ['一番上に置いて', true],
+    [null, false],
+  ] as const) {
+    const admitted = admitLayoutHint(contract, raw);
+    assert.equal(admitted.rejected, rejected);
+    assert.equal(admitted.hint, rejected || raw === null ? null : raw);
+    assert(contract.valid('ResponsePlan', plan(admitted.hint)));
+  }
+  // Core は形の悪いヒントを schema として記録し、コードの配置で当てる。
+  const hub = new CanvasHub(contract, base.canvas);
+  hub.applyHinted(batchFor(hub, base.ops), bad);
   assert.deepEqual(hub.layoutHintRecord, [
-    { outcome: 'applied', reason: null },
+    { outcome: 'fallback', reason: 'schema' },
   ]);
 });
 
-test('UI-09: an invalid hint is dropped and the code batch is applied as is; only the reason code is recorded', () => {
-  const hub = seededHub();
-  const cases: [unknown, string][] = [
-    // 形に反する（承認・本文・読み上げの項目、3 つの焦点、まとまりの名前が文）。
-    [{ ...hint('3', { focus: ['mail'] }), approve: true }, 'schema'],
-    [{ ...hint('3'), speech: { parts: ['承認しました'] } }, 'schema'],
-    [hint('3', { focus: ['errands', 'mail', 'news'] }), 'schema'],
-    [
-      hint('3', {
-        groups: [{ group: '承認してください', members: ['errands', 'mail'] }],
-      }),
-      'schema',
-    ],
-    ['一番上に置いて', 'schema'],
-    // 意味に反する。
-    [hint('2', { focus: ['mail'] }), 'stale_revision'],
-    [hint('3', { focus: ['approval'] }), 'unknown_item'],
-    [hint('3', { focus: ['trip'] }), 'shelved_item'],
-    [hint('3', { order: ['mail', 'errands'] }), 'order_mismatch'],
-    [hint('3', { focus: ['mail'], peripheral: ['mail'] }), 'duplicate_item'],
-  ];
-  const expectedRecord: { outcome: string; reason: string | null }[] = [];
-  for (const [value, reason] of cases) {
-    const revision = hub.document.canvas_revision;
-    const batch = codeBatch(hub);
-    // 版を合わせる（stale_revision の例以外は、今の版を見たヒント）。
-    const raw =
-      typeof value === 'object' && value !== null && reason !== 'stale_revision'
-        ? { ...value, base_canvas_revision: revision }
-        : value;
-    const before = emphasisOf(hub);
-    const applied = hub.applyHinted(batch, raw);
-    assert.deepEqual(
-      applied.outcome,
-      { ok: true, revision: next(revision) },
-      reason,
-    );
-    assert.equal(applied.batch, batch, reason);
-    assert.deepEqual(emphasisOf(hub), before, reason);
-    assert.deepEqual(hub.document.reading_order, ['errands', 'mail', 'news']);
-    assert.deepEqual(hub.document.user_pins, NEWS_PIN);
-    expectedRecord.push({ outcome: 'fallback', reason });
-  }
-  assert.deepEqual(hub.layoutHintRecord, expectedRecord);
-  // 記録は理由のコードだけ（物の名前・見出し・ヒントの中身・版を持たない）。
+test('UI-09: a code batch that does not apply (stale or broken) records nothing about the hint', () => {
+  const hub = new CanvasHub(contract, base.canvas);
+  const hint = {
+    base_canvas_revision: '7',
+    focus: ['mail'],
+    peripheral: [],
+    order: [],
+    groups: [],
+  };
+  const stale = { ...batchFor(hub, base.ops), base_canvas_revision: '6' };
+  assert.equal(hub.applyHinted(stale, hint).outcome.ok, false);
+  const broken = batchFor(hub, base.ops, ['errands', 'mail']);
+  assert.equal(hub.applyHinted(broken, hint).outcome.ok, false);
+  assert.deepEqual(hub.layoutHintRecord, []);
+  assert.equal(hub.document.canvas_revision, '7');
+});
+
+test('UI-09: resets that do not fit in one batch follow in the next batch; the hint focus never stays', () => {
+  // 見える物 14 個（i0〜i13）。1 回目のヒントは i1〜i10 を周辺へ回す（10 個まで）。2 回目のコードの束は i0・i11・i12 の中身を
+  // 変える 3 操作で、戻す update 10 個と合わせると 13 > 12 なので、戻す update は続く束で当てる（版は 2 進む）。
+  const names = Array.from({ length: 14 }, (_, index) => `i${index}`);
+  const item = (name: string): CanvasItem => ({
+    item_id: name,
+    kind: 'card',
+    component: 'list',
+    heading: '合成',
+    emphasis: 'normal',
+    group: null,
+    relations: [],
+    grid: { column: 1, span: 4, rows: 1 },
+    placement: 'canvas',
+    data: { item_refs: [], more_count: 0 },
+  });
+  const hub = new CanvasHub(contract, {
+    canvas_revision: '1',
+    items: names.map(item) as CanvasDocument['items'],
+    reading_order: names as CanvasDocument['reading_order'],
+  });
+  const touch = (name: string): CanvasOp => ({
+    op: 'update',
+    item_id: name,
+    changes: { data: { item_refs: [], more_count: 0 } },
+  });
+  const first = hub.applyHinted(batchFor(hub, [touch('i0')]), {
+    base_canvas_revision: '1',
+    focus: [],
+    peripheral: names.slice(1, 11),
+    order: [],
+    groups: [],
+  });
+  assert.deepEqual(first.outcome, { ok: true, revision: '2' });
+  assert.equal(first.batch.ops.length, 11);
+  assert.equal(
+    hub.document.items.filter((entry) => entry.emphasis === 'low').length,
+    10,
+  );
+  const code = batchFor(hub, [touch('i0'), touch('i11'), touch('i12')]);
+  const second = hub.applyHinted(code, null);
+  assert.deepEqual(second.outcome, { ok: true, revision: '3' });
+  assert.equal(second.batch, code);
+  assert.equal(hub.document.canvas_revision, '4');
+  assert.deepEqual(
+    [...new Set(hub.document.items.map((entry) => entry.emphasis))],
+    ['normal'],
+  );
+  // 11 個を周辺へ回すヒントは、変える物の数の上限（10）で戻す。
+  assert.equal(
+    hub.applyHinted(batchFor(hub, [touch('i0')]), {
+      base_canvas_revision: '4',
+      focus: ['i11'],
+      peripheral: names.slice(1, 11),
+      order: [],
+      groups: [],
+    }).outcome.ok,
+    true,
+  );
+  assert.deepEqual(hub.layoutHintRecord.at(-1), {
+    outcome: 'fallback',
+    reason: 'limit_exceeded',
+  });
+});
+
+test('UI-09: the hint record keeps only reason codes, at most 64, and the private segment record is dropped', () => {
+  const hub = new CanvasHub(contract, base.canvas);
+  hub.applyHinted(batchFor(hub, base.ops), {
+    base_canvas_revision: '7',
+    focus: ['approval'],
+    peripheral: [],
+    order: [],
+    groups: [{ group: 'dentist-at-3pm', members: ['errands', 'mail'] }],
+  });
+  hub.beginPrivate();
+  hub.applyHinted(batchFor(hub, base.ops), {
+    base_canvas_revision: '8',
+    focus: ['mail'],
+    peripheral: [],
+    order: [],
+    groups: [],
+  });
+  assert.equal(hub.layoutHintRecord.length, 2);
+  hub.endPrivate();
+  assert.deepEqual(hub.layoutHintRecord, [
+    { outcome: 'fallback', reason: 'unknown_item' },
+  ]);
   for (const entry of hub.layoutHintRecord)
     assert.deepEqual(Object.keys(entry).sort(), ['outcome', 'reason']);
   const text = JSON.stringify(hub.layoutHintRecord);
-  for (const word of ['mail', 'trip', 'approval', '承認', '合成'])
+  for (const word of ['mail', 'approval', 'dentist', '合成'])
     assert(!text.includes(word), word);
-});
-
-test('UI-09: the code layout keeps a focus the code chose (an overlap warning cannot be demoted by a hint)', () => {
-  const hub = seededHub();
-  const batch = placeCanvasForTurn(hub.document, {
-    ...scheduleView,
-    status: 'needs_review',
-  });
-  assert(batch !== null);
-  const applied = hub.applyHinted(
-    batch,
-    hint('3', { focus: ['mail'], peripheral: ['errands'] }),
-  );
-  assert.equal(applied.batch, batch);
-  assert.equal(emphasisOf(hub)['errands'], 'high');
-  assert.equal(emphasisOf(hub)['mail'], 'normal');
-  assert.deepEqual(hub.layoutHintRecord, [
-    { outcome: 'fallback', reason: 'code_focus_demoted' },
-  ]);
-});
-
-test('UI-09: no hint means no record; the record keeps the last 64 entries', () => {
-  const hub = seededHub();
-  hub.applyHinted(codeBatch(hub), null);
-  hub.applyHinted(codeBatch(hub), undefined);
-  assert.deepEqual(hub.layoutHintRecord, []);
   assert.equal(CANVAS_LAYOUT_HINT_RECORD_LIMIT, 64);
   for (let index = 0; index < 70; index += 1)
     hub.recordLayoutHint(index === 69 ? null : 'schema');
@@ -231,56 +563,28 @@ test('UI-09: no hint means no record; the record keeps the last 64 entries', () 
   });
 });
 
-test('UI-09: an item closed by forget or expiry, and an item made only in a private segment, are withdrawn_item', () => {
-  const hub = seededHub();
-  // 忘却・期限切れの後始末で mail を閉じる。
-  assert.equal(hub.removeItems(new Set(['mail'])), '4');
-  hub.applyHinted(codeBatch(hub), hint('4', { focus: ['mail'] }));
-  // 記録しない区切りで足した secret は、区切りの終わりで消える。
-  hub.beginPrivate();
+test('UI-09: the stream route uses the hint for the placed answer and records no_placement when nothing is placed', async () => {
+  const hub = new CanvasHub(contract);
+  const first = placeCanvasForTurn(hub.document, {
+    intent: 'query_schedule',
+    kind: 'schedule_cards',
+    status: 'ready',
+    item_refs: [],
+    more_count: 0,
+  });
+  assert(first !== null);
+  assert.equal(hub.apply(first).ok, true);
   assert.equal(
     hub.apply({
-      base_canvas_revision: '5',
-      canvas_revision: '6',
-      ops: [{ op: 'add', item: card('secret') }],
-      reading_order: ['errands', 'news', 'secret'],
+      base_canvas_revision: '1',
+      canvas_revision: '2',
+      ops: [{ op: 'add', item: base.canvas.items[1] as CanvasItem }],
+      reading_order: ['errands', 'mail'],
     }).ok,
     true,
   );
-  // 記録しない区切りの間のヒントの記録は、区切りの終わりで捨てる。
-  hub.applyHinted(codeBatch(hub), hint('6', { focus: ['secret'] }));
-  assert.equal(hub.layoutHintRecord.length, 2);
-  assert.equal(hub.endPrivate(), '8');
-  assert.deepEqual(hub.layoutHintRecord, [
-    { outcome: 'fallback', reason: 'withdrawn_item' },
-  ]);
-  hub.applyHinted(codeBatch(hub), hint('8', { focus: ['secret'] }));
-  // ユーザーが閉じた物は、消えた物ではなく、ない物（unknown_item）。
-  assert.equal(hub.applyUser({ kind: 'close', item_id: 'news' }, '9').ok, true);
-  hub.applyHinted(codeBatch(hub), hint('10', { focus: ['news'] }));
-  assert.deepEqual(hub.layoutHintRecord, [
-    { outcome: 'fallback', reason: 'withdrawn_item' },
-    { outcome: 'fallback', reason: 'withdrawn_item' },
-    { outcome: 'fallback', reason: 'unknown_item' },
-  ]);
-  // 同じ名前の物がもう一度置かれれば、指せる。
-  const readd = hub.apply({
-    base_canvas_revision: '11',
-    canvas_revision: '12',
-    ops: [{ op: 'add', item: card('mail') }],
-    reading_order: ['errands', 'mail'],
-  });
-  assert.equal(readd.ok, true);
-  const applied = hub.applyHinted(
-    codeBatch(hub),
-    hint('12', { focus: ['mail'] }),
-  );
-  assert.deepEqual(applied.outcome, { ok: true, revision: '13' });
-  assert.equal(emphasisOf(hub)['mail'], 'high');
-});
-
-test('UI-09: the stream route uses the hint for the placed answer and records no_placement when nothing is placed', async () => {
-  const hub = seededHub();
+  const id = (n: number) =>
+    `00000000-0000-4000-8000-${n.toString(16).padStart(12, '0')}`;
   const device = { device_id: id(9) } as unknown as NonNullable<
     ApiHandlerRequest['device']
   >;
@@ -303,7 +607,11 @@ test('UI-09: the stream route uses the hint for the placed answer and records no
           ? {
               workflow_id: id(23),
               request_revision: '1',
-              ...scheduleView,
+              intent: 'query_schedule',
+              kind: 'schedule_cards',
+              status: 'ready',
+              item_refs: [],
+              more_count: 0,
               template_id: null,
               template_version: null,
             }
@@ -317,7 +625,6 @@ test('UI-09: the stream route uses the hint for the placed answer and records no
     enterPrivate: () => Promise.resolve({ ok: false, reason: 'closed' }),
     exitPrivate: () => Promise.resolve({ ok: false, reason: 'closed' }),
   };
-  const seen: string[] = [];
   const routes = createStreamRoutes({
     canvas: hub,
     createSession: () =>
@@ -325,14 +632,14 @@ test('UI-09: the stream route uses the hint for the placed answer and records no
     postTurn,
     storage,
     contract,
-    // 模擬のモデル: 今の版を見て、メールを目立たせる配置のヒントを出す。
-    layoutHint: (turn) => {
-      seen.push(turn.turn_id);
-      return hint(hub.document.canvas_revision, {
-        focus: ['mail'],
-        order: ['mail', 'errands', 'news'],
-      });
-    },
+    // 模擬のモデル: 今の版を見て、メールを目立たせて先に読ませるヒントを出す。
+    layoutHint: () => ({
+      base_canvas_revision: hub.document.canvas_revision,
+      focus: ['mail'],
+      peripheral: [],
+      order: ['mail', 'errands'],
+      groups: [],
+    }),
   });
   const request = (requestId: string): ApiHandlerRequest => ({
     route,
@@ -342,7 +649,7 @@ test('UI-09: the stream route uses the hint for the placed answer and records no
       command_scope_id: id(30),
       text: '今日の用事を見せて',
       input_kind: 'text',
-      expected_canvas_revision: '3',
+      expected_canvas_revision: '2',
     },
     params: {},
     remoteAddress: '127.0.0.1',
@@ -350,18 +657,17 @@ test('UI-09: the stream route uses the hint for the placed answer and records no
     declaredLockState: null,
   });
   const placed = await routes.handlers['postStreamTurn']?.(request(id(40)));
-  assert.equal(placed?.status, 200);
   const body = placed?.body as StreamTurnResponse;
-  assert.equal(body.canvas?.canvas_revision, '4');
-  assert.deepEqual(body.canvas?.reading_order, ['mail', 'errands', 'news']);
-  assert.equal(emphasisOf(hub)['mail'], 'high');
-  assert.deepEqual(hub.document.user_pins, NEWS_PIN);
-  // 雑談（結果の表示なし・配置なし）では、ヒントがあっても記述を変えない。
+  assert.equal(body.canvas?.canvas_revision, '3');
+  assert.deepEqual(body.canvas?.reading_order, ['mail', 'errands']);
+  assert.equal(
+    hub.document.items.find((item) => item.item_id === 'mail')?.emphasis,
+    'high',
+  );
   withView = false;
   const chat = await routes.handlers['postStreamTurn']?.(request(id(41)));
   assert.equal((chat?.body as StreamTurnResponse).canvas, null);
-  assert.equal(hub.document.canvas_revision, '4');
-  assert.deepEqual(seen, [id(40), id(41)]);
+  assert.equal(hub.document.canvas_revision, '3');
   assert.deepEqual(hub.layoutHintRecord, [
     { outcome: 'applied', reason: null },
     { outcome: 'fallback', reason: 'no_placement' },

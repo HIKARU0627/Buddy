@@ -81,3 +81,8 @@
 - 封筒の `payload.sha256` と長さを開く前に照合する（段階 2 の `backup_unreadable`）。
 - `ledger_hmac_key_id` は DB の `schema_meta` に記録済み。復元で鍵を入れるときの `keyInstallPlan`。
 - `backup-state.json` の `first_seen`（初めて見た時刻）は掃除が記録している。復元で別の機器の封筒を開いたとき、`first_seen` がないときの期限の起点は ADR 0047 のとおり。
+
+## 追記（2026-11-28、[ADR 0202](0202-windows-core-key-protection-dpapi.md)）
+
+- 本人の決定（2026-11-28）で Windows の中枢を使えるようにした。Windows のバックアップの鍵（`backup-file:<key_id>`・`ledger-hmac:<key_id>`）は DPAPI（CurrentUser）で保護し、データ鍵と同じ置き場所（`%LOCALAPPDATA%\Buddy\key-store`）に項目ごとに 1 ファイルで置く（`createWindowsDpapiBackupKeyStore`）。同じ ID の違う値を上書きしない・置いた値を読み戻す性質は変わらない。
+- DPAPI の鍵は Windows の利用者の資格情報に結び付くため、別の PC・別の利用者では復号できない。そのときは復旧キーからの復元に頼る（U703）。

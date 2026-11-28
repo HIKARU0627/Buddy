@@ -192,3 +192,8 @@ DB worker には、操作の命令とは別のメッセージ（`type: 'device'`
 - 製品で Tailscale のアドレスを見つける処理（今は `--https-host` で渡すだけ）。
 - macOS 実機での TLS の鍵の作成・読み出し（キーチェーンの `tls-key-v1`）と、Tailscale 上の実際の端末からの接続・ピン留めの確認。
 - Windows・Linux の中枢は初期版の対象外（試験は模擬の KeyStore で 3 OS とも動く）。
+
+## 追記（2026-11-28、[ADR 0202](0202-windows-core-key-protection-dpapi.md)）
+
+- 本人の決定（2026-11-28）で Windows の中枢を使えるようにした。Windows の TLS の秘密鍵は DPAPI（CurrentUser）で保護し、データ鍵と同じ置き場所の別の項目 `tls-key-v1` に置く（`createWindowsDpapiTlsKeyStore`）。`buddy-core start` は `createTlsKeyStore(process.platform)` のままで Windows の実装になる。
+- 「残ること」の「Windows・Linux の中枢は初期版の対象外」は、Windows について改める。Linux は対象外のまま。

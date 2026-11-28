@@ -69,3 +69,9 @@ fixture の欄の名前は NIST SP 800-38D の記号（K・IV・P・A・C・T）
 - バックアップの鍵と鍵の復元は B06。データ鍵の入れ替え（`data-key-v2` と再暗号化）は後続。
 - Windows の資格情報マネージャー・Linux の Secret Service による中枢の鍵保護は初期版の対象外。
 - 実機（macOS）でのキーチェーンへの作成・読み出し・Node.js の更新後の許可の確認は未実施。
+
+## 追記（2026-11-28、[ADR 0202](0202-windows-core-key-protection-dpapi.md)）
+
+- 本人の決定（2026-11-28）で Windows の中枢を使えるようにした。Windows のデータ鍵は DPAPI（CurrentUser）で保護し、`%LOCALAPPDATA%\Buddy\key-store` の下のファイル（項目 `data-key-v1`）に置く（`createWindowsDpapiKeyStore`、`backend: 'windows_dpapi'`）。PowerShell を子プロセスで呼び、鍵の値は標準入力で渡す。ネイティブのモジュールは使わない。
+- 「残ること」の「Windows の資格情報マネージャー・Linux の Secret Service による中枢の鍵保護は初期版の対象外」は、Windows について DPAPI で対応するに改める（資格情報マネージャーは 1 項目の上限が小さいため使わない）。Linux は対象外のまま。
+- 鍵の作成・形式の検査・読み戻し・不正な値を上書きしないこと（`createSlotKeyStore`）は OS によらず同じ。保護領域そのものを使えない失敗（`KeyStoreUnavailableError`）は、読み出し・書込みの失敗と分けて `unavailableReason` で返すようにした（macOS の動きは変わらない）。

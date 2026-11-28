@@ -78,6 +78,7 @@
 - Windows の CI の shard 1 の時間切れ（Issue #348）は #350 で大きく縮めた。voice-budget の「再起動の照合」が 1 回だけ時間切れになったので Issue は開けたまま。
 - B04・B05・B07 の模擬証拠は、main の現行のソースと一致しない（`pnpm run evidence:check`。この期間より前からの食い違いを含む）。それぞれの工程か main の記録の更新のときに作り直す。
 - 気づきの根拠の取り直し（ADR 0201、U680〜U689、Issue #271 の (1) と #283 の「根拠を見る」）: 由来の位置を候補の側に控える表（マイグレーション 0026、DB の版 26・表 67）を足し、`fetchEvidence`・`checkEvidence` を Google の予定・メールにつなぎ、`CandidateEvidence.source` を `sources` に変え、端末に `desktop.candidate_evidence` と「根拠を見る」を足した。見直しで、根拠の再確認を一覧から切り離して後ろで回し（U681）、窓・ラベルの外は解決せず未確認にし（U685）、ブリッジは根拠の本文を落として中継する（U689）ようにした。Outlook（U682）とメールの引用の本文の作り方・版（U683）は残り。模擬だけ。
+- Windows の中枢の鍵の保護（ADR 0202、U700〜U705、本人の決定 2026-11-28「Windows でも中枢を使えるように」）: データ鍵・TLS の秘密鍵・OAuth のトークン・バックアップの鍵を DPAPI（CurrentUser、PowerShell の子プロセス・値は標準入力）で保護して `%LOCALAPPDATA%\Buddy\key-store` に置き、Windows の起動前検査をつないだ。Windows の既定のデータディレクトリを `%LOCALAPPDATA%\Buddy\core` に改めた。本物の DPAPI の往復は Windows の CI だけで確かめ、Windows の実機は未実施。自動起動・Tailscale・手順書は別の作業。
 
 CI が通ればマージしてよいと本人から許可を受けている。マージの状態は GitHub の PR の画面で確かめる。
 

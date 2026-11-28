@@ -61,3 +61,9 @@
 - 改める点: CLI は `BUDDY_GOOGLE_OAUTH_CLIENT_SECRET`（と ADR 0178 の `BUDDY_GEMINI_API_KEY`）を `start` の最初に読み、直後に `process.env` から消す（`apps/core/src/cli-secrets.ts` の `takeStartupSecrets`）。読んだ値は Google の設定にだけ渡す。
 - 限界: Linux の `/proc/<pid>/environ` は起動時の環境を見せ続ける。同じ利用者の別のプロセスからは読めるので、環境変数で受け取る方式では防げない（防ぐなら KeyStore に置く方式で、U373 で本人が決める）。
 - 試験: `cli-secrets.test.ts` で、消す前の子プロセスには名前が見え、消した後は実機用 runner の子プロセス（`node -e`）の環境に名前も値も出ないことを確かめた。模擬の試験だけで、実機の tailscale・security・launchctl では未実施。
+
+## 追記（2026-11-28、[ADR 0202](0202-windows-core-key-protection-dpapi.md)）
+
+- 本人の決定（2026-11-28）で Windows の中枢を使えるようにした。Windows の OAuth のトークン（`oauth-v1:<connection_id>`）は DPAPI（CurrentUser）で保護し、`%LOCALAPPDATA%\Buddy\key-store` の下に接続ごとに 1 ファイルで置く（`createWindowsDpapiOAuthTokenStore`）。上書き・読み戻し・削除（無ければ成功）の性質は変わらない。DB・バックアップにトークンを入れない（ADR 0010）ことも変わらない。
+- 資格情報マネージャーは 1 項目の上限（2560 バイト）が小さく、Microsoft のアクセストークンが収まらないおそれがあるため使わない。
+- PowerShell の子プロセスも親の環境を受け継ぐ。上の追補のとおり CLI は起動のシークレットを `process.env` から消してから鍵を扱うので、子プロセスには渡らない。

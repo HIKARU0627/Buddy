@@ -38,3 +38,9 @@
 - Core への組み込みは司令塔が行った。`buddy-core start` は既定で実行中の OS の鍵保護を確かめ、使えなければ `key_protection_unavailable:<理由>` で起動を拒否する（Linux・Windows の中枢は初期版の対象外）。`--mock-key-protection` は試験・模擬起動用。
 - `buddy-core autostart enable | disable | status` を追加した。enable は LaunchAgent を登録するだけで即時には起動しない（`loadNow: false`）。実行中の Core と二重に起動しないためで、次のログインから有効になる。status はスリープ設定・FileVault の警告も返す。
 - 端末能力のアダプター、Windows・Linux の中枢の正式対応、インストーラー・署名は対象外。
+
+## 追記（2026-11-28、[ADR 0202](0202-windows-core-key-protection-dpapi.md)）
+
+- 本人の決定（2026-11-28）: 「Windows でも中枢を使えるようにしてください」。この ADR の「Windows・Linux の中枢は初期版の対象外」を、Windows について改める。Linux の中枢は初期版の対象外のまま。
+- 鍵保護: Windows の probe は DPAPI（CurrentUser）の KeyStore でデータ鍵を取得（初回は作成して読み戻す）できるかで判定する。起動前検査が実機の probe から受け入れる「使える」は `macos_keychain` と `windows_dpapi`。使えなければ従来どおり `key_protection_unavailable:<理由>`（Windows は主に `dpapi_unavailable`）で起動を断る。
+- 起動・監督（`supervisor.ts` の `{ status: 'unsupported', reason: 'initial_release_supports_macos_core_only' }`）は、ログイン後の自動起動（Task Scheduler）を扱う別の作業で改める。ADR 0202 では変えていない。

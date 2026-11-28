@@ -1,6 +1,7 @@
 // 起動・監督アダプターの境界（ADR 0013）。OS ごとに別のアダプターにする。
 // 自動起動は本人が設定で有効にしたときだけ行うため、register は enabled: true を明示的に受け取らない限り何もしない。
-// 初期中枢は macOS（Mac mini）だけ。Windows・Linux は例外ではなく unsupported の結果を返す。
+// 中枢は macOS（LaunchAgent、ADR 0013）と Windows（ログオン時のタスク、ADR 0203）。Linux などは例外ではなく
+// unsupported の結果を返す。
 
 export type CorePlatform = 'macos' | 'windows' | 'linux' | 'other';
 
@@ -8,7 +9,10 @@ export type CorePlatform = 'macos' | 'windows' | 'linux' | 'other';
 export interface CoreLaunchSpec {
   /** node の実行ファイル。 */
   readonly nodePath: string;
-  /** Core の CLI（`start --data-dir <path>` を受け付ける入口）。 */
+  /**
+   * Core の CLI（`start --data-dir <path>` を受け付ける入口）。Windows のタスクは同じ CLI の
+   * `autostart launch --data-dir <path>`（窓を出さずに start を起動する役）を呼ぶ（ADR 0203）。
+   */
   readonly coreCliPath: string;
   /** Core のデータディレクトリ。ログもこの中に置く。 */
   readonly dataDir: string;
@@ -20,6 +24,7 @@ export interface RegisterRequest {
   /**
    * 登録と同時に今のセッションへ読み込むか。読み込むと RunAtLoad により Core がすぐ起動する。
    * false なら定義ファイルだけを書き、次のログインから有効になる。
+   * Windows では true のときタスクを今すぐ一度実行する（schtasks /Run）。
    */
   readonly loadNow: boolean;
   readonly launch: CoreLaunchSpec;
@@ -29,11 +34,14 @@ export interface UnregisterRequest {
   /**
    * 今のセッションからも外すか。外すと launchd が管理中の Core を止める。
    * false なら定義ファイルだけを消し、実行中の Core はそのまま、次のログインから起動しない。
+   * Windows の Core はタスクから切り離して動くので、タスクを消しても止まらない（止めるのは buddy-core stop）。
    */
   readonly unloadNow: boolean;
 }
 
-export type UnsupportedReason = 'initial_release_supports_macos_core_only';
+// 中枢の自動起動は macOS と Windows だけ（ADR 0203 で Windows を足し、理由のコードを改めた）。
+export type UnsupportedReason =
+  'core_autostart_supports_macos_and_windows_only';
 
 export interface UnsupportedResult {
   readonly status: 'unsupported';
@@ -77,11 +85,17 @@ export type SupervisorStatus =
   | {
       readonly status: 'ok';
       readonly platform: CorePlatform;
+      /** macOS は plist のパス、Windows はタスクのパス（`\BuddyCore`）。 */
       readonly definitionPath: string;
       readonly installed: boolean;
+      /**
+       * macOS は launchd のセッションに読み込まれているか。Windows はタスクが有効か（次のログオンで動くか）。
+       */
       readonly load: LoadState;
     }
-  | UnsupportedResult;
+  | UnsupportedResult
+  // Windows でタスクの状態を問い合わせられなかった（macOS は返さない）。
+  | FailedResult;
 
 export interface StartupSupervisor {
   readonly platform: CorePlatform;
@@ -103,14 +117,14 @@ export function corePlatformOf(nodePlatform: string): CorePlatform {
   }
 }
 
-/** Windows・Linux など、初期版で中枢の自動起動に対応しない OS のアダプター。 */
+/** Linux など、中枢の自動起動に対応しない OS のアダプター。 */
 export function createUnsupportedStartupSupervisor(
   platform: CorePlatform,
 ): StartupSupervisor {
   const result: UnsupportedResult = {
     status: 'unsupported',
     platform,
-    reason: 'initial_release_supports_macos_core_only',
+    reason: 'core_autostart_supports_macos_and_windows_only',
   };
   return {
     platform,

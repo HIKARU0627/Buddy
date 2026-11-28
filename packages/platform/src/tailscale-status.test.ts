@@ -14,6 +14,7 @@ import {
   findPeerPath,
   normalizeRemoteAddress,
   parseTailscaleStatus,
+  tailscaleCommandsFor,
 } from './tailscale-status.js';
 
 // 合成の状態。ピアは 4 つ（直接・DERP・ピアの中継・経路不明）。
@@ -281,3 +282,55 @@ test(
     );
   },
 );
+
+// Windows の中枢（ADR 0203）。候補は手で書いた絶対パス。名前だけ（PATH・カレントディレクトリの探索）では呼ばない。
+test('Windows の候補は Program Files と PATH の各ディレクトリの tailscale.exe の絶対パスだけ', () => {
+  assert.deepEqual(
+    tailscaleCommandsFor('win32', {
+      ProgramW6432: 'C:\\Program Files',
+      ProgramFiles: 'C:\\Program Files (x86)',
+      Path: [
+        'C:\\Windows\\system32',
+        '',
+        '.',
+        'relative\\bin',
+        '%SystemRoot%\\System32',
+        '\\\\server\\share',
+        'D:\\tools\\tailscale',
+        'c:\\program files\\tailscale',
+      ].join(';'),
+    }),
+    [
+      'C:\\Program Files\\Tailscale\\tailscale.exe',
+      'C:\\Program Files (x86)\\Tailscale\\tailscale.exe',
+      'C:\\Windows\\system32\\tailscale.exe',
+      'D:\\tools\\tailscale\\tailscale.exe',
+    ],
+  );
+  // 環境変数がなくても既定の場所は試す。PATH の大文字の名前も読む。
+  assert.deepEqual(tailscaleCommandsFor('win32', { PATH: 'E:\\bin' }), [
+    'C:\\Program Files\\Tailscale\\tailscale.exe',
+    'E:\\bin\\tailscale.exe',
+  ]);
+  // macOS（と対象外の OS）は従来の候補のまま。
+  assert.equal(tailscaleCommandsFor('darwin', {}), TAILSCALE_COMMANDS);
+  assert.equal(tailscaleCommandsFor('linux', {}), TAILSCALE_COMMANDS);
+});
+
+test('Windows: 起動できない候補は飛ばし、見つかった tailscale.exe の JSON を読む', async () => {
+  const commands = tailscaleCommandsFor('win32', { Path: 'D:\\tools' });
+  const runner = createMockCommandRunner((command) =>
+    command === 'D:\\tools\\tailscale.exe'
+      ? { exitCode: 0, stdout: JSON.stringify(STATUS), stderr: '' }
+      : { exitCode: null, stdout: '', stderr: '' },
+  );
+  const status = await fetchTailscaleStatus(runner, commands);
+  assert.equal(status.ok, true);
+  assert.deepEqual(
+    runner.calls.map((call) => [call.command, ...call.args]),
+    [
+      ['C:\\Program Files\\Tailscale\\tailscale.exe', 'status', '--json'],
+      ['D:\\tools\\tailscale.exe', 'status', '--json'],
+    ],
+  );
+});

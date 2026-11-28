@@ -1,4 +1,4 @@
-// OS 別の起動アダプターの選択と、Windows・Linux の未対応の明示。
+// OS 別の起動アダプターの選択（macOS・Windows）と、Linux などの未対応の明示（ADR 0013・0203）。
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { CoreLaunchSpec } from './supervisor.js';
@@ -23,14 +23,13 @@ test('Node の platform 名を中枢の OS 区分へ対応させる', () => {
   assert.equal(corePlatformOf(''), 'other');
 });
 
-test('Windows・Linux は例外ではなく未対応の結果を返し、コマンドを実行しない', async () => {
+test('Linux などは例外ではなく未対応の結果を返し、コマンドを実行しない', async () => {
   const runner = createMockCommandRunner(() => ({
     exitCode: 0,
     stdout: '',
     stderr: '',
   }));
   for (const [nodePlatform, platform] of [
-    ['win32', 'windows'],
     ['linux', 'linux'],
     ['freebsd', 'other'],
   ] as const) {
@@ -43,7 +42,7 @@ test('Windows・Linux は例外ではなく未対応の結果を返し、コマ�
     const unsupported = {
       status: 'unsupported',
       platform,
-      reason: 'initial_release_supports_macos_core_only',
+      reason: 'core_autostart_supports_macos_and_windows_only',
     };
     assert.equal(supervisor.platform, platform);
     assert.deepEqual(
@@ -57,14 +56,11 @@ test('Windows・Linux は例外ではなく未対応の結果を返し、コマ�
     assert.deepEqual(await supervisor.status(), unsupported);
   }
   assert.deepEqual(runner.calls, []);
-  assert.deepEqual(
-    await createUnsupportedStartupSupervisor('windows').status(),
-    {
-      status: 'unsupported',
-      platform: 'windows',
-      reason: 'initial_release_supports_macos_core_only',
-    },
-  );
+  assert.deepEqual(await createUnsupportedStartupSupervisor('linux').status(), {
+    status: 'unsupported',
+    platform: 'linux',
+    reason: 'core_autostart_supports_macos_and_windows_only',
+  });
 });
 
 test('macOS は LaunchAgent のアダプターを選び、uid がなければ作らない', async () => {
@@ -96,4 +92,32 @@ test('macOS は LaunchAgent のアダプターを選び、uid がなければ作
       }),
     TypeError,
   );
+});
+
+test('Windows はログオン時のタスクのアダプターを選び、有効にしていなければ何も実行しない', async () => {
+  const runner = createMockCommandRunner(() => ({
+    exitCode: 0,
+    stdout: '{"found":false}',
+    stderr: '',
+  }));
+  const supervisor = createStartupSupervisor({
+    nodePlatform: 'win32',
+    runner,
+    homeDir: 'C:\\Users\\synthetic',
+    uid: undefined,
+    systemRoot: 'C:\\Windows',
+  });
+  assert.equal(supervisor.platform, 'windows');
+  assert.deepEqual(
+    await supervisor.register({ enabled: false, loadNow: true, launch }),
+    { status: 'not_enabled' },
+  );
+  assert.deepEqual(runner.calls, []);
+  assert.deepEqual(await supervisor.status(), {
+    status: 'ok',
+    platform: 'windows',
+    definitionPath: '\\BuddyCore',
+    installed: false,
+    load: 'not_loaded',
+  });
 });

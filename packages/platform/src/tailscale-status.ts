@@ -8,7 +8,9 @@
 // - 状態は短い間（既定 5 秒）だけ保持し、それを過ぎたら取り直す（「短い周期で取り直す」）。失敗も同じ間だけ保持する。
 // - 出力（ホスト名・アドレス）はログ・例外・理由に入れない。
 // 試験では模擬の runner に合成の JSON を渡し、実機の tailscale は呼ばない。
+import { win32 } from 'node:path';
 import type { CommandRunner } from './runner.js';
+import { isWindowsDriveAbsolute } from './windows-paths.js';
 
 // 中枢の Tailscale から見た、接続元のピアへの経路（domain の TailscalePeerPath と同じ形）。
 export type TailscalePeerPath =
@@ -37,7 +39,7 @@ export interface TailscaleStatusSource {
   peerPath(remoteAddress: string): Promise<TailscalePeerPath>;
 }
 
-// tailscale の実行ファイルの候補（macOS）。先に見つかったものを使う。
+// tailscale の実行ファイルの候補（macOS）。先に見つかったものを使う。Windows は tailscaleCommandsFor（下）。
 // 1. Mac App Store 版・スタンドアロン版のアプリに同梱の CLI
 // 2. Homebrew（Apple シリコン・Intel）や手動で入れた CLI
 // launchd から起動すると PATH が短いので、名前だけの指定は最後にする。
@@ -47,6 +49,44 @@ export const TAILSCALE_COMMANDS: readonly string[] = [
   '/usr/local/bin/tailscale',
   'tailscale',
 ];
+
+// Windows の Tailscale の CLI（ADR 0203）。インストーラーは `%ProgramFiles%\Tailscale\tailscale.exe` に置く。
+// PATH の探索は Windows ではカレントディレクトリを先に探すので、名前だけでは呼ばない（ADR 0022 のレビューの指摘 L9）。
+// 代わりに PATH の各ディレクトリ（ドライブ文字から始まる絶対パスだけ）に tailscale.exe を付けた絶対パスを順に試す。
+export const WINDOWS_TAILSCALE_DEFAULT =
+  'C:\\Program Files\\Tailscale\\tailscale.exe';
+const WINDOWS_PATH_ENTRY_LIMIT = 64;
+
+// 実行中の OS に合う tailscale の候補。macOS（と対象外の OS）は TAILSCALE_COMMANDS。
+// env は Core では process.env（Windows の環境変数の名前は大文字小文字を区別しないが、試験の値に合わせて両方を読む）。
+export function tailscaleCommandsFor(
+  nodePlatform: string,
+  env: Readonly<Record<string, string | undefined>>,
+): readonly string[] {
+  if (nodePlatform !== 'win32') return TAILSCALE_COMMANDS;
+  const candidates: string[] = [];
+  const add = (path: string) => {
+    if (
+      !candidates.some(
+        (existing) => existing.toLowerCase() === path.toLowerCase(),
+      )
+    )
+      candidates.push(path);
+  };
+  // 64 ビットの Program Files（32 ビットの node でも ProgramW6432 が指す）を先に試す。
+  for (const name of ['ProgramW6432', 'ProgramFiles']) {
+    const base = env[name];
+    if (isWindowsDriveAbsolute(base))
+      add(win32.join(base as string, 'Tailscale', 'tailscale.exe'));
+  }
+  add(WINDOWS_TAILSCALE_DEFAULT);
+  const pathValue = env['Path'] ?? env['PATH'] ?? '';
+  for (const entry of pathValue.split(';').slice(0, WINDOWS_PATH_ENTRY_LIMIT)) {
+    const dir = entry.trim();
+    if (isWindowsDriveAbsolute(dir)) add(win32.join(dir, 'tailscale.exe'));
+  }
+  return candidates;
+}
 
 export const TAILSCALE_STATUS_ARGS: readonly string[] = ['status', '--json'];
 export const DEFAULT_TAILSCALE_TTL_MS = 5_000;

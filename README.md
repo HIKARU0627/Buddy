@@ -4,6 +4,7 @@
 
 現在は **B01 以降の実装が進行中の段階** です。B00（契約のファイル化。[ADR 0011](docs/adr/0011-b00-completion-review.md)）で JSON Schema・OpenAPI・生成型、domain の規則、保存マイグレーション案、試験対応表を揃え、その上に次を実装しています。工程ごとの判断は [docs/adr](docs/adr/)、完了判定と実機の手順は docs/b01〜b07 にあります（工程により有無が異なります）。
 
+- 中枢（Core）は macOS（Mac mini）と Windows で動かします（Windows は本人の決定 2026-11-28。[ADR 0203](docs/adr/0203-windows-hub-autostart-and-network.md)・ADR 0202。Windows の実機での確かめは未実施）。端末（デスクトップ）は macOS / Windows です。
 - B01〜B03: Core の起動・停止とローカル制御、OS 別の起動・鍵保護のアダプター、最小のデスクトップ、SQLite の保存・暗号化・DB worker、中枢の HTTPS・ペアリング・端末の失効・スナップショットと WSS の配信、端末側の接続（`packages/client`）
 - B04: 文字入力から模擬 provider の変更までの統合実行器、外部の下書きの保存（RemoteMutation）
 - B05〜B07: 音声の制御、保存の期限・忘却・バックアップ、予算の予約・精算
@@ -61,6 +62,7 @@ npm は pnpm の初回導入だけに使います。hook の準備時に公式 G
 - [デスクトップの UI を HeroUI で作る](docs/adr/0024-ui-heroui-desktop-renderer.md)
 - [端末側の接続とデスクトップの中枢への接続・2 クライアントの試験](docs/adr/0025-b03-client-desktop-connection.md)
 - [中枢の画面の端末で申請の承認と端末の失効を行う](docs/adr/0026-b03-hub-screen-approval.md)
+- [Windows の中枢の自動起動・電源の診断・Tailscale・自宅の登録](docs/adr/0203-windows-hub-autostart-and-network.md)
 - [下書き・用事の intent、内容版の更新、LocalCommand の遷移、connector の能力と工程の型](docs/adr/0027-b04-operation-kinds-and-transitions.md)
 - [模擬 provider・故障注入・Core 側のアダプター（B04-02）](docs/adr/0028-b04-mock-provider.md)
 - [発言から操作の作成までの経路と、preview の発行・無効化](docs/adr/0029-b04-turns-interpretation-and-preview.md)
@@ -82,7 +84,7 @@ npm は pnpm の初回導入だけに使います。hook の準備時に公式 G
 | `packages/client`     | 端末側の接続の状態機械（bootstrap・スナップショット・購読・再接続）。Node・DOM・Electron なし（B03）       |
 | `packages/storage`    | Core の保存アダプター。SQLite・暗号化・DB worker・内容 hash（B02）                                         |
 | `packages/connectors` | 模擬 provider（合成メール・予定）・故障注入・Core 側のアダプター（B04-02。実 provider は B08・B09）        |
-| `packages/platform`   | OS 別の起動・監督・鍵保護の可否のアダプター（B01）。Core から使う                                          |
+| `packages/platform`   | OS 別の起動・監督（macOS の LaunchAgent・Windows のログオン時のタスク）・鍵保護のアダプター。Core から使う |
 | `apps/core`           | Electron から独立した Node.js 中枢。起動・停止・排他・制御・DB（B01・B02）・HTTPS の受付（B03）            |
 | `apps/desktop`        | Electron / React（HeroUI）クライアント。トレイ常駐・端末状態の記録（B01）、中枢への接続・ペアリング（B03） |
 | `apps/bridge`         | 中枢と同じマシンの窓口。Muse 向けに絞った経路だけを公開する副次的な窓口（ADR 0143）                        |

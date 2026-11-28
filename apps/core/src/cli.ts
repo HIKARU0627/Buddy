@@ -18,6 +18,7 @@ import {
   createOAuthTokenStore,
   createTailscaleStatusSource,
   createTlsKeyStore,
+  tailscaleCommandsFor,
 } from '@buddy/platform';
 import type {
   BackupKeyStore,
@@ -25,7 +26,7 @@ import type {
   TlsKeyStore,
 } from '@buddy/platform';
 import { DEFAULT_HTTPS_PORT } from './api-server.js';
-import { runAutostart } from './autostart.js';
+import { runAutostart, runAutostartLaunch } from './autostart.js';
 import { fingerprintLines } from './tls-certificate.js';
 import type { AutostartAction } from './autostart.js';
 import { join, resolve } from 'node:path';
@@ -99,7 +100,11 @@ const USAGE = `使い方: buddy-core <start|status|stop> [--data-dir <path>]
   status 状態を JSON で表示する（動いていなければ終了コード 3）
   stop   停止を要求し、解放まで待つ
   autostart <enable|disable|status>
-         ログイン後の自動起動（macOS の LaunchAgent）。enable は次のログインから有効で、すぐには起動しない
+         ログイン後の自動起動（macOS の LaunchAgent、Windows のログオン時のタスク）。enable は次のログインから
+         有効で、すぐには起動しない
+  autostart launch
+         Windows のタスクが呼ぶ起動役。start を窓のない別のプロセスとして起動し、ログをデータディレクトリの
+         logs/ に書かせてすぐ終わる（Windows だけ）
   first-device start
          登録済みの端末が 0 台のときだけ、最初の端末のペアリングを始める（動いている Core に頼む）。
          ワンタイムコード（有効 5 分）と証明書の指紋を表示する。端末で指紋を確かめてからコードを入力する
@@ -195,7 +200,7 @@ async function main(argv: readonly string[]): Promise<number> {
   const autostartCommand =
     command === 'autostart' &&
     positionals.length === 2 &&
-    ['enable', 'disable', 'status'].includes(action ?? '');
+    ['enable', 'disable', 'status', 'launch'].includes(action ?? '');
   const firstDeviceCommand =
     command === 'first-device' &&
     positionals.length === 2 &&
@@ -364,7 +369,8 @@ async function main(argv: readonly string[]): Promise<number> {
     );
   if (backupCommand)
     return backup(dataDir, action as 'setup' | 'run' | 'status');
-  if (autostartCommand) return autostart(action as AutostartAction, dataDir);
+  if (autostartCommand)
+    return autostart(action as AutostartAction | 'launch', dataDir);
   if (firstDeviceCommand)
     return firstDevice(dataDir, values['pairing-id'] ?? null);
   if (deviceCommand) return device(dataDir, values['device-id'] ?? null);
@@ -399,17 +405,25 @@ async function main(argv: readonly string[]): Promise<number> {
 }
 
 async function autostart(
-  action: AutostartAction,
+  action: AutostartAction | 'launch',
   dataDir: string,
 ): Promise<number> {
-  const outcome = await runAutostart(action, dataDir, {
-    nodePlatform: process.platform,
-    runner: createNodeCommandRunner(),
-    homeDir: homedir(),
-    uid: process.getuid?.(),
-    nodePath: process.execPath,
-    coreCliPath: fileURLToPath(import.meta.url),
-  });
+  const outcome =
+    action === 'launch'
+      ? await runAutostartLaunch(dataDir, {
+          nodePlatform: process.platform,
+          nodePath: process.execPath,
+          coreCliPath: fileURLToPath(import.meta.url),
+        })
+      : await runAutostart(action, dataDir, {
+          nodePlatform: process.platform,
+          runner: createNodeCommandRunner(),
+          homeDir: homedir(),
+          uid: process.getuid?.(),
+          systemRoot: process.env['SystemRoot'],
+          nodePath: process.execPath,
+          coreCliPath: fileURLToPath(import.meta.url),
+        });
   out(outcome.output);
   return outcome.ok ? EXIT.ok : EXIT.autostart_failed;
 }
@@ -511,6 +525,11 @@ async function start(
               ? {
                   tailscale: createTailscaleStatusSource({
                     runner: createNodeCommandRunner(),
+                    // Windows は Program Files と PATH の各ディレクトリの tailscale.exe（ADR 0203）。
+                    commands: tailscaleCommandsFor(
+                      process.platform,
+                      process.env,
+                    ),
                   }),
                 }
               : {}),

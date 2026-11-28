@@ -22,7 +22,7 @@ node apps/core/dist/cli.js stop                          # 停止を要求し、
 - `--https-host <ip>` を渡すと HTTPS を待ち受けます（省略すれば開かない）。製品は Tailscale のアドレス、試験は `127.0.0.1` を渡します。IP アドレスだけを受け付け、正規化してからループバック（127.0.0.0/8・::1）と Tailscale（100.64.0.0/10・fd7a:115c:a1e0::/48）の範囲だけを許可します（全アドレス・IPv4-mapped の全アドレス・範囲の外・zone つきは拒否）。`--https-port <port>` の既定は 47443（0 は OS が選ぶ）。`start` は `running` の前に `https_listening`（host・port・証明書の指紋・証明書を作ったか）を出します。TLS の秘密鍵を鍵保護から取得できなければ HTTPS を開かずに起動を拒否します（終了コード 5）。
 - `first-device start` は、登録済みの（失効していない）端末が 0 台のときだけ、動いている Core に最初の端末のペアリングを頼み、ワンタイムコード（8 桁・有効 5 分）と証明書の指紋を標準出力に出します（コードは本人が端末に入力するための表示で、Core のログには出しません）。同じマシンの端末で指紋を確かめてコードを入力した後、`first-device approve --pairing-id <id>` で承認します。端末は承認の後にトークンを 1 回だけ受け取ります。1 台でも登録があれば拒否します（終了コード 7）。Core の制御チャネルを使い、DB を直接開きません。
 - `device list` は登録した端末の一覧（端末 ID・名前・中枢と同じマシンか・登録日時・最終接続・失効の時刻）を出し、`device revoke --device-id <id>` は端末を失効します（接続範囲を無効にし、開いている接続を閉じる。中枢の画面の失効と同じ処理）。中枢の画面が使えないときの保守の手段で、トークン・その hash・証明書の指紋は出さず、承認はできません。1 台目を失効して有効な端末が 0 台になれば、`first-device` からやり直せます（ADR 0021 の追記）。
-- `autostart enable | disable | status` でログイン後の自動起動（macOS の LaunchAgent）を設定します。enable は次のログインから有効で、すぐには起動しません。
+- `autostart enable | disable | status` でログイン後の自動起動（macOS の LaunchAgent、Windows は本人のログオン時に動くタスク `\BuddyCore`。[ADR 0203](../../docs/adr/0203-windows-hub-autostart-and-network.md)）を設定します。enable は次のログインから有効で、すぐには起動しません。Windows のタスクは `autostart launch`（起動役）を呼び、起動役が Core を窓のない別のプロセスとして起動して、ログをデータディレクトリの `logs\` に書かせます。自動起動した Core は HTTPS を開きません（`--https-host` を渡さない。U723）。
 - `--mock-key-protection` の鍵は公開の固定文字列から求めた模擬の鍵で、DB は保護されません。実機の鍵で作った DB は模擬起動では開けません（逆も同じ。鍵の照合値が合わない）。
 - 標準出力には機械向けの JSON を 1 行ずつ、標準エラーには人向けの記録を書きます。`start` は `running` の前に `store_opened`（schema_version・store_generation とその出どころ・鍵の照合値の保存／一致・起動時の回復の結果）を出します。
 - 終了コード: 0 正常、1 障害、2 使い方の誤り、3 動いている Core がない（status / stop / first-device / device）、7 最初の端末の命令の拒否（登録済みの端末がある・HTTPS がない・申請がないなど）、8 端末の命令の拒否（端末がないなど）、4 排他・保存の検査による拒否（状態ファイル・DB の耐久設定・版・健全性・世代の食い違い・回復）と HTTPS の設定・待ち受けの失敗、5 鍵保護・データ鍵の照合・TLS の鍵による拒否。
@@ -53,7 +53,7 @@ node apps/core/dist/cli.js stop                          # 停止を要求し、
 | `src/recovery.ts`                      | 起動時の回復（dispatching を unknown_held へ）                                 |
 | `src/paths.ts`                         | OS 別の既定値と接続先                                                          |
 | `src/preflight.ts`                     | 起動前の検査の入口、鍵保護の確認、起動の種類の KeyStore                        |
-| `src/autostart.ts`                     | ログイン後の自動起動の設定（platform の LaunchAgent）                          |
+| `src/autostart.ts`                     | ログイン後の自動起動の設定（LaunchAgent・Windows のタスク）と Windows の起動役 |
 | `src/strict-json.ts`                   | 重複キーを拒否する JSON の読み取り                                             |
 | `src/api-server.ts`                    | HTTPS の受付（上限・Origin・接続数・頻度・認証・形式・経路の検査・WSS の土台） |
 | `src/api-routes.ts`                    | 経路の表（OpenAPI と同じことを試験）と照合                                     |

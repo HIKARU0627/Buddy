@@ -17,3 +17,7 @@ export * from './backup-key-store.js';
 export * from './oauth-token-store.js';
 // Windows の中枢の鍵の保護（DPAPI、CurrentUser。ADR 0202）。
 export * from './windows-dpapi.js';
+// Windows の中枢（ADR 0203）: ログオン時のタスク・電源の診断・コマンドの絶対パス。
+export * from './windows-paths.js';
+export * from './windows-scheduled-task.js';
+export * from './windows-diagnostics.js';

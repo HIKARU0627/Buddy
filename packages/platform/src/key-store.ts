@@ -9,6 +9,7 @@ import { inspect } from 'node:util';
 import { corePlatformOf } from './supervisor.js';
 import {
   KeyStoreUnavailableError,
+  SecretSlotExistsError,
   windowsDpapiSlotOpener,
 } from './windows-dpapi.js';
 import type { WindowsDpapiOptions } from './windows-dpapi.js';
@@ -119,8 +120,34 @@ export interface SecretSlot {
   /** 値がなければ null。読めなければ例外。 */
   read(): Promise<string | null>;
   write(value: string): Promise<void>;
+  /**
+   * 初回の作成（対応する保護領域だけが持つ。Windows の DPAPI）。項目がすでにあれば上書きせず
+   * SecretSlotExistsError を投げる。持たない保護領域では write で作る（U704）。
+   */
+  readonly create?: (value: string) => Promise<void>;
   /** 項目を消す（対応する保護領域だけが持つ。OAuth トークンの失効・削除で使う）。 */
   readonly remove?: () => Promise<void>;
+}
+
+/**
+ * 空の項目に値を置く。create を持つ保護領域は排他的に作り、並行した作成に先を越されたら 'exists'（上書きしない）。
+ * 持たない保護領域は write で置き、書いた後の読み戻しの照合で並行した作成を検出する（ADR 0017）。
+ */
+export async function createSlotValue(
+  slot: SecretSlot,
+  value: string,
+): Promise<'created' | 'exists'> {
+  if (slot.create === undefined) {
+    await slot.write(value);
+    return 'created';
+  }
+  try {
+    await slot.create(value);
+    return 'created';
+  } catch (error) {
+    if (error instanceof SecretSlotExistsError) return 'exists';
+    throw error;
+  }
 }
 
 /**
@@ -215,7 +242,9 @@ export function createSlotKeyStore(options: SlotKeyStoreOptions): KeyStore {
     const bytes = randomBytes(DATA_KEY_BYTES);
     const encoded = bytes.toString('base64');
     try {
-      await slot.write(encoded);
+      // 並行した作成に先を越されたら、先に置かれた鍵を読んで使う（上書きしない。U704）。
+      if ((await createSlotValue(slot, encoded)) === 'exists')
+        return load(false);
     } catch (error) {
       return fail(
         slotFailureReason(error, unavailableReason, 'keystore_write_failed'),
@@ -239,7 +268,10 @@ export function createSlotKeyStore(options: SlotKeyStoreOptions): KeyStore {
     };
   }
 
-  async function importKey(material: Uint8Array): Promise<DataKeyResult> {
+  async function importKey(
+    material: Uint8Array,
+    retried = false,
+  ): Promise<DataKeyResult> {
     if (material.length !== DATA_KEY_BYTES)
       return fail('data_key_length_invalid');
     let slot: SecretSlot;
@@ -271,7 +303,11 @@ export function createSlotKeyStore(options: SlotKeyStoreOptions): KeyStore {
       };
     }
     try {
-      await slot.write(encoded);
+      // 並行して置かれたら読み直して素材を照合する（1 度だけ。上書きしない。U704）。
+      if ((await createSlotValue(slot, encoded)) === 'exists')
+        return retried
+          ? fail('data_key_verify_failed')
+          : importKey(material, true);
     } catch (error) {
       return fail(
         slotFailureReason(error, unavailableReason, 'keystore_write_failed'),
@@ -299,7 +335,7 @@ export function createSlotKeyStore(options: SlotKeyStoreOptions): KeyStore {
     backend,
     loadDataKey: () => load(false),
     loadOrCreateDataKey: () => load(true),
-    importDataKey: importKey,
+    importDataKey: (material) => importKey(material),
   };
 }
 

@@ -13,6 +13,7 @@ import {
   rm,
   stat,
   symlink,
+  utimes,
   writeFile,
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -20,8 +21,18 @@ import { join } from 'node:path';
 import test from 'node:test';
 import type { CommandResult } from './runner.js';
 import {
+  DPAPI_CHILD_ENV_NAMES,
+  DPAPI_MAX_FILE_BYTES,
+  DPAPI_MAX_VALUE_BYTES,
   DPAPI_POWERSHELL_ARGS,
+  DPAPI_POWERSHELL_SCRIPT,
   KeyStoreUnavailableError,
+  SecretSlotExistsError,
+  createSlotBackupKeyStore,
+  createSlotKeyStore,
+  createSlotTlsKeyStore,
+  dpapiChildEnv,
+  isCurrentUserDpapiBlob,
   createBackupKeyStore,
   createKeyProtectionProbe,
   createKeyStore,
@@ -53,20 +64,32 @@ const PLAIN_VALUE_B64 = 'c3ludGhldGljIHZhbHVl';
 const DATA_ITEM_FILE =
   'f3f713e821f8b661a04d5d41a8774dc017d611c80512b87e4e996c66fa8e854a.dpapi';
 const DATA_ITEM_ENTROPY_B64 = 'ZGV2LmJ1ZGR5LmNvcmUvZGF0YS1rZXktdjE=';
-// 模擬の DPAPI が 'synthetic value' を項目 data-key-v1 で保護した値（entropy ‖ 0x00 ‖ 各バイトを 0x5a と XOR）。
+// 模擬の DPAPI が 'synthetic value' を項目 data-key-v1 で保護した値。DPAPI の blob の見出し 20 バイト
+// （版 1 と提供者の GUID）‖ マスターキーの版 1 ‖ GUID（00〜0f）‖ dwFlags 0 ‖ entropy ‖ 0x00 ‖ 各バイトを 0x5a と XOR。
+// Python の base64 で別に求めた値。
 const FAKE_BLOB_B64 =
-  'ZGV2LmJ1ZGR5LmNvcmUvZGF0YS1rZXktdjEAKSM0LjI/LjM5eiw7Ni8/';
+  'AQAAANCMnd8BFdERjHoAwE/Cl+sBAAAAAAECAwQFBgcICQoLDA0ODwAAAABkZXYuYnVkZHkuY29yZS9kYXRhLWtleS12MQApIzQuMj8uMzl6LDs2Lz8=';
+// 同じ blob の dwFlags を CRYPTPROTECT_LOCAL_MACHINE（0x4）にしたもの。
+const LOCAL_MACHINE_BLOB_B64 =
+  'AQAAANCMnd8BFdERjHoAwE/Cl+sBAAAAAAECAwQFBgcICQoLDA0ODwQAAABkZXYuYnVkZHkuY29yZS9kYXRhLWtleS12MQApIzQuMj8uMzl6LDs2Lz8=';
+const FAKE_HEADER = Buffer.from(
+  'AQAAANCMnd8BFdERjHoAwE/Cl+sBAAAAAAECAwQFBgcICQoLDA0ODw==',
+  'base64',
+);
 
 interface FakeDpapiOptions {
   /** 次の呼び出しから返す終了コード（undefined なら正常に動く）。 */
   exitCode?: number | null;
   /** 正常に動くときの標準出力を差し替える。 */
   stdout?: string;
+  /** protect が返す blob の dwFlags（省略時は 0）。 */
+  flags?: number;
 }
 
 /**
- * 模擬の DPAPI。本物の暗号ではなく、entropy の結び付けと往復の形だけを再現する。
- * protect: entropy ‖ 0x00 ‖ (データの各バイト XOR 0x5a) の base64。unprotect: entropy が違えば終了コード 13。
+ * 模擬の DPAPI。本物の暗号ではなく、blob の見出しと entropy の結び付けと往復の形だけを再現する。
+ * protect: 見出し 40 バイト ‖ dwFlags ‖ entropy ‖ 0x00 ‖ (データの各バイト XOR 0x5a) の base64。
+ * unprotect: 見出しの後の entropy が違えば終了コード 13。
  */
 function fakeDpapi(state: FakeDpapiOptions = {}) {
   const runner = createMockStdinCommandRunner(
@@ -82,7 +105,11 @@ function fakeDpapi(state: FakeDpapiOptions = {}) {
       const entropy = Buffer.from(entropyB64, 'base64');
       const data = Buffer.from(dataB64, 'base64');
       if (op === 'protect') {
+        const flags = Buffer.alloc(4);
+        flags.writeUInt32LE(state.flags ?? 0);
         const out = Buffer.concat([
+          FAKE_HEADER,
+          flags,
           entropy,
           Buffer.from([0]),
           data.map((byte) => byte ^ 0x5a),
@@ -94,11 +121,12 @@ function fakeDpapi(state: FakeDpapiOptions = {}) {
         };
       }
       if (op === 'unprotect') {
-        const split = data.indexOf(0);
-        if (split < 0 || !data.subarray(0, split).equals(entropy))
+        const body = data.subarray(44);
+        const split = body.indexOf(0);
+        if (split < 0 || !body.subarray(0, split).equals(entropy))
           return { exitCode: 13, stdout: '', stderr: '' };
         const out = Buffer.from(
-          data.subarray(split + 1).map((byte) => byte ^ 0x5a),
+          body.subarray(split + 1).map((byte) => byte ^ 0x5a),
         );
         return {
           exitCode: 0,
@@ -631,6 +659,315 @@ test('標準入力つきの runner: 値を標準入力で渡し、起動でき�
   assert.equal(missing.exitCode, null);
 });
 
+test('スクリプト: 制約付き言語モードを最初に断り、System.Security は Assembly::Load で読み、$input を使わない', () => {
+  const lines = DPAPI_POWERSHELL_SCRIPT.split('\n');
+  assert.equal(
+    lines[0],
+    "if ($ExecutionContext.SessionState.LanguageMode -ne 'FullLanguage') { exit 10 }",
+  );
+  assert.match(
+    DPAPI_POWERSHELL_SCRIPT,
+    /\[void\]\[Reflection\.Assembly\]::Load\('System\.Security, Version=4\.0\.0\.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a'\)/u,
+  );
+  assert.doesNotMatch(DPAPI_POWERSHELL_SCRIPT, /Add-Type/u);
+  assert.doesNotMatch(DPAPI_POWERSHELL_SCRIPT, /\$input\b/iu);
+});
+
+test('子プロセスの環境: 決めた名前だけを写し、PATH は %SystemRoot% の下だけにする', async (t) => {
+  const parent = {
+    SystemRoot: 'C:\\Windows',
+    TEMP: 'C:\\Users\\example\\AppData\\Local\\Temp',
+    LOCALAPPDATA: 'C:\\Users\\example\\AppData\\Local',
+    // 平たいオブジェクトでも、名前の大文字・小文字を区別しないで探す（Windows の環境変数と同じ）。
+    userprofile: 'C:\\Users\\example',
+    PATH: 'C:\\Users\\example\\bin;C:\\Windows\\System32',
+    BUDDY_GOOGLE_OAUTH_CLIENT_SECRET: 'synthetic-not-a-secret',
+    PSModulePath: 'C:\\Users\\example\\Modules',
+  };
+  assert.deepEqual(dpapiChildEnv(parent), {
+    SystemRoot: 'C:\\Windows',
+    TEMP: 'C:\\Users\\example\\AppData\\Local\\Temp',
+    LOCALAPPDATA: 'C:\\Users\\example\\AppData\\Local',
+    USERPROFILE: 'C:\\Users\\example',
+    PATH: 'C:\\Windows\\System32;C:\\Windows;C:\\Windows\\System32\\WindowsPowerShell\\v1.0',
+  });
+  assert.ok(DPAPI_CHILD_ENV_NAMES.includes('SystemDrive'));
+  assert.ok(!DPAPI_CHILD_ENV_NAMES.includes('PSModulePath'));
+  // DPAPI の子プロセスへ、この環境だけが渡る。
+  const runner = fakeDpapi();
+  const slot = await windowsDpapiSlotOpener('data-key-v1', {
+    ...options(await tempDir(t), runner),
+    env: parent,
+  })();
+  await slot.write(PLAIN_VALUE);
+  assert.deepEqual(runner.calls[0]?.env, dpapiChildEnv(parent));
+});
+
+test('blob の見出し: DPAPI の版と提供者の GUID があり、LocalMachine の印がないものだけを受け入れる', async (t) => {
+  assert.equal(
+    isCurrentUserDpapiBlob(Buffer.from(FAKE_BLOB_B64, 'base64')),
+    true,
+  );
+  assert.equal(
+    isCurrentUserDpapiBlob(Buffer.from(LOCAL_MACHINE_BLOB_B64, 'base64')),
+    false,
+  );
+  assert.equal(isCurrentUserDpapiBlob(FAKE_HEADER), false);
+  const wrongProvider = Buffer.from(FAKE_BLOB_B64, 'base64');
+  wrongProvider[4] = 0;
+  assert.equal(isCurrentUserDpapiBlob(wrongProvider), false);
+
+  // 保存ファイルの blob が LocalMachine なら、子プロセスを呼ばずに読み出しの失敗。
+  const dir = await tempDir(t);
+  const runner = fakeDpapi();
+  const slot = await windowsDpapiSlotOpener(
+    'data-key-v1',
+    options(dir, runner),
+  )();
+  await writeFile(
+    join(dir, DATA_ITEM_FILE),
+    `{"v":1,"scope":"current_user","account":"data-key-v1","blob":"${LOCAL_MACHINE_BLOB_B64}"}\n`,
+  );
+  await rejectsWith(slot.read(), false);
+  assert.equal(runner.calls.length, 0);
+  // Protect が LocalMachine の blob を返したら置かない（書込みの失敗）。
+  const dir2 = await tempDir(t);
+  const localMachine = windowsDpapiSlotOpener(
+    'data-key-v1',
+    options(dir2, fakeDpapi({ flags: 4 })),
+  );
+  await rejectsWith((await localMachine()).write(PLAIN_VALUE), false);
+  assert.deepEqual(await readdir(dir2), []);
+});
+
+test('初回の作成（create）: すでにあれば上書きせず SecretSlotExistsError、一時ファイルを残さない', async (t) => {
+  const dir = await tempDir(t);
+  const slot = await windowsDpapiSlotOpener(
+    'data-key-v1',
+    options(dir, fakeDpapi()),
+  )();
+  const create = slot.create;
+  assert.ok(create !== undefined);
+  await create(PLAIN_VALUE);
+  const first = await readFile(join(dir, DATA_ITEM_FILE), 'utf8');
+  await assert.rejects(create('other synthetic value'), (error) => {
+    assert.ok(error instanceof SecretSlotExistsError);
+    return true;
+  });
+  assert.equal(await readFile(join(dir, DATA_ITEM_FILE), 'utf8'), first);
+  assert.equal(await slot.read(), PLAIN_VALUE);
+  assert.deepEqual(await readdir(dir), [DATA_ITEM_FILE]);
+});
+
+// 読み出しの 1 回目だけ「まだ無い」を返す保護領域（並行した作成で、読んだ後に別のプロセスが先に作った状態の再現）。
+function staleFirstRead(open: () => Promise<SecretSlot>) {
+  let first = true;
+  return async (): Promise<SecretSlot> => {
+    const slot = await open();
+    return {
+      ...slot,
+      read() {
+        if (first) {
+          first = false;
+          return Promise.resolve(null);
+        }
+        return slot.read();
+      },
+    };
+  };
+}
+
+test('並行した初回の作成: 後から作った側は先の鍵を上書きせず、先の鍵を読んで使う（U704）', async (t) => {
+  const dir = await tempDir(t);
+  const opts = options(dir, fakeDpapi());
+  // 先の作成（別のプロセス）。
+  const first = await createWindowsDpapiKeyStore(opts).loadOrCreateDataKey();
+  assert.ok(first.ok && first.created);
+  const before = await readFile(join(dir, DATA_ITEM_FILE), 'utf8');
+  // 後の作成: 読んだときは無かったが、作ろうとしたらあった。
+  const late = createSlotKeyStore({
+    kind: 'os',
+    backend: 'windows_dpapi',
+    unavailableReason: 'dpapi_unavailable',
+    openSlot: staleFirstRead(windowsDpapiSlotOpener('data-key-v1', opts)),
+  });
+  const second = await late.loadOrCreateDataKey();
+  assert.ok(second.ok);
+  assert.equal(second.created, false);
+  assert.ok(second.dataKey.key.equals(first.dataKey.key));
+  assert.equal(await readFile(join(dir, DATA_ITEM_FILE), 'utf8'), before);
+  assert.deepEqual(await readdir(dir), [DATA_ITEM_FILE]);
+
+  // 復元の導入: 違う素材が先に置かれていたら上書きせず data_key_exists。
+  const importer = createSlotKeyStore({
+    kind: 'os',
+    backend: 'windows_dpapi',
+    unavailableReason: 'dpapi_unavailable',
+    openSlot: staleFirstRead(windowsDpapiSlotOpener('data-key-v1', opts)),
+  });
+  assert.deepEqual(await importer.importDataKey(Buffer.alloc(32, 7)), {
+    ok: false,
+    backend: 'windows_dpapi',
+    reason: 'data_key_exists',
+  });
+  assert.equal(await readFile(join(dir, DATA_ITEM_FILE), 'utf8'), before);
+
+  // TLS の鍵も同じ。
+  const tlsFirst =
+    await createWindowsDpapiTlsKeyStore(opts).loadOrCreateTlsKey();
+  assert.ok(tlsFirst.ok);
+  const tlsLate = createSlotTlsKeyStore({
+    kind: 'os',
+    backend: 'windows_dpapi',
+    unavailableReason: 'dpapi_unavailable',
+    openSlot: staleFirstRead(windowsDpapiSlotOpener('tls-key-v1', opts)),
+  });
+  const tlsSecond = await tlsLate.loadOrCreateTlsKey();
+  assert.ok(
+    tlsSecond.ok &&
+      !tlsSecond.created &&
+      tlsSecond.privateKey.publicKey().equals(tlsFirst.privateKey.publicKey()),
+  );
+
+  // バックアップの鍵: 同じ ID に違う値が先に置かれていたら backup_key_exists。
+  assert.ok(
+    (
+      await createWindowsDpapiBackupKeyStore(opts).put(
+        'backup_file',
+        'k1',
+        Buffer.alloc(32, 1),
+      )
+    ).ok,
+  );
+  const backupLate = createSlotBackupKeyStore({
+    kind: 'os',
+    backend: 'windows_dpapi',
+    unavailableReason: 'dpapi_unavailable',
+    // 読み直し（2 回目の open）では本当の値を読む。
+    openSlot: staleFirstRead(windowsDpapiSlotOpener('backup-file:k1', opts)),
+  });
+  const conflict = await backupLate.put(
+    'backup_file',
+    'k1',
+    Buffer.alloc(32, 2),
+  );
+  assert.equal(conflict.ok ? '' : conflict.reason, 'backup_key_exists');
+  const read = await createWindowsDpapiBackupKeyStore(opts).read(
+    'backup_file',
+    'k1',
+  );
+  assert.ok(read.ok && read.key.key.equals(Buffer.alloc(32, 1)));
+});
+
+test('一時ファイル: 置けなかったら消し、開くときに古い中断の一時ファイルだけを消す', async (t) => {
+  const dir = await tempDir(t);
+  const opts = options(dir, fakeDpapi());
+  // 項目の場所がディレクトリになっていて置き換えられない: 書込みの失敗で、一時ファイルを残さない。
+  await mkdir(join(dir, DATA_ITEM_FILE));
+  await writeFile(join(dir, DATA_ITEM_FILE, 'keep'), 'x');
+  const slot = await windowsDpapiSlotOpener('data-key-v1', opts)();
+  await rejectsWith(slot.write(PLAIN_VALUE), false);
+  const create = slot.create;
+  assert.ok(create !== undefined);
+  await assert.rejects(create(PLAIN_VALUE));
+  assert.deepEqual(await readdir(dir), [DATA_ITEM_FILE]);
+  await rm(join(dir, DATA_ITEM_FILE), { recursive: true });
+
+  const stale = `.${'a'.repeat(64)}.dpapi.00000000-0000-4000-8000-000000000000.tmp`;
+  const fresh = `.${'b'.repeat(64)}.dpapi.00000000-0000-4000-8000-000000000001.tmp`;
+  const other = '.unrelated.tmp';
+  for (const name of [stale, fresh, other])
+    await writeFile(join(dir, name), 'partial');
+  const old = new Date(Date.now() - 60 * 60 * 1000);
+  await utimes(join(dir, stale), old, old);
+  await utimes(join(dir, other), old, old);
+  await windowsDpapiSlotOpener('data-key-v1', opts)();
+  assert.deepEqual((await readdir(dir)).sort(), [fresh, other].sort());
+});
+
+test('境界: 値はちょうど 64KiB まで、ファイルは空・256KiB 超を読まない', async (t) => {
+  const dir = await tempDir(t);
+  const runner = fakeDpapi();
+  const slot = await windowsDpapiSlotOpener(
+    'oauth-v1:conn-1',
+    options(dir, runner),
+  )();
+  const exact = 'a'.repeat(DPAPI_MAX_VALUE_BYTES);
+  await slot.write(exact);
+  assert.equal(await slot.read(), exact);
+  // 文字数は上限内（21846 文字）でも、UTF-8 のバイト数（65538）が上限を超える。
+  const multibyte = 'あ'.repeat(21_846);
+  assert.ok(multibyte.length < DPAPI_MAX_VALUE_BYTES);
+  await rejectsWith(slot.write(multibyte), false);
+  assert.equal(await slot.read(), exact);
+
+  const path = join(
+    dir,
+    'abcb3e646fb405d13857755bf8dfe19bb1de12a17fcfe8087765f556e6cc15c0.dpapi',
+  );
+  const calls = runner.calls.length;
+  await writeFile(path, '');
+  await rejectsWith(slot.read(), false);
+  await writeFile(path, Buffer.alloc(DPAPI_MAX_FILE_BYTES + 1, 0x20));
+  await rejectsWith(slot.read(), false);
+  assert.equal(runner.calls.length, calls);
+});
+
+test('実機用の runner: 時間切れ・出力の上限超えは exitCode: null、env を渡すと親の環境を受け継がない', async () => {
+  const slow = createNodeStdinCommandRunner({ timeoutMs: 300 });
+  const timedOut = await slow.run(
+    process.execPath,
+    ['-e', 'setTimeout(() => {}, 10000)'],
+    '',
+  );
+  assert.equal(timedOut.exitCode, null);
+  const small = createNodeStdinCommandRunner({ maxOutputBytes: 1024 });
+  const tooMuch = await small.run(
+    process.execPath,
+    ['-e', "process.stdout.write('x'.repeat(65536))"],
+    '',
+  );
+  assert.equal(tooMuch.exitCode, null);
+
+  process.env['BUDDY_DPAPI_TEST_PARENT_ONLY'] = 'parent';
+  try {
+    const runner = createNodeStdinCommandRunner();
+    const env: Record<string, string> = { BUDDY_DPAPI_TEST_CHILD: 'child' };
+    const systemRoot = process.env['SystemRoot'];
+    if (systemRoot !== undefined) env['SystemRoot'] = systemRoot;
+    const result = await runner.run(
+      process.execPath,
+      [
+        '-e',
+        "process.stdout.write(String(process.env.BUDDY_DPAPI_TEST_CHILD)+'/'+String(process.env.BUDDY_DPAPI_TEST_PARENT_ONLY))",
+      ],
+      '',
+      { env },
+    );
+    assert.deepEqual(result, {
+      exitCode: 0,
+      stdout: 'child/undefined',
+      stderr: '',
+    });
+  } finally {
+    delete process.env['BUDDY_DPAPI_TEST_PARENT_ONLY'];
+  }
+});
+
+// 本物の runner を包み、終了コードだけを記録する（標準出力・標準入力は記録しない）。
+function recordingRunner() {
+  const real = createNodeStdinCommandRunner();
+  const exitCodes: (number | null)[] = [];
+  const runner: StdinCommandRunner = {
+    async run(command, args, stdin, runOptions) {
+      const result = await real.run(command, args, stdin, runOptions);
+      exitCodes.push(result.exitCode);
+      return result;
+    },
+  };
+  return { runner, exitCodes };
+}
+
 test(
   'Windows の実機の DPAPI: PowerShell で保護・復号の往復ができ、別の項目へ差し替えた blob は復号できない',
   // 本物の DPAPI は Windows にだけある。他の OS では上の模擬の試験で形を確かめる。
@@ -640,7 +977,11 @@ test(
   },
   async (t) => {
     const dir = await tempDir(t);
-    const real: WindowsDpapiOptions = { directory: dir };
+    const recorded = recordingRunner();
+    const real: WindowsDpapiOptions = {
+      directory: dir,
+      runner: recorded.runner,
+    };
     const slot: SecretSlot = await windowsDpapiSlotOpener(
       'data-key-v1',
       real,
@@ -649,11 +990,25 @@ test(
     const stored = await readFile(join(dir, DATA_ITEM_FILE), 'utf8');
     assert.ok(!stored.includes(PLAIN_VALUE));
     assert.ok(!stored.includes(PLAIN_VALUE_B64));
+    // 本物の DPAPI の blob の見出し（版 1 と提供者の GUID）で、LocalMachine の印がない。
+    const blob = (JSON.parse(stored) as { blob: string }).blob;
+    assert.ok(blob.startsWith('AQAAANCMnd8BFdERjHoAwE/Cl+s'));
+    assert.equal(isCurrentUserDpapiBlob(Buffer.from(blob, 'base64')), true);
     assert.equal(await slot.read(), PLAIN_VALUE);
     // 日本語を含む値も往復する（UTF-8）。
     await slot.write('合成の値 synthetic');
     assert.equal(await slot.read(), '合成の値 synthetic');
-    // 項目名まで書き換えて別の項目へ移しても、entropy が違うので本物の DPAPI が復号を拒む。
+    // 初回の作成は、すでにあれば上書きしない。
+    const create = slot.create;
+    assert.ok(create !== undefined);
+    await assert.rejects(create(PLAIN_VALUE), (error) => {
+      assert.ok(error instanceof SecretSlotExistsError);
+      return true;
+    });
+    assert.equal(await slot.read(), '合成の値 synthetic');
+    // protect 3 回（作成の拒否も、置く前に protect する）と unprotect 3 回が、どれも終了コード 0。
+    assert.deepEqual(recorded.exitCodes, [0, 0, 0, 0, 0, 0]);
+    // 項目名まで書き換えて別の項目へ移しても、entropy が違うので本物の DPAPI が復号を拒む（終了コード 13）。
     const moved = (await readFile(join(dir, DATA_ITEM_FILE), 'utf8')).replace(
       '"account":"data-key-v1"',
       '"account":"tls-key-v1"',
@@ -663,11 +1018,18 @@ test(
       (await windowsDpapiSlotOpener('tls-key-v1', real)()).read(),
       false,
     );
+    assert.equal(recorded.exitCodes.at(-1), 13);
     await rm(join(dir, dpapiFileName('tls-key-v1')));
 
     // KeyStore・probe を本物の DPAPI で通す。
-    const store = createKeyStore('win32', real);
+    const store = createKeyStore('win32', { directory: await tempDir(t) });
     assert.equal(store.backend, 'windows_dpapi');
+    const createdKey = await store.loadOrCreateDataKey();
+    assert.ok(createdKey.ok && createdKey.created);
+    const loadedKey = await store.loadDataKey();
+    assert.ok(
+      loadedKey.ok && loadedKey.dataKey.key.equals(createdKey.dataKey.key),
+    );
     const probe = createKeyProtectionProbe('win32', {
       directory: await tempDir(t),
     });

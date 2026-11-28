@@ -76,4 +76,4 @@ Core は Electron に依存しない独立した Node.js プロセスで、`budd
 ## 追記（2026-11-28、[ADR 0202](0202-windows-core-key-protection-dpapi.md)）
 
 - 本人の決定（2026-11-28）で Windows の中枢を使えるようにした。Windows のデータディレクトリの既定を `%APPDATA%\Buddy\core`（Roaming）から `%LOCALAPPDATA%\Buddy\core` に改めた（移動プロファイルで SQLite と WAL を同期させない。DPAPI の鍵と同じ PC・同じ利用者の場所にそろえる。U705）。
-- データディレクトリの ACL は、既定の %LOCALAPPDATA% の ACL に任せたまま検査しない（U700）。名前付きパイプの ACL も変えていない。
+- Windows のデータディレクトリは、実パスが %LOCALAPPDATA% か %USERPROFILE% の下でなければ起動を断る（U700 (b)。ACL そのものは読まず、プロファイルの既定の ACL に任せる）。旧い既定の場所のデータは模擬の鍵で作ったものなので移さず、起動のログで知らせる。名前付きパイプの ACL は変えていない。

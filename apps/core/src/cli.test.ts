@@ -14,7 +14,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { controlEndpoint } from './paths.js';
 import { onCleanup } from './api-test-support.js';
-import { startCli } from './cli-test-support.js';
+import { observeCliStart, startCli } from './cli-test-support.js';
 
 // ビルド済みの dist/cli.js を子プロセスで動かすヘッドレス起動の試験（Electron は使わない）。
 // Windows では子プロセスへの SIGTERM が即時終了になるため、停止は制御チャネルの stop で行う。
@@ -219,6 +219,55 @@ test(
       ]);
     }
     await assert.rejects(readdir(dataDir), { code: 'ENOENT' });
+  },
+);
+
+test(
+  'Windows の実機の DPAPI: 鍵保護の指定なしの start が running になり、stop で止まる（LOCALAPPDATA は一時ディレクトリ）',
+  // 本物の DPAPI は Windows にだけある。子プロセスの LOCALAPPDATA を一時ディレクトリに向け、本人の %LOCALAPPDATA% には
+  // 鍵を作らない（ADR 0202）。他の OS では Linux の拒否・platform の模擬の試験で形を確かめる。
+  {
+    skip: process.platform !== 'win32' && 'Windows の DPAPI だけで動く試験',
+    timeout: 120_000,
+  },
+  async (t) => {
+    const base = await mkdtemp(join(tmpdir(), 'buddy-cli-dpapi-'));
+    onCleanup(t, () =>
+      rm(base, {
+        recursive: true,
+        force: true,
+        maxRetries: 5,
+        retryDelay: 200,
+      }).catch(() => undefined),
+    );
+    const localAppData = await realpath(base);
+    const dataDir = join(localAppData, 'Buddy', 'core');
+    const child = spawn(
+      process.execPath,
+      [CLI, 'start', '--data-dir', dataDir],
+      {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: { ...process.env, LOCALAPPDATA: localAppData },
+      },
+    );
+    const observed = observeCliStart(child, t.signal);
+    onCleanup(t, async () => {
+      if (child.exitCode === null && child.signalCode === null)
+        child.kill('SIGKILL');
+      await observed.exited;
+    });
+    const running = await observed.running;
+    assert.equal(running['state'], 'running');
+    const keyStore = join(localAppData, 'Buddy', 'key-store');
+    const files = (await readdir(keyStore)).sort();
+    // データ鍵（data-key-v1）の項目だけ。ファイル名は項目名の SHA-256（sha256sum で別に求めた値）。
+    assert.deepEqual(files, [
+      'f3f713e821f8b661a04d5d41a8774dc017d611c80512b87e4e996c66fa8e854a.dpapi',
+    ]);
+    const stored = await readFile(join(keyStore, files[0] as string), 'utf8');
+    assert.match(stored, /"scope":"current_user"/u);
+    assert.equal((await run(['stop', '--data-dir', dataDir])).code, 0);
+    assert.equal((await observed.exited).code, 0);
   },
 );
 

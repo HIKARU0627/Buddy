@@ -13,6 +13,7 @@ import {
 import type { KeyObject } from 'node:crypto';
 import { inspect } from 'node:util';
 import {
+  createSlotValue,
   decodeCanonicalBase64,
   keychainSlotOpener,
   slotFailureReason,
@@ -188,7 +189,9 @@ export function createSlotTlsKeyStore(
       .export({ type: 'pkcs8', format: 'der' })
       .toString('base64');
     try {
-      await slot.write(encoded);
+      // 並行した作成に先を越されたら、先に置かれた鍵を読んで使う（上書きしない。U704）。
+      if ((await createSlotValue(slot, encoded)) === 'exists')
+        return load(false);
     } catch (error) {
       return fail(
         slotFailureReason(error, unavailableReason, 'keystore_write_failed'),

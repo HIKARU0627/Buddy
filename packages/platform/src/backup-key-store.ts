@@ -8,6 +8,7 @@
 import { randomBytes } from 'node:crypto';
 import { inspect } from 'node:util';
 import {
+  createSlotValue,
   decodeCanonicalBase64,
   keychainSlotOpener,
   slotFailureReason,
@@ -170,6 +171,41 @@ export function createSlotBackupKeyStore(
       return fail('backup_key_format_invalid');
     return { ok: true, key: new BackupKey(purpose, keyId, bytes) };
   }
+  async function put(
+    purpose: BackupKeyPurposeName,
+    keyId: string,
+    material: Uint8Array,
+    retried = false,
+  ): Promise<BackupKeyResult> {
+    if (material.length !== BACKUP_KEY_BYTES)
+      return fail('backup_key_format_invalid');
+    const slot = await open(purpose, keyId);
+    if (isFailure(slot)) return slot;
+    const existing = await readSlot(slot);
+    if ('ok' in existing) return existing;
+    const encoded = Buffer.from(material).toString('base64');
+    if (existing.stored !== null) {
+      // 同じ値なら何もしない（設定のやり直し）。違えば上書きしない。
+      return existing.stored === encoded
+        ? decode(purpose, keyId, existing.stored)
+        : fail('backup_key_exists');
+    }
+    try {
+      // 並行して置かれたら読み直して照合する（1 度だけ。上書きしない。U704）。
+      if ((await createSlotValue(slot, encoded)) === 'exists')
+        return retried
+          ? fail('backup_key_verify_failed')
+          : put(purpose, keyId, material, true);
+    } catch (error) {
+      return fail(
+        slotFailureReason(error, unavailableReason, 'keystore_write_failed'),
+      );
+    }
+    const back = await readSlot(slot);
+    if ('ok' in back) return back;
+    if (back.stored !== encoded) return fail('backup_key_verify_failed');
+    return decode(purpose, keyId, back.stored);
+  }
   return {
     kind,
     backend,
@@ -181,32 +217,7 @@ export function createSlotBackupKeyStore(
       if (read.stored === null) return fail('backup_key_missing');
       return decode(purpose, keyId, read.stored);
     },
-    async put(purpose, keyId, material) {
-      if (material.length !== BACKUP_KEY_BYTES)
-        return fail('backup_key_format_invalid');
-      const slot = await open(purpose, keyId);
-      if (isFailure(slot)) return slot;
-      const existing = await readSlot(slot);
-      if ('ok' in existing) return existing;
-      const encoded = Buffer.from(material).toString('base64');
-      if (existing.stored !== null) {
-        // 同じ値なら何もしない（設定のやり直し）。違えば上書きしない。
-        return existing.stored === encoded
-          ? decode(purpose, keyId, existing.stored)
-          : fail('backup_key_exists');
-      }
-      try {
-        await slot.write(encoded);
-      } catch (error) {
-        return fail(
-          slotFailureReason(error, unavailableReason, 'keystore_write_failed'),
-        );
-      }
-      const back = await readSlot(slot);
-      if ('ok' in back) return back;
-      if (back.stored !== encoded) return fail('backup_key_verify_failed');
-      return decode(purpose, keyId, back.stored);
-    },
+    put: (purpose, keyId, material) => put(purpose, keyId, material),
   };
 }
 

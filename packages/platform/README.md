@@ -64,6 +64,6 @@ OS 別の鍵保護・起動・端末能力のアダプターを置きます（[A
 
 4. 読み出し: 手順 3 をもう一度実行し、`created` が `false` になることを確かめます。`%LOCALAPPDATA%\Buddy\key-store` に `.dpapi` のファイルが 1 つだけあり、中身に `"scope":"current_user"` があることを確かめます（`blob` の値は記録しない）。
 5. 起動前検査: `node apps/core/dist/cli.js start` が鍵保護の確認に通って `running` になり、別の端末の `node apps/core/dist/cli.js stop` で止まることを確かめます。
-6. 後片付け（任意）: 確認用の鍵を消すときは `%LOCALAPPDATA%\Buddy\key-store` の `.dpapi` のファイルを消します。暗号化したデータがある環境では消さないでください（鍵を消すと読めなくなります）。
+6. 後片付け: 手順 5 で起動した後は、鍵（`%LOCALAPPDATA%\Buddy\key-store` の `.dpapi` のファイル）を消さないでください。起動でデータディレクトリの DB が鍵で作られたため、鍵だけを消すと DB が読めなくなります。確認をやり直すために消すときは、データディレクトリ（`%LOCALAPPDATA%\Buddy\core`）も一緒に消します（暗号化した本人のデータがある環境では消さない）。
 
 結果は実機の記録として残します。出力の値・パスは記録しません。

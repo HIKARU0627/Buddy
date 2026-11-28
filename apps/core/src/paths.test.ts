@@ -102,17 +102,34 @@ test('unix socket paths longer than 103 bytes are refused, pipes are not limited
   );
 });
 
-// 模擬の DPAPI。標準入力の「操作・entropy・データ」の 3 行を読み、データの各バイトを 0x5a と XOR した値を返す
-// （本物の DPAPI の暗号ではない。往復の形だけを再現する）。
+// 模擬の DPAPI。標準入力の「操作・entropy・データ」の 3 行を読む（本物の DPAPI の暗号ではない。往復の形だけを再現する）。
+// protect は DPAPI の blob の見出し（版 1・提供者の GUID・マスターキーの版と GUID・dwFlags 0 の 44 バイト）の後に、
+// データの各バイトを 0x5a と XOR した値を付けて返す。unprotect は見出しを外して戻す。
+const FAKE_DPAPI_HEADER = Buffer.from(
+  'AQAAANCMnd8BFdERjHoAwE/Cl+sBAAAAAAECAwQFBgcICQoLDA0ODwAAAAA=',
+  'base64',
+);
 function fakeDpapiRunner() {
   return createMockStdinCommandRunner((_command, _args, stdin) => {
     const [op = '', , data = ''] = stdin.split('\n');
-    if (op !== 'protect' && op !== 'unprotect')
-      return { exitCode: 11, stdout: '', stderr: '' };
-    const out = Buffer.from(
-      Buffer.from(data, 'base64').map((byte) => byte ^ 0x5a),
-    );
-    return { exitCode: 0, stdout: `${out.toString('base64')}\r\n`, stderr: '' };
+    const bytes = Buffer.from(data, 'base64');
+    const xor = (input: Buffer) =>
+      Buffer.from(input.map((byte) => byte ^ 0x5a));
+    if (op === 'protect')
+      return {
+        exitCode: 0,
+        stdout: `${Buffer.concat([FAKE_DPAPI_HEADER, xor(bytes)]).toString('base64')}\r\n`,
+        stderr: '',
+      };
+    if (op === 'unprotect')
+      return {
+        exitCode: 0,
+        stdout: xor(bytes.subarray(FAKE_DPAPI_HEADER.length)).toString(
+          'base64',
+        ),
+        stderr: '',
+      };
+    return { exitCode: 11, stdout: '', stderr: '' };
   });
 }
 

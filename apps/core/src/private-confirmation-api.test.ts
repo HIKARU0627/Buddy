@@ -326,7 +326,10 @@ test('the requesting device sees only what to change, approves once by screen, a
       },
     ],
   });
-  assert(!listed.text.includes(internal.segment_generation + '"'));
+  // 上の手書きの全体の一致で欄は決まっている。区切り・世代・操作の欄の名前と操作の ID を含まないことも確かめる（世代は短い数字
+  // なので、値ではなく欄の名前で確かめる）。
+  for (const name of ['segment', 'generation', 'operation_id', 'session'])
+    assert(!listed.text.includes(name), name);
   assert(!listed.text.includes(operation.operation_id));
   // 他の端末には出さない（U600）。
   assert.deepEqual((await list(rig, rig.b)).json, { confirmations: [] });

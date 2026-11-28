@@ -618,14 +618,15 @@ export function createAutoActionRoutes(
       const permission = await provider.readPermission(creation.account_id);
       if (permission === null || permission.account_id !== creation.account_id)
         return { kind: 'unavailable' };
-      const event = await provider.readEvent(creation.calendar_id, eventId);
-      if (event === null || event.event_id !== eventId)
+      // 削除済み・このカレンダーで見えない（移した・権限が変わった）予定は消さない。
+      const read = await provider.readEvent(creation.calendar_id, eventId);
+      if (read.kind !== 'found' || read.event.event_id !== eventId)
         return { kind: 'changed' };
       return {
         kind: 'ok',
         connection,
         permission: permission.permission_revision,
-        event,
+        event: read.event,
       };
     } catch {
       return { kind: 'unavailable' };

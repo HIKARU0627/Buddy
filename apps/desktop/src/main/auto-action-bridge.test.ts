@@ -511,3 +511,39 @@ test('the status bar safety value changes only when the read state changes, and 
   r.bridge.reset();
   assert.equal(r.changes, 3);
 });
+
+test('a failed read after a safety notice makes the status bar value unknown until a read succeeds (ADR 0198 review)', async () => {
+  const r = rig();
+  r.list = () => ({
+    kind: 'response',
+    status: 200,
+    body: listBody(undefined, stopped('6')),
+  });
+  await r.bridge.refresh();
+  assert.equal(r.bridge.safetyStopped(), true);
+  const stopRef = r.bridge.view().safety?.ref;
+  assert.equal(r.changes, 1);
+  // 知らせを受けたが読めなかった: 変わったと分かっている停止の値を出し続けない。
+  r.list = () => ({ kind: 'unknown' });
+  await r.bridge.safetyNotice();
+  assert.equal(r.bridge.safetyStopped(), null);
+  assert.equal(r.bridge.view().safety, null);
+  assert.equal(r.changes, 2);
+  // 古い停止の参照では解除を送らない。
+  const resume = await r.bridge.resume(stopRef as string);
+  assert.equal(resume.ok, false);
+  assert.deepEqual(r.posts(), []);
+  // 知らせの無い読み取りの失敗では、読めた値を捨てない（次に読めたら知らせの保留も外れる）。
+  r.list = () => ({
+    kind: 'response',
+    status: 200,
+    body: listBody(undefined, running('7')),
+  });
+  await r.bridge.refresh();
+  assert.equal(r.bridge.safetyStopped(), false);
+  assert.equal(r.changes, 3);
+  r.list = () => ({ kind: 'response', status: 503, body: {} });
+  await r.bridge.refresh();
+  assert.equal(r.bridge.safetyStopped(), false);
+  assert.equal(r.changes, 3);
+});

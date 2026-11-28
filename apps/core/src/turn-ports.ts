@@ -224,6 +224,14 @@ export interface ProviderEventContent {
   readonly description: string | null;
 }
 
+// 予定を id で読んだ結果（ADR 0198 の見直し）。削除済みと分かる（Google の 410 Gone など）ときは deleted、このカレンダーでは
+// 見えない（404。別のカレンダーへ移した・口座や権限が変わった）ときは missing。missing は「消えた」の証拠にしない。
+// 取り消し済み（status が cancelled）の予定は found のまま返り、呼び出し側が削除済みとして扱う。
+export type ProviderEventRead =
+  | { readonly kind: 'found'; readonly event: ProviderEventContent }
+  | { readonly kind: 'deleted' }
+  | { readonly kind: 'missing' };
+
 export interface ProviderReader {
   // 連携の接続の状態。接続がなければ null。
   connection(): Promise<ProviderConnection | null>;
@@ -234,12 +242,9 @@ export interface ProviderReader {
   findDrafts?(marker: string): Promise<readonly ProviderDraft[]>;
   // 下書きを id で読む。無ければ null。持たない provider では下書きの削除を実行しない（ADR 0156）。
   readDraft?(draftId: string): Promise<ProviderDraftContent | null>;
-  // 予定を id で読む。無ければ null（取り消し済みの予定は status が cancelled のまま返ることがある）。持たない provider では
-  // 予定の削除を実行しない（ADR 0198）。
-  readEvent?(
-    calendarId: string,
-    eventId: string,
-  ): Promise<ProviderEventContent | null>;
+  // 予定を id で読む（削除済みと見えないを分ける。ProviderEventRead）。持たない provider では予定の削除を実行しない
+  // （ADR 0198）。
+  readEvent?(calendarId: string, eventId: string): Promise<ProviderEventRead>;
 }
 
 // 連携の provider への書込み（B04-04、ADR 0030）。形は #87 の MockMailConnector の書込みに合わせた。

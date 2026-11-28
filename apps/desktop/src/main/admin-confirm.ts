@@ -109,6 +109,7 @@ const OPERATION_TITLES: Readonly<Record<string, string>> = {
   'mail.draft.delete': '返信の下書きの削除',
   'task.create': '用事の登録',
   'task.delete': '用事の削除',
+  'calendar.event.create': '予定の作成',
   'calendar.event.delete': '予定の削除',
 };
 

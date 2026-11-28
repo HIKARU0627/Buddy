@@ -9660,6 +9660,59 @@
     "semantic_errors": ["event_time_order"]
   },
   {
+    "id": "intent-calendar-event-create-all-day",
+    "schema": "OperationIntent",
+    "valid": true,
+    "value": {
+      "schema": "buddy.operation.v1",
+      "operation_id": "00000000-0000-4000-8000-000000000401",
+      "content_version": "1",
+      "permission_revision": "1",
+      "provider": "mock",
+      "account_id": "00000000-0000-4000-8000-000000000002",
+      "target": null,
+      "action": {
+        "kind": "calendar.event.create",
+        "calendar_id": "primary",
+        "summary": "（合成）休みの日",
+        "start": "2030-10-07",
+        "end": "2030-10-08",
+        "time_zone": "Asia/Tokyo"
+      },
+      "effects": {
+        "external_recipients": [],
+        "reconcile_scope": "operation_marker"
+      }
+    }
+  },
+  {
+    "id": "intent-calendar-event-create-all-day-same-day",
+    "schema": "OperationIntent",
+    "valid": true,
+    "value": {
+      "schema": "buddy.operation.v1",
+      "operation_id": "00000000-0000-4000-8000-000000000401",
+      "content_version": "1",
+      "permission_revision": "1",
+      "provider": "mock",
+      "account_id": "00000000-0000-4000-8000-000000000002",
+      "target": null,
+      "action": {
+        "kind": "calendar.event.create",
+        "calendar_id": "primary",
+        "summary": "（合成）休みの日",
+        "start": "2030-10-07",
+        "end": "2030-10-07",
+        "time_zone": "Asia/Tokyo"
+      },
+      "effects": {
+        "external_recipients": [],
+        "reconcile_scope": "operation_marker"
+      }
+    },
+    "semantic_errors": ["event_time_order"]
+  },
+  {
     "id": "intent-calendar-event-delete-as-operation",
     "refs": ["X24", "U310"],
     "schema": "OperationIntent",

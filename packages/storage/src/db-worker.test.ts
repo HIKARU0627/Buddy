@@ -800,3 +800,50 @@ test('the intent shadow save and count round-trip through the worker', async () 
     }
   });
 });
+
+// 安全停止を変え得る書込みの知らせ（ADR 0198）: 操作の命令（operation.*）と停止の解除が終わったら、結果（成功・拒否）を
+// 問わず命令の種類を受け手へ渡す。安全停止の読み取りでは渡さない。受け手の例外は命令の結果にしない。外した受け手へは渡さない。
+test('onSafetyWrite reports operation commands and resumes, whatever the outcome, and never reads', async () => {
+  await withClient(async (_path, client) => {
+    const seen: string[] = [];
+    client.onSafetyWrite(() => {
+      throw new Error('listener');
+    });
+    const off = client.onSafetyWrite((kind) => {
+      seen.push(kind);
+    });
+    const tick = () => new Promise((resolve) => setImmediate(resolve));
+    const created = await client.submit(createCommand('op-safety-1')).result;
+    assert.equal(created.outcome, 'durable');
+    await tick();
+    assert.deepEqual(seen, ['operation.create']);
+    // 版の違う承認は拒否されるが、知らせは渡る（受け手が今の状態を読み直す）。
+    const refused = await client.submit(approveCommand('op-safety-1', '9'))
+      .result;
+    assert.equal(refused.outcome, 'rejected');
+    await tick();
+    assert.deepEqual(seen, ['operation.create', 'operation.approve']);
+    const state = await client.safety({ kind: 'safety.state' });
+    assert.equal(state.ok, true);
+    await tick();
+    assert.deepEqual(seen, ['operation.create', 'operation.approve']);
+    // 止まっていないときの解除は拒否されるが、知らせは渡る。
+    const resume = await client.safety({
+      kind: 'safety.resume',
+      device_id: randomUUID(),
+      expected_safety_revision: '0',
+      now: Date.now(),
+    });
+    assert.equal(resume.ok, false);
+    await tick();
+    assert.deepEqual(seen, [
+      'operation.create',
+      'operation.approve',
+      'safety.resume',
+    ]);
+    off();
+    await client.submit(createCommand('op-safety-2')).result;
+    await tick();
+    assert.equal(seen.length, 3);
+  });
+});

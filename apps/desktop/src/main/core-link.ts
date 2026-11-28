@@ -1194,7 +1194,8 @@ export class DesktopCoreLink {
       // 自動実行の安全停止が変わった（止まった・再開した。U315、ADR 0198）。知らせの値を正本にせず、中枢の一覧を読み直して
       // 状態欄に出す。ロック中は読まない（解除したときに読む）。キャンバスとは関係しないので、ここで終える。
       if (notice.schema === 'buddy.safety-notice.v1') {
-        if (this.#lockState === 'unlocked') void this.#autoActions.refresh();
+        if (this.#lockState === 'unlocked')
+          void this.#autoActions.safetyNotice();
         else this.#log('safety_notice_deferred_locked');
         return;
       }

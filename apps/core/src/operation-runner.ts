@@ -55,7 +55,7 @@ import type {
   ProviderConnection,
   ProviderDraft,
   ProviderDraftContent,
-  ProviderEventContent,
+  ProviderEventRead,
   ProviderMailTarget,
   ProviderPermission,
   ProviderReader,
@@ -215,13 +215,18 @@ export function draftDeleteObserved(
   return { kind: 'not_found' };
 }
 
-// 予定の削除の照合（exact_target、by_remote_id。ADR 0198）。予定が無い・取り消し済み（cancelled）なら消えた（found）。
-// 同じ id の予定が残っていれば未適用（not_found。遅れて適用されうる）。違う id が返れば説明できないので unreadable。
+// 予定の削除の照合（exact_target、by_remote_id。ADR 0198）。削除済みと分かる（deleted）・取り消し済み（cancelled）なら
+// 消えた（found）。このカレンダーで見えない（missing。404）は、別のカレンダーへ移した・口座や権限が変わったこともあるので
+// 消えた証拠にせず unreadable。同じ id の予定が残っていれば未適用（not_found。遅れて適用されうる）。違う id が返れば
+// 説明できないので unreadable。
 export function eventDeleteObserved(
-  event: ProviderEventContent | null,
+  read: ProviderEventRead,
   intent: Pick<EventDeleteIntent, 'remote_id'>,
 ): ReconcileObservation {
-  if (event === null) return { kind: 'found', external_id: intent.remote_id };
+  if (read.kind === 'deleted')
+    return { kind: 'found', external_id: intent.remote_id };
+  if (read.kind === 'missing') return { kind: 'unreadable' };
+  const event = read.event;
   if (event.event_id !== intent.remote_id) return { kind: 'unreadable' };
   if (event.status === 'cancelled')
     return { kind: 'found', external_id: intent.remote_id };
@@ -517,16 +522,14 @@ export function createOperationRunner(
       !canRead(connection, 'calendar.events')
     )
       return { kind: 'blocked', reason: 'not_readable' };
-    const event = await provider.readEvent(
-      intent.calendar_id,
-      intent.remote_id,
-    );
+    const read = await provider.readEvent(intent.calendar_id, intent.remote_id);
     if (
-      event === null ||
-      event.event_id !== intent.remote_id ||
-      event.status === 'cancelled'
+      read.kind !== 'found' ||
+      read.event.event_id !== intent.remote_id ||
+      read.event.status === 'cancelled'
     )
       return { kind: 'blocked', reason: 'target_missing' };
+    const event = read.event;
     if (
       event.calendar_id !== intent.calendar_id ||
       event.marker !== intent.created_marker ||
@@ -602,6 +605,22 @@ export function createOperationRunner(
     }
   };
 
+  // 削除の照合の前に、今の接続が確定 intent と同じ提供元・口座で、照合に要る読み取りの範囲があることを確かめる（ADR 0198 の
+  // 見直し）。口座を付け替えた後に「無い」を「消えた」と取り違えない。
+  const sameConnection = async (
+    provider: ProviderReader,
+    intent: RemoteIntent,
+    read: 'mail.draft' | 'calendar.events',
+  ): Promise<boolean> => {
+    const connection = await provider.connection();
+    return (
+      connection !== null &&
+      connection.account_id === intent.account_id &&
+      connection.provider === intent.raw['provider'] &&
+      canRead(connection, read)
+    );
+  };
+
   // 参照だけの照合（D4）。再送しない。
   const lookup = async (
     intent: RemoteIntent,
@@ -614,17 +633,26 @@ export function createOperationRunner(
           await provider.readTarget(intent.remote_id),
           intent,
         );
-      // 下書きの削除は id で読む（by_remote_id）。無ければ消えた（found）、あれば未適用（not_found）。
+      // 下書きの削除は id で読む（by_remote_id）。無ければ消えた（found）、あれば未適用（not_found）。接続が違えば読まない。
       if (intent.kind === 'mail.draft.delete') {
-        if (provider.readDraft === undefined) return { kind: 'unreadable' };
+        if (
+          provider.readDraft === undefined ||
+          !(await sameConnection(provider, intent, 'mail.draft'))
+        )
+          return { kind: 'unreadable' };
         return draftDeleteObserved(
           await provider.readDraft(intent.remote_id),
           intent,
         );
       }
-      // 予定の削除も id で読む（by_remote_id。ADR 0198）。無い・取り消し済みなら消えた、あれば未適用。
+      // 予定の削除も id で読む（by_remote_id。ADR 0198）。削除済み・取り消し済みなら消えた、あれば未適用、見えなければ
+      // 分からない。接続が違えば読まない。
       if (intent.kind === 'calendar.event.delete') {
-        if (provider.readEvent === undefined) return { kind: 'unreadable' };
+        if (
+          provider.readEvent === undefined ||
+          !(await sameConnection(provider, intent, 'calendar.events'))
+        )
+          return { kind: 'unreadable' };
         return eventDeleteObserved(
           await provider.readEvent(intent.calendar_id, intent.remote_id),
           intent,
@@ -920,7 +948,15 @@ export function createOperationRunner(
     const raw = await openIntent(initial);
     const intent =
       raw === null ? null : remoteIntent(raw, initial.operation_kind);
-    if (intent === null) return;
+    if (intent === null) {
+      // 実行担当がまだ送れない種類（自分だけの予定の作成 calendar.event.create など。ADR 0198、U625）は、承認済みのまま
+      // 残し、理由をログに出す（黙って放置しない）。確定 intent を開けなかったときは何も出さない（従来どおり）。
+      if (raw !== null)
+        log(
+          `操作 ${initial.operation_id} の種類（${initial.operation_kind}）は、実行担当がまだ送れないため、承認済みのまま残しました。`,
+        );
+      return;
+    }
     if (!supported(intent)) {
       log(
         `操作 ${initial.operation_id} の種類は、この接続では実行できません。`,

@@ -21,6 +21,7 @@
 // - 状態欄の安全停止（U315、ADR 0198）: 一覧の safety から safetyStopped を出す。読むのは、画面の操作のほか、中枢の安全停止の
 //   知らせ（SafetyNotice）・接続・ロック解除のとき（core-link が refresh を呼ぶ）。値が変わったら host.changed で知らせる。
 //   読めなかったときは前の値のまま（状態欄では一覧の取得の状態を出さず、前に読めた値を出す。読めたことがなければ不明）。
+//   ただし知らせを受けた後の読み取りが失敗したら、変わったと分かっているので不明にする（safetyNotice）。
 // Electron に依存しない（node:test で試験する）。
 import type {
   AutoActionItem,
@@ -85,6 +86,8 @@ export class AutoActionBridge {
   #fetchedAt: string | null = null;
   // 直近の読み取りが失敗したか。
   #failed = false;
+  // 中枢の安全停止の知らせを受けた後、まだ読めていないか（ADR 0198 の見直し）。読めなかったら前の値を捨てて不明にする。
+  #safetyNoticePending = false;
   #gen = 0;
   // 始めた読み取りの通し番号。
   #seq = 0;
@@ -109,8 +112,16 @@ export class AutoActionBridge {
     this.#safetyRef = null;
     this.#fetchedAt = null;
     this.#failed = false;
+    this.#safetyNoticePending = false;
     this.#listSeq += 1;
     if (before !== null) this.#host.changed?.();
+  }
+
+  // 中枢の安全停止の知らせを受けた（U315、ADR 0198）。一覧を読み直す。知らせの後の読み取りが失敗したら、安全停止が変わった
+  // ことは分かっているので前の値を出し続けず、不明（null）にする（読めるまで状態欄に古い値を出さない）。
+  safetyNotice(): Promise<void> {
+    this.#safetyNoticePending = true;
+    return this.refresh();
   }
 
   #entry(
@@ -237,6 +248,13 @@ export class AutoActionBridge {
     // 読めなかった。前の値のまま、読めなかったことを画面に出す（「自動実行なし」「動いている」の証拠にしない）。
     this.#failed = true;
     this.#host.log('auto_action_list_unavailable');
+    // 安全停止の知らせの後で読めなかった: 変わったと分かっている前の値を捨てる（停止の参照も捨て、古い停止を解除させない）。
+    if (this.#safetyNoticePending && this.#safety !== null) {
+      const before = this.safetyStopped();
+      this.#safety = null;
+      this.#safetyRef = null;
+      if (before !== null) this.#host.changed?.();
+    }
   }
 
   // 読み取った一覧を反映する。同じ操作は同じ参照を保つ。この読み取りより前に結果が分からなくなった操作の保留は解く
@@ -265,6 +283,7 @@ export class AutoActionBridge {
     this.#safety = body.safety;
     this.#fetchedAt = new Date(this.#host.now()).toISOString();
     this.#failed = false;
+    this.#safetyNoticePending = false;
     if (this.safetyStopped() !== before) this.#host.changed?.();
   }
 

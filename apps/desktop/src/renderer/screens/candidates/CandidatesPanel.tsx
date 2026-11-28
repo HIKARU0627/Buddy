@@ -303,7 +303,7 @@ function LinkedAutoActions({
           ))}
         </ul>
       )}
-      {entry.auto_actions_unlisted === 0 ? null : (
+      {fetch === 'unavailable' || entry.auto_actions_unlisted === 0 ? null : (
         <p className="text-xs text-muted">
           {unlistedText(entry.auto_actions_unlisted)}
         </p>

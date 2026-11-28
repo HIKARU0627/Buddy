@@ -15,14 +15,20 @@ export interface AutoActionStateHandle {
   readonly actions: AutoActionActions;
 }
 
+// changed は取り消し・本人の読み直しの後に呼ぶ（気づきの欄を読み直させる。ADR 0199）。
 export function useAutoActionState(
   api: BuddyDesktopApi,
   shown: boolean,
+  changed?: () => void,
 ): AutoActionStateHandle {
-  const store = useMemo(() => new AutoActionStore(api), [api]);
+  const store = useMemo(
+    () => new AutoActionStore(api, changed),
+    [api, changed],
+  );
   const state = useSyncExternalStore(store.subscribe, store.snapshot);
   useEffect(() => {
-    if (shown) store.actions.refresh();
+    // 開いたときの読み取りは気づきの欄へ知らせない（気づきの欄も同時に開いて読む）。
+    if (shown) store.actions.reload();
     else store.hide();
   }, [store, shown]);
   return { state, actions: store.actions };

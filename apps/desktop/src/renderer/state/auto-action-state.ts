@@ -234,6 +234,9 @@ export function autoActionFailureText(
       return '中枢が受け付けませんでした。一覧を読み直してから、もう一度操作してください。';
     case 'entry_not_found':
       return '一覧が古くなっています。「読み直す」を押してから、もう一度操作してください。';
+    // 同じ操作の取り消しを、別の欄から送っている途中（ADR 0199）。
+    case 'confirmation_pending':
+      return 'この操作の取り消しは送っている途中です。結果が出るまで待ってください。';
     case 'not_connected':
       return '中枢に接続していないため、自動実行の一覧を読めません。接続してから「読み直す」を押してください。';
     default:
@@ -340,7 +343,10 @@ export function applyFailure(
 // --- 操作 ---
 
 export interface AutoActionActions {
+  // 本人の「読み直す」。読めたら気づきの欄にも知らせる（気づきの行の自動実行の写しを読み直させる。ADR 0199）。
   readonly refresh: () => void;
+  // 欄を開いたとき・気づきの欄から頼まれたときの読み直し。気づきの欄へは知らせない（知らせ合いを繰り返さない）。
+  readonly reload: () => void;
   readonly undo: (ref: string) => void;
   // 解除の確かめを出す・しまう。
   readonly startResume: () => void;
@@ -368,11 +374,15 @@ export class AutoActionStore {
   #state: AutoActionViewState = INITIAL_AUTO_ACTION_STATE;
   #epoch = 0;
   readonly actions: AutoActionActions;
+  // 取り消し・本人の読み直しの後に呼ぶ（気づきの欄を読み直させる。ADR 0199）。
+  readonly #changed: () => void;
 
-  constructor(api: AutoActionApi) {
+  constructor(api: AutoActionApi, changed: () => void = () => undefined) {
     this.#api = api;
+    this.#changed = changed;
     this.actions = {
-      refresh: () => this.#list(),
+      refresh: () => this.#list(true),
+      reload: () => this.#list(false),
       undo: (ref) => this.#undo(ref),
       startResume: () => {
         const safety = this.#state.view?.safety ?? null;
@@ -420,13 +430,16 @@ export class AutoActionStore {
     );
   }
 
-  #list(): void {
+  #list(notify: boolean): void {
+    const epoch = this.#epoch;
     this.#set({ ...this.#state, reading: true, notice: null });
     void this.#send(
       request('desktop.auto_actions_list', null),
       applyListResponse,
       (state) => applyFailure(state, null),
-    );
+    ).then(() => {
+      if (notify && epoch === this.#epoch) this.#changed();
+    });
   }
 
   // 送った操作の結果を反映し、拒否なら（main が読み直した）一覧を受け取る。
@@ -442,7 +455,10 @@ export class AutoActionStore {
       },
       (state) => applyFailure(state, place),
     ).then(() => {
-      if (reread && epoch === this.#epoch) this.#reread();
+      if (epoch !== this.#epoch) return;
+      if (reread) this.#reread();
+      // 取り消しは結果にかかわらず気づきの欄にも知らせる（気づきの行の「取り消せます」の写しを残さない）。
+      if (kind === 'undo') this.#changed();
     });
   }
 

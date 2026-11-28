@@ -302,3 +302,13 @@ test('forgetting a candidate keeps its operations, and the final guard still run
     );
   });
 });
+
+test('operations approved at the same time are ordered by operation ID', async () => {
+  await withStore((db) => {
+    // 同じ承認の時刻。作った順（op-z が先）ではなく操作 ID の昇順。
+    durable(exec(db, autoCreate('op-z', CAND), T0));
+    durable(exec(db, autoCreate('op-y', CAND, { remote: true }), T0));
+    assert.deepEqual(got(db, CAND), ['op-y', 'op-z']);
+    assert.deepEqual(listed(db)[CAND], ['op-y', 'op-z']);
+  });
+});

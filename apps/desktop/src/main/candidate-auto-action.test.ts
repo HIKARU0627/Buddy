@@ -114,7 +114,7 @@ interface Rig {
   readonly calls: Call[];
   candidateBody: unknown;
   auto: () => Outcome;
-  post: (call: Call) => Outcome;
+  post: (call: Call) => Outcome | Promise<Outcome>;
   paths(): string[];
 }
 
@@ -132,7 +132,7 @@ function rig(): Rig {
       snapshot(PLAIN, '結び付きのない気づき', []),
     ]) as unknown,
     auto: (): Outcome => ({ kind: 'response', status: 200, body: autoList() }),
-    post: (call: Call): Outcome => {
+    post: (call: Call): Outcome | Promise<Outcome> => {
       void call;
       return { kind: 'unknown' };
     },
@@ -336,4 +336,121 @@ test('an unread automatic-operation list counts every link as unlisted; a later 
   const stale = ok(await r.candidates.list());
   assert.equal(stale.auto_action_fetch, 'stale');
   assert.equal(entryOf(stale.entries, '連絡の返信').auto_actions.length, 2);
+});
+
+test('two undo presses of the same operation in flight send once; the second is refused as pending', async () => {
+  const r = rig();
+  const view = ok(await r.candidates.list());
+  const label = entryOf(view.entries, '連絡の返信').auto_actions[0];
+  assert(label !== undefined);
+  let release: (outcome: Outcome) => void = () => undefined;
+  r.post = () =>
+    new Promise<Outcome>((resolve) => {
+      release = resolve;
+    });
+  // 気づきの欄と自動実行の欄から、同じ参照で続けて押した。
+  const first = r.autoActions.undo(label.ref);
+  const second = await r.autoActions.undo(label.ref);
+  assert.deepEqual(second, { ok: false, reason: 'confirmation_pending' });
+  release({ kind: 'response', status: 202, body: receipt });
+  ok(await first);
+  assert.equal(r.calls.filter((call) => call.method === 'POST').length, 1);
+});
+
+test('a stale copy on the candidate row is not sent after the undo went through the automatic-operation panel', async () => {
+  const r = rig();
+  const view = ok(await r.candidates.list());
+  // 気づきの画面が持っている写し（「取り消せます」のまま）。
+  const copy = entryOf(view.entries, '連絡の返信').auto_actions[0];
+  assert(copy !== undefined && copy.undo_state === 'available');
+  r.post = () => {
+    r.auto = () => ({
+      kind: 'response',
+      status: 200,
+      body: autoList('undone'),
+    });
+    return { kind: 'response', status: 202, body: receipt };
+  };
+  // 自動実行の欄から取り消した（main は受け付けた後に一覧を読み直す）。
+  ok(await r.autoActions.undo(r.autoActions.view().entries[1]?.ref ?? ''));
+  const posts = r.calls.filter((call) => call.method === 'POST').length;
+  // 古い写しの参照で押しても、main の今の状態（取り消し済み）で断り、送らない。
+  assert.deepEqual(await r.autoActions.undo(copy.ref), {
+    ok: false,
+    reason: 'preview_stale',
+  });
+  assert.equal(r.calls.filter((call) => call.method === 'POST').length, posts);
+});
+
+test('a second press whose outcome is unknown holds the row as unknown and is never resent', async () => {
+  const r = rig();
+  const view = ok(await r.candidates.list());
+  const label = entryOf(view.entries, '連絡の返信').auto_actions[0];
+  assert(label !== undefined);
+  // 1 回目は中枢が断った（状態が変わっていた）が、読み直しでもまだ取り消せると読めた。
+  r.post = () => ({
+    kind: 'response',
+    status: 409,
+    body: { code: 'conflict' },
+  });
+  assert.deepEqual(await r.autoActions.undo(label.ref), {
+    ok: false,
+    reason: 'preview_stale',
+  });
+  // 2 回目は届いたか分からない。
+  r.post = () => ({ kind: 'unknown' });
+  assert.deepEqual(await r.autoActions.undo(label.ref), {
+    ok: false,
+    reason: 'outcome_unknown',
+  });
+  const held = entryOf(r.candidates.view().entries, '連絡の返信')
+    .auto_actions[0];
+  assert.deepEqual([held?.ref, held?.delivery_unknown], [label.ref, true]);
+  const posts = r.calls.filter((call) => call.method === 'POST').length;
+  assert.deepEqual(await r.autoActions.undo(label.ref), {
+    ok: false,
+    reason: 'entry_not_found',
+  });
+  assert.equal(r.calls.filter((call) => call.method === 'POST').length, posts);
+});
+
+test('a lock while the automatic-operation list is read drops the list and the answer', async () => {
+  const r = rig();
+  r.auto = () => {
+    // 自動実行の一覧を読んでいる間にロックした（世代が進む）。
+    r.candidates.reset();
+    r.autoActions.reset();
+    return { kind: 'response', status: 200, body: autoList() };
+  };
+  assert.deepEqual(await r.candidates.list(), {
+    ok: false,
+    reason: 'not_connected',
+  });
+  assert.deepEqual(r.candidates.view().entries, []);
+  assert.deepEqual(r.autoActions.view().entries, []);
+  assert.equal(r.candidates.view().auto_action_fetch, 'unavailable');
+});
+
+test('links beyond the 200 listed automatic operations are counted as unlisted', async () => {
+  const r = rig();
+  // 中枢の一覧は新しい順に 200 件まで（ADR 0152）。候補には 201 件が結び付き、最も古い 1 件は一覧の外。
+  const ids = Array.from({ length: 201 }, (_, n) => uuid(0x1000 + n));
+  r.candidateBody = candidateList([snapshot(LINKED, '連絡の返信', ids)]);
+  r.auto = () => ({
+    kind: 'response',
+    status: 200,
+    body: {
+      ...autoList(),
+      items: ids
+        .slice(0, 200)
+        .map((operationId) => item({ operation_id: operationId })),
+    },
+  });
+  const linked = entryOf(ok(await r.candidates.list()).entries, '連絡の返信');
+  assert.equal(linked.auto_actions.length, 200);
+  assert.equal(linked.auto_actions_unlisted, 1);
+  assert.deepEqual(
+    linked.auto_actions.slice(0, 2).map((entry) => entry.position),
+    [0, 1],
+  );
 });

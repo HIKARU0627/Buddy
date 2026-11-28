@@ -676,3 +676,39 @@ test('an undo answered after hide (lock) is dropped without a re-read', async ()
   assert.equal(pending.length, 0);
   assert.deepEqual(autoRefreshes, []);
 });
+
+test('reload from the automatic-operation panel re-reads the list and keeps the row words', async () => {
+  const { store, pending, answer } = harness();
+  store.actions.refresh();
+  await answer(listed(view([LINKED])));
+  store.actions.undoAutoAction(id(1), AUTO_REF);
+  await answer({ outcome: 'rejected', reason: 'confirmation_pending' });
+  // 同じ操作を自動実行の欄から送っている途中の文言（自動実行の欄と同じ）。
+  assert.equal(
+    store.snapshot().notice?.text,
+    'この操作の取り消しは送っている途中です。結果が出るまで待ってください。',
+  );
+  await answer(listed(view([LINKED], { list_seq: 3 })));
+  // 自動実行の欄で取り消した後の読み直し（reload）は、行の文言を消さずに写しを新しくする。
+  store.actions.reload();
+  assert.deepEqual(
+    pending.map((item) => item.request.channel),
+    ['desktop.candidates_list'],
+  );
+  const undone = {
+    ...LINKED,
+    auto_actions: LINKED.auto_actions.map((item) => ({
+      ...item,
+      undo_state: 'undone' as const,
+    })),
+  };
+  await answer(listed(view([undone], { list_seq: 4 })));
+  assert.equal(
+    store.snapshot().view?.entries[0]?.auto_actions[0]?.undo_state,
+    'undone',
+  );
+  assert.equal(store.snapshot().notice?.ref, id(1));
+  // 取り消し済みになった写しでは送らない。
+  store.actions.undoAutoAction(id(1), AUTO_REF);
+  assert.equal(pending.length, 0);
+});

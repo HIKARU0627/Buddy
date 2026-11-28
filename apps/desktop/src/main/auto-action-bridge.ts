@@ -71,6 +71,9 @@ export class AutoActionBridge {
   readonly #refs = new Map<string, string>();
   // 結果が分からなかった操作（操作 ID → そのときの読み取りの通し番号）。それより後に始めた読み取りが成功するまで取り消させない。
   readonly #held = new Map<string, number>();
+  // 取り消しを送っていて応答を待っている操作。気づきの欄と自動実行の欄は別々に押せるので、同じ操作を同じ版で 2 回
+  // 送らないよう main で止める（ADR 0199）。
+  readonly #sending = new Set<string>();
   #safety: SafetyState | null = null;
   // 今の安全停止の状態の参照（safety_revision が変わるたびに作り直す）。
   #safetyRef: string | null = null;
@@ -95,6 +98,7 @@ export class AutoActionBridge {
     this.#records = new Map();
     this.#refs.clear();
     this.#held.clear();
+    this.#sending.clear();
     this.#safety = null;
     this.#safetyRef = null;
     this.#fetchedAt = null;
@@ -297,16 +301,25 @@ export class AutoActionBridge {
       this.#held.has(operationId)
     )
       return fail('entry_not_found');
+    // 同じ操作の取り消しを送っている途中（別の欄から続けて押した）。送らずに断る。
+    if (this.#sending.has(operationId)) return fail('confirmation_pending');
     // 取り消せると読めた操作だけを送る（期限・種類・状態の正本は中枢の検査）。
     if (record.item.undo_state !== 'available') return fail('preview_stale');
-    const outcome = await connection.request({
-      method: 'POST',
-      path: `/v1/auto-actions/${encodeURIComponent(operationId)}/undo`,
-      body: { expected_state_revision: record.item.state_revision },
-      scoped: true,
-      screenOperation: true,
-      expectedScopeId: scope,
-    });
+    this.#sending.add(operationId);
+    let outcome: Awaited<ReturnType<ClientConnection['request']>>;
+    try {
+      outcome = await connection.request({
+        method: 'POST',
+        path: `/v1/auto-actions/${encodeURIComponent(operationId)}/undo`,
+        body: { expected_state_revision: record.item.state_revision },
+        scoped: true,
+        screenOperation: true,
+        expectedScopeId: scope,
+      });
+    } finally {
+      // 世代が進んで集合を作り直した後は、新しい世代の送信中の印を消さない（reset で空になっている）。
+      if (gen === this.#gen) this.#sending.delete(operationId);
+    }
     if (outcome.kind === 'not_sent') return fail('not_connected');
     // 送った後に世代が変わった: 当たったかどうかを今の世代の一覧で示せないので結果不明（自動では送り直さない）。
     if (gen !== this.#gen) return fail('outcome_unknown');

@@ -420,6 +420,8 @@ export function applyFailure(
 
 export interface CandidateActions {
   readonly refresh: () => void;
+  // 文言を残したまま一覧だけを読み直す（自動実行の欄で取り消した・読み直した後。ADR 0199）。
+  readonly reload: () => void;
   readonly open: (ref: string) => void;
   readonly dismiss: (ref: string) => void;
   // 再通知の選択肢を出す・しまう。
@@ -463,6 +465,7 @@ export class CandidateStore {
     this.#autoActionsChanged = autoActionsChanged;
     this.actions = {
       refresh: () => this.#list(),
+      reload: () => this.#reread(),
       open: (ref) => this.#change(ref, 'open', null),
       dismiss: (ref) => this.#change(ref, 'dismiss', null),
       startSnooze: (ref) =>
@@ -530,6 +533,8 @@ export class CandidateStore {
       }),
     ).then(() => {
       if (epoch !== this.#epoch) return;
+      // 2 つの読み直しは重なるが、それぞれ別の欄の写しを新しくする（気づきの行と自動実行の欄）。main の自動実行の
+      // 一覧の読み取りは進行中の読み取りにまとめられる（AutoActionBridge.refresh）ので、中枢への要求は増えても 1 回。
       this.#reread();
       this.#autoActionsChanged();
     });

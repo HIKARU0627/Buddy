@@ -93,6 +93,7 @@ const ENTRIES = [
 const noop = () => undefined;
 const ACTIONS: CandidateActions = {
   refresh: noop,
+  reload: noop,
   open: noop,
   dismiss: noop,
   startSnooze: noop,
@@ -378,8 +379,9 @@ test('an expired, unknown or busy automatic operation cannot be pressed; the lis
       seq: 2,
     }),
   );
+  // 読めていないときは「読めていません」だけで、件数の文言は出さない（ADR 0199）。
   assert.match(unread, /自動実行の結果をまだ読めていません/u);
-  assert.match(unread, /ほかに 3\u00a0件の操作/u);
+  assert.doesNotMatch(unread, /ほかに/u);
   const stale = text(
     panel({
       view: view([linkedRow([auto(0)])], { auto_action_fetch: 'stale' }),

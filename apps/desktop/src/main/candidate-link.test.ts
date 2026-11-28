@@ -46,6 +46,8 @@ interface Rig {
   // candidateAlerts を渡したときの OS 通知の数とトレイの更新の回数（ADR 0196）。
   readonly shown: number[];
   readonly changed: { count: number };
+  // link のログ（理由のコードだけ）。
+  readonly logs: string[];
   ipc(
     channel: string,
     payload: unknown,
@@ -62,6 +64,7 @@ async function start(
 ): Promise<Rig> {
   const shown: number[] = [];
   const changed = { count: 0 };
+  const logs: string[] = [];
   const dir = await tempDir(t, 'bcl-');
   const dataDir = join(dir, 'data');
   await mkdir(dataDir, { recursive: true, mode: 0o700 });
@@ -106,7 +109,9 @@ async function start(
       Promise.resolve({ gateway_mac: null, subnet: null, ssid: null }),
     networkSignature: () => 'fixed',
     onChange: () => undefined,
-    log: () => undefined,
+    log: (code: string) => {
+      logs.push(code);
+    },
     budgetAuto: false,
     backoff: { baseMs: 50, maxMs: 200, jitterRatio: 0 },
     confirmAdmin: () => Promise.resolve(false),
@@ -142,6 +147,7 @@ async function start(
     requests,
     hub,
     shown,
+    logs,
     changed,
     async ipc(channel, payload, options = {}) {
       const { response } = await link.handleCandidateIpc(
@@ -274,6 +280,11 @@ test('the OS notification setting goes through the screen IPC; a candidate notic
   assert.equal(r.link.candidateTray(), null);
   const locked = candidateRequests(r).length;
   publishCandidate(r, 3);
+  // 知らせが WSS でロック中に届いて捨てられるのを待ってから解く（解いた後に届けば解除後の知らせとして扱われる）。
+  await waitUntil(
+    () => r.logs.includes('candidate_notice_dropped_locked'),
+    'notice dropped while locked',
+  );
   // ロックを解くと件数だけ読み直す（ロック中の知らせの OS 通知は出し直さない）。
   r.link.setLockState('unlocked');
   await waitUntil(() => r.link.candidateTray() === 0, 'tray after unlock');

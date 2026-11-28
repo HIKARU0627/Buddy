@@ -1138,6 +1138,8 @@ export class DesktopCoreLink {
       if (notice.schema === 'buddy.candidate-notice.v1') {
         if (this.#lockState === 'unlocked')
           void this.#candidateNotice(notice.alert_count);
+        // ロック中に届いた知らせは捨てる（理由のコードだけを残す。件数・知らせの ID は出さない）。
+        else this.#log('candidate_notice_dropped_locked');
         return;
       }
       if (notice.schema === 'buddy.forget-ledger-notice.v1') {

@@ -27,7 +27,7 @@
 - `storage-mode-cases.json`: 記録しない会話の保存の境界の期待値（許可表の 22 行それぞれの許可側と拒否側・契約の StorageModeState の effects・独立した確認の中身（確定した OperationIntent と内容の hash）と承認の検査・入る／出る／外部変更／音声の接続／遅れて届いた結果／入り直した後の古い承認の順序を入れ替えた遷移。X17・X36・X44・X48・X59、ADR 0045）。手書きで、domain の実装から生成していない。`$draft`・`$approval`・`$origin` は同じファイルの合成の値を差し込む参照（中の値を上書きでき、`$delete` は欄を消す）。content_hash は Python の json.dumps と hashlib で別に求めた値。`scripts/storage-mode.test.mjs` がビルド後の domain で確かめる。
 - `memory-cases.json`: 記憶の保存直前の検査・期限・復元・抽出の時点の期待値（X15・X16・X44 ほか）。
 - `evaluation-cases.json`: 配備×用途の採否・段階・成果物の照合・変化の検知・影モードの期待値（X57・X66・QA21・QA26 ほか）。実測値ではない。
-- `layout-hint-cases.json`: モデルが出す配置のヒント（UI-09、ADR 0200）の形の許可例・拒否例（`CanvasLayoutHint`・`ResponsePlan.layout_hint`）と、プロンプトインジェクションの評価セット（物の本文・メールの本文の合成の指示、模擬のモデルのヒント、使うか戻すかと理由のコード、使ったときの強調・読む順・まとまり。QA01・QA03）。手で書いた値で、実装から作らない。形は `contracts:check`、意味と結果と見た目の回帰は `scripts/layout-hint.test.mjs` が確かめる。実 LLM は使わない。
+- `layout-hint-cases.json`: モデルが出す配置のヒント（UI-09、ADR 0200）の形の許可例・拒否例（`CanvasLayoutHint`・`ResponsePlan.layout_hint`）と、プロンプトインジェクションの評価セット（物の本文・メールの本文の合成の指示、模擬のモデルのヒント、発言ごとの使う・ヒントなし・戻すと理由のコード、当てた後の強調・読む順・まとまり。QA01・QA03）。手で書いた値で、実装から作らない。形は `contracts:check`、評価セットの結果と見た目の回帰は Core（`CanvasHub.applyHinted`）を通す `apps/core/src/canvas-layout-hint.test.ts`、domain の規則は `scripts/layout-hint.test.mjs` が確かめる。実 LLM は使わない。
 - `eval-conversion-cases.json`: 評価セットの行を書き出し形式へ変換する期待値。行はすべて合成。
 - `api-cases.json`: 経路ごとの正常な要求・応答と、認証不足・古い接続範囲・旧版などの拒否の期待値（X04・X42 ほか）。
 - `home-network-cases.json`: 自宅判定の期待値（指紋の不一致・DERP・経路不明・Tailscale を取得できない・指紋だけ・報告の鮮度・中枢と同じマシンの免除、X42、ADR 0022）と、サブネットの正準の表記。手書きで、domain の実装から生成していない。

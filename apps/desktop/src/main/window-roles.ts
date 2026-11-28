@@ -280,6 +280,17 @@ export interface UiWindowOptions {
   readonly skipTaskbar?: boolean;
   readonly alwaysOnTop?: boolean;
   readonly hasShadow?: boolean;
+  // タイトルバーを隠し、画面の上端を窓を動かせる帯にする（従来の窓。ADR 0204）。窓の操作のボタンは OS が描く。
+  readonly titleBarStyle?: 'hidden' | 'hiddenInset';
+  // 窓の操作のボタンを画面の上に重ねる（Windows は最小化などのボタン、macOS は信号機）。画面は、タイトルバーの領域の
+  // 環境変数（titlebar-area-*）でボタンと重ならない余白を空ける。
+  readonly titleBarOverlay?:
+    | boolean
+    | {
+        readonly color: string;
+        readonly symbolColor: string;
+        readonly height: number;
+      };
   readonly roundedCorners?: boolean;
   readonly thickFrame?: boolean;
   readonly enableLargerThanScreen?: boolean;
@@ -313,40 +324,56 @@ export interface UiWindowSpec {
 // 上の中央の島の窓（ADR 0181 の段階 4）。窓は透明で、窓の中の上の中央に島を描く（角の外は透ける。U399 の暫定 (a)）。
 // 幅は、島の中身の最も長い形（ロック中の隠した旨・パネルを出すボタン・停止）が 1 行に入る幅で、入力バーと同じ 560。
 // 高さは小さい形（1 行の 48）と、確認が必要な操作・操作の結果で広げた形（区切り線の下に 1 行を足した 104）の 2 つだけ。
+// ここの大きさは「見える島の形」が入る領域の大きさ。窓はその周りに影の余白（FLOAT_SHADOW）を足して作る（ADR 0204）。
 export const ISLAND_SIZE = { width: 560, height: 48 } as const;
 export const ISLAND_EXPANDED_SIZE = { width: 560, height: 104 } as const;
-// 作業領域の上端と島の間。
+// 作業領域の上端と島の間。窓は作業領域の上端に付け、この幅は窓の中の上の余白として画面が空ける（ADR 0204）。
 export const ISLAND_MARGIN = 8;
+// 浮いた面（島・入力バー）の影を描く余白（ADR 0204）。窓は透明で、影は窓の中に描くので、見える形の周りに余白が要る。
+// side: 左右、below: 島の下、above: 入力バーの上。入力バーの下・島の上は、作業領域の端との間（MARGIN）を余白に使う。
+// 余白は、キャンバスの配置のエンジンが島・入力バーの周りに空ける幅（16）と同じにする。窓（透明な余白を含む）が
+// カードの置き場所に重ならず、余白がカードへのポインターを奪わない。影（shadow-float）はこの幅に収まる濃さにしてある。
+export const FLOAT_SHADOW = { side: 16, below: 16, above: 16 } as const;
 
 // 島の窓の位置と大きさ。上の端を固定し、広げるときは下へ伸ばす。作業領域に収まらない大きさは作業領域に合わせる。
+// 窓は「上の余白（ISLAND_MARGIN）＋見える島＋影の余白」。見える島の位置は、余白を足す前と変わらない。
 export function islandBounds(area: Rect, expanded: boolean): Rect {
   const size = expanded ? ISLAND_EXPANDED_SIZE : ISLAND_SIZE;
-  const width = Math.min(size.width, area.width);
+  const width = Math.min(size.width + FLOAT_SHADOW.side * 2, area.width);
   const height = Math.min(
-    size.height,
-    Math.max(0, area.height - ISLAND_MARGIN),
+    ISLAND_MARGIN + size.height + FLOAT_SHADOW.below,
+    Math.max(0, area.height),
   );
   return {
     x: area.x + Math.round((area.width - width) / 2),
-    y: area.y + ISLAND_MARGIN,
+    y: area.y,
     width,
     height,
   };
 }
 
 // 島の窓の中身の高さ（webContents の preferred-size-changed。画面が決めた島の形）から、広げた大きさにするかを決める。
-// 画面は 2 つの決まった大きさのどちらかを選ばせるだけで、窓の位置・幅・高さの値は main が決める。
+// 画面は 2 つの決まった大きさのどちらかを選ばせるだけで、窓の位置・幅・高さの値は main が決める。中身の高さは
+// 「上の余白＋見える島＋影の余白」。島が伸び始めると小さい形の高さを超えるので窓を先に広げ、縮み終わると窓を戻す
+// （窓は透明なので、窓の大きさの切り替えは見えない。見える伸び縮みは画面がばねで描く。ADR 0204）。
 export function islandExpandedFor(contentHeight: number): boolean {
-  return Number.isFinite(contentHeight) && contentHeight > ISLAND_SIZE.height;
+  return (
+    Number.isFinite(contentHeight) &&
+    contentHeight > ISLAND_MARGIN + ISLAND_SIZE.height + FLOAT_SHADOW.below
+  );
 }
 
 export const INPUT_BAR_SIZE = { width: 560, height: 56 } as const;
 // 入力するときの大きさ（UI-08）。下の端を固定して上へ伸ばす。
 export const INPUT_BAR_EXPANDED_SIZE = { width: 560, height: 176 } as const;
-// 入力バーと作業領域の下端の間。
+// 入力バーと作業領域の下端の間。窓は作業領域の下端に付け、この幅は窓の中の下の余白として画面が空ける（ADR 0204）。
 export const INPUT_BAR_MARGIN = 16;
+// 入力バーを縮めるとき、窓を小さくするまで待つ時間（ADR 0204）。画面が見える形を先に縮め（--motion-island の 520ms）、
+// 縮み終わってから窓を小さくする。広げるときは窓を先に広げる（待たない）。
+export const INPUT_BAR_COLLAPSE_DELAY_MS = 560;
 
 // 入力バーの窓の位置と大きさ（UI-08）。下端を固定し、広げるときは上へ伸ばす。作業領域に収まらない高さは作業領域に合わせる。
+// 窓は「影の余白＋見える入力バー＋下の余白（INPUT_BAR_MARGIN）」。見える入力バーの位置は、余白を足す前と変わらない。
 export function inputBarBounds(
   area: {
     readonly x: number;
@@ -362,14 +389,14 @@ export function inputBarBounds(
   readonly height: number;
 } {
   const size = expanded ? INPUT_BAR_EXPANDED_SIZE : INPUT_BAR_SIZE;
-  const width = Math.min(size.width, area.width);
+  const width = Math.min(size.width + FLOAT_SHADOW.side * 2, area.width);
   const height = Math.min(
-    size.height,
-    Math.max(0, area.height - INPUT_BAR_MARGIN),
+    FLOAT_SHADOW.above + size.height + INPUT_BAR_MARGIN,
+    Math.max(0, area.height),
   );
   return {
     x: area.x + Math.round((area.width - width) / 2),
-    y: area.y + area.height - height - INPUT_BAR_MARGIN,
+    y: area.y + area.height - height,
     width,
     height,
   };
@@ -416,6 +443,38 @@ const TRANSPARENT_WINDOW = {
   hasShadow: false,
 } as const;
 
+// 従来の窓の、画面の上端の帯の高さ（AppShell の上端の帯・サイドバーの上と同じ 48）。
+export const TITLE_BAR_HEIGHT = 48;
+
+// 従来の窓のタイトルバーの指定（ADR 0204）。macOS は信号機を内側へ寄せ、Windows は最小化などのボタンだけを画面の上に
+// 重ねる（地は透明、記号の色は配色に合わせる）。その他の OS（開発の Linux）は OS の枠のまま（何も指定しない）。
+export function legacyTitleBar(
+  platform: string,
+  dark: boolean,
+): Pick<UiWindowOptions, 'titleBarStyle' | 'titleBarOverlay'> {
+  if (platform === 'darwin')
+    return { titleBarStyle: 'hiddenInset', titleBarOverlay: true };
+  if (platform === 'win32')
+    return {
+      titleBarStyle: 'hidden',
+      titleBarOverlay: titleBarOverlayFor(dark),
+    };
+  return {};
+}
+
+// Windows の窓の操作のボタンの色（配色が変わったら main が setTitleBarOverlay で当て直す）。
+export function titleBarOverlayFor(dark: boolean): {
+  readonly color: string;
+  readonly symbolColor: string;
+  readonly height: number;
+} {
+  return {
+    color: '#00000000',
+    symbolColor: dark ? '#f5f5f5' : '#18181b',
+    height: TITLE_BAR_HEIGHT,
+  };
+}
+
 // 役割ごとの窓の作り方。platform は process.platform、display は主の画面。
 export function uiWindowSpec(
   role: UiWindowRole,
@@ -426,17 +485,18 @@ export function uiWindowSpec(
   const prefs = webPreferences(preload, role);
   switch (role) {
     case 'legacy':
-      // 今の 1 つの窓と同じ値。
+      // 1 つの窓。タイトルバーを隠して画面と一体にする（macOS・Windows。ADR 0204）。その他の OS は OS の枠のまま。
       return {
         role,
         options: {
-          width: 960,
-          height: 680,
+          width: 1040,
+          height: 720,
           minWidth: 480,
           minHeight: 360,
           show: false,
           title: 'Buddy',
           autoHideMenuBar: true,
+          ...legacyTitleBar(platform, false),
           webPreferences: prefs,
         },
         contentProtection: false,

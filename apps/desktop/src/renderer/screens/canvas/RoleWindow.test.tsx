@@ -215,9 +215,9 @@ test('the island draws the IO line, the panel button with the count and three pr
     html,
     /<section[^>]*aria-label="状態の島"[^>]*data-island="compact"/u,
   );
-  // 島の面は完全な丸に近い島の丸み（28px）と縁取りの線。影は使わない。
+  // 島の面は島の丸み（28px）と縁取りの線。浮いた面の影を持つ（ADR 0204）。
   assert.match(html, /rounded-island border border-border bg-surface/u);
-  assert.doesNotMatch(html, /shadow/u);
+  assert.match(html, /shadow-float/u);
   // 入出力の 1 行はライブ領域（パネルから島へ移した。同じ文を 2 か所で読ませない）。
   assert.match(html, /<p role="status"[^>]*>(?:(?!<\/p>)[\s\S])*受付中/u);
   const buttons = html.match(/<button[\s\S]*?<\/button>/gu) ?? [];
@@ -407,18 +407,33 @@ test('the input bar is a mark, one field and the canvas button; it is disabled w
     />,
   );
   assert.match(enabled, /aria-label="Buddy への入力"/u);
-  assert.equal((enabled.match(/<input\b/gu) ?? []).length, 1);
-  assert.doesNotMatch(enabled, /<input[^>]*\bdisabled/u);
+  // 入力欄は小さい形でも TextArea（広がった形と置き換えない。ADR 0204）。小さい形は 1 行。
+  assert.equal((enabled.match(/<textarea\b/gu) ?? []).length, 1);
+  assert.doesNotMatch(enabled, /<input\b/u);
+  assert.match(enabled, /rows="1"/u);
+  assert.doesNotMatch(enabled, /<textarea[^>]*\bdisabled/u);
   assert.doesNotMatch(enabled, /placeholder=/u);
   assert.match(enabled, /<button[^>]*aria-label="キャンバスを前に出す"/u);
   // キャンバスの記号（4 つの四角）と、押せる縁。
   assert.equal((enabled.match(/<rect\b/gu) ?? []).length, 4);
   assert.match(enabled, /button--outline/u);
-  // 小さめはカプセル（窓の高さ 56 と同じ h-14・完全な丸）。窓の地は透明で、角の外は透ける（ADR 0181 の段階 4・U399）。
-  assert.match(
-    enabled,
-    /<form class="[^"]*\bh-14\b[^"]*\brounded-full border border-border bg-surface/u,
-  );
+  // 小さめは高さ 56（h-14）で、角は島の丸み（28px。高さ 56 では錠剤の形になる）。浮いた面の影を持ち、高さはばねで動く
+  // （ADR 0204）。窓の地は透明で、角の外は透ける（ADR 0181 の段階 4・U399）。
+  const formClasses = (html: string) =>
+    (/<form[^>]*class="([^"]*)"/u.exec(html)?.[1] ?? '').split(/\s+/u);
+  const compactClasses = formClasses(enabled);
+  for (const name of [
+    'h-14',
+    'rounded-island',
+    'border',
+    'bg-surface',
+    'shadow-float',
+    'duration-(--motion-island)',
+    'ease-spring',
+    'motion-reduce:transition-none',
+  ])
+    assert.ok(compactClasses.includes(name), name);
+  assert.match(enabled, /<form[^>]*data-input-bar="compact"/u);
   const disabled = render(
     <InputBar
       line={{ tone: 'neutral', mark: 'square', text: '停止中' }}
@@ -432,7 +447,7 @@ test('the input bar is a mark, one field and the canvas button; it is disabled w
       onSummon={noop}
     />,
   );
-  assert.match(disabled, /<input[^>]*\bdisabled/u);
+  assert.match(disabled, /<textarea[^>]*\bdisabled/u);
   assert.match(disabled, /<button[^>]*\bdisabled/u);
   // 入力するときは窓が広がり、入力欄が複数行になる（UI-08）。
   const expanded = render(
@@ -451,12 +466,13 @@ test('the input bar is a mark, one field and the canvas button; it is disabled w
     />,
   );
   assert.equal((expanded.match(/<textarea\b/gu) ?? []).length, 1);
-  // 入力中は島の丸み（28px）の面。
-  assert.match(
-    expanded,
-    /<form class="[^"]*\bh-screen\b[^"]*\brounded-island border border-border bg-surface/u,
-  );
-  assert.doesNotMatch(expanded, /<form class="[^"]*rounded-full/u);
+  // 入力中も島の丸み（28px）の面のまま、窓の中いっぱい（影の余白を除く）の高さになる。
+  const expandedClasses = formClasses(expanded);
+  for (const name of ['h-full', 'rounded-island', 'bg-surface', 'shadow-float'])
+    assert.ok(expandedClasses.includes(name), name);
+  assert.ok(!expandedClasses.includes('h-14'));
+  assert.ok(!expandedClasses.includes('rounded-full'));
+  assert.match(expanded, /<form[^>]*data-input-bar="expanded"/u);
   assert.match(expanded, /rows="5"/u);
   assert.doesNotMatch(expanded, /<input\b/u);
   assert.match(expanded, /どちらの予定ですか。/u);
@@ -503,12 +519,12 @@ test('typed text disappears when the device locks or the lock state becomes unkn
         onSummon={noop}
       />,
     );
-  assert.match(draw(running), /value="明日の予定を確認"/u);
-  assert.match(draw(stopped), /value="明日の予定を確認"/u);
+  assert.match(draw(running), /<textarea[^>]*>明日の予定を確認<\/textarea>/u);
+  assert.match(draw(stopped), /<textarea[^>]*>明日の予定を確認<\/textarea>/u);
   for (const hidden of [locked, unknown]) {
     const html = draw(hidden);
     assert.doesNotMatch(html, /明日の予定を確認/u);
-    assert.match(html, /<input[^>]*\bdisabled/u);
+    assert.match(html, /<textarea[^>]*\bdisabled/u);
   }
   // ロック中・不明では、広がった入力バーの聞き返し本文も描かない。
   const hiddenClarification = render(

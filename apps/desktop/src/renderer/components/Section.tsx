@@ -1,4 +1,5 @@
-// カードを使わない欄（ADR 0024 の約束: Card は状態帯と入力フォームだけ）。見出し（h2）と区切り線で分け、
+// 欄（ADR 0024・0204）。見出し（h2）と、その下の面（地より 1 段明るい面。角は箱の丸み）で 1 つのまとまりにする。
+// 区切り線を並べる代わりに、面の明るさの差でまとまりを示す（ADR 0024 の「見出しと区切り線」を ADR 0204 で改めた）。
 // section は aria-labelledby で見出しと結ぶ。
 import type { ReactNode } from 'react';
 
@@ -18,21 +19,20 @@ export function Section({
   readonly children: ReactNode;
 }) {
   return (
-    <section
-      aria-labelledby={id}
-      className="flex flex-col gap-4 border-t border-separator pt-4"
-    >
-      <div className="flex flex-wrap items-center justify-between gap-2">
+    <section aria-labelledby={id} className="flex flex-col gap-2">
+      <div className="flex min-h-8 flex-wrap items-center justify-between gap-2 px-1">
         <h2
           id={id}
           tabIndex={focusable ? -1 : undefined}
-          className="text-base font-semibold"
+          className="rounded-part text-sm font-semibold"
         >
           {title}
         </h2>
         {action}
       </div>
-      {children}
+      <div className="flex flex-col gap-4 rounded-box border border-separator bg-surface p-4 sm:p-5">
+        {children}
+      </div>
     </section>
   );
 }

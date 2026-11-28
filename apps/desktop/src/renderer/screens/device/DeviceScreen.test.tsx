@@ -511,3 +511,90 @@ test('when stopped the island has no stop button and the banner keeps resume', (
   assert.match(html, /停止中/u);
   assert.deepEqual(buttonLabels(html), [RESUME, HIDE, QUIT]);
 });
+
+// ADR 0204: 機能をページに分け、左のサイドバーで切り替える。期待値は手で書いた。
+test('the device screen lists the given pages and then its own device page, each mounted once', () => {
+  const state = view(shown('none'), {
+    connection: {
+      visibility: 'shown',
+      registration: 'registered',
+      link: 'connected',
+      link_reason: null,
+      last_confirmed_at: AT,
+      retry_at: null,
+      pairing: null,
+      home_network: null,
+      operations: [],
+      budget_items: [],
+      private_confirmations: [],
+      hub_screen: false,
+      hub_target: null,
+    },
+  });
+  const html = renderToStaticMarkup(
+    <AppProviders>
+      <DeviceScreen
+        state={state}
+        now={NOW}
+        actions={deviceActions(state.status, () => undefined)}
+        pages={[
+          {
+            id: 'talk',
+            label: '会話',
+            icon: null,
+            content: <p data-page-body="talk">会話の中身</p>,
+          },
+        ]}
+      />
+    </AppProviders>,
+  );
+  // サイドバーの順: 渡したページ → 端末と接続。
+  assert.equal(html.match(/role="tab"/gu)?.length, 2);
+  const tabs = [...html.matchAll(/<span title="([^"]*)"/gu)];
+  assert.deepEqual(
+    tabs.map((match) => match[1]),
+    ['会話', '端末と接続'],
+  );
+  // ページの中身は 1 つずつ（選んでいないページも描く）。中枢との接続と電源の記録は「端末と接続」に入る。
+  assert.equal(html.match(/data-page-body="talk"/gu)?.length, 1);
+  assert.equal(html.match(/id="connection-heading"/gu)?.length, 1);
+  assert.equal(html.match(/id="power-log-heading"/gu)?.length, 1);
+  const panels = [
+    ...html.matchAll(/<div[^>]*data-slot="tabs-panel"[^>]*>/gu),
+  ].map((match) => match[0]);
+  assert.equal(panels.length, 2);
+  assert.doesNotMatch(panels[0] ?? '', / inert=""/u);
+  assert.match(panels[1] ?? '', / inert=""/u);
+  assert(
+    html.indexOf('id="connection-heading"') > html.indexOf(panels[1] ?? ''),
+  );
+  // 状態の島・閉じる・終了は、どのページでも 1 つずつ。
+  assert.equal(html.match(/aria-label="状態の島"/gu)?.length, 1);
+  assert.deepEqual(buttonLabels(html), [STOP, HIDE, QUIT]);
+});
+
+test('while locked or unknown there are no pages and no tabs, even when pages are given', () => {
+  for (const lock_state of ['locked', 'unknown'] as const) {
+    const state = view({ visibility: 'hidden', lock_state });
+    const html = renderToStaticMarkup(
+      <AppProviders>
+        <DeviceScreen
+          state={state}
+          now={NOW}
+          actions={deviceActions(state.status, () => undefined)}
+          pages={[
+            {
+              id: 'talk',
+              label: '会話',
+              icon: null,
+              content: <p>会話の中身</p>,
+            },
+          ]}
+        />
+      </AppProviders>,
+    );
+    assert.doesNotMatch(html, /role="tab"|role="tabpanel"|会話の中身/u);
+    assert.doesNotMatch(html, /端末と接続|電源とロックの記録/u);
+    assert.deepEqual(buttonLabels(html), [STOP, HIDE, QUIT]);
+  }
+});

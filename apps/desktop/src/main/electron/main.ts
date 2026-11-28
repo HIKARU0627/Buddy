@@ -12,6 +12,7 @@ import {
   dialog,
   globalShortcut,
   ipcMain,
+  nativeTheme,
   nativeImage,
   powerMonitor,
   protocol,
@@ -129,6 +130,8 @@ import {
   canvasResendAfter,
   rolesForMode,
   senderFactsOf,
+  INPUT_BAR_COLLAPSE_DELAY_MS,
+  titleBarOverlayFor,
   inputBarBounds,
   islandBounds,
   islandExpandedFor,
@@ -446,12 +449,25 @@ function uiDisplay() {
 }
 
 // 入力バーの大きさを切り替える（UI-08）。下端は固定したまま、入力するときだけ上へ広げる。
-function setInputBarExpanded(expanded: boolean): void {
-  if (uiMode !== 'canvas' || inputBarExpanded === expanded) return;
-  inputBarExpanded = expanded;
-  const window = liveWindow('input');
-  if (window === null || window.isDestroyed()) return;
-  window.setBounds(inputBarBounds(uiDisplay().workArea, expanded));
+// 広げるときは窓をすぐ広げ、縮めるときは画面が見える形を縮め終わるまで待ってから窓を小さくする（ADR 0204。窓は透明で、
+// 見える伸び縮みは画面がばねで描く）。窓が隠れたとき（immediate）は待たない。待つ間に広げ直したら、縮めるのをやめる。
+let inputBarCollapseTimer: ReturnType<typeof setTimeout> | null = null;
+function setInputBarExpanded(expanded: boolean, immediate = false): void {
+  if (uiMode !== 'canvas') return;
+  if (inputBarCollapseTimer !== null) {
+    clearTimeout(inputBarCollapseTimer);
+    inputBarCollapseTimer = null;
+  }
+  const apply = () => {
+    inputBarCollapseTimer = null;
+    if (inputBarExpanded === expanded) return;
+    inputBarExpanded = expanded;
+    const window = liveWindow('input');
+    if (window === null || window.isDestroyed()) return;
+    window.setBounds(inputBarBounds(uiDisplay().workArea, expanded));
+  };
+  if (expanded || immediate) apply();
+  else inputBarCollapseTimer = setTimeout(apply, INPUT_BAR_COLLAPSE_DELAY_MS);
 }
 
 // 島の窓の大きさを切り替える（ADR 0181 の段階 4）。上の端は固定したまま、広げるときは下へ伸ばす。窓の動きは付けない
@@ -524,6 +540,18 @@ function createWindow(role: UiWindowRole): BrowserWindow {
   });
   const contentsId = window.webContents.id;
   windows.register(contentsId, role, window);
+  // 従来の窓の、Windows の窓の操作のボタンの色を配色に合わせる（ADR 0204）。配色が変わったら当て直す。
+  if (role === 'legacy' && process.platform === 'win32') {
+    const applyOverlay = () => {
+      if (!window.isDestroyed())
+        window.setTitleBarOverlay(
+          titleBarOverlayFor(nativeTheme.shouldUseDarkColors),
+        );
+    };
+    applyOverlay();
+    nativeTheme.on('updated', applyOverlay);
+    window.once('closed', () => nativeTheme.off('updated', applyOverlay));
+  }
   // 画面共有・スクリーンショットから守る（キャンバスと状態の層）。
   if (spec.contentProtection) window.setContentProtection(true);
   if (spec.allWorkspaces !== null)
@@ -573,7 +601,7 @@ function createWindow(role: UiWindowRole): BrowserWindow {
     // 入力するときだけ広げる（UI-08）。下端は固定したまま上へ伸ばし、離れると縮める。
     window.on('focus', () => setInputBarExpanded(true));
     window.on('blur', () => setInputBarExpanded(false));
-    window.on('hide', () => setInputBarExpanded(false));
+    window.on('hide', () => setInputBarExpanded(false, true));
   }
   if (role === 'canvas') {
     // 前に出したキャンバスは、Esc・ほかのアプリへの移動（前面でなくなる）で後ろへ戻る。

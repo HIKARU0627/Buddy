@@ -162,20 +162,47 @@ test('the shared shape classes use the radius steps', () => {
   assert.equal(value('BADGE_CLASS'), undefined);
 });
 
-test('the renderer draws no shadows except the dragged canvas item left for stage 4', () => {
-  // 影の代わりに縁取りの線で示す（ADR 0181 の段階 3・U393）。キャンバスで掴んでいる物の影（CanvasBoard）は、
-  // キャンバス表示を作り直す段階 4 で扱うので、ここでは手で書いた 1 件だけを残す。
-  const found = [];
+test('only floating surfaces draw shadows, and only with the two elevation steps', () => {
+  // 地に置いた物（カード・欄）は影を持たず、浮いた物だけが影を持つ（ADR 0204。ADR 0181 の段階 3 の「影をやめる」を、
+  // 浮いた面に限って改めた）。使える影は shadow-float（島・入力バー）と shadow-raised の 2 段だけ。HeroUI の部品の影を
+  // 消す shadow-none! は使える。キャンバスで掴んでいる物の影（CanvasBoard の shadow-overlay）は手で書いた 1 件だけを残す。
+  const allowed = new Set(['shadow-float', 'shadow-raised', 'shadow-none!']);
+  const floating = [];
+  const others = [];
   for (const path of sources(rendererDir)) {
     const text = withoutComments(readFileSync(path, 'utf8'));
+    const name = path.slice(rendererDir.length).replaceAll(sep, '/');
     for (const match of text.matchAll(
       /(?<![\w-])(?:[\w-]+:)*shadow(?:-[^\s'"`{}]+)?(?![\w])/gu,
-    ))
-      found.push(
-        `${path.slice(rendererDir.length).replaceAll(sep, '/')}: ${match[0]}`,
-      );
+    )) {
+      if (match[0] === 'shadow-float') floating.push(name);
+      else if (!allowed.has(match[0])) others.push(`${name}: ${match[0]}`);
+    }
   }
-  assert.deepEqual(found, ['screens/canvas/CanvasBoard.tsx: shadow-overlay']);
+  assert.deepEqual(others, ['screens/canvas/CanvasBoard.tsx: shadow-overlay']);
+  // 浮いた面は、上の中央の島（キャンバス表示・従来の窓）と入力バーの 3 つ（手で書いた期待値）。
+  assert.deepEqual(floating.sort(), [
+    'components/StatusBand.tsx',
+    'screens/canvas/CanvasIsland.tsx',
+    'screens/canvas/InputBar.tsx',
+  ]);
+});
+
+test('styles.css defines the two elevation shadows and the spring curve', () => {
+  const css = cssWithoutComments(readFileSync(stylesPath, 'utf8'));
+  const names = [...css.matchAll(/(--shadow-[a-z]+)\s*:/gu)].map(
+    (match) => match[1],
+  );
+  assert.deepEqual(names, ['--shadow-raised', '--shadow-float']);
+  // ばねの曲線は linear() で、0 から始まり 1 で終わる。行き過ぎは 2% 未満（手で書いた上限）。
+  const spring = /--ease-spring:\s*linear\(([^)]*)\)/u.exec(css)?.[1];
+  assert.ok(spring !== undefined);
+  const points = spring.split(',').map((part) => Number(part.trim()));
+  assert.equal(points[0], 0);
+  assert.equal(points.at(-1), 1);
+  assert.ok(points.every((value) => Number.isFinite(value)));
+  assert.ok(Math.max(...points) > 1);
+  assert.ok(Math.max(...points) < 1.02);
 });
 
 // --- styles.css の試験 ---
@@ -298,9 +325,9 @@ test('motion durations become zero when the OS asks for reduced motion', () => {
       declarations.has('--motion-move'),
   );
   assert.deepEqual(motion(normal?.declarations ?? new Map()), {
-    '--motion-move': '150ms',
-    '--motion-panel': '180ms',
-    '--motion-island': '320ms',
+    '--motion-move': '180ms',
+    '--motion-panel': '280ms',
+    '--motion-island': '520ms',
   });
   const reduced = blocks.find(({ selector }) =>
     /@media \(prefers-reduced-motion: reduce\) :root, :host$/u.test(selector),

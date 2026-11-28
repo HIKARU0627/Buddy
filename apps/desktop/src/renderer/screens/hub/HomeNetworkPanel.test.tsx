@@ -416,10 +416,11 @@ test(
         now={NOW}
       />,
     );
+    // 欄は「見出しの行」と「その下の面」の 2 つ（ADR 0204）。拒否の文言は、面の先頭（見出しの行のすぐ下）に出す。
     assert.match(
       statusRejected,
       new RegExp(
-        `>${HOME_LABELS.reread}</button></div><p role="alert"[^>]*>(?:<[^>]+>)*読み取りの拒否`,
+        `>${HOME_LABELS.reread}</button></div><div[^>]*><p role="alert"[^>]*>(?:<[^>]+>)*読み取りの拒否`,
         'u',
       ),
     );

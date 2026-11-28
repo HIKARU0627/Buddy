@@ -13,12 +13,15 @@
 @source not './**/*.test.tsx';
 @source not './**/*.test.ts';
 
-/* 書体: 日本語の書体を明示する（Windows で細すぎる Yu Gothic の Regular を避け、Medium を先に置く）。 */
+/*
+ * 書体: OS の純正アプリと同じ書体を先に置く（ADR 0204）。欧文は macOS の San Francisco・Windows 11 の Segoe UI Variable、
+ * 和文は macOS の Hiragino Sans・Windows の Yu Gothic UI（Windows の画面用の和文。細すぎる Yu Gothic の Regular を避ける）。
+ */
 @theme {
   --font-sans:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Hiragino Sans',
-    'Hiragino Kaku Gothic ProN', 'Yu Gothic Medium', 'Yu Gothic', Meiryo,
-    Roboto, 'Noto Sans JP', sans-serif;
+    -apple-system, BlinkMacSystemFont, 'Segoe UI Variable Text', 'Segoe UI',
+    'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Yu Gothic UI',
+    'Yu Gothic Medium', 'Yu Gothic', Meiryo, Roboto, 'Noto Sans JP', sans-serif;
 
   /*
    * 角の丸みの 4 段（ADR 0181。上の中央の島に合わせて全体の丸みをそろえる）。画面のソースで使うクラスは
@@ -42,10 +45,69 @@
   --radius-4xl: var(--radius-island);
   --radius-field: var(--radius-box);
 
-  /* 島の伸び縮みと、物の位置・大きさの動きの曲線（ADR 0181）。時間は下の --motion-* で、動きを減らす設定では 0 にする。 */
+  /*
+   * 動きの曲線（ADR 0181・0204）。時間は下の --motion-* で、動きを減らす設定では 0 にする。
+   * - island: 現れる物の減速（速く出て静かに止まる）。
+   * - spring: 形の伸び縮み（島・入力バー・欄の開閉）。減衰比 0.82 のばねの応答を linear() で写した（行き過ぎは 1% ほど）。
+   * - settle: 位置の移動・ページの切り替え（行き過ぎのない減速。Windows 11 の Fast-In と同じ曲線）。
+   */
   --ease-island: cubic-bezier(0.32, 0.72, 0, 1);
-  --animate-status-panel-in: status-panel-in var(--motion-panel) ease-out;
+  --ease-spring: linear(
+    0,
+    0.03,
+    0.1037,
+    0.2018,
+    0.3101,
+    0.4191,
+    0.5223,
+    0.6161,
+    0.6985,
+    0.7689,
+    0.8275,
+    0.8752,
+    0.9132,
+    0.9427,
+    0.9651,
+    0.9816,
+    0.9933,
+    1.0013,
+    1.0064,
+    1.0094,
+    1.0108,
+    1.0111,
+    1.0107,
+    1.0098,
+    1.0087,
+    1.0075,
+    1.0063,
+    1.0051,
+    1.0041,
+    1.0032,
+    1.0025,
+    1.0018,
+    1
+  );
+  --ease-settle: cubic-bezier(0, 0, 0, 1);
+  --animate-status-panel-in: status-panel-in var(--motion-panel)
+    var(--ease-settle);
   --animate-island-in: island-in var(--motion-island) var(--ease-island);
+  --animate-enter: enter var(--motion-panel) var(--ease-settle);
+  --animate-page-in: page-in var(--motion-panel) var(--ease-settle);
+  --animate-pop-in: pop-in var(--motion-island) var(--ease-spring);
+
+  /*
+   * 影（ADR 0204。ADR 0181 の「影をやめる」を、浮いた面に限って改めた）。地に置いた物（カード・欄）は影を持たず、
+   * 浮いた物だけが影を持つ。影は近い影（輪郭）と遠い影（高さ）の 2 層。色は配色で変える（light-dark）。
+   * - raised: 地から少しだけ浮いた面（選ばれた行の印・内容の面）。
+   * - float: 浮いた面（上の中央の島・入力バー）。透明な窓の中に描くので、窓の影の余白（16px）に収まる広がりにする。
+   */
+  --shadow-raised:
+    0 0 0 0.5px light-dark(rgb(0 0 0 / 0.05), rgb(0 0 0 / 0.5)),
+    0 1px 2px light-dark(rgb(0 0 0 / 0.06), rgb(0 0 0 / 0.4));
+  --shadow-float:
+    0 0 0 0.5px light-dark(rgb(0 0 0 / 0.08), rgb(0 0 0 / 0.6)),
+    0 1px 3px light-dark(rgb(0 0 0 / 0.08), rgb(0 0 0 / 0.4)),
+    0 6px 16px -4px light-dark(rgb(0 0 0 / 0.18), rgb(0 0 0 / 0.55));
 }
 
 /*
@@ -60,10 +122,10 @@
     --field-radius: var(--radius-box);
     /* 入力欄に境界を付ける（色はテーマごと）。 */
     --field-border-width: 1px;
-    /* 動きの時間（ADR 0181）。move: 物の位置・大きさ、panel: パネルの滑り込み、island: 島の伸び縮み（段階 2 以降）。 */
-    --motion-move: 150ms;
-    --motion-panel: 180ms;
-    --motion-island: 320ms;
+    /* 動きの時間（ADR 0181・0204）。move: 押下・色・小さな移動、panel: 現れる物・ページの切り替え、island: 形の伸び縮み（ばね）。 */
+    --motion-move: 180ms;
+    --motion-panel: 280ms;
+    --motion-island: 520ms;
   }
 
   /* 動きを減らす設定では動かさない（時間を 0 にする。クラスの motion-safe・motion-reduce と二重に止める）。 */
@@ -164,10 +226,9 @@
     content: '*' / '必須';
   }
 
-  /* Tabs の選ばれた印の影をやめ、境界線で示す（R2 の低 1。丸みは上の「完全な丸」）。 */
+  /* Tabs の選ばれた印は、地から少しだけ浮いた面にする（ADR 0204。境界線で示す R2 の低 1 を改めた。丸みは上の「完全な丸」）。 */
   .tabs__indicator {
-    box-shadow: none;
-    border: 1px solid var(--border);
+    box-shadow: var(--shadow-raised);
   }
   /* outline のボタン（一覧を更新）の縁は入力欄の境界と同じ色にし、地・カードに対して 3:1 以上にする（R2-M2）。 */
   .button--outline {
@@ -238,12 +299,15 @@ html[data-window-surface='transparent'] body {
   }
 }
 
-/* 状態の層のパネルが画面の端から出るときの動き（UI-04）。窓の大きさは main が変え、中身は右から少しだけ滑り込む。
-   動きを減らす設定では付けない（motion-safe。時間の --motion-panel も 0 になる）。 */
+/*
+ * 動き（ADR 0181・0204）。現れる物は「少しだけ動いて、ぼかしから晴れる」。動きを減らす設定では付けない
+ * （クラスは motion-safe。時間の --motion-* も 0 になる）。消える側の動きは部品（components/Fluid.tsx）が持つ。
+ */
+/* 状態の層のパネルが画面の端から出る（UI-04）。窓は main が出し、中身は右から滑り込む。 */
 @keyframes status-panel-in {
   from {
     opacity: 0;
-    transform: translateX(24px);
+    transform: translateX(32px);
   }
   to {
     opacity: 1;
@@ -251,15 +315,176 @@ html[data-window-surface='transparent'] body {
   }
 }
 
-/* 上の中央の島が広がるときの動き（ADR 0181 の段階 2）。広がった行が上から少しだけ下りて現れる。畳むときは動かさない。
-   動きを減らす設定では付けない（motion-safe。時間の --motion-island も 0 になる）。 */
+/* 島の広がった行が現れる（ADR 0181 の段階 2）。形の伸び（ばね）の途中で、ぼかしから晴れる。 */
 @keyframes island-in {
   from {
     opacity: 0;
-    transform: translateY(-4px);
+    filter: blur(6px);
+    transform: translateY(-6px) scale(0.96);
+  }
+  60% {
+    opacity: 1;
+    filter: blur(0);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* 差し込まれた物（知らせ・行・欄）が現れる。 */
+@keyframes enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
   }
   to {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+/* ページ（ナビゲーションで選んだ面）が現れる。 */
+@keyframes page-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 浮いた面（島・入力バー）が最初に現れる。 */
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/*
+ * 純正アプリの振る舞いに合わせる細部（ADR 0204）。
+ * - 操作の部品（ボタン・タブ・見出し・ラベル）の文字は選択させず、矢印のカーソルのままにする（指のカーソルはリンクだけ）。
+ * - スクロールバーは細くし、地になじませる。選択の色はアクセントの薄い面にする。
+ * - 高さを auto・fit-content と数値の間で補間できるようにする（欄の開閉を滑らかにする。Chromium 129 以降）。
+ */
+@layer base {
+  :root {
+    interpolate-size: allow-keywords;
+    scrollbar-color: color-mix(in oklab, var(--foreground) 22%, transparent)
+      transparent;
+    scrollbar-width: thin;
+  }
+  body {
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    font-kerning: normal;
+  }
+  ::selection {
+    background: var(--accent-soft-hover);
+  }
+  button,
+  summary,
+  label,
+  legend,
+  h1,
+  h2,
+  h3,
+  nav,
+  [role='tab'],
+  [role='tablist'] {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  img,
+  svg {
+    -webkit-user-drag: none;
+  }
+}
+
+/* 窓を動かせる帯（枠のない窓の上端。ADR 0204）。中の操作の部品は動かす対象から外す。 */
+@utility app-drag {
+  -webkit-app-region: drag;
+  app-region: drag;
+  & button,
+  & a,
+  & input,
+  & textarea,
+  & [role='tab'],
+  & [data-no-drag] {
+    -webkit-app-region: no-drag;
+    app-region: no-drag;
+  }
+}
+@utility app-no-drag {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+@layer components {
+  /* 操作の部品は矢印のカーソルのままにする（指のカーソルはリンクだけ）。 */
+  .button,
+  .tabs__tab,
+  .disclosure__trigger,
+  .close-button {
+    cursor: default;
+  }
+  /* 押した手応え・色の移りを、どのボタンでも同じ時間と曲線にする。 */
+  .button {
+    transition:
+      transform var(--motion-move) var(--ease-settle),
+      background-color var(--motion-move) var(--ease-settle),
+      border-color var(--motion-move) var(--ease-settle),
+      color var(--motion-move) var(--ease-settle),
+      opacity var(--motion-move) var(--ease-settle);
+  }
+  /* 入力欄は内側に影を持たず、フォーカスの輪を滑らかに出す。 */
+  .input,
+  .textarea {
+    transition:
+      border-color var(--motion-move) var(--ease-settle),
+      background-color var(--motion-move) var(--ease-settle),
+      box-shadow var(--motion-move) var(--ease-settle);
+  }
+  /* 開閉する欄（Disclosure）の中身。 */
+  .disclosure__content,
+  .accordion__panel {
+    transition:
+      height var(--motion-panel) var(--ease-spring),
+      opacity var(--motion-move) var(--ease-settle);
+  }
+  /* Tabs の選ばれた印は、ばねで移る。 */
+  .tabs__indicator {
+    transition-duration: var(--motion-panel);
+    transition-timing-function: var(--ease-spring);
+  }
+  /* 知らせ（Alert）は差し込まれたときに現れる。 */
+  @media (prefers-reduced-motion: no-preference) {
+    .alert {
+      animation: var(--animate-enter);
+    }
+  }
+}
+
+/*
+ * 窓の操作のボタン（macOS の信号機・Windows の最小化などのボタン）と重ならない余白（ADR 0204）。枠のない窓では、
+ * タイトルバーの領域の環境変数が使える。枠のある窓（開発の Linux など）では変数がなく、余白は 0 になる。
+ */
+@utility ps-titlebar {
+  padding-inline-start: max(1.25rem, env(titlebar-area-x, 0px));
+}
+@utility pe-titlebar {
+  padding-inline-end: max(
+    1rem,
+    calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw))
+  );
 }

@@ -27,6 +27,7 @@ import type {
 } from '../state/island-state.js';
 import { detailItems } from '../state/status-lines.js';
 import { privateModeOn } from '../state/storage-mode-state.js';
+import { FluidBox, usePresence } from './Fluid.js';
 import { PrivateModeMark } from './StorageMode.js';
 import { StatusText } from './StatusText.js';
 
@@ -45,12 +46,16 @@ export function StopButton({ onStop }: { readonly onStop: () => void }) {
 }
 
 // 同じ画面の「確認が必要な操作」の見出しへ移る（フォーカスを移し、見える位置へ巻き取る）。
-function openAttention(): void {
+export function openAttention(): void {
   const heading = document.getElementById(ATTENTION_HEADING_ID);
   if (heading === null) return;
   heading.focus({ preventScroll: true });
   heading.scrollIntoView({ block: 'center' });
 }
+
+// 畳む間の広がった行（ADR 0204）。流れから外して島の形を先に縮め、行は薄れながら形に切り取られる。
+const LEAVING_ROW_CLASS =
+  'pointer-events-none absolute inset-x-5 top-full opacity-0 transition-opacity duration-(--motion-move)';
 
 function ExpandedLine({ expanded }: { readonly expanded: IslandExpanded }) {
   return (
@@ -89,9 +94,12 @@ export function StatusIsland({
   );
   const Icon =
     view.kind === 'hidden' && view.icon === 'warning' ? WarningIcon : InfoIcon;
+  // 畳むときは、薄れる間だけ前の行を残す（動きの時間が 0 なら残さない）。
+  const { shown: row, leaving } = usePresence(expanded);
   return (
-    <div className="sticky top-0 z-20 -mt-2 flex justify-center bg-background pt-2">
-      <section
+    <div className="@container flex w-full justify-center">
+      <FluidBox
+        as="section"
         aria-label={ISLAND_LABELS.region}
         data-island={expanded === null ? 'compact' : 'expanded'}
         onPointerEnter={() => onHoldChange('pointer', true)}
@@ -101,9 +109,10 @@ export function StatusIsland({
           if (!event.currentTarget.contains(event.relatedTarget as Node | null))
             onHoldChange('focus', false);
         }}
-        className="flex w-fit max-w-full flex-col rounded-island border border-border bg-surface px-5 py-2 text-foreground"
+        className="app-no-drag max-w-full rounded-island border border-border bg-surface text-foreground shadow-float"
+        innerClassName="relative flex max-w-[calc(100cqw-2px)] flex-col px-5 py-2"
       >
-        <div className="flex min-h-10 flex-wrap items-center justify-center gap-x-5 gap-y-1">
+        <div className="flex min-h-9 flex-wrap items-center justify-center gap-x-5 gap-y-1">
           {view.kind === 'hidden' ? (
             <>
               <p
@@ -124,7 +133,7 @@ export function StatusIsland({
             <>
               <p
                 role="status"
-                className="flex items-center gap-2 text-base font-semibold"
+                className="flex items-center gap-2 text-sm font-semibold"
               >
                 <span className="text-xs font-normal text-muted">
                   {ISLAND_LABELS.ioLabel}
@@ -144,10 +153,13 @@ export function StatusIsland({
         </div>
         {/* 広がる形。polite のライブ領域（status）は内容を出している間いつも置いておき、読ませる行だけを中に入れる（出した瞬間に読まれるように）。 */}
         <div
+          inert={leaving}
           className={
-            expanded === null
+            row === null
               ? ''
-              : 'mt-2 border-t border-separator pt-2 pb-1 motion-safe:animate-island-in'
+              : `mt-2 border-t border-separator pt-2 pb-1 motion-safe:animate-island-in ${
+                  leaving ? LEAVING_ROW_CLASS : ''
+                }`
           }
         >
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -155,29 +167,29 @@ export function StatusIsland({
             <div className="min-w-0 flex-1">
               {view.kind === 'shown' ? (
                 <div role="status" data-island-live="status">
-                  {expanded?.live === 'status' ? (
-                    <ExpandedLine expanded={expanded} />
+                  {row?.live === 'status' ? (
+                    <ExpandedLine expanded={row} />
                   ) : null}
                 </div>
               ) : null}
               {/* 失敗は alert。alert は差し込んだ時点で読まれるので、出すときだけ置く（失敗のない画面に alert を置かない）。 */}
-              {expanded?.live === 'alert' ? (
+              {row?.live === 'alert' ? (
                 <div role="alert" data-island-live="alert">
-                  <ExpandedLine expanded={expanded} />
+                  <ExpandedLine expanded={row} />
                 </div>
               ) : null}
-              {expanded !== null && expanded.live === null ? (
-                <ExpandedLine expanded={expanded} />
+              {row !== null && row.live === null ? (
+                <ExpandedLine expanded={row} />
               ) : null}
             </div>
-            {expanded?.openAttention === true ? (
+            {row?.openAttention === true ? (
               <Button variant="secondary" size="sm" onPress={onOpenAttention}>
                 {ISLAND_LABELS.openAttention}
               </Button>
             ) : null}
           </div>
         </div>
-      </section>
+      </FluidBox>
     </div>
   );
 }
@@ -189,7 +201,10 @@ export function StatusBand({
   onStop,
   stopShortcut = null,
   island = null,
+  onOpenAttention,
 }: {
+  // 島の「確認が必要な操作を見る」を押したとき（渡さなければ、確認の欄の見出しへ移る）。
+  readonly onOpenAttention?: () => void;
   readonly status: DesktopStatusBar | null;
   readonly connection: DesktopConnectionView | null;
   readonly now: number;
@@ -223,6 +238,7 @@ export function StatusBand({
         onStop={onStop}
         stopShortcut={stopShortcut}
         privateMode={privateModeOn(status)}
+        {...(onOpenAttention === undefined ? {} : { onOpenAttention })}
         onHoldChange={(source, holding) => {
           setHold((previous) => {
             const next = { ...previous, [source]: holding };
@@ -235,7 +251,7 @@ export function StatusBand({
         }}
       />
       {items.length === 0 ? null : (
-        <div className="-mt-3 flex flex-wrap items-baseline justify-center gap-x-4 gap-y-1 text-xs">
+        <div className="flex flex-wrap items-baseline justify-center gap-x-4 gap-y-1 text-xs leading-4">
           <dl className="contents">
             {items.map((entry) => (
               <div key={entry.label} className="flex gap-1.5">

@@ -6,15 +6,19 @@ import { DESKTOP_IPC_CHANNELS, admitDesktopRequest } from '@buddy/domain';
 import { createDesktopContract, loadContractSchema } from './contract.js';
 import { DesktopDeviceController } from './device-controller.js';
 import {
+  FLOAT_SHADOW,
+  INPUT_BAR_COLLAPSE_DELAY_MS,
   INPUT_BAR_EXPANDED_SIZE,
   INPUT_BAR_SIZE,
   ISLAND_EXPANDED_SIZE,
+  ISLAND_MARGIN,
   ISLAND_SIZE,
   UiWindowRegistry,
   channelAllowedForWindow,
   inputBarBounds,
   islandBounds,
   islandExpandedFor,
+  titleBarOverlayFor,
   notificationAllowedForWindow,
   rolesForMode,
   senderFactsOf,
@@ -738,18 +742,37 @@ const SHARED_PREFS = {
   spellcheck: false,
 };
 
-test('the legacy window is created with the same options as before', () => {
-  for (const platform of ['darwin', 'win32'])
+test('the legacy window hides the title bar on macOS and Windows and keeps the OS frame elsewhere', () => {
+  // タイトルバーの指定（ADR 0204）。手で書いた期待値。
+  const titleBar: Record<string, object> = {
+    darwin: { titleBarStyle: 'hiddenInset', titleBarOverlay: true },
+    win32: {
+      titleBarStyle: 'hidden',
+      titleBarOverlay: {
+        color: '#00000000',
+        symbolColor: '#18181b',
+        height: 48,
+      },
+    },
+    linux: {},
+  };
+  assert.deepEqual(titleBarOverlayFor(true), {
+    color: '#00000000',
+    symbolColor: '#f5f5f5',
+    height: 48,
+  });
+  for (const platform of ['darwin', 'win32', 'linux'])
     assert.deepEqual(uiWindowSpec('legacy', platform, DISPLAY, PRELOAD), {
       role: 'legacy',
       options: {
-        width: 960,
-        height: 680,
+        width: 1040,
+        height: 720,
         minWidth: 480,
         minHeight: 360,
         show: false,
         title: 'Buddy',
         autoHideMenuBar: true,
+        ...titleBar[platform],
         webPreferences: {
           ...SHARED_PREFS,
           additionalArguments: ['--buddy-window-role=legacy'],
@@ -853,7 +876,7 @@ test('the status panel, the input bar and the island are small, frameless, alway
     assert.equal(status.showOnStart, false);
     assert.equal(input.showOnStart, true);
     assert.equal(island.showOnStart, true);
-    // 上の中央の島（560 × 48、上端から 8）。
+    // 上の中央の島（見える島は 560 × 48、上端から 8）。窓は影の余白を足した 592 × 72 で、作業領域の上端に付く（ADR 0204）。
     assert.deepEqual(
       [
         island.options.x,
@@ -861,7 +884,7 @@ test('the status panel, the input bar and the island are small, frameless, alway
         island.options.width,
         island.options.height,
       ],
-      [Math.round((1512 - 560) / 2), 33 + 8, 560, 48],
+      [Math.round((1512 - 592) / 2), 33, 592, 72],
     );
     // 島と入力バーは角の外を透かす透明な窓（U399 の暫定 (a)）。OS の影は付けない。状態の層のパネルは四角い窓のまま。
     for (const spec of [input, island]) {
@@ -874,7 +897,7 @@ test('the status panel, the input bar and the island are small, frameless, alway
     assert.equal(island.options.focusable, false);
     assert.equal(island.focusOnShow, false);
     assert.equal(island.contentProtection, true);
-    // 下の中ほどの帯（560 × 56、下端から 16）。
+    // 下の中ほどの帯（見える入力バーは 560 × 56、下端から 16）。窓は影の余白を足した 592 × 88 で、作業領域の下端に付く。
     assert.deepEqual(
       [
         input.options.x,
@@ -882,7 +905,7 @@ test('the status panel, the input bar and the island are small, frameless, alway
         input.options.width,
         input.options.height,
       ],
-      [Math.round((1512 - 560) / 2), 33 + 875 - 56 - 16, 560, 56],
+      [Math.round((1512 - 592) / 2), 33 + 875 - 88, 592, 88],
     );
     // 画面共有から守るのはキャンバスと状態の層。入力バーはキー入力のために前面に出す。
     assert.equal(status.contentProtection, true);
@@ -899,23 +922,30 @@ test('the island grows downward from a fixed top edge; it takes only two sizes c
   assert.deepEqual(ISLAND_EXPANDED_SIZE, { width: 560, height: 104 });
   const compact = islandBounds(DISPLAY.workArea, false);
   const expanded = islandBounds(DISPLAY.workArea, true);
-  assert.deepEqual(compact, { x: 476, y: 41, width: 560, height: 48 });
-  assert.deepEqual(expanded, { x: 476, y: 41, width: 560, height: 104 });
+  // 窓は作業領域の上端（y: 33）に付け、「上の余白 8 ＋見える島＋影の余白 16」の高さ、左右に影の余白 16 ずつ（ADR 0204）。
+  // 見える島の位置（x: 476・y: 41）は、余白を足す前と同じ。
+  assert.deepEqual(FLOAT_SHADOW, { side: 16, below: 16, above: 16 });
+  assert.deepEqual(compact, { x: 460, y: 33, width: 592, height: 72 });
+  assert.deepEqual(expanded, { x: 460, y: 33, width: 592, height: 128 });
+  assert.equal(compact.x + FLOAT_SHADOW.side, 476);
+  assert.equal(compact.y + ISLAND_MARGIN, 41);
   // 狭い・低い作業領域では作業領域に合わせる（はみ出さない）。
   assert.deepEqual(
     islandBounds({ x: 10, y: 20, width: 320, height: 80 }, true),
     {
       x: 10,
-      y: 28,
+      y: 20,
       width: 320,
-      height: 72,
+      height: 80,
     },
   );
-  // 中身の高さ: 48 までは小さな島、49 からは広げた島。数でない値は小さな島。
+  // 中身の高さ: 72 までは小さな島、73 からは広げた島。数でない値は小さな島。
   assert.equal(islandExpandedFor(0), false);
+  // 中身の高さは「上の余白 8 ＋見える島＋影の余白 16」。小さい形は 72。
   assert.equal(islandExpandedFor(48), false);
-  assert.equal(islandExpandedFor(49), true);
-  assert.equal(islandExpandedFor(104), true);
+  assert.equal(islandExpandedFor(72), false);
+  assert.equal(islandExpandedFor(73), true);
+  assert.equal(islandExpandedFor(128), true);
   assert.equal(islandExpandedFor(400), true);
   assert.equal(islandExpandedFor(Number.NaN), false);
   assert.equal(islandExpandedFor(Number.POSITIVE_INFINITY), false);
@@ -926,18 +956,23 @@ test('the input bar grows upward from a fixed bottom edge and stays inside the w
   const compact = inputBarBounds(DISPLAY.workArea, false);
   const expanded = inputBarBounds(DISPLAY.workArea, true);
   assert.deepEqual(compact, {
-    x: Math.round((1512 - INPUT_BAR_SIZE.width) / 2),
-    y: 33 + 875 - INPUT_BAR_SIZE.height - 16,
-    ...INPUT_BAR_SIZE,
+    // 窓は作業領域の下端に付け、「影の余白 16 ＋見える入力バー＋下の余白 16」の高さ、左右に影の余白 16 ずつ（ADR 0204）。
+    x: Math.round((1512 - INPUT_BAR_SIZE.width) / 2) - 16,
+    y: 33 + 875 - INPUT_BAR_SIZE.height - 16 - 16,
+    width: INPUT_BAR_SIZE.width + 32,
+    height: INPUT_BAR_SIZE.height + 32,
   });
   assert.deepEqual(expanded, {
-    x: Math.round((1512 - INPUT_BAR_EXPANDED_SIZE.width) / 2),
-    y: 33 + 875 - INPUT_BAR_EXPANDED_SIZE.height - 16,
-    ...INPUT_BAR_EXPANDED_SIZE,
+    x: Math.round((1512 - INPUT_BAR_EXPANDED_SIZE.width) / 2) - 16,
+    y: 33 + 875 - INPUT_BAR_EXPANDED_SIZE.height - 16 - 16,
+    width: INPUT_BAR_EXPANDED_SIZE.width + 32,
+    height: INPUT_BAR_EXPANDED_SIZE.height + 32,
   });
   assert.equal(compact.y + compact.height, expanded.y + expanded.height);
   const tiny = inputBarBounds({ x: 10, y: 20, width: 320, height: 100 }, true);
-  assert.deepEqual(tiny, { x: 10, y: 20, width: 320, height: 84 });
+  assert.deepEqual(tiny, { x: 10, y: 20, width: 320, height: 100 });
+  // 縮めるときは、見える形が縮み終わる（--motion-island の 520ms）まで窓を小さくしない。
+  assert.equal(INPUT_BAR_COLLAPSE_DELAY_MS, 560);
 });
 
 // PR #104 のレビュー（P3）: 実際の senderFactsOf を通して、送信元のフレームの検査を確かめる。期待値は手で書く。

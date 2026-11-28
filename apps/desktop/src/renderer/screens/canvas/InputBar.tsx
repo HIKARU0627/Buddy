@@ -1,6 +1,11 @@
 // 入力バー（UI-02 の試作、ADR 0032）。画面の下の小さな帯。左に入出力の状態の記号、中に 1 行の入力欄、右にキャンバスを
 // 前に出すボタン（4 つの四角の記号）だけを置く。説明文は置かない。
-// 形（ADR 0181 の段階 4）: 小さめはカプセル（完全な丸）、入力中は島の丸み（28px）。窓は透明で、角の外は透ける（U399）。
+// 形（ADR 0181 の段階 4・ADR 0204）: 角は島の丸み（28px）のまま、高さだけが変わる。高さ 56 では錠剤の形に見え、入力中は
+// 上へ伸びる。高さはばねの曲線（--ease-spring）で滑らかに動かす。窓は透明で、main は広げるときに窓を先に広げ、縮めるときは
+// 見える形が縮み終わってから窓を小さくするので、窓の大きさの切り替えは見えない。窓の中には影を描く余白がある
+// （左右 16・上 16・下 16。main の FLOAT_SHADOW・INPUT_BAR_MARGIN と同じ値）。
+// 入力欄は小さい形でも広がった形でも同じ TextArea（置き換えないので、フォーカスも入力中の変換も失わない）。入力欄そのものは
+// 枠を持たず、入力バーの面が入力欄の枠になる（フォーカスの輪・無効の枠は入力バーの縁に出す）。
 // 打てるか（enabled）と内容を出せるか（value は呼び出し側が inputDraftAfter で決める）は別。ロック中・不明は値を描かない。
 // Enter（IME の変換の確定は除く）で発言を送る（desktop.turn_submit。UI-03）。送っている間は記号を回転にし、聞き返し・拒否・
 // 失敗は入力欄の枠（無効の枠）で知らせて文字を残す（説明文は置かない）。入力中は窓が上へ広がり、入力欄を複数行にする（UI-08）。
@@ -9,7 +14,6 @@ import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
 import {
   Alert,
   Button,
-  Input,
   Spinner,
   TextArea,
   TextField,
@@ -61,105 +65,101 @@ export function InputBar({
     event.preventDefault();
     onSubmit();
   };
-  // 窓が広がると Input が TextArea に置き換わる。置き換えでフォーカスを失わないよう、広がった後に入力欄へ移す。
   const formRef = useRef<HTMLFormElement>(null);
+  // 窓が前面に来て広がったら、入力欄へフォーカスを移す。
   useEffect(() => {
     if (!expanded || !enabled) return;
     const field = formRef.current?.querySelector('textarea');
     if (field != null && document.activeElement !== field) field.focus();
   }, [expanded, enabled]);
+  const notices = expanded;
   return (
-    <form
-      ref={formRef}
-      className={
-        expanded
-          ? 'flex h-screen w-screen flex-col gap-2 rounded-island border border-border bg-surface p-3 text-foreground'
-          : 'flex h-14 w-screen flex-col rounded-full border border-border bg-surface py-2 pr-2.5 pl-5 text-foreground'
-      }
-      onSubmit={(event) => {
-        event.preventDefault();
-        if (!composingRef.current) onSubmit();
-      }}
-      onCompositionStart={() => {
-        composingRef.current = true;
-      }}
-      onCompositionEnd={() => {
-        composingRef.current = false;
-      }}
-    >
-      {expanded && storageNotice !== null ? (
-        <Alert
-          status="warning"
-          role="status"
-          aria-live="polite"
-          data-storage-notice=""
-          className="max-h-[72px] shrink-0 overflow-y-auto"
-        >
-          <Alert.Indicator>
-            <WarningIcon aria-hidden="true" />
-          </Alert.Indicator>
-          <Alert.Content>
-            <Alert.Title>{storageNotice}</Alert.Title>
-          </Alert.Content>
-        </Alert>
-      ) : null}
-      {expanded && enabled && clarification !== null ? (
-        <Alert
-          status="accent"
-          role="status"
-          aria-live="polite"
-          className="max-h-[72px] shrink-0 overflow-y-auto"
-        >
-          <Alert.Content>
-            <Alert.Title>{clarification}</Alert.Title>
-          </Alert.Content>
-        </Alert>
-      ) : null}
-      <div
-        className={`flex min-h-0 flex-1 gap-3 ${expanded ? 'items-end' : 'items-center'}`}
+    <div className="flex h-screen w-screen flex-col justify-end p-4">
+      <form
+        ref={formRef}
+        data-input-bar={expanded ? 'expanded' : 'compact'}
+        data-attention={attention ? '' : undefined}
+        className={`flex w-full flex-col overflow-clip rounded-island border bg-surface text-foreground shadow-float transition-[height,padding,border-color] duration-(--motion-island) ease-spring motion-reduce:transition-none motion-safe:animate-pop-in focus-within:border-field-border data-attention:border-danger ${
+          attention ? '' : 'border-border'
+        } ${expanded ? 'h-full gap-2 p-3' : 'h-14 gap-0 py-2 pr-2.5 pl-5'}`}
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!composingRef.current) onSubmit();
+        }}
+        onCompositionStart={() => {
+          composingRef.current = true;
+        }}
+        onCompositionEnd={() => {
+          composingRef.current = false;
+        }}
       >
-        <span className="flex size-5 shrink-0 items-center justify-center">
-          {sending ? (
-            <Spinner size="sm" color="current" aria-hidden="true" />
-          ) : (
-            <StatusMark line={line} />
-          )}
-        </span>
-        <TextField
-          aria-label="Buddy への入力"
-          className="h-full min-h-0 flex-1"
-          value={value}
-          onChange={onChange}
-          isDisabled={!enabled}
-          isInvalid={attention}
-          autoFocus
+        {notices && storageNotice !== null ? (
+          <Alert
+            status="warning"
+            role="status"
+            aria-live="polite"
+            data-storage-notice=""
+            className="max-h-[72px] shrink-0 overflow-y-auto"
+          >
+            <Alert.Indicator>
+              <WarningIcon aria-hidden="true" />
+            </Alert.Indicator>
+            <Alert.Content>
+              <Alert.Title>{storageNotice}</Alert.Title>
+            </Alert.Content>
+          </Alert>
+        ) : null}
+        {notices && enabled && clarification !== null ? (
+          <Alert
+            status="accent"
+            role="status"
+            aria-live="polite"
+            className="max-h-[72px] shrink-0 overflow-y-auto"
+          >
+            <Alert.Content>
+              <Alert.Title>{clarification}</Alert.Title>
+            </Alert.Content>
+          </Alert>
+        ) : null}
+        <div
+          className={`flex min-h-0 flex-1 gap-3 ${expanded ? 'items-end' : 'items-center'}`}
         >
-          {expanded ? (
+          <span className="flex size-5 shrink-0 items-center justify-center">
+            {sending ? (
+              <Spinner size="sm" color="current" aria-hidden="true" />
+            ) : (
+              <StatusMark line={line} />
+            )}
+          </span>
+          <TextField
+            aria-label="Buddy への入力"
+            className="h-full min-h-0 flex-1"
+            value={value}
+            onChange={onChange}
+            isDisabled={!enabled}
+            isInvalid={attention}
+            autoFocus
+          >
             <TextArea
               variant="secondary"
-              className="h-full min-h-0 w-full [&_textarea]:h-full [&_textarea]:min-h-0"
-              rows={5}
+              data-expanded={expanded ? '' : undefined}
+              className="h-full min-h-0 w-full resize-none border-0! bg-transparent! px-0 shadow-none! ring-0! outline-none! data-expanded:py-1"
+              rows={expanded ? 5 : 1}
               onKeyDown={sendOnEnter}
             />
-          ) : (
-            <Input
-              variant="secondary"
-              className="w-full"
-              onKeyDown={sendOnEnter}
-            />
-          )}
-        </TextField>
-        <Button
-          isIconOnly
-          variant="outline"
-          size="sm"
-          aria-label="キャンバスを前に出す"
-          isDisabled={!canSummon}
-          onPress={onSummon}
-        >
-          <CanvasIcon />
-        </Button>
-      </div>
-    </form>
+          </TextField>
+          <Button
+            isIconOnly
+            variant="outline"
+            size="sm"
+            aria-label="キャンバスを前に出す"
+            isDisabled={!canSummon}
+            onPress={onSummon}
+          >
+            <CanvasIcon />
+          </Button>
+        </div>
+      </form>
+    </div>
   );
 }

@@ -12,9 +12,14 @@
 //   塗った面に加えて、文字でも示す）。島からは切り替えない（切り替えはパネル。島の役割のチャネルは U391 のまま）。
 // - 島の窓はキー入力を受けない（main が focusable: false で作る）。押しても前面の窓（パネル・入力バー）を外さない。
 //   キーボードからは全体のショートカット（停止・パネル）で同じ操作ができる。
-// - 動きを減らす設定では、広がった行を滑り込ませない（motion-safe。--motion-island も 0s）。窓の大きさは main が一度に変える。
+// - 形の動き（ADR 0204）: 島は中身の大きさに合わせて、幅と高さをばねの曲線で伸び縮みさせる（FluidBox）。文言が変わって幅が
+//   変わるときも、行が足されて高さが変わるときも同じ。広がった行は、ぼかしから晴れながら現れ、畳むときは薄れながら形が縮む
+//   （消える間だけ前の行を残す。usePresence）。島の周りには影を描く余白がある（左右 16・上 8・下 16。main の FLOAT_SHADOW・
+//   ISLAND_MARGIN と同じ値）。窓の大きさは、中身の高さの変化から main が切り替える（窓は透明なので切り替えは見えない）。
+// - 動きを減らす設定では動かさない（motion-safe・motion-reduce。--motion-* も 0s）。
 import { useCallback, useState } from 'react';
 import { Button, Chip, InfoIcon, WarningIcon } from '@heroui/react';
+import { FluidBox, usePresence } from '../../components/Fluid.js';
 import { PanelIcon, PrivacyIcon } from '../../components/StatusIcons.js';
 import { PrivateModeMark } from '../../components/StorageMode.js';
 import { StatusMark, StatusText } from '../../components/StatusText.js';
@@ -72,6 +77,10 @@ export function PrivacySlot({ mark }: { readonly mark: PrivacyMark }) {
 }
 
 type HoldSource = 'pointer' | 'focus';
+
+// 畳む間の広がった行（ADR 0204）。流れから外して島の形を先に縮め、行は薄れながら形に切り取られる。
+const LEAVING_ROW_CLASS =
+  'pointer-events-none absolute inset-x-0 opacity-0 transition-opacity duration-(--motion-move)';
 
 // 島に触れている間（ポインターかフォーカスのどちらかがある間）の始まりの時刻。触れ始めた時刻だけを覚える
 // （段階 2 の従来の窓の島と同じ。WCAG 2.2.1）。
@@ -147,9 +156,12 @@ export function CanvasIsland({
   const Icon =
     view.kind === 'hidden' && view.icon === 'warning' ? WarningIcon : InfoIcon;
   const privacyLabel = privacy.map((mark) => mark.label).join('、');
+  // 畳むときは、薄れる間だけ前の行を残す（動きの時間が 0 なら残さない）。
+  const { shown: row, leaving } = usePresence(expanded);
   return (
-    <div className="flex justify-center">
-      <section
+    <div className="flex justify-center px-4 pt-2 pb-4">
+      <FluidBox
+        as="section"
         aria-label={ISLAND_LABELS.region}
         data-island={expanded === null ? 'compact' : 'expanded'}
         onPointerEnter={() => onHoldChange('pointer', true)}
@@ -159,7 +171,8 @@ export function CanvasIsland({
           if (!event.currentTarget.contains(event.relatedTarget as Node | null))
             onHoldChange('focus', false);
         }}
-        className="flex w-fit max-w-full select-none flex-col rounded-island border border-border bg-surface text-foreground"
+        className="max-w-full select-none rounded-island border border-border bg-surface text-foreground shadow-float motion-safe:animate-pop-in"
+        innerClassName="relative flex max-w-[calc(100vw-34px)] flex-col"
       >
         <div className="flex h-[46px] items-center justify-center gap-2 pr-1.5 pl-4">
           {hidden ? (
@@ -218,31 +231,34 @@ export function CanvasIsland({
         </div>
         {/* 広がる形。polite のライブ領域（status）は内容を出している間いつも置いておき、読ませる行だけを中に入れる。 */}
         <div
+          inert={leaving}
           className={
-            expanded === null
+            row === null
               ? ''
-              : 'flex items-center gap-3 border-t border-separator py-2 pr-2 pl-4 motion-safe:animate-island-in'
+              : `flex items-center gap-3 border-t border-separator py-2 pr-2 pl-4 motion-safe:animate-island-in ${
+                  leaving ? `top-[46px] ${LEAVING_ROW_CLASS}` : ''
+                }`
           }
         >
           <div className="min-w-0 flex-1">
             {view.kind === 'shown' ? (
               <div role="status" data-island-live="status">
-                {expanded?.live === 'status' ? (
-                  <ExpandedLine expanded={expanded} />
+                {row?.live === 'status' ? (
+                  <ExpandedLine expanded={row} />
                 ) : null}
               </div>
             ) : null}
             {/* 失敗は alert。差し込んだ時点で読まれるので、出すときだけ置く。 */}
-            {expanded?.live === 'alert' ? (
+            {row?.live === 'alert' ? (
               <div role="alert" data-island-live="alert">
-                <ExpandedLine expanded={expanded} />
+                <ExpandedLine expanded={row} />
               </div>
             ) : null}
-            {expanded !== null && expanded.live === null ? (
-              <ExpandedLine expanded={expanded} />
+            {row !== null && row.live === null ? (
+              <ExpandedLine expanded={row} />
             ) : null}
           </div>
-          {expanded?.openAttention === true ? (
+          {row?.openAttention === true ? (
             <Button
               variant="secondary"
               size="sm"
@@ -253,7 +269,7 @@ export function CanvasIsland({
             </Button>
           ) : null}
         </div>
-      </section>
+      </FluidBox>
     </div>
   );
 }

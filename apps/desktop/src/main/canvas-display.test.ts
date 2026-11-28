@@ -196,28 +196,30 @@ test('the island reserve of the layout engine matches the island window of the d
   );
   // 入力バーと島は同じ幅（上と下の中央にそろう）。
   assert.equal(ISLAND_SIZE.width, INPUT_BAR_SIZE.width);
-  // 窓の位置（1920 × 980 の作業領域、上 25）: x = (1920 − 560) / 2 = 680、y = 25 + 8 = 33。
+  // 窓の位置（1920 × 980 の作業領域、上 25）。窓は見える島の周りに余白を持つ（ADR 0204）: 左右に影の余白 16 ずつ、
+  // 上に作業領域との間 8、下に影の余白 16。x = (1920 − 592) / 2 = 664、y = 25。見える島は x = 680・y = 33 のまま。
+  // 窓の大きさ（592 × 72）は、エンジンが空ける場所（islandReserve）とちょうど同じ。
   assert.deepEqual(islandBounds(PRIMARY.workArea, false), {
-    x: 680,
-    y: 33,
-    width: 560,
-    height: 48,
+    x: 664,
+    y: 25,
+    width: 592,
+    height: 72,
   });
   // 広げても上の端と横の位置は変えず、下へ伸ばす。
   assert.deepEqual(islandBounds(PRIMARY.workArea, true), {
-    x: 680,
-    y: 33,
-    width: 560,
-    height: 104,
+    x: 664,
+    y: 25,
+    width: 592,
+    height: 128,
   });
   // 作業領域が島より狭い・低いときは、作業領域に合わせる。
   assert.deepEqual(
     islandBounds({ x: 5, y: 10, width: 400, height: 60 }, true),
     {
       x: 5,
-      y: 18,
+      y: 10,
       width: 400,
-      height: 52,
+      height: 60,
     },
   );
 });
@@ -318,7 +320,8 @@ test('when only the work area changes (the Dock hides) with the same canvas wind
     insets: { top: 25, right: 0, bottom: 25, left: 0 },
   });
   assert.deepEqual(contract.notificationErrors(second), []);
-  // main は入力バーの窓を新しい作業領域の下（y 25 + 1030 − 56 − 16 = 983）へ移す。
+  // main は入力バーの窓を新しい作業領域の下へ移す。窓は「影の余白 16 ＋入力バー 56 ＋下の余白 16」で、作業領域の下端に付く
+  // （y 25 + 1030 − 88 = 967。見える入力バーは y 983 のまま。ADR 0204）。
   const input = uiWindowSpec(
     'input',
     'darwin',
@@ -331,7 +334,7 @@ test('when only the work area changes (the Dock hides) with the same canvas wind
     width: input.width,
     height: input.height,
   };
-  assert.equal(inputRect.y, 983);
+  assert.equal(inputRect.y, 967);
   const reservedWith = (insets: typeof first.insets) =>
     layoutCanvas({
       items: [],

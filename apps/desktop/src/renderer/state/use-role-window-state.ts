@@ -258,20 +258,32 @@ export function usePageVisibility(): PageVisibility {
   return visibility;
 }
 
-// 入力バーが広がっているか（UI-08）。main が focus で窓を 176 に広げ、blur で 56 に縮める。画面は高さで判断する。
-export const INPUT_BAR_EXPANDED_MIN_HEIGHT = 120;
+// 入力バーが広がっているか（UI-08、ADR 0204）。main は focus で窓をすぐ広げ、blur では少し待ってから縮める。
+// 窓の高さは、小さい形が 88（影の余白 16＋入力バー 56＋下の余白 16）、広がった形が 208（16＋176＋16）。
+// 画面は「窓が広く、かつ前面にある」間だけ広がった形を描く。前面でなくなったらすぐ見える形を縮め始め、縮み終わった
+// 頃に main が窓を小さくする（窓は透明なので、窓の大きさの切り替えは見えない）。
+export const INPUT_BAR_EXPANDED_MIN_HEIGHT = 150;
 
 export function useInputBarExpanded(): boolean {
-  const [expanded, setExpanded] = useState(
+  const [tall, setTall] = useState(
     () => window.innerHeight >= INPUT_BAR_EXPANDED_MIN_HEIGHT,
   );
+  const [focused, setFocused] = useState(() => document.hasFocus());
   useEffect(() => {
     const onResize = () =>
-      setExpanded(window.innerHeight >= INPUT_BAR_EXPANDED_MIN_HEIGHT);
+      setTall(window.innerHeight >= INPUT_BAR_EXPANDED_MIN_HEIGHT);
+    const onFocus = () => setFocused(true);
+    const onBlur = () => setFocused(false);
     window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
+    window.addEventListener('focus', onFocus);
+    window.addEventListener('blur', onBlur);
+    return () => {
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('focus', onFocus);
+      window.removeEventListener('blur', onBlur);
+    };
   }, []);
-  return expanded;
+  return tall && focused;
 }
 
 // 窓が前面にある（キー入力を受ける）か。キャンバスが前に出たことを、窓の枠で示すために使う。

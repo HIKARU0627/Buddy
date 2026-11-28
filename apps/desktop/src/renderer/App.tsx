@@ -3,6 +3,9 @@
 // 未登録・再登録が必要・登録の途中なら登録の画面、それ以外は端末の画面。中枢の画面の端末（main が中枢に確かめた
 // hub_screen）なら、端末の画面の本体を「端末の登録」「登録済みの端末」「自宅のネットワーク」「このマシンの接続」の Tabs にする。
 // ロック中・ロック状態不明では main が接続の内容を隠すので、端末の画面（内容を隠した状態帯）になる。
+// 登録済みの端末の画面は、機能をページに分け、左のサイドバーで切り替える（ADR 0204）: 会話（確認が必要な操作を含む）・
+// 気づき・自動実行・家計簿・記憶・端末と接続。選んでいるページはここが持つ（島の「確認が必要な操作を見る」と、会話からの
+// 家計の記録の候補が、ページを切り替えるため）。
 // 画面を足すときは screens/<名前>/ に置き、ここで切り替える。
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert } from '@heroui/react';
@@ -47,6 +50,16 @@ import { MemoryPanel } from './screens/memory/MemoryPanel.js';
 import { MemorySettingsPanel } from './screens/memory/MemorySettingsPanel.js';
 import { WorkPanel } from './screens/work/WorkPanel.js';
 import { StopShortcutMark } from './components/StopShortcutMark.js';
+import {
+  AutoIcon,
+  InsightIcon,
+  LedgerIcon,
+  MemoryIcon,
+  TalkIcon,
+} from './components/NavIcons.js';
+import { openAttention } from './components/StatusBand.js';
+import type { ShellPage } from './app/AppShell.js';
+import { groupOperations } from './state/work-state.js';
 import { StorageModeControl } from './components/StorageMode.js';
 import { PrivateConfirmations } from './components/PrivateConfirmations.js';
 import { usePrivateConfirmationState } from './state/use-private-confirmation-state.js';
@@ -167,6 +180,138 @@ function ConnectedApp({ api }: { readonly api: BuddyDesktopApi }) {
   // 連携アカウント（B08-02 P3・B09-05、ADR 0142）。中枢の画面で中枢に接続している間だけ内容を持つ
   // （中枢の画面かどうかは main が確かめる。接続を待つ間は欄だけ出し、操作を止める）。
   const linked = useConnectionsState(api, mode === 'live');
+  // 選んでいるページ（ADR 0204）。null は最初のページ。
+  const [page, setPage] = useState<string | null>(null);
+  // ページを切り替えてから、切り替えた先の欄へ移る（描き直しの後。隠れているページの見出しにはフォーカスを移せない）。
+  const afterPage = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    const run = afterPage.current;
+    afterPage.current = null;
+    run?.();
+  }, [page]);
+  const attentionCount = workShown
+    ? groupOperations(connection?.operations ?? NO_OPERATIONS).attention
+        .length + privateConfirmations.length
+    : 0;
+  // 機能のページ（ADR 0204）。会話と同じ条件（ロック解除済み・登録済み）で出す。切断中もページを出し、各欄が
+  // 取得できていないことを示す。
+  const pages: readonly ShellPage[] =
+    workShown && connection !== null
+      ? [
+          {
+            id: 'talk',
+            label: '会話',
+            icon: <TalkIcon />,
+            badge: attentionCount,
+            badgeLabel: `確認が必要な操作 ${attentionCount}\u00a0件`,
+            content: (
+              <>
+                <PrivateConfirmations
+                  entries={privateConfirmations}
+                  privateMode={storageMode === 'private'}
+                  state={privateDecisions.state}
+                  actions={privateDecisions.actions}
+                  stopped={stopped}
+                />
+                <WorkPanel
+                  state={work.state}
+                  actions={work.actions}
+                  operations={connection.operations}
+                  link={connection.link === 'connected' ? 'connected' : 'other'}
+                  stopped={stopped}
+                  // 会話の一言からの家計の記録の候補を、家計簿の欄の手入力の欄に入れて開く（ADR 0171）。開けたら候補をしまう
+                  // （同じ候補から二度開かない）。記録は本人が欄で「足す」を押したときだけ作る。
+                  storage={
+                    <StorageModeControl
+                      view={storageModeControlView(state.status)}
+                      message={messageFor(state, [
+                        'desktop.storage_mode_change',
+                      ])}
+                      onChange={actions.changeStorageMode}
+                    />
+                  }
+                  household={{
+                    canOpen: canStartAddFrom(household.state),
+                    open: (draft) => {
+                      if (
+                        household.actions.startAddFrom(
+                          inputFromCandidate(draft),
+                        )
+                      )
+                        work.actions.dismissHouseholdCandidate();
+                    },
+                  }}
+                />
+              </>
+            ),
+          },
+          {
+            id: 'candidates',
+            label: '気づき',
+            icon: <InsightIcon />,
+            content: (
+              <>
+                {/* 切断中も欄を出し、取得できていないことを示す（「気づきはありません」と言わない。設計 01）。 */}
+                <CandidatesPanel
+                  state={candidates.state}
+                  actions={candidates.actions}
+                  now={now}
+                />
+              </>
+            ),
+          },
+          {
+            id: 'auto',
+            label: '自動実行',
+            icon: <AutoIcon />,
+            content: (
+              <>
+                {/* 切断中も欄を出し、取得できていないことを示す（「自動で行った操作はありません」と言わない）。 */}
+                <AutoActionsPanel
+                  state={autoActions.state}
+                  actions={autoActions.actions}
+                  now={now}
+                />
+              </>
+            ),
+          },
+          {
+            id: 'household',
+            label: '家計簿',
+            icon: <LedgerIcon />,
+            content: (
+              <>
+                {/* 切断中も欄を出し、取得できていないことを示す（「記録はありません」と言わない）。 */}
+                <HouseholdPanel
+                  state={household.state}
+                  actions={household.actions}
+                  now={now}
+                />
+              </>
+            ),
+          },
+          {
+            id: 'memory',
+            label: '記憶',
+            icon: <MemoryIcon />,
+            content: (
+              <>
+                {/* 保存してよい記憶の種類（ADR 0191）。忘却の欄の上。読めていない間は選択を置かない。 */}
+                <MemorySettingsPanel
+                  state={memories.state}
+                  actions={memories.actions}
+                />
+                {/* 切断中も欄を出し、取得できていないことを示す（「記憶はありません」と言わない）。 */}
+                <MemoryPanel
+                  state={memories.state}
+                  actions={memories.actions}
+                  now={now}
+                />
+              </>
+            ),
+          },
+        ]
+      : [];
   if (connection !== null && needsPairing(connection))
     return (
       <PairingScreen
@@ -197,71 +342,18 @@ function ConnectedApp({ api }: { readonly api: BuddyDesktopApi }) {
           keys={stopShortcutKeys(navigator.userAgent)}
         />
       }
-      work={
-        workShown && connection !== null ? (
-          <>
-            <PrivateConfirmations
-              entries={privateConfirmations}
-              privateMode={storageMode === 'private'}
-              state={privateDecisions.state}
-              actions={privateDecisions.actions}
-              stopped={stopped}
-            />
-            <WorkPanel
-              state={work.state}
-              actions={work.actions}
-              operations={connection.operations}
-              link={connection.link === 'connected' ? 'connected' : 'other'}
-              stopped={stopped}
-              // 会話の一言からの家計の記録の候補を、家計簿の欄の手入力の欄に入れて開く（ADR 0171）。開けたら候補をしまう
-              // （同じ候補から二度開かない）。記録は本人が欄で「足す」を押したときだけ作る。
-              storage={
-                <StorageModeControl
-                  view={storageModeControlView(state.status)}
-                  message={messageFor(state, ['desktop.storage_mode_change'])}
-                  onChange={actions.changeStorageMode}
-                />
-              }
-              household={{
-                canOpen: canStartAddFrom(household.state),
-                open: (draft) => {
-                  if (household.actions.startAddFrom(inputFromCandidate(draft)))
-                    work.actions.dismissHouseholdCandidate();
-                },
-              }}
-            />
-            {/* 切断中も欄を出し、取得できていないことを示す（「気づきはありません」と言わない。設計 01）。 */}
-            <CandidatesPanel
-              state={candidates.state}
-              actions={candidates.actions}
-              now={now}
-            />
-            {/* 切断中も欄を出し、取得できていないことを示す（「自動で行った操作はありません」と言わない）。 */}
-            <AutoActionsPanel
-              state={autoActions.state}
-              actions={autoActions.actions}
-              now={now}
-            />
-            {/* 切断中も欄を出し、取得できていないことを示す（「記録はありません」と言わない）。 */}
-            <HouseholdPanel
-              state={household.state}
-              actions={household.actions}
-              now={now}
-            />
-            {/* 保存してよい記憶の種類（ADR 0191）。忘却の欄の上。読めていない間は選択を置かない。 */}
-            <MemorySettingsPanel
-              state={memories.state}
-              actions={memories.actions}
-            />
-            {/* 切断中も欄を出し、取得できていないことを示す（「記憶はありません」と言わない）。 */}
-            <MemoryPanel
-              state={memories.state}
-              actions={memories.actions}
-              now={now}
-            />
-          </>
-        ) : undefined
-      }
+      pages={pages}
+      {...(page === null ? {} : { page })}
+      onPageChange={setPage}
+      onOpenAttention={() => {
+        // 確認の欄は会話のページにある。ページを切り替えてから、見出しへ移る。
+        if (page === 'talk' || (page === null && pages.length > 0))
+          openAttention();
+        else {
+          afterPage.current = openAttention;
+          setPage('talk');
+        }
+      }}
       hub={
         hubScreen && connection !== null ? (
           <HubTabs

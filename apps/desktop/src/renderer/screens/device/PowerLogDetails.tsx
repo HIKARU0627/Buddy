@@ -17,7 +17,7 @@ export function PowerLogDetails({
   return (
     <section
       aria-labelledby="power-log-heading"
-      className="border-t border-separator pt-4"
+      className="rounded-box border border-separator bg-surface px-4 py-3 sm:px-5"
     >
       <Disclosure>
         <Disclosure.Heading>

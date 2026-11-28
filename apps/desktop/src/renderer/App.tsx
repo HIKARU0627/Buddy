@@ -6,7 +6,11 @@
 // 画面を足すときは screens/<名前>/ に置き、ここで切り替える。
 import { useEffect, useRef, useState } from 'react';
 import { Alert } from '@heroui/react';
-import type { DesktopOperationEntry, StorageMode } from '@buddy/contracts';
+import type {
+  DesktopOperationEntry,
+  DesktopPrivateConfirmationEntry,
+  StorageMode,
+} from '@buddy/contracts';
 import { AlertIcon } from './components/AlertIcon.js';
 import { AppShell } from './app/AppShell.js';
 import { desktopApi } from './desktop-api.js';
@@ -44,6 +48,8 @@ import { MemorySettingsPanel } from './screens/memory/MemorySettingsPanel.js';
 import { WorkPanel } from './screens/work/WorkPanel.js';
 import { StopShortcutMark } from './components/StopShortcutMark.js';
 import { StorageModeControl } from './components/StorageMode.js';
+import { PrivateConfirmations } from './components/PrivateConfirmations.js';
+import { usePrivateConfirmationState } from './state/use-private-confirmation-state.js';
 import { messageFor } from './state/desktop-state.js';
 import {
   storageBoundary,
@@ -58,6 +64,7 @@ import { rendererWindowRole } from './state/window-role-state.js';
 
 // 操作がないときの空の配列（描画のたびに新しい配列を作らない）。
 const NO_OPERATIONS: readonly DesktopOperationEntry[] = [];
+const NO_PRIVATE_CONFIRMATIONS: readonly DesktopPrivateConfirmationEntry[] = [];
 
 function ApiUnavailable() {
   return (
@@ -110,11 +117,16 @@ function ConnectedApp({ api }: { readonly api: BuddyDesktopApi }) {
   // 保存モード（UI-05 の段階 6、ADR 0189）。会話と同じく、ロック解除済みで中枢に接続している間だけ見る。変わったら島を
   // 区切りの知らせで広げ、会話の履歴に区切りの行を足す（受け取っていなかった値からの変化は区切りにしない）。
   const storageMode = workLive ? storageModeOf(state.status) : null;
+  // 記録しない会話の独立した確認（ADR 0197）。main が記録しない会話の間だけ出す。承認を待つ確認が増えたら島を広げる。
+  const privateConfirmations =
+    connection?.private_confirmations ?? NO_PRIVATE_CONFIRMATIONS;
+  const privateDecisions = usePrivateConfirmationState(api, workLive);
   const island = useIslandSignals(
     workLive,
     connection?.operations ?? NO_OPERATIONS,
     work.state.notices,
     storageMode,
+    privateConfirmations.length,
   );
   const seenStorageMode = useRef<StorageMode | null>(null);
   const markBoundary = work.actions.markBoundary;
@@ -172,6 +184,12 @@ function ConnectedApp({ api }: { readonly api: BuddyDesktopApi }) {
       work={
         workShown && connection !== null ? (
           <>
+            <PrivateConfirmations
+              entries={privateConfirmations}
+              state={privateDecisions.state}
+              actions={privateDecisions.actions}
+              stopped={stopped}
+            />
             <WorkPanel
               state={work.state}
               actions={work.actions}

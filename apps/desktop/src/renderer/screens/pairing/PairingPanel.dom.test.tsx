@@ -51,6 +51,7 @@ const connectionAt = (step: PairingView['step']): ShownConnection => ({
   home_network: null,
   operations: [],
   budget_items: [],
+  private_confirmations: [],
 });
 
 async function mount(step: PairingView['step']) {

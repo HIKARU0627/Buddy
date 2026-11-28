@@ -92,8 +92,9 @@ test(
     // ADR 0189）で 1 つ増えた。保存してよい記憶の種類の設定の読み取りと変更（ADR 0191）で 2 つ増えた。
     // 流れの表示先の移動と今の表示先の読み取り（postStreamHandoff・getStreamHandoff、UI-05 の段階 5・ADR 0193）で 2 つ増えた。
     // 気づきの OS 通知の入・切の読み取りと変更（ADR 0196）で 2 つ増えた。
-    assert.equal(operations.length, 74);
-    assert.equal(API_ROUTES.length, 74);
+    // 記録しない会話の独立した確認の一覧・承認・断る（ADR 0197）で 3 つ増えた。
+    assert.equal(operations.length, 77);
+    assert.equal(API_ROUTES.length, 77);
     for (const { path, method, operation } of operations) {
       const route = API_ROUTES.find(
         (candidate) => candidate.operationId === operation.operationId,
@@ -190,7 +191,8 @@ test(
     // 段階 6・ADR 0189）で 1 つ増えた。保存してよい記憶の種類の設定の読み取りと変更（ADR 0191）で 2 つ増えた。
     // 流れの表示先の移動と今の表示先の読み取り（UI-05 の段階 5・ADR 0193）で 2 つ増えた。
     // 気づきの OS 通知の入・切の読み取りと変更（ADR 0196）で 2 つ増えた。
-    assert.equal(declared.length, 62);
+    // 記録しない会話の独立した確認の一覧・承認・断る（ADR 0197）で 3 つ増えた。
+    assert.equal(declared.length, 65);
   },
 );
 

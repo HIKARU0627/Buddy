@@ -9,7 +9,8 @@
 // 広がる形の優先の順（上ほど先）:
 //   1. 内容を隠している（未受信・ロック中・ロック状態不明）なら、広げない。
 //   2. 失敗の結果（承認・取消・照合・再試行・状態の確認が拒否された、結果が確認できなかった）。ISLAND_RESULT_MS の間。
-//   3. 確認が必要な操作が増えた。ISLAND_ATTENTION_MS の間。件数が減ったら畳む（減ったことは読み上げない）。
+//   3. 確認が必要な操作が増えた（記録しない会話の承認を待つ独立した確認を含む。ADR 0197）。ISLAND_ATTENTION_MS の間。
+//      件数が減ったら畳む（減ったことは読み上げない）。
 //   4. 成功・中立の結果（承認を送った、完了した、実行されなかった、取り消した）と、保存モードが変わった区切り（記録しない
 //      会話を始めた・終えた、保存モードを変えた。UI-05 の段階 6、ADR 0189）。ISLAND_RESULT_MS の間。
 //   5. どれもなければ小さい形のまま。
@@ -232,6 +233,8 @@ export function nextIslandMemory(
     readonly notices: Readonly<Record<string, Notice>>;
     // 状態欄の保存モード（中枢の値。受け取っていなければ null。省略は null。ADR 0189）。
     readonly storageMode?: StorageMode | null;
+    // 承認を待つ記録しない会話の独立した確認の数（ADR 0197。確認が必要な操作に足して数える）。省略は 0。
+    readonly privateConfirmations?: number;
   },
   at: number,
 ): IslandMemory {
@@ -295,7 +298,9 @@ export function nextIslandMemory(
     };
     if (moreImportant(candidate, found)) found = candidate;
   }
-  const count = groupOperations(input.operations).attention.length;
+  const count =
+    groupOperations(input.operations).attention.length +
+    (input.privateConfirmations ?? 0);
   const before = previous.signals;
   const raised =
     count > before.attentionCount

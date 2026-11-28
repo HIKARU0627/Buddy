@@ -48,6 +48,7 @@ const base: ShownConnection = {
   home_network: null,
   operations: [],
   budget_items: [],
+  private_confirmations: [],
 };
 
 const pairingAt = (
@@ -508,6 +509,7 @@ test('the connection section shows reason, home check and operations without sec
           },
           operations: [],
           budget_items: [],
+          private_confirmations: [],
         }}
       />
     </AppProviders>,

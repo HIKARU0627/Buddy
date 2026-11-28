@@ -184,6 +184,8 @@ test('requests go only to the contract channels', async () => {
       'desktop.storage_mode_change',
       // 流れの表示先の移動（UI-05 の段階 5、ADR 0193。従来の窓と状態の層。キャンバス・入力バー・島には渡さない）。
       'desktop.display_handoff',
+      // 記録しない会話の独立した確認の承認・断る（ADR 0197。従来の窓と状態の層。キャンバス・入力バー・島には渡さない）。
+      'desktop.private_confirmation_decide',
     ],
   );
   // 気づきの一覧・状態の変更（B11-05）は従来の窓（標準の端末画面）でも使う。連携の一覧・取得範囲の変更
@@ -223,6 +225,8 @@ test('requests go only to the contract channels', async () => {
     'desktop.storage_mode_change',
     // 流れの表示先の移動（UI-05 の段階 5、ADR 0193。従来の窓と状態の層。キャンバス・入力バー・島には渡さない）。
     'desktop.display_handoff',
+    // 記録しない会話の独立した確認の承認・断る（ADR 0197。従来の窓と状態の層。キャンバス・入力バー・島には渡さない）。
+    'desktop.private_confirmation_decide',
   ];
   for (const channel of legacy) {
     const request = { channel, request_id: 'r', payload: null };
@@ -397,6 +401,8 @@ const EXPECTED_ROLE_CHANNELS: Readonly<Record<string, readonly string[]>> = {
     'desktop.storage_mode_change',
     // 流れの表示先の移動（UI-05 の段階 5、ADR 0193。従来の窓と状態の層。キャンバス・入力バー・島には渡さない）。
     'desktop.display_handoff',
+    // 記録しない会話の独立した確認の承認・断る（ADR 0197。従来の窓と状態の層。キャンバス・入力バー・島には渡さない）。
+    'desktop.private_confirmation_decide',
   ],
 };
 const EXPECTED_ROLE_NOTIFICATIONS: Readonly<Record<string, readonly string[]>> =

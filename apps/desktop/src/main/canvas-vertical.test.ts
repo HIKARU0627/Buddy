@@ -862,6 +862,11 @@ test(
         reconciliation_id: 'manual:invoice-a',
         actual_amount: '3000000',
       },
+      // 記録しない会話の独立した確認の承認（ADR 0197）。形式（Schema）に合う本文。
+      'desktop.private_confirmation_decide': {
+        ref: randomUUID(),
+        decision: 'approve',
+      },
     };
     const linkChannels = [
       ...OPERATION_CHANNELS,
@@ -910,6 +915,7 @@ test(
       'desktop.budget_overage_decide',
       'desktop.budget_overrun_review',
       'desktop.budget_manual_settle',
+      'desktop.private_confirmation_decide',
     ])
       assert.equal(
         field(

@@ -52,6 +52,7 @@ import {
 import type { CandidateAlerts } from './candidate-alerts.js';
 import { createForgetRoutes } from './api-forget.js';
 import { createMemoryRoutes } from './api-memory.js';
+import { createPrivateConfirmationRoutes } from './api-private-confirmations.js';
 import { createHouseholdRoutes } from './api-household.js';
 import { createCandidateListRefresh } from './candidate-list-refresh.js';
 import { createCalendarCandidateIntake } from './calendar-candidate-intake.js';
@@ -373,8 +374,8 @@ export interface CoreTurnOptions {
   }) => void;
   // 影モードの比較の入口（ADR 0092）。既定は無し（OFF。D4）。発言の解釈を保存した後に呼ばれる。
   readonly onInterpreted?: TurnRoutesOptions['onInterpreted'];
-  // 記録しない会話の独立した確認の口（B06-07a-2 の 2d、ADR 0192）。試験の組み立てだけが渡す。既定は
-  // PRIVATE_CONFIRMATION_SCREEN_OPEN（false。確認を画面に出して承認を受ける経路がまだない。U503）。
+  // 記録しない会話の独立した確認の口（B06-07a-2 の 2d、ADR 0192・0197）。確認を出す経路と画面の一覧・承認・断るの経路の両方が
+  // 読む。試験の組み立てだけが渡す。既定は PRIVATE_CONFIRMATION_SCREEN_OPEN（false。開くかは本人の判断。U503）。
   readonly privateConfirmationScreen?: () => boolean;
 }
 
@@ -572,8 +573,8 @@ export interface CoreHandle {
   readonly privateConversation: {
     held(): PrivateConversationHeld;
   } | null;
-  // 記録しない会話の独立した確認（B06-07a-2 の 2d、ADR 0192）。確認を画面に出して承認を受ける経路（契約・画面）はまだない
-  // ので（U503）、試験と次の段階の経路がここを呼ぶ。HTTPS を設定しなければ null。
+  // 記録しない会話の独立した確認（B06-07a-2 の 2d、ADR 0192）。画面の経路（ADR 0197）も同じ確認を使う。試験・診断が直接
+  // 呼ぶ口。HTTPS を設定しなければ null。
   readonly privateConfirmations: PrivateConfirmationHandle | null;
   // 知らせの中継（UI-05 の段階 3、ADR 0187）。掃除の job・保存境界の保持者・忘却の経路が知らせを渡す口で、流れの表示の
   // 後始末と WSS の購読へ運ぶ。試験は保存層の命令で直接忘れた後の台帳の知らせをここへ渡す（忘却の公開ゲートは閉じたまま）。
@@ -2295,6 +2296,13 @@ async function startHttps(
       : createForgetRoutes({ service: forgetService, store });
   // 記憶の一覧（UI-10 の忘却の画面、ADR 0183）。データ鍵は保持せず要求ごとに読む。忘却の公開ゲートの値は表示のために読むだけ
   // （計画・実行のゲートは ForgetService が見る。どちらも同じ定数）。一覧は忘却の経路の有無にかかわらず返す。
+  // 記録しない会話の独立した確認の一覧・承認・断る（ADR 0197、U503）。口は確認を出す経路と同じ（製品は閉じたまま）。
+  const privateConfirmationRoutes = createPrivateConfirmationRoutes({
+    desk: privateDesk,
+    open:
+      turnOptions.privateConfirmationScreen ??
+      (() => PRIVATE_CONFIRMATION_SCREEN_OPEN),
+  });
   const memoryRoutes = createMemoryRoutes({
     store,
     dataKey: async () => {
@@ -2318,6 +2326,7 @@ async function startHttps(
     householdRoutes.handlers,
     voiceRoutes.handlers,
     memoryRoutes.handlers,
+    privateConfirmationRoutes.handlers,
     ...(oauthService === undefined ? [] : [oauthService.handlers]),
     ...(forgetRoutes === null ? [] : [forgetRoutes.handlers]),
   ].flatMap((handlers) => Object.keys(handlers));
@@ -2347,6 +2356,7 @@ async function startHttps(
         ...householdRoutes.handlers,
         ...voiceRoutes.handlers,
         ...memoryRoutes.handlers,
+        ...privateConfirmationRoutes.handlers,
         ...(oauthService === undefined ? {} : oauthService.handlers),
         ...(forgetRoutes === null ? {} : forgetRoutes.handlers),
       },

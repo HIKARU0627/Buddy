@@ -92,6 +92,15 @@ export function rejectMessage(
     if (reason === 'outcome_unknown')
       return '表示先が移ったか確かめられませんでした。自動では送り直しません。「表示先」の表示を確かめてから、必要ならもう一度押してください。';
   }
+  // 記録しない会話の独立した確認の承認・断る（ADR 0197、U503）。何が起きたかと、次に何をするか。
+  if (channel === 'desktop.private_confirmation_decide') {
+    if (reason === 'core_rejected')
+      return 'この確認は取り下げられたか、内容が変わったため、中枢が受け付けませんでした。変更はしていません。必要なら、もう一度頼んでください。';
+    if (reason === 'outcome_unknown')
+      return '承認・断るが届いたか確かめられませんでした。自動では送り直しません。一覧が更新されるのを待って確かめてください。';
+    if (reason === 'entry_not_found')
+      return 'この確認はもう一覧にありません（取り下げ・承認済み・記録しない会話の終了など）。変更はしていません。';
+  }
   return REJECT_MESSAGES[reason];
 }
 
@@ -373,3 +382,29 @@ export const PLATFORM_LABELS: Readonly<Record<string, string>> = {
   windows: 'Windows',
   linux: 'Linux',
 };
+
+// 記録しない会話の独立した確認（ADR 0197、U503。ADR 0045 の確認の画面）。
+export const PRIVATE_CONFIRMATION_LABELS = {
+  title: '記録しない会話の確認',
+  // 記録しない会話の間であることと、承認で残るもの（ADR 0040・0045）。
+  lead: '記録しない会話から頼まれた変更です。会話の内容は保存しません。承認すると、この変更の最小の記録だけを残して実行します。',
+  operation: 'メールのラベルの変更',
+  add: '付ける',
+  remove: '外す',
+  subject: '件名',
+  sender: '差出人',
+  // 口座と対象のメールを確かめられない（承認を出さない）。
+  unidentified:
+    '対象のメールを確かめられないため、承認できません。断るか、記録しない会話を終えてから頼み直してください。',
+  approve: '承認する',
+  decline: '断る',
+  sending: '送っています…',
+  held: '結果を確かめています。一覧が更新されるまで操作できません。',
+  stopped: '入出力が止まっている間は承認できません（断ることはできます）。',
+  recorded: '承認しました。最小の記録だけを残して実行します。',
+  recordFailed:
+    '承認しましたが、記録を残せなかったため変更はしていません。必要なら、もう一度頼んでください。',
+  recordUnknown:
+    '承認しましたが、記録を残せたか確かめられませんでした。自動では送り直しません。操作の一覧で結果を確かめてください。',
+  declined: '断りました。変更はしていません。',
+} as const;

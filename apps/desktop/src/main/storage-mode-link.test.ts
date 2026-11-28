@@ -358,14 +358,14 @@ test(
     assert.equal((await a.change('private')).outcome, 'ok');
     await waitUntil(() => statusMode(b) === 'private', 'B learns private');
     assert(b.modeNotices() >= 1);
-    // B が送ったのは保存モードの読み取りだけ（切り替え・発言は送っていない）。
+    // B が送ったのは保存モードと、記録しない会話の承認を待つ確認（ADR 0197）の読み取りだけ（切り替え・発言は送っていない）。
     assert.deepEqual(
       [
         ...new Set(
           b.sent.slice(bBefore).map((entry) => `${entry.method} ${entry.path}`),
         ),
-      ],
-      ['GET /v1/stream/storage-mode'],
+      ].sort(),
+      ['GET /v1/private-confirmations', 'GET /v1/stream/storage-mode'],
     );
 
     // B で記録しないを終えると、A は知らせで読み直し、通常と表示する（A は何も押していない）。
@@ -377,8 +377,8 @@ test(
         ...new Set(
           a.sent.slice(aBefore).map((entry) => `${entry.method} ${entry.path}`),
         ),
-      ],
-      ['GET /v1/stream/storage-mode'],
+      ].sort(),
+      ['GET /v1/private-confirmations', 'GET /v1/stream/storage-mode'],
     );
 
     // 取り逃し: A へ知らせを渡さない間に、B が記録しないへ入って A も知らせで記録しないになり、その後 B が終える。

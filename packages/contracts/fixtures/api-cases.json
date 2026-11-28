@@ -513,6 +513,117 @@
         }
       ]
     },
+    "listPrivateConfirmations": {
+      "response": {
+        "confirmations": [
+          {
+            "confirmation_id": "00000000-0000-4000-8000-000000009101",
+            "intent": "label_mail",
+            "service": "gmail",
+            "account_label": "synthetic-account",
+            "target": {
+              "subject": "B06-SYNTH 件名",
+              "sender": "sender@example.invalid",
+              "received_at": "2030-10-05T00:00:00Z"
+            },
+            "add": ["B06-SYNTH-label"],
+            "remove": [],
+            "content_version": "1",
+            "content_hash": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
+            "conversation_saved": false
+          }
+        ]
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"],
+        ["locked", 403, "device_locked"],
+        ["lock_unknown", 403, "device_locked"]
+      ]
+    },
+    "approvePrivateConfirmation": {
+      "params": {
+        "confirmation_id": "00000000-0000-4000-8000-000000009101"
+      },
+      "request": {
+        "request_id": "00000000-0000-4000-8000-000000009102",
+        "command_scope_id": "00000000-0000-4000-8000-000000009103",
+        "content_version": "1",
+        "content_hash": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3"
+      },
+      "response": {
+        "request_id": "00000000-0000-4000-8000-000000009102",
+        "confirmation_id": "00000000-0000-4000-8000-000000009101",
+        "result": "recorded"
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"],
+        ["stale_scope", 410, "expired_scope"],
+        ["locked", 403, "device_locked"],
+        ["lock_unknown", 403, "device_locked"],
+        ["too_large", 413, "payload_too_large"],
+        ["voice_origin", 403, "screen_operation_required"]
+      ],
+      "invalid_bodies": [
+        {
+          "request_id": "00000000-0000-4000-8000-000000009102",
+          "command_scope_id": "00000000-0000-4000-8000-000000009103",
+          "content_version": "1",
+          "content_hash": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
+          "device_id": "00000000-0000-4000-8000-000000000008"
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-000000009102",
+          "command_scope_id": "00000000-0000-4000-8000-000000009103",
+          "content_version": "1",
+          "content_hash": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
+          "operation_id": "00000000-0000-4000-8000-000000009104",
+          "segment_generation": "2"
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-000000009102",
+          "command_scope_id": "00000000-0000-4000-8000-000000009103",
+          "content_version": "1"
+        }
+      ]
+    },
+    "declinePrivateConfirmation": {
+      "params": {
+        "confirmation_id": "00000000-0000-4000-8000-000000009101"
+      },
+      "request": {
+        "request_id": "00000000-0000-4000-8000-000000009102",
+        "command_scope_id": "00000000-0000-4000-8000-000000009103"
+      },
+      "response": {
+        "request_id": "00000000-0000-4000-8000-000000009102",
+        "confirmation_id": "00000000-0000-4000-8000-000000009101",
+        "result": "declined"
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"],
+        ["stale_scope", 410, "expired_scope"],
+        ["locked", 403, "device_locked"],
+        ["lock_unknown", 403, "device_locked"],
+        ["too_large", 413, "payload_too_large"],
+        ["voice_origin", 403, "screen_operation_required"]
+      ],
+      "invalid_bodies": [
+        {
+          "request_id": "00000000-0000-4000-8000-000000009102",
+          "command_scope_id": "00000000-0000-4000-8000-000000009103",
+          "device_id": "00000000-0000-4000-8000-000000000008"
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-000000009102"
+        }
+      ]
+    },
     "handoffSession": {
       "params": {
         "session_id": "00000000-0000-4000-8000-000000000003"

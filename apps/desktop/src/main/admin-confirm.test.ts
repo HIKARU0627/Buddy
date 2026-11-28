@@ -5,6 +5,40 @@ import { adminConfirmText, displayText } from './admin-confirm.js';
 
 const at = new Date(2030, 9, 1, 9, 5, 7).toISOString();
 
+// 記録しない会話の独立した確認の承認（ADR 0197、U503）。記録しない会話であること・会話を保存しないこと・対象・ラベル・
+// 残る最小の記録を書き、書字方向の制御文字を除く。「やめる」が既定。
+test('the private confirmation dialog says it is a private conversation and shows the target and the labels', () => {
+  const text = adminConfirmText({
+    action: 'approve_private_confirmation',
+    service: 'gmail',
+    accountLabel: 'synthetic-account',
+    target: {
+      subject: 'B06-SYNTH‮件名',
+      sender: null,
+      received_at: null,
+    },
+    labelsAdd: ['B06-SYNTH-label'],
+    labelsRemove: ['B06-SYNTH-old'],
+  });
+  assert.equal(text.title, '記録しない会話の変更の承認');
+  assert.equal(text.message, '「メールのラベルの変更」を承認しますか');
+  assert.equal(
+    text.detail,
+    [
+      '記録しない会話から頼まれた変更です。会話の内容は保存しません。',
+      '変更先: Gmail',
+      'アカウント: synthetic-account',
+      '対象の件名: B06-SYNTH 件名',
+      '付けるラベル: B06-SYNTH-label',
+      '外すラベル: B06-SYNTH-old',
+      '',
+      '承認すると、この変更の最小の記録だけを残して、中枢が実行します。変更の内容は完了から 7 日、内容の照合値と結果の受領は 90 日残ります。',
+      'メールを送ることはありません。',
+    ].join('\n'),
+  );
+  assert.deepEqual(text.buttons, ['やめる', '承認する']);
+});
+
 test('the confirmation shows the device name, OS, time and claim check, with cancel first', () => {
   const text = adminConfirmText({
     action: 'approve',

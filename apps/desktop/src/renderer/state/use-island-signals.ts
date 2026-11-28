@@ -12,16 +12,18 @@ export function useIslandSignals(
   notices: Readonly<Record<string, Notice>>,
   // 状態欄の保存モード（UI-05 の段階 6、ADR 0189）。変わったら区切りの知らせで島を広げる。
   storageMode: StorageMode | null = null,
+  // 承認を待つ記録しない会話の独立した確認の数（ADR 0197）。確認が必要な操作に足して数える。
+  privateConfirmations = 0,
 ): IslandSignals {
   const [memory, setMemory] = useState(EMPTY_ISLAND_MEMORY);
   useEffect(() => {
     setMemory((previous) =>
       nextIslandMemory(
         previous,
-        { shown, operations, notices, storageMode },
+        { shown, operations, notices, storageMode, privateConfirmations },
         Date.now(),
       ),
     );
-  }, [shown, operations, notices, storageMode]);
+  }, [shown, operations, notices, storageMode, privateConfirmations]);
   return memory.signals;
 }

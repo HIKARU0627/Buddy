@@ -80,6 +80,20 @@ export const API_ROUTES: readonly ApiRoute[] = [
     ...SCREEN,
   }),
   route('getStreamHandoff', 'GET', '/v1/stream/handoff'),
+  // 記録しない会話の独立した確認の一覧・承認・断る（ADR 0197、U503）。承認・断るは本人の画面操作だけ。
+  route('listPrivateConfirmations', 'GET', '/v1/private-confirmations'),
+  route(
+    'approvePrivateConfirmation',
+    'POST',
+    '/v1/private-confirmations/{confirmation_id}/approve',
+    { body: 'PrivateConfirmationApprovalRequest', ...SCREEN },
+  ),
+  route(
+    'declinePrivateConfirmation',
+    'POST',
+    '/v1/private-confirmations/{confirmation_id}/decline',
+    { body: 'PrivateConfirmationDeclineRequest', ...SCREEN },
+  ),
   // キャンバスの今の記述の読み取り（ADR 0032）。イベントの canvas の知らせ（版だけ）を受けた端末が取る。
   route('getCanvas', 'GET', '/v1/canvas'),
   // キャンバスのユーザーの操作の記録（UI-06、ADR 0032）。本人の画面操作。

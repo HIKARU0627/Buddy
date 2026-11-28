@@ -45,6 +45,7 @@ const connection = (extra: Partial<Shown> = {}): Shown => ({
   home_network: null,
   operations: [],
   budget_items: [],
+  private_confirmations: [],
   ...extra,
 });
 

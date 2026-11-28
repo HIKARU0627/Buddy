@@ -196,6 +196,29 @@ export function desktopSemanticErrors(
       operations.length > 0
     )
       errors.push('operations_without_connection');
+    // 記録しない会話の独立した確認（ADR 0197）。接続している間だけ。
+    const confirmations = value['private_confirmations'];
+    if (
+      link !== 'connected' &&
+      Array.isArray(confirmations) &&
+      confirmations.length > 0
+    )
+      errors.push('private_confirmations_without_connection');
+    // 付ける・外すラベルの両方が空・重なる確認は出さない（契約の意味検査と同じ）。
+    if (
+      Array.isArray(confirmations) &&
+      confirmations.some((item) => {
+        if (!isRecord(item)) return false;
+        const add = item['labels_add'];
+        const remove = item['labels_remove'];
+        if (!Array.isArray(add) || !Array.isArray(remove)) return false;
+        return (
+          (add.length === 0 && remove.length === 0) ||
+          add.some((label) => remove.includes(label))
+        );
+      })
+    )
+      errors.push('private_confirmation_empty_or_overlapping');
     // 予算の確認の項目（B07-05、ADR 0039）。接続している間だけ。種類ごとに持つ値が決まっている。
     const items = value['budget_items'];
     if (Array.isArray(items)) {

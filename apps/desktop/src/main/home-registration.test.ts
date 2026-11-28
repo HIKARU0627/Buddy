@@ -539,6 +539,8 @@ test(
           '/v1/home-network/registration',
           // 接続したら流れの今の保存モードを読む（状態欄の保存モード。UI-05 の段階 6、ADR 0189）。
           '/v1/stream/storage-mode',
+          // 接続したら記録しない会話の承認を待つ確認を読む（ADR 0197）。
+          '/v1/private-confirmations',
         ].includes(request.path),
         request.path,
       );

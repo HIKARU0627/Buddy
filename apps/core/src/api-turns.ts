@@ -1935,14 +1935,32 @@ export function createTurnRoutes(options: TurnRoutesOptions): TurnRoutes {
     // RAM にだけ持つ。出せなければ（口が閉じた・確認の中身の検査に通らない・区切りが変わった）決まった文で断る。
     if (plan.kind === 'operation') {
       const confirmations = options.privateConfirmations;
+      // 確認には、頼んだ端末（承認・断るはこの端末だけ。U600）と、画面で対象のメールを見分けるための表示用の値（口座の表示名・
+      // 件名・差出人・受信日時。提供元から読む。読めない項目は null）を添える。どちらも RAM だけ（ADR 0197）。
+      const display = async () => {
+        const intent = plan.kind === 'operation' ? plan.content : {};
+        const connection = await readConnection();
+        return {
+          account_label:
+            connection !== null &&
+            connection.account_id === intent['account_id']
+              ? (connection.account_label ?? null)
+              : null,
+          target: await readTargetDisplay(intent, connection),
+        };
+      };
       const requested =
         confirmations === undefined || !privateConfirmable(plan.intent)
           ? null
-          : await confirmations.desk.request(plan.content, {
-              segment_id: segment.segment_id,
-              segment_generation: segment.segment_generation,
-              storage_mode: 'private',
-            });
+          : await confirmations.desk.request(
+              plan.content,
+              {
+                segment_id: segment.segment_id,
+                segment_generation: segment.segment_generation,
+                storage_mode: 'private',
+              },
+              { device_id: device.device_id, display: await display() },
+            );
       if (requested === null || !requested.ok)
         plan = clarify('private_unsupported', null);
       else if (!stillCurrent()) {

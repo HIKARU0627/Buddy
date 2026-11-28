@@ -149,6 +149,8 @@ test('requests go only to the contract channels', async () => {
       // B11-05: 気づきの一覧・状態の変更（従来の窓と状態の層。ADR 0132）。
       'desktop.candidates_list',
       'desktop.candidate_state',
+      // 気づきの OS 通知の入・切の変更（ADR 0196。従来の窓と状態の層）。
+      'desktop.candidate_alert_setting',
       // B08-02 P3・B09-05: 連携の接続の一覧・取得範囲の変更（従来の窓の中枢の画面と状態の層。ADR 0142）。
       'desktop.connections_list',
       'desktop.connection_targets_update',
@@ -190,6 +192,7 @@ test('requests go only to the contract channels', async () => {
     ...channels,
     'desktop.candidates_list',
     'desktop.candidate_state',
+    'desktop.candidate_alert_setting',
     'desktop.connections_list',
     'desktop.connection_targets_update',
     'desktop.connection_targets_discover',
@@ -359,9 +362,10 @@ const EXPECTED_ROLE_CHANNELS: Readonly<Record<string, readonly string[]>> = {
     'desktop.voice_continue',
     'desktop.voice_consent_revoke',
     'desktop.voice_control',
-    // 気づきの一覧・状態の変更（B11-05、ADR 0132）。
+    // 気づきの一覧・状態の変更（B11-05、ADR 0132）と OS 通知の入・切の変更（ADR 0196）。
     'desktop.candidates_list',
     'desktop.candidate_state',
+    'desktop.candidate_alert_setting',
     // 連携の接続の一覧・取得範囲の変更（B08-02 P3・B09-05、ADR 0142）と選べる対象の読み取り（ADR 0145）。
     'desktop.connections_list',
     'desktop.connection_targets_update',

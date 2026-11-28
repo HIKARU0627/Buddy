@@ -394,6 +394,16 @@ export type CandidateOpOutcome<K extends CandidateOpKind> =
   | { readonly ok: true; readonly value: CandidateOpValues[K] }
   | Extract<CandidateOpResult, { ok: false }>;
 
+// 書けた後に受け手へ渡す候補の命令（作成と状態の遷移だけ。ADR 0196）。
+export type CandidateWriteOp = Extract<
+  CandidateOp,
+  { kind: 'candidate.create' | 'candidate.transition' }
+>;
+export type CandidateWriteListener = (
+  op: CandidateWriteOp,
+  value: CandidateOpValues[CandidateWriteOp['kind']],
+) => void;
+
 export type MemoryOpOutcome<K extends MemoryOpKind> =
   | { readonly ok: true; readonly value: MemoryOpValues[K] }
   | Extract<MemoryOpResult, { ok: false }>;
@@ -474,6 +484,8 @@ export class DbWorkerClient {
   #responseTimeoutMs: number;
   #onMetrics: ((metrics: DbCommandMetrics) => void) | undefined;
   #exited: Promise<number>;
+  // 候補の作成・状態の遷移が書けた後に呼ぶ受け手（気づきの OS 通知とトレイの件数の知らせ。ADR 0196）。
+  readonly #candidateWriteListeners = new Set<CandidateWriteListener>();
 
   private constructor(
     worker: Worker,
@@ -1038,8 +1050,41 @@ export class DbWorkerClient {
     }) as Promise<IntentShadowOpOutcome<K>>;
   }
 
+  // 候補の作成（candidate.create）・状態の遷移（candidate.transition）が書けた（ok）後に呼ぶ受け手を足す。戻り値で外す。
+  // 受け手の例外・失敗は命令の結果に影響させない（書けた後の知らせ。ADR 0196）。
+  onCandidateWrite(listener: CandidateWriteListener): () => void {
+    this.#candidateWriteListeners.add(listener);
+    return () => {
+      this.#candidateWriteListeners.delete(listener);
+    };
+  }
+
   // 気づき（候補）の作成・状態の遷移・一覧（ADR 0118）。扱いは memory と同じ。
   candidate<K extends CandidateOpKind>(
+    op: Extract<CandidateOp, { kind: K }>,
+  ): Promise<CandidateOpOutcome<K>> {
+    const result = this.#candidate(op);
+    if (
+      (op.kind === 'candidate.create' || op.kind === 'candidate.transition') &&
+      this.#candidateWriteListeners.size > 0
+    )
+      void result.then((outcome) => {
+        if (!outcome.ok) return;
+        for (const listener of [...this.#candidateWriteListeners]) {
+          try {
+            listener(
+              op as CandidateWriteOp,
+              outcome.value as CandidateOpValues[CandidateWriteOp['kind']],
+            );
+          } catch {
+            // 受け手の失敗は命令の結果にしない。
+          }
+        }
+      });
+    return result;
+  }
+
+  #candidate<K extends CandidateOpKind>(
     op: Extract<CandidateOp, { kind: K }>,
   ): Promise<CandidateOpOutcome<K>> {
     return new Promise<CandidateOpResult>((resolve) => {

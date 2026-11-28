@@ -156,6 +156,8 @@ export const CANVAS_CHANNELS: readonly DesktopIpcChannel[] = [
 export const CANDIDATE_CHANNELS: readonly DesktopIpcChannel[] = [
   'desktop.candidates_list',
   'desktop.candidate_state',
+  // 気づきの OS 通知の入・切の変更（ADR 0196）。
+  'desktop.candidate_alert_setting',
 ];
 
 // 自動実行の一覧・取り消し・安全停止の解除のチャネル（B13-05、ADR 0154）。登録済みでロック解除済みの端末なら、
@@ -317,6 +319,14 @@ export interface DesktopCoreLinkOptions {
   readonly forgetLedgerReplicaPath?: string;
   // 試験で複製の rename の前の停止を再現する。
   readonly forgetLedgerBeforeRename?: () => void | Promise<void>;
+  // 気づきの OS 通知とトレイの new の件数（ADR 0196）。渡したときだけ、中枢の気づきの知らせ・接続・ロック解除で、OS 通知の
+  // 設定（入のときは一覧も）を後ろで読む。show は中枢が OS 通知を出すと決めた数（1 以上）で、設定が入・ロック解除済みのとき
+  // だけ呼ぶ（前面かどうかは Electron の層が見る）。changed はトレイの件数（candidateTray）が変わり得たときに呼ぶ。省略すると
+  // 後ろでは読まない（中枢への要求の数を数える試験で、背景の読み取りを混ぜないため）。
+  readonly candidateAlerts?: {
+    readonly show: (count: number) => void;
+    readonly changed: () => void;
+  };
 }
 
 // キャンバスの窓へ送る通知（記述・空・描かない理由つきの空）。
@@ -726,6 +736,8 @@ export class DesktopCoreLink {
       if (this.#options.canvasMode === true) void this.#canvas.refresh();
       // ロック中に捨てた保存モードを読み直す（ADR 0189）。
       void this.#storage.refresh();
+      // ロック中に捨てた気づきの件数を読み直す（OS 通知は出し直さない。ADR 0196）。
+      void this.#candidateNotice(0);
       // ロック中に捨てた表示先を読み直す（キャンバス表示だけ。ADR 0193）。
       if (this.#options.canvasMode === true) void this.#route.refresh();
     }
@@ -734,6 +746,34 @@ export class DesktopCoreLink {
     // ロック中・不明は表示のリースを取らない。解除したら取り直す（ADR 0188）。
     this.#display?.update();
     this.#options.onChange();
+    // ロックした・不明になったら、トレイの件数を消す（bumpGeneration で一覧を捨てた）。
+    if (lockState !== 'unlocked') this.#options.candidateAlerts?.changed();
+  }
+
+  // トレイ（macOS はメニューバー）に出す気づきの new の件数（ADR 0073・0196）。ロック解除済みで、OS 通知の設定が入で、
+  // 一覧を読めているときだけ。それ以外は null（出さない）。
+  candidateTray(): number | null {
+    if (this.#lockState !== 'unlocked') return null;
+    return this.#candidates.trayCount();
+  }
+
+  // 中枢の気づきの知らせ（または接続・ロック解除）で、設定と一覧を後ろで読み直し、トレイを合わせる。alertCount が 1 以上で
+  // 設定が入なら OS 通知を出させる。読み直しの間にロック・切断した（世代が進んだ）ら何もしない。
+  async #candidateNotice(alertCount: number): Promise<void> {
+    const alerts = this.#options.candidateAlerts;
+    if (alerts === undefined) return;
+    const lock = this.#lockGeneration;
+    const generation = this.#viewGeneration;
+    await this.#candidates.background();
+    if (
+      lock !== this.#lockGeneration ||
+      generation !== this.#viewGeneration ||
+      this.#lockState !== 'unlocked'
+    )
+      return;
+    alerts.changed();
+    if (alertCount > 0 && this.#candidates.alertEnabled())
+      alerts.show(alertCount);
   }
 
   // スリープからの復帰・ネットワークの変化（Electron の層が知らせる）。
@@ -1056,6 +1096,8 @@ export class DesktopCoreLink {
         if (this.#options.canvasMode === true) void this.#canvas.refresh();
         // 接続するたびに、流れの今の保存モードを読む（状態欄・島・パネルの記録しないモードの印。ADR 0189）。
         void this.#storage.refresh();
+        // 接続するたびに、気づきの OS 通知の設定（入なら一覧も）を読む（トレイの new の件数。ADR 0196）。
+        if (this.#lockState === 'unlocked') void this.#candidateNotice(0);
         // 接続するたびに、流れの今の表示先を読む（状態欄の表示先。キャンバス表示だけ。ADR 0193）。
         if (this.#options.canvasMode === true) void this.#route.refresh();
         // 接続するたびに、忘却台帳の複製の head を送って追いつく（B06-07b-3、ADR 0182）。ロック中でも送る（台帳は
@@ -1091,6 +1133,15 @@ export class DesktopCoreLink {
     // 中枢の知らせ（UI-05 の段階 3、ADR 0187）。忘却台帳の前進は台帳の複製の受け取り口へ（U403）、期限切れ・忘却・記録しない
     // 会話の終了はキャンバスの読み直しへ渡す。画面への表示（本人への知らせ）はしない（U409・U464）。
     connection.onNotice((notice) => {
+      // 気づきの増減（ADR 0196）。ロック中は読まず、OS 通知も出さない（解除したときに件数だけ読み直す。出し直さない）。
+      // キャンバスとは関係しないので、ここで終える。
+      if (notice.schema === 'buddy.candidate-notice.v1') {
+        if (this.#lockState === 'unlocked')
+          void this.#candidateNotice(notice.alert_count);
+        // ロック中に届いた知らせは捨てる（理由のコードだけを残す。件数・知らせの ID は出さない）。
+        else this.#log('candidate_notice_dropped_locked');
+        return;
+      }
       if (notice.schema === 'buddy.forget-ledger-notice.v1') {
         // 失敗はログのコードだけ（知らせの ID・台帳の中身・例外の文は出さない）。次の知らせ・次の接続の同期で追いつく。
         this.forgetLedgerNotice(notice).catch(() => {
@@ -1110,6 +1161,14 @@ export class DesktopCoreLink {
         this.#lockState === 'unlocked'
       )
         void this.#storage.refresh();
+      // 忘却で候補が消えると件数が変わり得る（候補の削除は気づきの知らせを出さない）。件数だけ読み直す（ADR 0196 の既知の制限。
+      // 元情報だけの忘却の知らせは中枢が送らないので、その場合は次の知らせ・接続・ロック解除まで古いまま）。
+      if (
+        notice.schema === 'buddy.retention-notice.v1' &&
+        notice.kind === 'forgotten' &&
+        this.#lockState === 'unlocked'
+      )
+        void this.#candidateNotice(0);
       // 消えた物は中枢が記述から閉じて版を進める。版の知らせを取り逃しても、知らせで今の記述を取り直す（ロック中・停止中・
       // 隠れている間は取らない。CanvasBridge.refresh の判定のまま）。
       if (this.#options.canvasMode === true) void this.#canvas.refresh();
@@ -1422,7 +1481,8 @@ export class DesktopCoreLink {
       !contract.isRequest(raw) ||
       raw.channel !== ipcChannel ||
       (raw.channel !== 'desktop.candidates_list' &&
-        raw.channel !== 'desktop.candidate_state')
+        raw.channel !== 'desktop.candidate_state' &&
+        raw.channel !== 'desktop.candidate_alert_setting')
     )
       return this.#reject(
         echoRequestId(raw),
@@ -1443,11 +1503,19 @@ export class DesktopCoreLink {
     const result =
       raw.channel === 'desktop.candidates_list'
         ? await this.#candidates.list()
-        : await this.#candidates.change(
-            raw.payload.ref,
-            raw.payload.event,
-            raw.payload.snooze_until,
-          );
+        : raw.channel === 'desktop.candidate_alert_setting'
+          ? await this.#candidates.changeAlert(
+              raw.payload.settings_ref,
+              raw.payload.os_notification,
+            )
+          : await this.#candidates.change(
+              raw.payload.ref,
+              raw.payload.event,
+              raw.payload.snooze_until,
+            );
+    // 件数・設定が変わり得たので、トレイを合わせる（ADR 0196）。
+    if (generation === this.#viewGeneration)
+      this.#options.candidateAlerts?.changed();
     return this.#withinGeneration(
       generation,
       this.#operationOutcome(

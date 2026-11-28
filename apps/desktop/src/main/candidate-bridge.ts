@@ -13,8 +13,14 @@
 //   （正本は中枢の検査）。
 // - 世代（ロック・切断）: reset で一覧・参照・保留を捨て、非同期の処理は await の後に世代を照合する（またいだ読み取りは
 //   反映しない。またいだ変更は結果不明として返す）。
+// - OS 通知の入・切（ADR 0196）: 一覧と一緒に中枢の GET /v1/candidates/alert-settings を読み、入・切だけを画面へ渡す（版は
+//   main が持つ。中枢の版が変わるたびに新しい設定の参照を作る）。画面からの変更は、画面が見ている参照が今の参照と違えば
+//   送らずに preview_stale（ADR 0191 の設定の参照と同じ）。409・結果不明は送り直さず、今の設定を読み直す。読めたことがない
+//   設定は変えない。トレイの new の件数は、入で一覧を読めているときだけ返す（切・読めていないときは出さない）。
 // Electron に依存しない（node:test で試験する）。
+import { randomUUID } from 'node:crypto';
 import type {
+  CandidateAlertSettings,
   CandidateListResponse,
   CandidateSnapshot,
   CandidateStateCounts,
@@ -84,6 +90,12 @@ export class CandidateBridge {
   #listSeq = 1;
   #running: Promise<void> | null = null;
   #again = false;
+  // 中枢の OS 通知の入・切（読めたことがなければ null）と、その版ごとの参照。
+  #alert: CandidateAlertSettings | null = null;
+  #alertRef: string | null = null;
+  #changingAlert = false;
+  // 後ろの読み取りで設定を読んだ直後か（続く一覧の読み取りで設定を読み直さない）。
+  #alertFresh = false;
 
   constructor(host: CandidateHost) {
     this.#host = host;
@@ -100,10 +112,22 @@ export class CandidateBridge {
     this.#counts = null;
     this.#truncated = false;
     this.#failed = false;
+    this.#alert = null;
+    this.#alertRef = null;
+    this.#alertFresh = false;
     this.#listSeq += 1;
   }
 
-  // 画面に出す値。
+  // OS 通知が入か（読めたことがなければ false。安全側）。
+  alertEnabled(): boolean {
+    return this.#alert?.os_notification === 'on';
+  }
+
+  // トレイに出す new の件数。入で一覧を読めているときだけ。切・読めていないときは null（出さない）。
+  trayCount(): number | null {
+    if (!this.alertEnabled() || this.#counts === null) return null;
+    return this.#counts.new;
+  }
   view(): DesktopCandidateView {
     const entries = [...this.#records.entries()]
       .sort((a, b) => a[1].position - b[1].position)
@@ -135,7 +159,28 @@ export class CandidateBridge {
       entries,
       truncated: this.#truncated,
       list_seq: this.#listSeq,
+      alert:
+        this.#alert === null || this.#alertRef === null
+          ? null
+          : {
+              ref: this.#alertRef,
+              os_notification: this.#alert.os_notification,
+            },
     };
+  }
+
+  // 後ろでの読み直し（中枢の知らせ・接続・ロック解除）。設定だけを先に読み、入のときだけ一覧も読む（切のときは題を
+  // main へ読み込まない）。
+  async background(): Promise<void> {
+    const gen = this.#gen;
+    const connection = this.#host.connection();
+    const scope = connection?.state.commandScopeId ?? null;
+    if (connection === null || scope === null) return;
+    await this.#readAlert(gen, connection, scope);
+    if (gen !== this.#gen || !this.alertEnabled()) return;
+    // いま読んだ設定を、続く一覧の読み取りで読み直さない（中枢への要求を 1 回減らす。U594 の負荷）。
+    this.#alertFresh = true;
+    await this.refresh();
   }
 
   // --- 読み取り ---
@@ -173,6 +218,9 @@ export class CandidateBridge {
     });
     if (gen !== this.#gen) return;
     this.#listSeq += 1;
+    if (this.#alertFresh) this.#alertFresh = false;
+    else await this.#readAlert(gen, connection, scope);
+    if (gen !== this.#gen) return;
     if (
       listed.kind === 'response' &&
       listed.status === 200 &&
@@ -184,6 +232,110 @@ export class CandidateBridge {
     // 読めなかった。前の一覧のまま、読めなかったことを画面に出す（「候補なし」の証拠にしない）。
     this.#failed = true;
     this.#host.log('candidate_list_unavailable');
+  }
+
+  // OS 通知の入・切を読む。読めなければ前の値のまま（「切」の証拠にしない）。
+  async #readAlert(
+    gen: number,
+    connection: ClientConnection,
+    scope: string,
+  ): Promise<void> {
+    const read = await connection.request({
+      method: 'GET',
+      path: '/v1/candidates/alert-settings',
+      expectedScopeId: scope,
+    });
+    if (gen !== this.#gen) return;
+    if (
+      read.kind === 'response' &&
+      read.status === 200 &&
+      this.#host.contract.valid('CandidateAlertSettings', read.body)
+    ) {
+      this.#takeAlert(read.body as CandidateAlertSettings);
+      return;
+    }
+    this.#host.log('candidate_alert_settings_unavailable');
+  }
+
+  // 中枢の設定を持つ。版が変わったら参照を新しくする（同じ版の読み直しでは参照を変えない）。
+  // 持っている版より小さい版（遅れて届いた古い読み取り）は捨てる（版は 10 進の文字列なので BigInt で比べる）。
+  #takeAlert(next: CandidateAlertSettings): void {
+    if (
+      this.#alert !== null &&
+      BigInt(next.candidate_alert_settings_revision) <
+        BigInt(this.#alert.candidate_alert_settings_revision)
+    )
+      return;
+    if (
+      this.#alert === null ||
+      this.#alertRef === null ||
+      this.#alert.candidate_alert_settings_revision !==
+        next.candidate_alert_settings_revision
+    ) {
+      // 候補の参照（host.newRef）の通し番号と分けるため、設定の参照は別に作る。
+      this.#alertRef = randomUUID();
+      this.#listSeq += 1;
+    }
+    this.#alert = next;
+  }
+
+  // 画面から OS 通知の入・切を変える。main が持つ版を付けて送る。
+  async changeAlert(
+    settingsRef: string,
+    value: 'on' | 'off',
+  ): Promise<CandidateOutcome<DesktopCandidateView>> {
+    if (this.#changingAlert) return fail('confirmation_pending');
+    this.#changingAlert = true;
+    try {
+      return await this.#changeAlert(settingsRef, value);
+    } finally {
+      this.#changingAlert = false;
+    }
+  }
+
+  async #changeAlert(
+    settingsRef: string,
+    value: 'on' | 'off',
+  ): Promise<CandidateOutcome<DesktopCandidateView>> {
+    const gen = this.#gen;
+    const connection = this.#host.connection();
+    const scope = connection?.state.commandScopeId ?? null;
+    if (connection === null || scope === null) return fail('not_connected');
+    const current = this.#alert;
+    if (current === null) return fail('entry_not_found');
+    // 画面が見ている設定が今の設定でない（読み直した後の新しい版を、画面がまだ見ていない）。送らない。
+    if (settingsRef !== this.#alertRef) return fail('preview_stale');
+    const outcome = await connection.request({
+      method: 'POST',
+      path: '/v1/candidates/alert-settings',
+      body: {
+        expected_candidate_alert_settings_revision:
+          current.candidate_alert_settings_revision,
+        os_notification: value,
+      },
+      scoped: true,
+      screenOperation: true,
+      expectedScopeId: scope,
+    });
+    if (outcome.kind === 'not_sent') return fail('not_connected');
+    if (gen !== this.#gen) return fail('outcome_unknown');
+    if (
+      outcome.kind === 'response' &&
+      outcome.status === 200 &&
+      this.#host.contract.valid('CandidateAlertSettings', outcome.body)
+    ) {
+      this.#takeAlert(outcome.body as CandidateAlertSettings);
+      // 入にしたら、トレイの件数のために一覧を読む（切のときは読まない）。
+      if (this.alertEnabled()) await this.refresh();
+      if (gen !== this.#gen) return fail('not_connected');
+      return { ok: true, value: this.view() };
+    }
+    // 別の画面で変わった（409）・結果が分からない: 自動では送り直さず、今の設定を読み直す。
+    void this.#readAlert(gen, connection, scope);
+    if (outcome.kind === 'unknown' || outcome.status >= 500)
+      return fail('outcome_unknown');
+    if (outcome.status === 409) return fail('preview_stale');
+    return fail('core_rejected');
   }
 
   // 読み取った一覧を反映する。同じ候補は同じ参照を保つ。この読み取りより前に結果が分からなくなった候補の保留は解く

@@ -4,9 +4,12 @@
 // （メールは「対応済みかは未確認」、一部未読、自動実行の操作）。操作は「開く」「今回は扱わない」「再通知」（明日・来週・
 // 日時を指定）。未取得・取得の失敗を「気づきはありません」と言わない。理由のコード・API の名前は出さない。
 // 「根拠を見る」「相談する」は後の段階（ADR 0132 の残論点）。
+// 頭の下に「新しい気づきを OS の通知で知らせる」の選択（ADR 0196。既定は切）。設定を読めていない間は選択を置かない。
 import {
   Button,
+  Checkbox,
   Chip,
+  Description,
   Disclosure,
   FieldError,
   Input,
@@ -46,6 +49,50 @@ const FETCH_LINES: Readonly<Record<string, StatusLine>> = {
     text: FETCH_LABELS.unavailable,
   },
 };
+
+// OS の通知の入・切（ADR 0073・0196）。選んだらすぐ中枢へ送る（版は main が持つ）。送っている間・断られて読み直している間は
+// 押させない。
+function AlertSetting({
+  state,
+  actions,
+}: {
+  readonly state: CandidateViewState;
+  readonly actions: CandidateActions;
+}) {
+  const alert = state.view?.alert ?? null;
+  if (alert === null)
+    return state.view === null ? null : (
+      <p className="text-xs text-muted" data-candidate-alert="unavailable">
+        {CANDIDATE_LABELS.alertUnavailable}
+      </p>
+    );
+  return (
+    <div
+      className={`px-3 py-2.5 ${FRAME_CLASS}`}
+      data-candidate-alert={alert.os_notification}
+    >
+      <Checkbox
+        isSelected={alert.os_notification === 'on'}
+        isDisabled={state.alertBusy}
+        onChange={(selected) => actions.setAlert(selected ? 'on' : 'off')}
+      >
+        <Checkbox.Content>
+          <Checkbox.Control>
+            <Checkbox.Indicator />
+          </Checkbox.Control>
+          <Label>
+            {state.alertBusy
+              ? `${CANDIDATE_LABELS.alert}（${CANDIDATE_LABELS.alertBusy}）`
+              : CANDIDATE_LABELS.alert}
+          </Label>
+        </Checkbox.Content>
+        <Description className="text-xs leading-5 text-muted">
+          {CANDIDATE_LABELS.alertDescription}
+        </Description>
+      </Checkbox>
+    </div>
+  );
+}
 
 function SnoozeChoices({
   entry,
@@ -353,6 +400,7 @@ export function CandidatesPanel({
           <span className="tabular-nums">{`${CANDIDATE_LABELS.newCount} ${header.newCount}\u00a0件`}</span>
         )}
       </p>
+      <AlertSetting state={state} actions={actions} />
       {headNotice === null ? null : (
         <InlineNotice tone={headNotice.tone} text={headNotice.text} />
       )}

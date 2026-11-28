@@ -50,6 +50,7 @@ const view = (
   entries,
   truncated: false,
   list_seq: 2,
+  alert: null,
   ...overrides,
 });
 
@@ -93,6 +94,7 @@ const ACTIONS: CandidateActions = {
   cancelSnooze: noop,
   setSnoozeInput: noop,
   snooze: noop,
+  setAlert: noop,
 };
 
 const render = (node: ReactNode) =>
@@ -219,4 +221,39 @@ test('the snooze choices show the times in the person zone', () => {
   assert.match(words, /明日（同じ時刻） 10\/10 12:00/u);
   assert.match(words, /来週（同じ時刻） 10\/16 12:00/u);
   assert.match(words, /再通知する日時（Asia\/Tokyo）/u);
+});
+
+// OS の通知の入・切（ADR 0196）。読めていない間は選択を置かず「切」と言わない。入・切は選択の状態で示し、版は出さない。
+test('the OS notification choice shows the setting, says what the notification carries and hides while unread', () => {
+  const unread = panel({ view: view(ENTRIES), seq: 2 });
+  assert.match(unread, /data-candidate-alert="unavailable"/u);
+  assert.match(text(unread), /OS の通知の設定をまだ読めていません/u);
+  assert.doesNotMatch(unread, /新しい気づきを OS の通知で知らせる/u);
+  // 一覧を読む前（view が null）は何も出さない。
+  assert.doesNotMatch(panel({}), /data-candidate-alert/u);
+  const off = panel({
+    view: view(ENTRIES, {
+      alert: {
+        ref: '00000000-0000-4000-8000-0000000000a1',
+        os_notification: 'off',
+      },
+    }),
+    seq: 2,
+  });
+  assert.match(off, /data-candidate-alert="off"/u);
+  assert.match(text(off), /新しい気づきを OS の通知で知らせる/u);
+  assert.match(text(off), /題・差出人・本文は通知に出しません/u);
+  assert.doesNotMatch(off, /00000000-0000-4000-8000-0000000000a1/u);
+  const on = panel({
+    view: view(ENTRIES, {
+      alert: {
+        ref: '00000000-0000-4000-8000-0000000000a1',
+        os_notification: 'on',
+      },
+    }),
+    seq: 2,
+    alertBusy: true,
+  });
+  assert.match(on, /data-candidate-alert="on"/u);
+  assert.match(text(on), /設定を送っています…/u);
 });

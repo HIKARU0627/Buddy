@@ -1051,19 +1051,25 @@ function deleteCandidates(
 ): number {
   const rows = db
     .prepare(
-      `SELECT candidate_id, title_blob_id, excerpt_blob_id FROM notification_candidates WHERE ${where}`,
+      `SELECT candidate_id, notification_key, title_blob_id, excerpt_blob_id FROM notification_candidates WHERE ${where}`,
     )
     .all(value) as {
     candidate_id: string;
+    notification_key: string;
     title_blob_id: string | null;
     excerpt_blob_id: string | null;
   }[];
   const remove = db.prepare(
     'DELETE FROM notification_candidates WHERE candidate_id = ?',
   );
+  // 配信の記録（deliveries）は識別子だけを持つ。候補を消すときに一緒に消す（ADR 0196。残すと候補のない記録が残り続ける）。
+  const removeDeliveries = db.prepare(
+    'DELETE FROM deliveries WHERE notification_key = ?',
+  );
   let count = 0;
   for (const row of rows) {
     count += remove.run(row.candidate_id).changes;
+    removeDeliveries.run(row.notification_key);
     deleteBlob(db, row.title_blob_id);
     deleteBlob(db, row.excerpt_blob_id);
   }

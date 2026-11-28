@@ -6,6 +6,7 @@
 import {
   BrowserWindow,
   Menu,
+  Notification,
   Tray,
   app,
   dialog,
@@ -34,6 +35,13 @@ import {
   type DesktopPowerEvent,
 } from '@buddy/domain';
 import { adminConfirmText } from '../admin-confirm.js';
+import {
+  CANDIDATE_ALERT_TITLE,
+  candidateAlertAllowed,
+  candidateAlertBody,
+  candidateTrayTitle,
+  candidateTrayTooltip,
+} from '../candidate-alert.js';
 import { ConnectionPublisher } from '../connection-publisher.js';
 import { writeHouseholdExportFile } from '../household-export-file.js';
 import { readReceiptImageFile } from '../receipt-image-file.js';
@@ -625,7 +633,47 @@ function createWindow(role: UiWindowRole): BrowserWindow {
 
 function updateTray(): void {
   if (!tray || !controller) return;
-  tray.setToolTip(trayTooltip(controller.statusBar));
+  // 気づきの new の件数（ADR 0073・0196）。OS 通知の設定が入で、ロック解除済みで、一覧を読めているときだけ（それ以外は null）。
+  const count = link?.candidateTray() ?? null;
+  tray.setToolTip(
+    candidateTrayTooltip(trayTooltip(controller.statusBar), count),
+  );
+  if (process.platform === 'darwin') tray.setTitle(candidateTrayTitle(count));
+}
+
+// 新しい気づきの OS 通知（ADR 0073・0196）。中枢が出すと決めた数で、ロック解除済みで、アプリのどの窓も前面でないときだけ、
+// 音なしの定型文を出す（題・差出人・本文を含めない）。押したら窓を出す。OS が通知を使えなければ出さない。
+// 出した通知を持っておく（持たないと回収されて、押しても click が届かないことがある）。閉じた・押した・出せなかったら外す。
+// Windows は AppUserModelID（app.setAppUserModelId）を設定していない。組み立て・配布の形が決まっていないので、Windows で
+// 通知が出るか・押したときの動きは実機で確かめる（ADR 0196 の実機の確かめの項目）。
+const candidateAlertsShown = new Set<Notification>();
+
+function showCandidateAlert(count: number): void {
+  if (!controller || !Notification.isSupported()) return;
+  if (
+    !candidateAlertAllowed({
+      count,
+      lockState: controller.state.lockState,
+      appFocused: BrowserWindow.getFocusedWindow() !== null,
+    })
+  )
+    return;
+  const notification = new Notification({
+    title: CANDIDATE_ALERT_TITLE,
+    body: candidateAlertBody(count),
+    silent: true,
+  });
+  const release = () => {
+    candidateAlertsShown.delete(notification);
+  };
+  candidateAlertsShown.add(notification);
+  notification.on('click', () => {
+    release();
+    showWindow();
+  });
+  notification.on('close', release);
+  notification.on('failed', release);
+  notification.show();
 }
 
 function createTray(): Tray {
@@ -946,6 +994,11 @@ function createLink(
       app.getPath('userData'),
       FORGET_LEDGER_REPLICA_FILE,
     ),
+    // 気づきの OS 通知とトレイの new の件数（ADR 0196）。
+    candidateAlerts: {
+      show: showCandidateAlert,
+      changed: updateTray,
+    },
   });
 }
 

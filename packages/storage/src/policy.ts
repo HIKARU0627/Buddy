@@ -348,6 +348,13 @@ export const TABLE_POLICIES: Readonly<Record<string, TablePolicy>> = {
     retention: 'until_replaced',
     transaction: 'memory',
   },
+  // 0025（ADR 0196）。気づきの OS 通知の入・切（1 行だけ。on・off と 1 ずつだけ進む版）。通知の送出意図（deliveries）と同じ
+  // transaction で読む。
+  candidate_alert_settings: {
+    body: 'none',
+    retention: 'until_replaced',
+    transaction: 'delivery',
+  },
   // 0019（ADR 0166）。分類ごとの予算（1 行だけ。金額は暗号文）。
   household_budgets: {
     body: 'sealed_refs',

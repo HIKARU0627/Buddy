@@ -45,6 +45,11 @@ import type {
   TlsKeyStore,
 } from '@buddy/platform';
 import { createCandidateRoutes } from './api-candidates.js';
+import {
+  createCandidateAlertRoutes,
+  createCandidateAlerts,
+} from './candidate-alerts.js';
+import type { CandidateAlerts } from './candidate-alerts.js';
 import { createForgetRoutes } from './api-forget.js';
 import { createMemoryRoutes } from './api-memory.js';
 import { createHouseholdRoutes } from './api-household.js';
@@ -862,6 +867,10 @@ export async function startCore(
   // 台帳の HMAC の鍵（バックアップの設定で記録した鍵の ID で、バックアップの鍵の KeyStore から要求ごとに読む）。本人の明示の
   // 依頼の記憶の由来・内容の HMAC に使う（ADR 0191）。設定の前・読めなければ null（記憶を保存しない）。
   let memoryLedgerKey: (() => Promise<Uint8Array | null>) | undefined;
+  // 気づきの OS 通知（ADR 0196）。DB を開いた直後に作り、候補の書込みの受け手を付ける（起動中の取り込みでできた候補も判定する。
+  // 購読がまだなければ送れず delivery_unknown になる）。停止では判定の終わりを待ってから受け手を外す。
+  let candidateAlerts: CandidateAlerts | null = null;
+  let offCandidateWrite: (() => void) | null = null;
   let syncRun: {
     executor: SyncExecutor;
     scheduler: SyncScheduler | null;
@@ -944,6 +953,12 @@ export async function startCore(
     await step(async () => voice?.close());
     // 実行中の掃除と後始末を終えてから DB を閉じる（閉じた後の命令で失敗を出さない）。掃除は次の区切りで中断する。
     await step(async () => retention?.drain());
+    // 気づきの通知の判定の終わりを待ち、候補の書込みの受け手を外す（ADR 0196）。
+    await step(async () => {
+      offCandidateWrite?.();
+      offCandidateWrite = null;
+      await candidateAlerts?.idle();
+    });
     // 処理中の命令を終えてから DB を閉じる。ロックはその後に返す。
     await step(async () => opened?.store.close());
     await step(removeSocketFile);
@@ -964,6 +979,25 @@ export async function startCore(
 
   try {
     opened = await openStore(dataDir, options, log);
+    // 気づきの OS 通知（ADR 0196）。前の起動で送出意図のまま残った記録は、送ったかどうか分からないので delivery_unknown に
+    // する（鳴らし直さない。U596）。保存境界の保持者ができるまでは記録しない会話として扱い、通知を出さない（安全側）。
+    const alertRecovered = await opened.store.candidate({
+      kind: 'candidate.alert_recover',
+    });
+    if (alertRecovered.ok && alertRecovered.value.recovered > 0)
+      log(
+        `前の起動で送ったか分からない気づきの通知 ${String(alertRecovered.value.recovered)} 件を、送ったか分からないものとして記録しました（鳴らし直しません）。`,
+      );
+    const alerts = createCandidateAlerts({
+      store: opened.store,
+      send: (message) => notices.publishCandidate(message),
+      privateConversation: () => storageGate?.privateConversation() ?? true,
+      now,
+      newId: () => randomUUID(),
+      log,
+    });
+    candidateAlerts = alerts;
+    offCandidateWrite = opened.store.onCandidateWrite(alerts.observe);
     // 保存期限の掃除（ADR 0053）。起動の直後はゲートを閉じたまま、最初の掃除を始める。検索・クラウドへの
     // 送信・自動利用の入口は、済むまで retention.gate() が閉じていることを確かめる。
     // 順序（ADR 0058）: 台帳のファイルの同期（openStore）→ 掃除 → ゲートが開く。時計の最終確認時刻と epoch は
@@ -1220,12 +1254,15 @@ export async function startCore(
                     )
                   )
                     return;
-                  const result = await calendarCandidateIntake.run({
-                    connection_id: connection.connection_id,
-                    account_id: target.account_id,
-                    scope_id: target.scope_id,
-                    published_generation: published.scope.active_generation,
-                  });
+                  // 1 回の取り込みでできた候補・解消を、気づきの通知の 1 回の判定にまとめる（ADR 0196、U584）。
+                  const result = await alerts.batch(() =>
+                    calendarCandidateIntake.run({
+                      connection_id: connection.connection_id,
+                      account_id: target.account_id,
+                      scope_id: target.scope_id,
+                      published_generation: published.scope.active_generation,
+                    }),
+                  );
                   if (
                     result.created > 0 ||
                     result.resolved.length > 0 ||
@@ -1285,35 +1322,37 @@ export async function startCore(
           const keyResult = await options.keyStore.loadDataKey();
           if (!keyResult.ok) throw new Error('data_key_unavailable');
           const summary = record.status.result?.summary ?? '';
-          const results = await persistCandidateDrafts(
-            {
-              client: researchStore,
-              dataKey: keyResult.dataKey,
-              sha256Hex: (material: string) =>
-                createHash('sha256').update(material, 'utf8').digest('hex'),
-              newId: () => randomUUID(),
-              now: () => now().toISOString(),
-            },
-            [
+          const results = await alerts.batch(() =>
+            persistCandidateDrafts(
               {
-                candidate_kind: 'research_done',
-                key_parts: parts,
-                title: '調査の完了',
-                deadline: { kind: 'none' },
-                excerpt: [...summary].slice(0, 200).join(''),
-                request_entity_id: null,
-                request_revision: null,
-                source_revision: null,
-                initial_import: false,
-                unread_partial: (record.status.result?.unread_count ?? 0) > 0,
-                related_analysis: null,
-                received_at: record.status.finished_at ?? now().toISOString(),
-                origins:
-                  record.turn_id === null
-                    ? []
-                    : [{ source_kind: 'turn', source_id: record.turn_id }],
+                client: researchStore,
+                dataKey: keyResult.dataKey,
+                sha256Hex: (material: string) =>
+                  createHash('sha256').update(material, 'utf8').digest('hex'),
+                newId: () => randomUUID(),
+                now: () => now().toISOString(),
               },
-            ],
+              [
+                {
+                  candidate_kind: 'research_done',
+                  key_parts: parts,
+                  title: '調査の完了',
+                  deadline: { kind: 'none' },
+                  excerpt: [...summary].slice(0, 200).join(''),
+                  request_entity_id: null,
+                  request_revision: null,
+                  source_revision: null,
+                  initial_import: false,
+                  unread_partial: (record.status.result?.unread_count ?? 0) > 0,
+                  related_analysis: null,
+                  received_at: record.status.finished_at ?? now().toISOString(),
+                  origins:
+                    record.turn_id === null
+                      ? []
+                      : [{ source_kind: 'turn', source_id: record.turn_id }],
+                },
+              ],
+            ),
           );
           const outcome = results[0]?.outcome;
           if (outcome === 'rejected' || outcome === 'unknown')
@@ -1447,6 +1486,7 @@ export async function startCore(
         retention,
         storageGate,
         notices,
+        alerts,
         researchRun?.acceptor,
         oauthRun === null ? undefined : oauthRun.service,
         forgetService,
@@ -1542,6 +1582,7 @@ export async function startCore(
       removeSocketFile,
     );
   } catch (error) {
+    offCandidateWrite?.();
     if (budgetTimer !== null) clearInterval(budgetTimer);
     backupScheduler?.stop();
     syncRun?.scheduler?.stop();
@@ -1638,6 +1679,8 @@ async function startHttps(
   storage: StorageModeGate,
   // 知らせの中継（ADR 0187）。流れの表示の後始末と WSS の購読をつなぐ。
   notices: NoticeRelay,
+  // 気づきの OS 通知の判定（ADR 0196）。DB を開いた直後に作ったもの。入・切の経路が設定の変更を知らせる。
+  candidateAlerts: CandidateAlerts,
   // 公開 Web 調査の受付器（B12-05、ADR 0141）。口が無ければ undefined で、調査は未対応のまま。
   researchAcceptor?: BackgroundJobAcceptor,
   // 接続の作成・OAuth のサービス（B03-04、ADR 0144）。無ければ undefined で、認可の開始・解除の経路は無い。
@@ -1962,8 +2005,16 @@ async function startHttps(
     now: () => now().getTime(),
     receipt: householdReceipt,
   });
+  // 気づきの OS 通知の入・切の設定（B11-05 の P2、ADR 0196）。GET・POST /v1/candidates/alert-settings（既定は切）。判定と
+  // 知らせ（candidateAlerts）は DB を開いた直後に作ってある。
+  const candidateAlertRoutes = createCandidateAlertRoutes({
+    store,
+    now,
+    changed: candidateAlerts.settingsChanged,
+  });
   const candidateHandlers = {
     ...candidateRoutes.handlers,
+    ...candidateAlertRoutes.handlers,
     listCandidates: candidateRefresh.wrap(
       candidateRoutes.handlers.listCandidates,
     ),

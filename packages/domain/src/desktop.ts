@@ -53,6 +53,8 @@ export const DESKTOP_IPC_CHANNELS = [
   // B11-05: 気づきの一覧の取得と状態の変更（開く・今回は扱わない・再通知）。従来の窓と状態の層から（ADR 0132）。
   'desktop.candidates_list',
   'desktop.candidate_state',
+  // 気づきの OS 通知の入・切の変更（ADR 0196）。従来の窓と状態の層から。
+  'desktop.candidate_alert_setting',
   // B08-02 P3・B09-05: 連携の接続の一覧の取得と取得範囲の変更。中枢の画面でだけ（ADR 0142）。
   'desktop.connections_list',
   'desktop.connection_targets_update',
@@ -229,6 +231,9 @@ export const DESKTOP_PAIRING_SCREEN_CHANNELS: readonly DesktopIpcChannel[] = [
   // 気づきの状態の変更（開く・今回は扱わない・再通知）も本人の画面操作（B11-05、ADR 0132）。外部へは送らない記録の操作
   // なので、入出力の停止中も受け付ける（停止の検査はしない）。
   'desktop.candidate_state',
+  // 気づきの OS 通知の入・切の変更（ADR 0196）も本人の画面操作（前面）。音声・チャット・発言・島・キャンバスからは変えない。
+  // 中枢の設定を変えるだけで外部へは送らないので、この端末の入出力の停止中も受け付ける（停止の検査はしない）。
+  'desktop.candidate_alert_setting',
   // 連携の取得範囲の変更も本人の画面操作（B08-02 P3・B09-05、ADR 0142）。保存そのものは送信ではなく、実際の取得は
   // 中枢の走査の調停を通るので、入出力の停止中も受け付ける（停止の検査はしない）。中枢の画面かどうかは main が別に確かめる。
   'desktop.connection_targets_update',
@@ -417,6 +422,8 @@ export const DESKTOP_ROLE_CHANNELS: Readonly<
     // 気づきの操作に見せかけられないよう、キャンバス・入力バーには渡さない。
     'desktop.candidates_list',
     'desktop.candidate_state',
+    // 気づきの OS 通知の入・切の変更（ADR 0196）。気づきの欄と同じく状態の層（と従来の窓）だけ。
+    'desktop.candidate_alert_setting',
     // 連携の接続の一覧・取得範囲の変更（B08-02 P3・B09-05、ADR 0142）。画面は従来の窓の中枢の画面に置く。
     // キャンバスの部品が連携の操作に見せかけられないよう、キャンバス・入力バーには渡さない。
     'desktop.connections_list',

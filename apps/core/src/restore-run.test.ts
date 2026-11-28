@@ -139,6 +139,10 @@ function seedApprovedOperation(dataDir: string): SeededOperations {
     db.prepare(
       "INSERT INTO memory_settings (setting_id, preference, goal, person, routine, lexicon, progress, settings_revision, updated_at) VALUES (1, 'on', 'off', 'off', 'off', 'off', 'off', 1, ?)",
     ).run(T0);
+    // 気づきの OS 通知を入にした設定（復元の後は切・版 2 になる。ADR 0196、U585）。
+    db.prepare(
+      "INSERT INTO candidate_alert_settings (setting_id, os_notification, settings_revision, updated_at) VALUES (1, 'on', 1, ?)",
+    ).run(T0);
     return { operationId, memoryOperationId };
   } finally {
     db.close();
@@ -318,6 +322,14 @@ test('復元の実行: 段階 1〜6 を通り、承認をすべて失効させ�
         progress: 'off',
         settings_revision: 2,
       },
+    );
+    assert.deepEqual(
+      db
+        .prepare(
+          'SELECT os_notification, settings_revision FROM candidate_alert_settings WHERE setting_id = 1',
+        )
+        .get(),
+      { os_notification: 'off', settings_revision: 2 },
     );
     assert.notEqual(readStoreGeneration(db), backupGeneration);
     assert.equal(

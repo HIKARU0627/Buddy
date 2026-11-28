@@ -1489,8 +1489,8 @@ test('マイグレーション 0023: 版 22 の DB の家計の記録は変わ�
       assert.ok(!triggers().includes('household_entries_no_replace'));
       assert.deepEqual(applyMigrations(db, all), {
         from: 22,
-        to: 24,
-        applied: [23, 24],
+        to: 25,
+        applied: [23, 24, 25],
       });
       assert.deepEqual(snapshot(), before);
       assert.ok(triggers().includes('household_entries_no_replace'));

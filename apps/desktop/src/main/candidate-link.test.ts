@@ -41,6 +41,13 @@ const SCREEN = { trustedSender: true, windowFocused: true };
 interface Rig {
   readonly link: DesktopCoreLink;
   readonly requests: string[];
+  // 中枢（知らせの中継を試験から直接使う）。
+  readonly hub: Awaited<ReturnType<typeof startHub>>;
+  // candidateAlerts を渡したときの OS 通知の数とトレイの更新の回数（ADR 0196）。
+  readonly shown: number[];
+  readonly changed: { count: number };
+  // link のログ（理由のコードだけ）。
+  readonly logs: string[];
   ipc(
     channel: string,
     payload: unknown,
@@ -51,7 +58,13 @@ interface Rig {
   ): Promise<DesktopIpcResponse>;
 }
 
-async function start(t: test.TestContext): Promise<Rig> {
+async function start(
+  t: test.TestContext,
+  options: { readonly alerts?: boolean } = {},
+): Promise<Rig> {
+  const shown: number[] = [];
+  const changed = { count: 0 };
+  const logs: string[] = [];
   const dir = await tempDir(t, 'bcl-');
   const dataDir = join(dir, 'data');
   await mkdir(dataDir, { recursive: true, mode: 0o700 });
@@ -96,7 +109,9 @@ async function start(t: test.TestContext): Promise<Rig> {
       Promise.resolve({ gateway_mac: null, subnet: null, ssid: null }),
     networkSignature: () => 'fixed',
     onChange: () => undefined,
-    log: () => undefined,
+    log: (code: string) => {
+      logs.push(code);
+    },
     budgetAuto: false,
     backoff: { baseMs: 50, maxMs: 200, jitterRatio: 0 },
     confirmAdmin: () => Promise.resolve(false),
@@ -111,6 +126,18 @@ async function start(t: test.TestContext): Promise<Rig> {
           transport.openStream(cursor, lockState, listener),
       };
     },
+    ...(options.alerts === true
+      ? {
+          candidateAlerts: {
+            show: (count: number) => {
+              shown.push(count);
+            },
+            changed: () => {
+              changed.count += 1;
+            },
+          },
+        }
+      : {}),
   });
   onCleanup(t, () => link.stop());
   await link.start('unlocked');
@@ -118,6 +145,10 @@ async function start(t: test.TestContext): Promise<Rig> {
   return {
     link,
     requests,
+    hub,
+    shown,
+    logs,
+    changed,
     async ipc(channel, payload, options = {}) {
       const { response } = await link.handleCandidateIpc(
         channel,
@@ -155,7 +186,110 @@ test('the list comes from the hub with the person zone and time; an empty list i
   // 並べた時刻は中枢の時計（この試験の前後の間）。
   const asOf = Date.parse(view.fetched_at ?? '');
   assert(asOf >= before - 1000 && asOf <= Date.now() + 1000, String(asOf));
-  assert.deepEqual(candidateRequests(r), ['GET /v1/candidates']);
+  assert.deepEqual(candidateRequests(r), [
+    'GET /v1/candidates',
+    'GET /v1/candidates/alert-settings',
+  ]);
+  // OS 通知の設定は既定の切（版は画面へ出さない）。
+  assert.equal(view.alert?.os_notification, 'off');
+});
+
+// 中枢の知らせの中継へ、気づきの増減の知らせを直接入れる（候補の作成は中枢の試験 candidate-alert-core.test.ts）。
+const publishCandidate = (r: Rig, count: number): number =>
+  (
+    r.hub.handle.notices as unknown as {
+      publishCandidate(message: unknown): number;
+    }
+  ).publishCandidate({
+    type: 'notice',
+    notice: {
+      schema: 'buddy.candidate-notice.v1',
+      notice_id: randomUUID(),
+      occurred_at: '2030-10-09T03:00:00Z',
+      alert_count: count,
+    },
+  });
+
+const streamOpen = async (r: Rig) => {
+  const relay = r.hub.handle.notices as unknown as { listenerCount: number };
+  await waitUntil(() => relay.listenerCount === 1, 'stream subscribed');
+};
+
+test('the OS notification setting goes through the screen IPC; a candidate notice shows an alert only while on and unlocked', async (t) => {
+  const r = await start(t, { alerts: true });
+  await streamOpen(r);
+  // 接続の後、設定だけを後ろで読む（切なので一覧は読まない）。
+  await waitUntil(
+    () => candidateRequests(r).length === 1 && r.changed.count >= 1,
+    'background read',
+  );
+  assert.deepEqual(candidateRequests(r), ['GET /v1/candidates/alert-settings']);
+  assert.equal(r.link.candidateTray(), null);
+
+  // 切の間の知らせ（設定を変えた直後の 1 通など）では OS 通知を出さない。
+  assert.equal(publishCandidate(r, 1), 1);
+  await waitUntil(() => candidateRequests(r).length === 2, 'notice read');
+  assert.deepEqual(r.shown, []);
+
+  const listed = await r.ipc('desktop.candidates_list', null);
+  assert(listed.outcome === 'ok' && 'candidates' in listed);
+  const ref = listed.candidates.alert?.ref;
+  assert(ref !== undefined);
+  // 前面でない画面からは変えない。
+  const hidden = await r.ipc(
+    'desktop.candidate_alert_setting',
+    { settings_ref: ref, os_notification: 'on' },
+    { sender: { trustedSender: true, windowFocused: false } },
+  );
+  assert.equal(
+    hidden.outcome === 'rejected' ? hidden.reason : null,
+    'screen_operation_required',
+  );
+  const on = await r.ipc('desktop.candidate_alert_setting', {
+    settings_ref: ref,
+    os_notification: 'on',
+  });
+  assert(on.outcome === 'ok' && 'candidates' in on, JSON.stringify(on));
+  assert.equal(on.candidates.alert?.os_notification, 'on');
+  // 入にしたので一覧を読み、トレイの件数（0 件）が出る。
+  assert.equal(r.link.candidateTray(), 0);
+  // 古い参照からの変更は中枢へ送らない。
+  const before = candidateRequests(r).length;
+  const stale = await r.ipc('desktop.candidate_alert_setting', {
+    settings_ref: ref,
+    os_notification: 'off',
+  });
+  assert.equal(
+    stale.outcome === 'rejected' ? stale.reason : null,
+    'preview_stale',
+  );
+  assert.equal(candidateRequests(r).length, before);
+
+  // 入の間の知らせ: 設定と一覧を読み直してから、中枢の決めた数で OS 通知を出させる。
+  publishCandidate(r, 2);
+  await waitUntil(() => r.shown.length === 1, 'alert shown');
+  assert.deepEqual(r.shown, [2]);
+  // 数 0 の知らせ（件数の変化だけ）は OS 通知を出さない。
+  const changes = r.changed.count;
+  publishCandidate(r, 0);
+  await waitUntil(() => r.changed.count > changes, 'count refreshed');
+  assert.deepEqual(r.shown, [2]);
+
+  // ロック中は読まず、出さない。トレイの件数も消す。
+  r.link.setLockState('locked');
+  assert.equal(r.link.candidateTray(), null);
+  const locked = candidateRequests(r).length;
+  publishCandidate(r, 3);
+  // 知らせが WSS でロック中に届いて捨てられるのを待ってから解く（解いた後に届けば解除後の知らせとして扱われる）。
+  await waitUntil(
+    () => r.logs.includes('candidate_notice_dropped_locked'),
+    'notice dropped while locked',
+  );
+  // ロックを解くと件数だけ読み直す（ロック中の知らせの OS 通知は出し直さない）。
+  r.link.setLockState('unlocked');
+  await waitUntil(() => r.link.candidateTray() === 0, 'tray after unlock');
+  assert.deepEqual(r.shown, [2]);
+  assert(candidateRequests(r).length > locked);
 });
 
 test('admission: locked, unfocused state changes and unknown refs send nothing to the hub', async (t) => {
@@ -210,4 +344,41 @@ test('a state change is accepted while this device is stopped (it is a record, n
     stopped.outcome === 'rejected' ? stopped.reason : null,
     'entry_not_found',
   );
+});
+
+// 見直しの指摘 8: 忘却の知らせ（候補の削除は気づきの知らせを出さない）でも、件数を読み直す。期限切れの知らせでは読まない。
+test('a forgotten notice makes main re-read the candidate count; an expiry notice does not', async (t) => {
+  const r = await start(t, { alerts: true });
+  await streamOpen(r);
+  await waitUntil(() => r.changed.count >= 1, 'background read');
+  const notice = (kind: 'expired' | 'forgotten') => ({
+    schema: 'buddy.retention-notice.v1' as const,
+    notice_id: randomUUID(),
+    occurred_at: '2030-10-09T03:00:00Z',
+    kind,
+    reason:
+      kind === 'expired' ? ('retention_due' as const) : ('forgotten' as const),
+    forgetting_generation: kind === 'expired' ? null : '1',
+    items: [{ item_kind: 'turn' as const, item_id: randomUUID() }],
+  });
+  const publish = (value: unknown) =>
+    (
+      r.hub.handle.notices as unknown as {
+        publish(notice: unknown): void | Promise<void>;
+      }
+    ).publish(value);
+  const reads = candidateRequests(r).length;
+  await publish(notice('expired'));
+  await publish(notice('forgotten'));
+  await waitUntil(
+    () => candidateRequests(r).length === reads + 1,
+    'one re-read after the forgotten notice',
+  );
+  // 次の既知の知らせ（数 0 の気づきの知らせ）が読まれた時点で、期限切れの知らせで読んでいないことを確かめる。
+  publishCandidate(r, 0);
+  await waitUntil(
+    () => candidateRequests(r).length === reads + 2,
+    'the candidate notice re-read',
+  );
+  assert.deepEqual(r.shown, []);
 });

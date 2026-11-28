@@ -18,7 +18,7 @@ import { RecordingNoticeSink } from './notice-sink.js';
 
 const contract = sharedApiContract();
 // 知らせの見分け（保存モードの知らせは ID を持たないので、種類の名前で見分ける。UI-05 の段階 6、ADR 0189）。
-const idOf = (notice: Notice): string =>
+const idOf = (notice: StreamNoticeMessage['notice']): string =>
   'notice_id' in notice ? notice.notice_id : notice.schema;
 const ID = (n: number) =>
   `00000000-0000-4000-8000-${n.toString(16).padStart(12, '0')}`;
@@ -197,4 +197,54 @@ test('a storage mode notice reaches the open streams as it is, and one with a se
     segment_id: ID(41),
   } as unknown as Notice);
   assert.equal(received.length, 1);
+});
+
+// 気づきの増減の知らせ（ADR 0196）: 開いている購読へだけ渡し、渡せた数を返す。表示の後始末・受け取り口へは渡さない。
+// 閉じた・詰まった購読（受け手が false を返す）は数えない。契約に合わない知らせ（題を持つ）は送らない。
+test('a candidate notice goes to the open streams only and counts the ones it reached', () => {
+  const downstream = new RecordingNoticeSink();
+  const logs: string[] = [];
+  const relay = new NoticeRelay({
+    contract,
+    downstream,
+    log: (line) => logs.push(line),
+  });
+  const displayed: string[] = [];
+  relay.attachDisplay((notice) => {
+    displayed.push(notice.schema);
+    return true;
+  });
+  const message: StreamNoticeMessage = {
+    type: 'notice',
+    notice: {
+      schema: 'buddy.candidate-notice.v1',
+      notice_id: ID(0x31),
+      occurred_at: '2030-01-01T00:00:50Z',
+      alert_count: 2,
+    },
+  };
+  // 購読がなければ 0（溜めない）。
+  assert.equal(relay.publishCandidate(message), 0);
+  const received: StreamNoticeMessage[] = [];
+  relay.subscribe((sent) => {
+    received.push(sent);
+  });
+  // 閉じた購読（送れなかった）。
+  relay.subscribe(() => false);
+  relay.subscribe(() => {
+    throw new Error('listener');
+  });
+  assert.equal(relay.publishCandidate(message), 1);
+  assert.deepEqual(received, [message]);
+  const titled = {
+    type: 'notice',
+    notice: { ...message.notice, title: '参加可否の返信' },
+  } as unknown as StreamNoticeMessage;
+  assert.equal(relay.publishCandidate(titled), 0);
+  assert.equal(received.length, 1);
+  assert.deepEqual(logs, [
+    '契約に合わない気づきの知らせを端末へ送りませんでした。',
+  ]);
+  assert.deepEqual(displayed, []);
+  assert.deepEqual(downstream.notices, []);
 });

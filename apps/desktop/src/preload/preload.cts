@@ -43,6 +43,7 @@ const REQUEST_CHANNELS: readonly string[] = [
   'desktop.voice_control',
   'desktop.candidates_list',
   'desktop.candidate_state',
+  'desktop.candidate_alert_setting',
   'desktop.connections_list',
   'desktop.connection_targets_update',
   'desktop.connection_targets_discover',

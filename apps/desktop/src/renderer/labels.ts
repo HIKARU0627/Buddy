@@ -100,6 +100,10 @@ export function rejectMessage(
       return '承認・断るが届いたか確かめられませんでした。自動では送り直しません。一覧が更新されるのを待って確かめてください。';
     if (reason === 'entry_not_found')
       return 'この確認はもう一覧にありません（取り下げ・承認済み・記録しない会話の終了など）。変更はしていません。';
+    if (reason === 'content_unavailable')
+      return '対象のメールを確かめられないため、承認できません。断るか、記録しない会話を終えてから頼み直してください。';
+    if (reason === 'confirmation_pending')
+      return 'この確認は送っている途中です。結果が出るまで待ってください。';
   }
   return REJECT_MESSAGES[reason];
 }

@@ -120,7 +120,11 @@ function ConnectedApp({ api }: { readonly api: BuddyDesktopApi }) {
   // 記録しない会話の独立した確認（ADR 0197）。main が記録しない会話の間だけ出す。承認を待つ確認が増えたら島を広げる。
   const privateConfirmations =
     connection?.private_confirmations ?? NO_PRIVATE_CONFIRMATIONS;
-  const privateDecisions = usePrivateConfirmationState(api, workLive);
+  const privateDecisions = usePrivateConfirmationState(
+    api,
+    workLive,
+    storageMode,
+  );
   const island = useIslandSignals(
     workLive,
     connection?.operations ?? NO_OPERATIONS,
@@ -186,6 +190,7 @@ function ConnectedApp({ api }: { readonly api: BuddyDesktopApi }) {
           <>
             <PrivateConfirmations
               entries={privateConfirmations}
+              privateMode={storageMode === 'private'}
               state={privateDecisions.state}
               actions={privateDecisions.actions}
               stopped={stopped}

@@ -82,6 +82,8 @@ export class PrivateConfirmationBridge {
   readonly #held = new Map<string, number>();
   // 中枢が承認・断るを受け付けた確認（確認の ID → そのときの通し番号）。次の読み取りまで一覧から隠し、二重に送らせない。
   readonly #done = new Map<string, number>();
+  // 承認・断るを送っている確認（OS の確認ダイアログを出している間を含む）。
+  readonly #sending = new Set<string>();
   #gen = 0;
   #seq = 0;
   #running: Promise<void> | null = null;
@@ -98,6 +100,7 @@ export class PrivateConfirmationBridge {
     this.#refs.clear();
     this.#held.clear();
     this.#done.clear();
+    this.#sending.clear();
   }
 
   // 画面に出す確認（記録しない会話の間だけ）。
@@ -163,6 +166,15 @@ export class PrivateConfirmationBridge {
     const next = new Map<string, PrivateConfirmationEntry>();
     for (const entry of (outcome.body as PrivateConfirmationList)
       .confirmations) {
+      // 付ける・外すラベルの両方が空、または重なる確認は意味の検査に通らない。画面に出さず、理由のコードだけを残す
+      // （契約の道具の PrivateConfirmationList の意味検査と同じ）。
+      if (
+        (entry.add.length === 0 && entry.remove.length === 0) ||
+        entry.add.some((label) => entry.remove.includes(label))
+      ) {
+        this.#host.log('private_confirmation_entry_invalid');
+        continue;
+      }
       next.set(entry.confirmation_id, entry);
       if (!this.#refs.has(entry.confirmation_id))
         this.#refs.set(entry.confirmation_id, this.#host.newRef());
@@ -199,13 +211,28 @@ export class PrivateConfirmationBridge {
     ref: string,
     decision: 'approve' | 'decline',
   ): Promise<BridgeOutcome<PrivateDecision>> {
+    // 同じ確認を送っている間（OS の確認ダイアログを出している間を含む）の 2 回目は、ダイアログを出さず送らない。
+    const id = this.#idOf(ref);
+    if (id !== null && this.#sending.has(id))
+      return fail('confirmation_pending');
+    if (id !== null) this.#sending.add(id);
+    try {
+      return await this.#decide(id, decision);
+    } finally {
+      if (id !== null) this.#sending.delete(id);
+    }
+  }
+
+  async #decide(
+    id: string | null,
+    decision: 'approve' | 'decline',
+  ): Promise<BridgeOutcome<PrivateDecision>> {
     const gen = this.#gen;
     const connection = this.#host.connection();
     const scope = connection?.state.commandScopeId ?? null;
     if (connection === null || scope === null) return fail('not_connected');
     // 記録しない会話の外では出さない確認なので、送らない。
     if (this.#host.storageMode() !== 'private') return fail('entry_not_found');
-    const id = this.#idOf(ref);
     const entry = id === null ? undefined : this.#entries.get(id);
     if (
       id === null ||
@@ -215,8 +242,9 @@ export class PrivateConfirmationBridge {
     )
       return fail('entry_not_found');
     if (decision === 'approve') {
-      // 口座と対象のメールを確認できない確認は承認させない（画面も承認を出さない）。
-      if (!approvable(entry)) return fail('core_rejected');
+      // 口座と対象のメールを確認できない確認は承認させない（画面も承認を出さない）。中枢は何も受けていないので、拒否の理由は
+      // 内容を確かめられないこと（content_unavailable）にする。
+      if (!approvable(entry)) return fail('content_unavailable');
       // 承認は外部変更につながるので、停止していないときだけ。確認は本人が 1 回だけ。
       const io = this.#host.io();
       if (!io.permitted) return fail('input_stopped');
@@ -265,18 +293,23 @@ export class PrivateConfirmationBridge {
     });
     if (outcome.kind === 'not_sent') return fail('not_connected');
     if (gen !== this.#gen) return fail('outcome_unknown');
-    if (outcome.kind === 'unknown') {
-      // 届いたか分からない。送り直さず、一覧を読み直すまで同じ確認から送らせない。
+    // 届いたか・中枢で何が起きたか分からない（接続が切れた・5xx・202 なのに形の違う応答）。送り直さず、一覧を読み直すまで
+    // 同じ確認から送らせない。
+    if (
+      outcome.kind === 'unknown' ||
+      outcome.status >= 500 ||
+      (outcome.status === 202 &&
+        !this.#host.contract.valid('PrivateConfirmationResult', outcome.body))
+    ) {
       this.#held.set(id, this.#seq);
-      this.#host.log('private_confirmation_outcome_unknown');
+      this.#host.log(
+        `private_confirmation_outcome_unknown:${outcome.kind === 'unknown' ? 'unknown' : String(outcome.status)}`,
+      );
       this.#host.changed();
       void this.refresh();
       return fail('outcome_unknown');
     }
-    if (
-      outcome.status !== 202 ||
-      !this.#host.contract.valid('PrivateConfirmationResult', outcome.body)
-    ) {
+    if (outcome.status !== 202) {
       // 中枢が断った（取り下げた・捨てた・他の端末・内容の違い・口が閉じている）。一覧を中枢の値にそろえる。
       this.#host.log(`private_confirmation_rejected:${String(outcome.status)}`);
       void this.refresh();

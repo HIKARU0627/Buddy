@@ -10,6 +10,7 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import type { ReactNode } from 'react';
 import type {
+  StorageMode,
   DesktopIpcRequest,
   DesktopIpcResponse,
   DesktopPrivateConfirmationEntry,
@@ -23,6 +24,7 @@ import {
   PrivateConfirmationStore,
   decisionNotice,
 } from '../state/private-confirmation-state.js';
+import { usePrivateConfirmationState } from '../state/use-private-confirmation-state.js';
 import { PrivateConfirmations } from './PrivateConfirmations.js';
 
 after(async () => {
@@ -74,6 +76,7 @@ test('the section says it is a private conversation, shows only what to change, 
   try {
     await view.draw(
       <PrivateConfirmations
+        privateMode
         entries={[entry()]}
         state={IDLE}
         actions={{ decide: (ref, decision) => calls.push([ref, decision]) }}
@@ -117,6 +120,7 @@ test('approval is not offered while sending, held, stopped or for an unidentifie
   try {
     await view.draw(
       <PrivateConfirmations
+        privateMode
         entries={[entry()]}
         state={{ busy: [REF], notice: null }}
         actions={actions}
@@ -129,6 +133,7 @@ test('approval is not offered while sending, held, stopped or for an unidentifie
 
     await view.draw(
       <PrivateConfirmations
+        privateMode
         entries={[entry({ delivery_unknown: true })]}
         state={IDLE}
         actions={actions}
@@ -140,6 +145,7 @@ test('approval is not offered while sending, held, stopped or for an unidentifie
 
     await view.draw(
       <PrivateConfirmations
+        privateMode
         entries={[entry()]}
         state={IDLE}
         actions={actions}
@@ -155,6 +161,7 @@ test('approval is not offered while sending, held, stopped or for an unidentifie
 
     await view.draw(
       <PrivateConfirmations
+        privateMode
         entries={[entry({ approvable: false, target: null })]}
         state={IDLE}
         actions={actions}
@@ -172,11 +179,16 @@ test('approval is not offered while sending, held, stopped or for an unidentifie
   }
 });
 
-test('nothing is drawn without confirmations or a result; the last result stays under the section', async () => {
+test('without confirmations only the last result is drawn, without the private mark and lead; after leaving the private conversation nothing is drawn', async () => {
   const view = mount();
+  const notice = {
+    tone: 'success',
+    text: '断りました。変更はしていません。',
+  } as const;
   try {
     await view.draw(
       <PrivateConfirmations
+        privateMode
         entries={[]}
         state={IDLE}
         actions={{ decide: () => undefined }}
@@ -186,11 +198,9 @@ test('nothing is drawn without confirmations or a result; the last result stays 
     assert.equal(view.host.textContent, '');
     await view.draw(
       <PrivateConfirmations
+        privateMode
         entries={[]}
-        state={{
-          busy: [],
-          notice: { tone: 'success', text: '断りました。変更はしていません。' },
-        }}
+        state={{ busy: [], notice }}
         actions={{ decide: () => undefined }}
         stopped={false}
       />,
@@ -199,6 +209,23 @@ test('nothing is drawn without confirmations or a result; the last result stays 
       view.host.querySelector('[role="status"]')?.textContent ?? '',
       /断りました。変更はしていません。$/u,
     );
+    // 行がないときは記録しない間の印と 1 行目の文を出さない。
+    assert.equal(view.host.querySelector('[data-private-mark="on"]'), null);
+    assert.doesNotMatch(
+      view.host.textContent ?? '',
+      /会話の内容は保存しません。/u,
+    );
+    // 記録しない会話を出た（保存モードが private でない）ら、確認も結果の文言も描かない（U612）。
+    await view.draw(
+      <PrivateConfirmations
+        privateMode={false}
+        entries={[entry()]}
+        state={{ busy: [], notice }}
+        actions={{ decide: () => undefined }}
+        stopped={false}
+      />,
+    );
+    assert.equal(view.host.textContent, '');
   } finally {
     view.cleanup();
   }
@@ -292,4 +319,41 @@ test('a new private confirmation widens the island like any operation that needs
     at + 20,
   );
   assert.equal(lowered.signals.attentionRaisedAt, null);
+});
+
+test('leaving the private conversation drops the last result, so it does not come back on the next private conversation', async () => {
+  const view = mount();
+  const api = {
+    invoke: (request: DesktopIpcRequest): Promise<DesktopIpcResponse> =>
+      Promise.resolve({
+        request_id: request.request_id,
+        channel: 'desktop.private_confirmation_decide',
+        outcome: 'ok',
+        result: 'declined',
+      } as DesktopIpcResponse),
+    onNotification: () => () => undefined,
+  };
+  function Harness({ mode }: { readonly mode: StorageMode }) {
+    const handle = usePrivateConfirmationState(api, true, mode);
+    return (
+      <PrivateConfirmations
+        privateMode={mode === 'private'}
+        entries={mode === 'private' ? [entry()] : []}
+        state={handle.state}
+        actions={handle.actions}
+        stopped={false}
+      />
+    );
+  }
+  try {
+    await view.draw(<Harness mode="private" />);
+    await act(async () => view.button('decline')?.click());
+    assert.match(view.host.textContent ?? '', /断りました。/u);
+    await view.draw(<Harness mode="normal" />);
+    assert.equal(view.host.textContent, '');
+    await view.draw(<Harness mode="private" />);
+    assert.doesNotMatch(view.host.textContent ?? '', /断りました。/u);
+  } finally {
+    view.cleanup();
+  }
 });

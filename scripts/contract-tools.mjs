@@ -1561,6 +1561,27 @@ export function semanticErrors(name, value) {
     )
       errors.push('hub_values_without_connection');
   }
+  // 記録しない会話の独立した確認（ADR 0197）。付ける・外すラベルの両方が空・重なる確認は出さない（domain の
+  // privateConfirmationErrors と同じ理由のコード）。端末の main は該当する行を画面に出さない。
+  if (
+    name === 'PrivateConfirmationList' ||
+    name === 'PrivateConfirmationEntry'
+  ) {
+    const entries =
+      name === 'PrivateConfirmationList' ? value.confirmations : [value];
+    if (
+      entries.some(
+        (entry) => entry.add.length === 0 && entry.remove.length === 0,
+      )
+    )
+      errors.push('labels_empty');
+    if (
+      entries.some((entry) =>
+        entry.add.some((label) => entry.remove.includes(label)),
+      )
+    )
+      errors.push('labels_conflicting');
+  }
   // 中枢との接続・ペアリングの状態（ADR 0025）。
   if (name === 'DesktopConnectionView' && value.visibility === 'shown') {
     const pairing = value.pairing;

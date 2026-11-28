@@ -7,6 +7,7 @@
 
 import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import test from 'node:test';
 import { openWriteConnection, storagePlatform } from '@buddy/storage';
@@ -15,6 +16,7 @@ import type { TestDevice } from './api-test-support.js';
 import { bearer, insertDevice, startEventCore } from './event-test-support.js';
 import type { EventCore, MutableEnvironment } from './event-test-support.js';
 import { DB_FILE } from './paths.js';
+import type { PrivateConfirmationDesk } from './private-confirmations.js';
 import type {
   ProviderMailTarget,
   ProviderReader,
@@ -24,10 +26,12 @@ import type {
 const contract = sharedApiContract();
 const CLOCK = new Date('2026-10-05T09:00:00+09:00');
 const ACCOUNT = '00000000-0000-4000-8000-000000000002';
-const ACCOUNT_LABEL = 'synthetic-account';
+// 表示用の値は試験の回ごとに作る合成の ASCII（データディレクトリ・ログに残らないことを探すため）。
+const RUN = randomUUID().slice(0, 8);
+const ACCOUNT_LABEL = `B06-SYNTH-account-${RUN}`;
 const MAIL = 'mail-001';
-const SUBJECT = 'B06-SYNTH 合成の件名';
-const SENDER = 'sender@example.invalid';
+const SUBJECT = `B06-SYNTH-subject-${RUN}`;
+const SENDER = `sender-${RUN}@example.invalid`;
 const RECEIVED = '2026-10-04T08:00:00Z';
 const MAIL_CANDIDATE = '00000000-0000-4000-8000-0000000000c1';
 
@@ -105,6 +109,7 @@ interface Rig {
   readonly a: Client;
   readonly b: Client;
   readonly mail: FakeMail;
+  readonly logs: string[];
 }
 
 async function startRig(
@@ -114,8 +119,10 @@ async function startRig(
   const mail: FakeMail = { labels: ['inbox'], revision: 1, changes: [] };
   const ports = fakeProvider(mail);
   const env: MutableEnvironment = { home: true, lock: 'unlocked' };
+  const logs: string[] = [];
   const core = await startEventCore(t, {
     now: () => CLOCK,
+    log: (message) => logs.push(String(message)),
     env,
     turns: {
       provider: ports.reader,
@@ -140,7 +147,7 @@ async function startRig(
     assert.equal(boot.status, 200, boot.text);
     return { device, scope: String(boot.json?.['command_scope_id']) };
   };
-  return { core, env, a: await client(), b: await client(), mail };
+  return { core, env, a: await client(), b: await client(), mail, logs };
 }
 
 const switchMode = async (rig: Rig, storageMode: 'normal' | 'private') => {
@@ -597,4 +604,153 @@ test('with the screen gate closed the list is empty and approvals are refused', 
     409,
   );
   assert.deepEqual(rig.mail.changes, []);
+});
+
+// データディレクトリの全ファイル（DB・WAL を含む）とログから、目印の平文を探す（ADR 0190・0192 の試験と同じ考え方）。
+const residue = (rig: Rig, needle: string): string[] => {
+  const value = Buffer.from(needle, 'utf8');
+  const found: string[] = [];
+  const walk = (dir: string) => {
+    for (const name of readdirSync(dir)) {
+      const path = join(dir, name);
+      const stat = statSync(path);
+      if (stat.isDirectory()) walk(path);
+      else if (stat.isFile() && readFileSync(path).indexOf(value) >= 0)
+        found.push(name);
+    }
+  };
+  walk(rig.core.dataDir);
+  if (rig.logs.join('\n').includes(needle)) found.push('logs');
+  return found;
+};
+
+const hashOf = async (rig: Rig, client: Client) => {
+  const listed = await list(rig, client);
+  const first = (
+    listed.json?.['confirmations'] as Record<string, unknown>[]
+  )[0];
+  assert(first !== undefined, listed.text);
+  return String(first['content_hash']);
+};
+
+test('two approvals with different request ids at the same time write one record and change the mail once', async (t) => {
+  const rig = await startRig(t);
+  await switchMode(rig, 'private');
+  const before = recorded(rig);
+  const confirmationId = await ask(rig, rig.a, marker());
+  const hash = await hashOf(rig, rig.a);
+  const body = () => ({
+    request_id: randomUUID(),
+    content_version: '1',
+    content_hash: hash,
+  });
+  const [first, second] = await Promise.all([
+    decide(rig, rig.a, 'approve', confirmationId, body()),
+    decide(rig, rig.a, 'approve', confirmationId, body()),
+  ]);
+  assert.equal(first.status, 202, first.text);
+  assert.equal(second.status, 202, second.text);
+  assert.equal(first.json?.['result'], 'recorded');
+  assert.equal(second.json?.['result'], 'recorded');
+  await rig.core.handle.runner?.idle();
+  assert.equal(rig.mail.changes.length, 1);
+  assert.deepEqual(recorded(rig), {
+    operations: before.operations + 1,
+    approvals: before.approvals + 1,
+  });
+});
+
+test('an approval and a decline racing each other: exactly one wins, and the result matches the record and the mail', async (t) => {
+  const rig = await startRig(t);
+  await switchMode(rig, 'private');
+  const before = recorded(rig);
+  const confirmationId = await ask(rig, rig.a, marker());
+  const hash = await hashOf(rig, rig.a);
+  const [approved, declined] = await Promise.all([
+    decide(rig, rig.a, 'approve', confirmationId, {
+      request_id: randomUUID(),
+      content_version: '1',
+      content_hash: hash,
+    }),
+    decide(rig, rig.a, 'decline', confirmationId, {
+      request_id: randomUUID(),
+    }),
+  ]);
+  await rig.core.handle.runner?.idle();
+  // どちらか一方だけが通る（もう一方は 409）。
+  assert.deepEqual(
+    [approved.status, declined.status].sort(),
+    [202, 409],
+    `${approved.text} ${declined.text}`,
+  );
+  if (approved.status === 202) {
+    assert.equal(approved.json?.['result'], 'recorded');
+    assert.equal(rig.mail.changes.length, 1);
+    assert.equal(recorded(rig).operations, before.operations + 1);
+  } else {
+    assert.equal(declined.json?.['result'], 'declined');
+    assert.deepEqual(rig.mail.changes, []);
+    assert.deepEqual(recorded(rig), before);
+  }
+});
+
+test('a lock drop queued behind a started approval does not undo it, and a later resend still returns the first result', async (t) => {
+  const rig = await startRig(t);
+  await switchMode(rig, 'private');
+  const confirmationId = await ask(rig, rig.a, marker());
+  const desk = rig.core.handle
+    .privateConfirmations as unknown as PrivateConfirmationDesk;
+  const entry = desk.list()[0];
+  assert(entry !== undefined);
+  // 承認を始めた直後（保存境界の保持者の待ち行列に入った後）に、ロック・忘却の取り下げが続く。
+  const approving = desk.approve({
+    confirmation_id: confirmationId,
+    device_id: rig.a.device.device.device_id,
+    segment_generation: entry.segment_generation,
+    operation_id: entry.view.operation.operation_id,
+    content_version: '1',
+    content_hash: entry.view.content_hash,
+  });
+  const dropping = desk.drop();
+  const [outcome] = await Promise.all([approving, dropping]);
+  assert.deepEqual(outcome, {
+    kind: 'recorded',
+    operation_id: entry.view.operation.operation_id,
+  });
+  await rig.core.handle.runner?.idle();
+  assert.equal(rig.mail.changes.length, 1);
+  // 画面の経路からの再送（別の request_id）は、記録を書き直さずに最初の結果を返す。
+  const resent = await decide(rig, rig.a, 'approve', confirmationId, {
+    request_id: randomUUID(),
+    content_version: '1',
+    content_hash: entry.view.content_hash,
+  });
+  assert.equal(resent.status, 202, resent.text);
+  assert.equal(resent.json?.['result'], 'recorded');
+  await rig.core.handle.runner?.idle();
+  assert.equal(rig.mail.changes.length, 1);
+});
+
+test('the display values and the confirmation id leave no plain text in the data directory (DB and WAL) or the logs', async (t) => {
+  const rig = await startRig(t);
+  await switchMode(rig, 'private');
+  const label = marker();
+  const confirmationId = await ask(rig, rig.a, label);
+  const listed = await list(rig, rig.a);
+  // 一覧には表示用の値が出る（RAM から返す）。
+  assert(listed.text.includes(SUBJECT));
+  assert(listed.text.includes(ACCOUNT_LABEL));
+  const hash = await hashOf(rig, rig.a);
+  const approved = await decide(rig, rig.a, 'approve', confirmationId, {
+    request_id: randomUUID(),
+    content_version: '1',
+    content_hash: hash,
+  });
+  assert.equal(approved.status, 202, approved.text);
+  await rig.core.handle.runner?.idle();
+  assert.equal(rig.mail.changes.length, 1);
+  await rig.core.handle.stop('test');
+  await rig.core.handle.closed;
+  for (const needle of [SUBJECT, SENDER, ACCOUNT_LABEL, confirmationId, label])
+    assert.deepEqual(residue(rig, needle), [], needle);
 });

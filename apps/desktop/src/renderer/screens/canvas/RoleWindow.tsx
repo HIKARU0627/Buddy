@@ -178,7 +178,11 @@ function StatusWindow({ api }: { readonly api: BuddyDesktopApi }) {
   // 記録しない会話の独立した確認（ADR 0197）。main が記録しない会話の間だけ出す。ロック・切断で捨てる。
   const privateConfirmations =
     connection?.private_confirmations ?? NO_PRIVATE_CONFIRMATIONS;
-  const privateDecisions = usePrivateConfirmationState(api, live);
+  const privateDecisions = usePrivateConfirmationState(
+    api,
+    live,
+    storageModeOf(state.status),
+  );
   const previewEntry = usePreviewFocus(work.state, operations);
   const view = statusSummaryView(state.status, state.connection);
   const stopped =
@@ -259,6 +263,7 @@ function StatusWindow({ api }: { readonly api: BuddyDesktopApi }) {
           <>
             <PrivateConfirmations
               entries={privateConfirmations}
+              privateMode={storageModeOf(state.status) === 'private'}
               state={privateDecisions.state}
               actions={privateDecisions.actions}
               stopped={stopped}

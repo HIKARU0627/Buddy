@@ -196,10 +196,12 @@ test('an unidentified target is not approvable, stopped I/O refuses approval but
   state.list = [entry({ account_label: null })];
   await bridge.refresh();
   assert.equal(bridge.entries()[0]?.approvable, false);
+  // 中枢へは送らず、内容を確かめられないことを理由にする（ダイアログも出さない）。
   assert.deepEqual(await bridge.decide(uuid(0x701), 'approve'), {
     ok: false,
-    reason: 'core_rejected',
+    reason: 'content_unavailable',
   });
+  assert.equal(state.confirms.length, 0);
   state.list = [entry()];
   await bridge.refresh();
   state.io = { permitted: false, epoch: '0' };
@@ -288,7 +290,7 @@ test('an unknown outcome is not resent: the entry is held until a later read, an
     reason: 'entry_not_found',
   });
   assert.equal(posts(calls).length, 1);
-  assert(logs.includes('private_confirmation_outcome_unknown'));
+  assert(logs.includes('private_confirmation_outcome_unknown:unknown'));
   // 後の読み取りが成功したら保留を解く（中枢の一覧にまだあれば、本人がもう一度押せる）。
   state.readable = true;
   await bridge.refresh();
@@ -307,4 +309,79 @@ test('an unknown outcome is not resent: the entry is held until a later read, an
   await settle();
   assert.equal(calls.filter((call) => call.method === 'GET').length, gets + 1);
   assert(logs.includes('private_confirmation_rejected:409'));
+});
+
+test('a second press while the dialog is open or the request is in flight shows no dialog and sends nothing', async () => {
+  const { bridge, calls, state } = rig();
+  await bridge.refresh();
+  let answer: ((value: PrivateConfirmResult) => void) | null = null;
+  state.confirm = () =>
+    new Promise((resolve) => {
+      answer = resolve;
+    });
+  const first = bridge.decide(uuid(0x701), 'approve');
+  await settle();
+  assert.equal(state.confirms.length, 1);
+  // ダイアログを出している間の 2 回目（承認・断るのどちらも）は、ダイアログを出さず送らない。
+  assert.deepEqual(await bridge.decide(uuid(0x701), 'approve'), {
+    ok: false,
+    reason: 'confirmation_pending',
+  });
+  assert.deepEqual(await bridge.decide(uuid(0x701), 'decline'), {
+    ok: false,
+    reason: 'confirmation_pending',
+  });
+  assert.equal(state.confirms.length, 1);
+  assert.equal(posts(calls).length, 0);
+  (answer as unknown as (value: PrivateConfirmResult) => void)({
+    scope: SCOPE,
+  });
+  assert.deepEqual(await first, { ok: true, value: 'recorded' });
+  assert.equal(posts(calls).length, 1);
+});
+
+test('a 5xx is an unknown outcome: not resent and held until a later read', async () => {
+  const { bridge, calls, state, logs } = rig();
+  await bridge.refresh();
+  state.decide = () => ({
+    kind: 'response',
+    status: 503,
+    body: { code: 'dependency_unavailable' },
+  });
+  state.readable = false;
+  assert.deepEqual(await bridge.decide(uuid(0x701), 'decline'), {
+    ok: false,
+    reason: 'outcome_unknown',
+  });
+  await settle();
+  assert.equal(bridge.entries()[0]?.delivery_unknown, true);
+  assert.deepEqual(await bridge.decide(uuid(0x701), 'decline'), {
+    ok: false,
+    reason: 'entry_not_found',
+  });
+  assert.equal(posts(calls).length, 1);
+  assert(logs.includes('private_confirmation_outcome_unknown:503'));
+});
+
+test('an entry with no label change or with a label both added and removed is not shown, and only a reason code is logged', async () => {
+  const { bridge, state, logs } = rig();
+  state.list = [
+    entry({ add: [], remove: [] }),
+    entry({
+      confirmation_id: uuid(0xc2),
+      add: ['B06-SYNTH-label'],
+      remove: ['B06-SYNTH-label'],
+    }),
+    entry({ confirmation_id: uuid(0xc3) }),
+  ];
+  await bridge.refresh();
+  assert.equal(bridge.entries().length, 1);
+  assert.deepEqual(
+    logs.filter((code) => code === 'private_confirmation_entry_invalid'),
+    [
+      'private_confirmation_entry_invalid',
+      'private_confirmation_entry_invalid',
+    ],
+  );
+  assert(!logs.join('\n').includes('B06-SYNTH'));
 });

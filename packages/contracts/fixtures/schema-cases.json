@@ -31697,5 +31697,45 @@
       "result": "recorded",
       "confirmation_id": "00000000-0000-4000-8000-000000000fa1"
     }
+  },
+  {
+    "id": "private-confirmation-list-labels-empty",
+    "schema": "PrivateConfirmationList",
+    "valid": true,
+    "semantic_errors": ["labels_empty"],
+    "value": {
+      "confirmations": [
+        {
+          "confirmation_id": "00000000-0000-4000-8000-000000000fa1",
+          "intent": "label_mail",
+          "service": "gmail",
+          "account_label": "synthetic-account",
+          "target": null,
+          "add": [],
+          "remove": [],
+          "content_version": "1",
+          "content_hash": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
+          "conversation_saved": false
+        }
+      ]
+    }
+  },
+  {
+    "id": "private-confirmation-entry-labels-conflicting",
+    "schema": "PrivateConfirmationEntry",
+    "valid": true,
+    "semantic_errors": ["labels_conflicting"],
+    "value": {
+      "confirmation_id": "00000000-0000-4000-8000-000000000fa1",
+      "intent": "label_mail",
+      "service": "gmail",
+      "account_label": "synthetic-account",
+      "target": null,
+      "add": ["B06-SYNTH-label"],
+      "remove": ["B06-SYNTH-label"],
+      "content_version": "1",
+      "content_hash": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
+      "conversation_saved": false
+    }
   }
 ]

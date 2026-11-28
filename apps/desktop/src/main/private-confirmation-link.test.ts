@@ -250,6 +250,7 @@ async function startDevice(t: test.TestContext, hub: TestHub): Promise<Device> {
 async function startConfirmationHub(
   t: test.TestContext,
   mail: FakeMail,
+  options: { readonly open?: boolean } = {},
 ): Promise<TestHub> {
   const dir = await tempDir(t, 'bpch-');
   const dataDir = join(dir, 'data');
@@ -272,7 +273,9 @@ async function startConfirmationHub(
       },
       utcOffset: '+09:00',
       // 試験の組み立てだけが確認の画面の口を開く（製品は閉じたまま）。
-      privateConfirmationScreen: () => true,
+      ...(options.open === false
+        ? {}
+        : { privateConfirmationScreen: () => true }),
     },
   });
 }
@@ -478,7 +481,21 @@ test(
     const third = await ask(a, marker());
     a.link.setLockState('locked');
     assert.equal(a.link.view('locked').visibility, 'hidden');
+    // 中枢がロックの申告を受けて、承認を待つ確認を取り下げる（U507）。
+    await waitUntil(
+      () => hub.handle.privateConfirmations?.held().pending === 0,
+      'the hub drops the confirmation on the lock report',
+    );
+    const readsBefore = a.sent.filter((entry) => entry.method === 'GET').length;
     a.link.setLockState('unlocked');
+    // 解除の後に一覧を読み直し、空のまま。
+    await waitUntil(
+      () =>
+        a.sent.filter((entry) => entry.method === 'GET').length > readsBefore,
+      'A reads the list after unlocking',
+    );
+    await waitUntil(() => a.link.linkState?.phase === 'live', 'A live');
+    assert.deepEqual(a.view().private_confirmations, []);
     const locked = await a.ipc('desktop.private_confirmation_decide', {
       ref: third.ref,
       decision: 'approve',
@@ -489,6 +506,74 @@ test(
     await hub.handle.runner?.idle();
     const snapshot = await hub.handle.store.query({ kind: 'snapshot' });
     assert.equal(snapshot.operations.length, 0);
+    assert.deepEqual(mail.changes, []);
+  },
+);
+
+test(
+  'a lock report from another device withdraws the confirmation of the requesting device (U609), and nothing is sent or changed',
+  { timeout: 90_000 },
+  async (t) => {
+    const mail: FakeMail = { labels: ['inbox'], revision: 1, changes: [] };
+    const hub = await startConfirmationHub(t, mail);
+    const a = await startDevice(t, hub);
+    const b = await startDevice(t, hub);
+    assert.equal((await a.storage('private')).outcome, 'ok');
+    const entry = await ask(a, marker());
+    assert.equal(hub.handle.privateConfirmations?.held().pending, 1);
+    // B（頼んでいない端末）がロックする。中枢はロックの申告で、記録しない区切りの承認を待つ確認をすべて取り下げる。
+    b.link.setLockState('locked');
+    await waitUntil(
+      () => hub.handle.privateConfirmations?.held().pending === 0,
+      'the hub drops the confirmation on B lock report',
+    );
+    // A が一覧を読み直すと空で、古い参照では送らない。
+    const readsBefore = a.sent.filter((s) => s.method === 'GET').length;
+    const turn = await a.ipc('desktop.turn_submit', {
+      text: '今日の予定を見せて',
+    });
+    assert.equal(turn.outcome, 'ok', JSON.stringify(turn));
+    await waitUntil(
+      () => a.sent.filter((s) => s.method === 'GET').length > readsBefore,
+      'A reads the list again',
+    );
+    await waitUntil(
+      () => a.view().private_confirmations.length === 0,
+      'the list is empty',
+    );
+    const stale = await a.ipc('desktop.private_confirmation_decide', {
+      ref: entry.ref,
+      decision: 'approve',
+    });
+    assert.equal(field(stale, 'reason'), 'entry_not_found');
+    assert.deepEqual(privatePosts(a), []);
+    await hub.handle.runner?.idle();
+    assert.deepEqual(mail.changes, []);
+  },
+);
+
+test(
+  'with the screen gate closed the private label change is refused and the screen shows nothing',
+  { timeout: 90_000 },
+  async (t) => {
+    const mail: FakeMail = { labels: ['inbox'], revision: 1, changes: [] };
+    const hub = await startConfirmationHub(t, mail, { open: false });
+    const a = await startDevice(t, hub);
+    assert.equal((await a.storage('private')).outcome, 'ok');
+    const readsBefore = a.sent.filter((s) => s.method === 'GET').length;
+    const turn = await a.ipc('desktop.turn_submit', {
+      text: `${MAIL} に ${marker()} を付けて`,
+    });
+    assert.equal(turn.outcome, 'ok', JSON.stringify(turn));
+    // 一覧は読みに行くが、中枢は空を返し、画面には何も出ない。
+    await waitUntil(
+      () => a.sent.filter((s) => s.method === 'GET').length > readsBefore,
+      'A reads the list',
+    );
+    assert.deepEqual(a.view().private_confirmations, []);
+    assert.equal(hub.handle.privateConfirmations?.held().pending, 0);
+    assert.deepEqual(privatePosts(a), []);
+    await hub.handle.runner?.idle();
     assert.deepEqual(mail.changes, []);
   },
 );

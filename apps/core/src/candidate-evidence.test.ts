@@ -136,7 +136,11 @@ const MAIL_LOCATION: CandidateOriginLocationInput = {
 interface World {
   readonly db: SqliteDatabase;
   connection: ConnectionRecord | null;
+  // 接続ごとの上書き（別々の接続に予定がある試験）。無ければ connection。
+  connections: Map<string, ConnectionRecord | null>;
   connectionFails: boolean;
+  // 読み取りのたびに呼ぶ（読んでいる間の変化を起こす）。
+  onRead: (() => void) | null;
   targets: readonly EvidenceTarget[] | 'throw';
   events: Map<string, GoogleCalendarEvent | number>;
   messages: Map<string, GoogleGmailMessage | number>;
@@ -262,7 +266,9 @@ async function withWorld(
     const w: World = {
       db,
       connection: CONNECTION,
+      connections: new Map(),
       connectionFails: false,
+      onRead: null,
       targets: TARGETS,
       events: new Map([
         ['cal-a|e1', E1],
@@ -281,11 +287,16 @@ async function withWorld(
             executeCandidateOp(db, op, { platform: 'macos', halted: false })
               .result,
           )) as never,
-        connectionTargets: (() =>
+        connectionTargets: ((op: { connection_id: string }) =>
           Promise.resolve(
             w.connectionFails
               ? { ok: false, outcome: 'rejected', reasons: ['busy'] }
-              : { ok: true, value: w.connection },
+              : {
+                  ok: true,
+                  value: w.connections.has(op.connection_id)
+                    ? w.connections.get(op.connection_id)
+                    : w.connection,
+                },
           )) as never,
       },
       targetsFor: () =>
@@ -297,6 +308,7 @@ async function withWorld(
           ? {
               getEvent: ({ calendarId, eventId }) => {
                 w.reads.push(`event:${calendarId}/${eventId}`);
+                w.onRead?.();
                 const found = w.events.get(`${calendarId}|${eventId}`);
                 if (found === undefined || typeof found === 'number')
                   return Promise.reject(
@@ -315,6 +327,7 @@ async function withWorld(
           format: GoogleGmailMessageFormat;
         }) => {
           w.reads.push(`mail:${id}:${format}`);
+          w.onRead?.();
           const found = w.messages.get(id);
           if (found === undefined || typeof found === 'number')
             return Promise.reject(
@@ -454,6 +467,25 @@ test('an overlap that moved, was declined, turned free, was cancelled or deleted
     { name: 'deleted', e2: 404, expected: 'removed' },
     { name: 'gone', e2: 410, expected: 'removed' },
     { name: 'server error', e2: 500, expected: 'temporarily_unavailable' },
+    // 権限が無い・回数の制限は、消えたことにしない。
+    { name: 'forbidden', e2: 403, expected: 'temporarily_unavailable' },
+    { name: 'rate limited', e2: 429, expected: 'temporarily_unavailable' },
+    // 別の予定が返った（ID の食い違い）。
+    {
+      name: 'another event returned',
+      e2: { ...E2, id: 'e9' },
+      expected: 'temporarily_unavailable',
+    },
+    // 終日の予定が取得の窓（10/8 12:00〜10/23 12:00 JST）の後へ動いた: 解決せず未確認（U685）。
+    {
+      name: 'all-day moved past the window',
+      e2: {
+        ...E2,
+        start: { date: '2030-10-25' },
+        end: { date: '2030-10-26' },
+      },
+      expected: 'temporarily_unavailable',
+    },
     // 時刻が読めない予定は判断しない。
     {
       name: 'time unreadable',
@@ -534,7 +566,7 @@ test('outside the allowed range the evidence is out of scope, and nothing is rea
       expected: 'out_of_scope',
       reads: [],
     },
-    // 予定が取得の窓（10/8 12:00〜10/23 12:00 JST）の後へ動いた。
+    // 予定が取得の窓（10/8 12:00〜10/23 12:00 JST）の後へ動いた・窓を狭めた: 解決せず未確認（U685）。
     {
       name: 'moved past the window',
       change: (w) => {
@@ -543,7 +575,7 @@ test('outside the allowed range the evidence is out of scope, and nothing is rea
           event('e1', '2030-10-24T10:00:00', '2030-10-24T11:00:00'),
         );
       },
-      expected: 'out_of_scope',
+      expected: 'temporarily_unavailable',
       reads: ['event:cal-a/e1'],
     },
     // 取り直せない（解決しない）側。
@@ -551,6 +583,14 @@ test('outside the allowed range the evidence is out of scope, and nothing is rea
       name: 'needs reauth',
       change: (w) => {
         w.connection = { ...CONNECTION, status: 'needs_reauth' };
+      },
+      expected: 'temporarily_unavailable',
+      reads: [],
+    },
+    {
+      name: 'needs attention',
+      change: (w) => {
+        w.connection = { ...CONNECTION, status: 'needs_attention' };
       },
       expected: 'temporarily_unavailable',
       reads: [],
@@ -614,6 +654,78 @@ test('outside the allowed range the evidence is out of scope, and nothing is rea
       );
       assert.deepEqual(w.reads, entry.reads, entry.name);
     });
+  // 未来の窓を 0 日に狭めた（10/10 の予定は窓の外）: 未確認で、候補は解決しない（new のまま）。
+  await withWorld(async (w, source) => {
+    w.connection = {
+      ...CONNECTION,
+      targets: { ...CONNECTION.targets, calendar_future_days: 0 },
+    };
+    assert.deepEqual(await fetchOf(w, source, OVERLAP), {
+      observation: 'temporarily_unavailable',
+    });
+    assert.equal(read(w.db, OVERLAP).candidate?.state, 'new');
+  });
+});
+
+test('two events on two connections: the evidence stays unconfirmed while one of them needs reauthorization', async () => {
+  await withWorld(async (w, source) => {
+    const got = read(w.db, OVERLAP);
+    const split = [
+      calLocation('e1'),
+      { ...calLocation('e2'), connection_id: 'c-2' },
+    ];
+    w.connections.set('c-2', { ...CONNECTION, connection_id: 'c-2' });
+    // 両方の接続が有効なら、それぞれの接続で読む。
+    assert.equal(
+      (
+        await source.fetchEvidence(
+          got.candidate as CandidateRow,
+          got.origins,
+          split,
+        )
+      ).observation,
+      'available',
+    );
+    // 一方が要再認証: 先に読めた予定があっても、判断せず未確認。
+    w.connections.set('c-2', {
+      ...CONNECTION,
+      connection_id: 'c-2',
+      status: 'needs_reauth',
+    });
+    w.reads.length = 0;
+    assert.deepEqual(
+      await source.fetchEvidence(
+        got.candidate as CandidateRow,
+        got.origins,
+        split,
+      ),
+      { observation: 'temporarily_unavailable' },
+    );
+    assert.deepEqual(w.reads, ['event:cal-a/e1']);
+    assert.equal(read(w.db, OVERLAP).candidate?.state, 'new');
+  });
+});
+
+test('if a private conversation starts while reading, the read result is dropped and nothing is quoted', async () => {
+  await withWorld(async (w, source) => {
+    w.onRead = () => {
+      w.privateNow = true;
+    };
+    assert.deepEqual(await fetchOf(w, source, OVERLAP), {
+      observation: 'temporarily_unavailable',
+    });
+    w.privateNow = false;
+    assert.deepEqual(await fetchOf(w, source, MAIL), {
+      observation: 'temporarily_unavailable',
+    });
+    w.privateNow = false;
+    // 取り消された予定を読んでも、記録しない会話に入っていれば解決しない。
+    w.events.set('cal-a|e2', { ...E2, status: 'cancelled' });
+    assert.equal(
+      await source.checkEvidence(read(w.db, OVERLAP).candidate as CandidateRow),
+      'temporarily_unavailable',
+    );
+  });
 });
 
 test('during a private conversation, without a noted place, or for an Outlook place nothing is read and the evidence stays unconfirmed', async () => {
@@ -677,15 +789,16 @@ test('a mail is read back from the noted account, checked against its labels, wi
     readonly message: GoogleGmailMessage | number;
     readonly expected: string;
   }[] = [
+    // 版（historyId）の違い・ラベルから外れた（アーカイブ）・受信が窓の外は、解決せず未確認（U683・U685）。
     {
       name: 'version changed',
       message: { ...MESSAGE, historyId: '101' },
-      expected: 'revised',
+      expected: 'temporarily_unavailable',
     },
     {
       name: 'label removed',
       message: { ...MESSAGE, labelIds: ['ARCHIVE'] },
-      expected: 'out_of_scope',
+      expected: 'temporarily_unavailable',
     },
     // 受信が取得の窓（30 日）より前。
     {
@@ -694,7 +807,16 @@ test('a mail is read back from the noted account, checked against its labels, wi
         ...MESSAGE,
         internalDate: String(Date.parse('2030-09-08T00:00:00Z')),
       },
-      expected: 'out_of_scope',
+      expected: 'temporarily_unavailable',
+    },
+    // 受信が窓の後（時計のずれ）。
+    {
+      name: 'after the window',
+      message: {
+        ...MESSAGE,
+        internalDate: String(Date.parse('2030-10-09T03:10:00Z')),
+      },
+      expected: 'temporarily_unavailable',
     },
     { name: 'deleted', message: 404, expected: 'removed' },
     { name: 'server error', message: 503, expected: 'temporarily_unavailable' },

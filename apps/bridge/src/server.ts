@@ -4,7 +4,9 @@
 //   イベントのポーリング、調べ物の依頼）。ここに無い経路は 404 で、Core へは送らない。
 //   操作の承認・ペアリング・端末管理・OAuth の開始・Live・キャンバスの操作は公開しない（ADR 0143）。
 // - 認証はブリッジ独自のトークン（Authorization: Bearer）。設定には hash だけがあり、照合は hash 同士。
-// - 応答は Core の状態と本文をそのまま返す（中継であって、解釈・再判定はしない。正本は Core）。
+// - 応答は Core の状態と本文をそのまま返す（中継であって、解釈・再判定はしない。正本は Core）。例外は気づきの根拠
+//   （ADR 0201）: 取り直した予定の題・メールの引用・抄録（本文に当たる値）を落とし、確かめられたか・引用の数・未読だけを
+//   渡す（外部の LLM の窓口へ本文を渡さない。U689）。拒否（409・503 など）はそのまま中継する。
 // - 調べ物の依頼は、ブリッジ専用の会話（セッション）を 1 つ持ち回して発言として送る（U254 の受け口）。
 //   区切りの世代が進んで 409 になったら、会話を作り直して 1 回だけ送り直す。
 // - 監査ログには時刻・経路の名前・結果の状態だけを出す。本文・トークン・候補の題は出さない。
@@ -78,6 +80,38 @@ function relay(outcome: CoreClientOutcome): Reply {
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
+
+// 気づきの根拠（CandidateEvidence）から本文に当たる値（sources の引用・題・位置、excerpt）を落とす（ADR 0201、U689）。
+// 有効だった（200）ことと、照合できた引用の数・未読の部分の有無・抄録があるかだけを残す。形が想定外なら何も渡さない。
+export function withholdEvidenceBody(reply: Reply): Reply {
+  if (reply.status !== 200) return reply;
+  const body = reply.body;
+  const sources = body['sources'];
+  if (
+    typeof body['candidate_id'] !== 'string' ||
+    !Array.isArray(sources) ||
+    typeof body['unread'] !== 'boolean'
+  )
+    return bridgeError(
+      502,
+      'core_response_invalid',
+      '中枢の根拠の応答の形が想定と違うため、渡しません。',
+    );
+  return {
+    status: 200,
+    body: {
+      candidate_id: body['candidate_id'],
+      request_entity_id: body['request_entity_id'] ?? null,
+      request_revision: body['request_revision'] ?? null,
+      evidence: 'confirmed',
+      quote_count: sources.length,
+      unread: body['unread'],
+      excerpt_present:
+        typeof body['excerpt'] === 'string' && body['excerpt'] !== '',
+      body_withheld: true,
+    },
+  };
+}
 
 interface ResearchSession {
   readonly sessionId: string;
@@ -192,11 +226,13 @@ export function createBridgeServer(deps: BridgeServerDeps): BridgeServer {
       method: 'POST',
       segments: ['bridge', 'v1', 'candidates', '{candidate_id}', 'evidence'],
       run: async (params) =>
-        relay(
-          await deps.client.command(
-            'POST',
-            `/v1/candidates/${encodeURIComponent(params['candidate_id'] ?? '')}/evidence`,
-            {},
+        withholdEvidenceBody(
+          relay(
+            await deps.client.command(
+              'POST',
+              `/v1/candidates/${encodeURIComponent(params['candidate_id'] ?? '')}/evidence`,
+              {},
+            ),
           ),
         ),
     },

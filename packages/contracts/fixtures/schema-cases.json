@@ -31508,6 +31508,57 @@
     }
   },
   {
+    "id": "desktop-ipc-candidate-evidence-response-unconfirmed-with-quote",
+    "schema": "DesktopIpcResponse",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000c91",
+      "channel": "desktop.candidate_evidence",
+      "outcome": "ok",
+      "evidence": {
+        "ref": "00000000-0000-4000-8000-000000000c11",
+        "status": "unconfirmed",
+        "quotes": ["推測の引用"],
+        "unread": null,
+        "excerpt": null
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-candidate-evidence-response-unconfirmed-with-unread",
+    "schema": "DesktopIpcResponse",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000c91",
+      "channel": "desktop.candidate_evidence",
+      "outcome": "ok",
+      "evidence": {
+        "ref": "00000000-0000-4000-8000-000000000c11",
+        "status": "unconfirmed",
+        "quotes": [],
+        "unread": false,
+        "excerpt": null
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-candidate-evidence-response-changed-with-excerpt",
+    "schema": "DesktopIpcResponse",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000c91",
+      "channel": "desktop.candidate_evidence",
+      "outcome": "ok",
+      "evidence": {
+        "ref": "00000000-0000-4000-8000-000000000c11",
+        "status": "changed",
+        "quotes": [],
+        "unread": null,
+        "excerpt": "作ったときの抄録"
+      }
+    }
+  },
+  {
     "id": "desktop-ipc-candidate-evidence-response-unknown-status",
     "schema": "DesktopIpcResponse",
     "valid": false,

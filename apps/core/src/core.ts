@@ -1957,7 +1957,7 @@ async function startHttps(
       : { fetchEvidence: candidateEvidence.fetchEvidence }),
   });
   // 一覧を開くたびの状態の見直し（B11-05、ADR 0132）。一覧の前に保守の時間による遷移と保持の掃除を回す（根拠の再確認は
-  // 取り直す口があるときだけ、前の再確認から 15 分空いた回に回す。ADR 0201）。時計は掃除のゲート（retention.gate()）の理由のうち時計のもの（clock_*: 巻き戻り・
+  // 取り直す口があるときだけ、一覧を待たせずに後ろで回す。ADR 0201）。時計は掃除のゲート（retention.gate()）の理由のうち時計のもの（clock_*: 巻き戻り・
   // 時計の状態ファイルの欠け・不正・読めない時刻）で確かめ、該当すれば保守を保留して一覧だけ返す。掃除の進み具合
   // （sweep_*）は候補の保守の可否に関わらないので見ない（clockStatus() のように掃除の完了を待たず、一覧を遅らせない）。
   // 掃除の仕組みが無い組み立て（試験）は、時計の状態ファイルが無いときの掃除と同じく今の時刻をそのまま使う。
@@ -1965,10 +1965,14 @@ async function startHttps(
   const candidateRefresh = createCandidateListRefresh({
     client: store,
     zone: () => deviceTimeZone(),
-    // 根拠の再確認（ADR 0201）。前の再確認から 15 分空いた一覧の前だけ（U681）。
+    // 根拠の再確認（ADR 0201）。一覧の応答とは切り離して後ろで回し、前の再確認から 15 分空いた一覧の要求のときだけ
+    // 始める。1 回 20 件・20 秒まで（U681）。書込みは気づきの通知の 1 回の判定にまとめ、件数の知らせで端末が読み直す。
     ...(candidateEvidence == null
       ? {}
-      : { checkEvidence: candidateEvidence.checkEvidence }),
+      : {
+          checkEvidence: candidateEvidence.checkEvidence,
+          batch: <T>(run: () => Promise<T>) => candidateAlerts.batch(run),
+        }),
     clock: async () => {
       const at = now().toISOString();
       if (retention === null) return { ok: true, now: at } as const;

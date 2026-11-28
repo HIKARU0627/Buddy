@@ -6,14 +6,15 @@
 // 1. 記録しない会話の間は何も読まない（取り直せない＝未確認。U680）。由来の位置を控えていない候補（0026 より前・調査の
 //    完了・位置の無い取り込み）も読まず未確認にする（推測で取り直し先を作らない）。
 // 2. 許可範囲: 控えた接続が今もあり（無い・切断済みは取得範囲外）、有効で取得対象が完全で、今の口座・取得集合が控えた
-//    ものと同じこと（口座の付け替え・取得集合の作り直しは取得範囲外）。予定は控えたカレンダーが今も選ばれていて、時刻付きの
-//    予定は取得の窓と重なること。メールは今も選んだラベルにあり、受信が取得の窓の中にあること。外れたら取得範囲外
-//    （out_of_scope）。読めない・鍵やトークンが無い・接続が要再認証などは未確認（temporarily_unavailable）。
+//    ものと同じこと（口座の付け替え・取得集合の作り直しは取得範囲外）。予定は控えたカレンダーが今も選ばれていること
+//    （外したら取得範囲外）。取得範囲外（out_of_scope）にするのはこれらだけ。予定が取得の窓の外・メールが選んだラベルの外や
+//    受信の窓の外は、取り直せない（未確認・保留）として解決しない（U685）。読めない・鍵やトークンが無い・接続が要再認証
+//    などは未確認（temporarily_unavailable）。
 // 3. 予定の重複: 控えた予定を events.get で 1 件ずつ読み直し、消えた（404・410）・取り消された予定は removed。今の時刻・
 //    状態・出欠で重複を求め直し、候補の識別子と同じ重複が今もあれば有効（available）、無ければ重複の解消
 //    （overlap_resolved）。有効なときの根拠の引用は予定の題（題の無い予定は入れない）。
-// 4. メール: messages.get で読み直し、消えた（404）は removed、版（同期と同じ historyId）が候補を作ったときと違えば revised、
-//    同じなら有効。引用は、控えた位置を取り直した本文から切り出す（本文の作り方 mailText が渡されたときだけ。渡されない・
+// 4. メール: messages.get で読み直し、消えた（404）は removed、版（同期と同じ historyId）が候補を作ったときと違えば未確認
+//    （抽出を製品につなぐまで。U683）、同じなら有効。引用は、控えた位置を取り直した本文から切り出す（本文の作り方 mailText が渡されたときだけ。渡されない・
 //    位置が本文の外なら引用を入れない。U683）。
 // 掃除のゲート（ADR 0053）が閉じている間は読まず未確認にする（U688）。
 // 取り直した題・本文・引用は応答に載せて返すだけで、保存・記録・ログに出さない。Outlook（Microsoft Graph）は 1 通を ID で
@@ -27,6 +28,7 @@ import {
   codePointLength,
   findScheduleOverlaps,
   notificationKey,
+  zonedStartOfDay,
 } from '@buddy/domain';
 import type {
   CalendarOccurrence,
@@ -127,6 +129,22 @@ function slicePoints(text: string, start: number, end: number): string | null {
   const points = [...text];
   if (end > points.length || start < 0 || end <= start) return null;
   return points.slice(start, end).join('');
+}
+
+// 終日の予定の期間（本人のタイムゾーンの開始の日付の 0 時から、終わりの日付の 0 時まで）を UTC にする。読めなければ null。
+function allDayRange(
+  startDate: string,
+  endDate: string,
+  zone: string,
+): { readonly start: string; readonly end: string } | null {
+  const start = zonedStartOfDay(startDate, zone);
+  const end = zonedStartOfDay(endDate, zone);
+  return start === null || end === null
+    ? null
+    : {
+        start: new Date(start).toISOString(),
+        end: new Date(end).toISOString(),
+      };
 }
 
 export function createCandidateEvidenceSource(
@@ -245,27 +263,34 @@ export function createCandidateEvidenceSource(
         read.value,
       );
       if (occurrence === null) return UNCONFIRMED;
-      // 時刻付きの予定は取得の窓と重なること（窓の外へ動いた・窓を狭めた: 取得範囲外）。
-      if (occurrence.time.kind === 'timed') {
-        const check = checkCalendarEvent(
-          scope,
-          {
-            calendarId: location.container_id,
-            startsAt: occurrence.time.start,
-            endsAt: occurrence.time.end,
-          },
-          at,
-        );
-        if (!check.ok)
-          return {
-            observation:
-              check.reason === 'before_window' ||
-              check.reason === 'after_window' ||
-              check.reason === 'calendar_not_selected'
-                ? 'out_of_scope'
-                : 'temporarily_unavailable',
-          };
-      }
+      // 予定が取得の窓と重なること。窓の外へ動いた・窓を狭めた・時計がずれたときは、取り直せない（未確認・保留）として
+      // 解決しない（識別子は残る間作り直さないので、resolved にすると戻せない。U685）。終日の予定は本人のタイムゾーンの
+      // 0 時から翌日の 0 時として比べる（重複の判定と同じ）。
+      const span =
+        occurrence.time.kind === 'timed'
+          ? { start: occurrence.time.start, end: occurrence.time.end }
+          : allDayRange(
+              occurrence.time.start_date,
+              occurrence.time.end_date,
+              zone,
+            );
+      if (span === null) return UNCONFIRMED;
+      const check = checkCalendarEvent(
+        scope,
+        {
+          calendarId: location.container_id,
+          startsAt: span.start,
+          endsAt: span.end,
+        },
+        at,
+      );
+      if (!check.ok)
+        return {
+          observation:
+            check.reason === 'calendar_not_selected'
+              ? 'out_of_scope'
+              : 'temporarily_unavailable',
+        };
       occurrences.push(occurrence);
       events.push(read.value);
     }
@@ -344,15 +369,13 @@ export function createCandidateEvidenceSource(
       { containerIds: message.labelIds, receivedAt: received },
       now().toISOString(),
     );
-    if (!check.ok)
-      return check.reason === 'container_not_selected' ||
-        check.reason === 'before_window' ||
-        check.reason === 'after_window'
-        ? { observation: 'out_of_scope' }
-        : UNCONFIRMED;
+    // 選んだラベルから外れた（アーカイブなど）・受信が取得の窓の外（受信から日が経った・窓を狭めた・時計のずれ）は、
+    // 取り直せない（未確認・保留）として解決しない（U685）。
+    if (!check.ok) return UNCONFIRMED;
+    // 版は同期と同じ historyId で、既読・スター・アーカイブでも変わる。抽出の版（source_revision）と同じ値になるかも
+    // 決まっていないので、抽出を製品につなぐ（U546）までは、違っても新しい版（409）にせず未確認にする（U683）。
     const revision = messageRevision(message);
-    if (revision !== candidate.source_revision)
-      return { observation: 'revised' };
+    if (revision !== candidate.source_revision) return UNCONFIRMED;
     const sources: SourceRef[] = [];
     if (quoteWanted && location.quote !== null) {
       const text = (
@@ -408,9 +431,12 @@ export function createCandidateEvidenceSource(
       if (release === null) return UNCONFIRMED;
     }
     try {
-      return candidate.candidate_kind === 'schedule_overlap'
-        ? await overlapEvidence(candidate, sourceIds, locations, withQuotes)
-        : await mailEvidence(candidate, sourceIds, locations, withQuotes);
+      const observed =
+        candidate.candidate_kind === 'schedule_overlap'
+          ? await overlapEvidence(candidate, sourceIds, locations, withQuotes)
+          : await mailEvidence(candidate, sourceIds, locations, withQuotes);
+      // 読んでいる間に記録しない会話に入ったら、読んだ結果を使わない（引用を返さず、状態も変えない）。
+      return options.storage.privateConversation() ? UNCONFIRMED : observed;
     } finally {
       release?.();
     }

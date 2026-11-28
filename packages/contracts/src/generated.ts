@@ -8392,7 +8392,7 @@ export interface DesktopCandidateAlertView {
   os_notification: 'on' | 'off';
 }
 /**
- * 気づきの「根拠を見る」の表示用の値（ADR 0201）。候補 ID・元情報の ID・版・位置は main が持ち、画面へは渡さない。根拠を確かめられないときは未確認として示し、推測で埋めない。
+ * 気づきの「根拠を見る」の表示用の値（ADR 0201）。未確認（unconfirmed）・変わった（changed）のときは引用を空、未読と抄録を null に縛る（根拠を確かめていない値を出さない）。候補 ID・元情報の ID・版・位置は main が持ち、画面へは渡さない。根拠を確かめられないときは未確認として示し、推測で埋めない。
  */
 export interface DesktopCandidateEvidenceView {
   /**

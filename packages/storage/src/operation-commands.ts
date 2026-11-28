@@ -28,10 +28,11 @@ export const DB_COMMAND_KINDS = [
 
 export type DbCommandKind = (typeof DB_COMMAND_KINDS)[number];
 
-// 取り消しの補償としてだけ作れる操作の種類（ADR 0156・0157）。
+// 取り消しの補償としてだけ作れる操作の種類（ADR 0156・0157・0198）。
 export const UNDO_ONLY_KINDS: readonly string[] = [
   'mail.draft.delete',
   'task.delete',
+  'calendar.event.delete',
 ];
 
 // 端末からの要求の受付（07 §3）。Core が接続範囲・request_id・要求の照合値を渡す。
@@ -407,7 +408,7 @@ export function commandShapeReasons(command: DbCommand): string[] {
         // 取り消しは本人の画面操作が起点で、方針による自動承認では作らない（03 J12）。
         else if (auto !== null) reasons.push('undo_auto_approval');
       }
-      // 下書き・用事の削除は、自動で作ったものの取り消しの補償だけに使う（ADR 0156・0157）。それ以外では作らない。
+      // 下書き・用事・予定の削除は、自動で作ったものの取り消しの補償だけに使う（ADR 0156・0157・0198）。それ以外では作らない。
       if (
         UNDO_ONLY_KINDS.includes(command.operation_kind) &&
         (undo === undefined || undo === null)
@@ -529,6 +530,8 @@ export function commandShapeReasons(command: DbCommand): string[] {
             'create_task',
             'delete_draft',
             'delete_task',
+            'create_event',
+            'delete_event',
           ].includes(command.step.step_kind))
       )
         reasons.push('step_invalid');

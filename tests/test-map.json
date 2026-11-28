@@ -509,7 +509,9 @@
       "id": "X23",
       "phases": ["B02", "B13"],
       "contract_fixtures": [
-        "packages/contracts/fixtures/readiness-cases.json#safety-stopped-auto"
+        "packages/contracts/fixtures/readiness-cases.json#safety-stopped-auto",
+        "packages/contracts/fixtures/schema-cases.json#safety-notice",
+        "packages/contracts/fixtures/schema-cases.json#safety-notice-with-state"
       ],
       "status": "contract_fixture",
       "product_test": "not_run",
@@ -521,7 +523,10 @@
       "contract_fixtures": [
         "tests/fixtures/storage-cases.json#undo-window-and-single-undo",
         "packages/contracts/fixtures/schema-cases.json#x24-desktop-ipc-candidates-view-with-auto-actions",
-        "packages/contracts/fixtures/schema-cases.json#x24-desktop-ipc-candidates-view-auto-action-with-operation-id"
+        "packages/contracts/fixtures/schema-cases.json#x24-desktop-ipc-candidates-view-auto-action-with-operation-id",
+        "packages/contracts/fixtures/schema-cases.json#intent-calendar-event-delete-as-operation",
+        "packages/contracts/fixtures/schema-cases.json#intent-calendar-event-delete-of-itself",
+        "packages/contracts/fixtures/schema-cases.json#intent-calendar-event-delete-with-recipients"
       ],
       "status": "contract_fixture",
       "product_test": "not_run",

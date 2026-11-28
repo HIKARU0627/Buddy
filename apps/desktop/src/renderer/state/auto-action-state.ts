@@ -61,13 +61,15 @@ export const AUTO_ACTION_KIND_LABELS: Readonly<
   create_event: '予定の作成',
 };
 
-// 取り消しで何が起きるか（取り消せる行だけに出す）。下書きと用事は削除で元に戻すので、押す前に分かるようにする
-// （ADR 0156・0157）。ラベルは逆向きに付け外しするだけなので出さない。
+// 取り消しで何が起きるか（取り消せる行だけに出す）。下書き・用事・予定は削除で元に戻すので、押す前に分かるようにする
+// （ADR 0156・0157・0198。予定は製品では取り消せるように見せないが、開いたときの文言を決めておく）。ラベルは逆向きに
+// 付け外しするだけなので出さない。
 export const UNDO_EFFECT_LABELS: Readonly<
   Partial<Record<DesktopAutoActionEntry['kind'], string>>
 > = {
   draft_reply: '取り消すと、Buddy が作った下書きを削除します。',
   create_task: '取り消すと、Buddy が登録したタスクを削除します。',
+  create_event: '取り消すと、Buddy が作った予定を削除します。',
 };
 
 export const STOP_REASON_LABELS: Readonly<

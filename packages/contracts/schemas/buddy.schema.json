@@ -185,6 +185,9 @@
       "$ref": "#/$defs/CandidateNotice"
     },
     {
+      "$ref": "#/$defs/SafetyNotice"
+    },
+    {
       "$ref": "#/$defs/CandidateEvidence"
     },
     {
@@ -7852,9 +7855,11 @@
         "create_event_with_attendees",
         "trash_mail",
         "delete_draft",
-        "delete_task"
+        "delete_task",
+        "create_event",
+        "delete_event"
       ],
-      "description": "操作の工程（設計 08 §4、ADR 0027）。2 工程の操作はこの順にだけ進める。"
+      "description": "操作の工程（設計 08 §4、ADR 0027・0198）。2 工程の操作はこの順にだけ進める。"
     },
     "ConnectorWriteCapability": {
       "type": "object",
@@ -9036,6 +9041,201 @@
       "additionalProperties": false,
       "description": "Buddy が自動で作った返信の下書きを、取り消しで削除する（mail.draft.delete、RemoteMutation、ADR 0156）。自動実行の取り消しの補償の操作だけに使い、方針では承認しない。target は削除する下書きと、取り消しを押したときに読んだその版。created_by は下書きを作った操作と内容版で、目印（buddy-op）が同じ下書きだけを消す。送信済み・本人が手を加えた下書きは消さない。外部の相手へは送らないので external_recipients は空。"
     },
+    "CalendarEventCreateOperationIntent": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "const": "buddy.operation.v1"
+        },
+        "operation_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "content_version": {
+          "$ref": "#/$defs/ContentVersion"
+        },
+        "permission_revision": {
+          "$ref": "#/$defs/PermissionRevision"
+        },
+        "provider": {
+          "type": "string",
+          "enum": ["mock", "gmail", "microsoft_graph"]
+        },
+        "account_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "target": {
+          "type": "null",
+          "description": "自分だけの予定の作成は新しい予定なので、既存の対象を持たない。"
+        },
+        "action": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "calendar.event.create"
+            },
+            "calendar_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "summary": {
+              "type": "string",
+              "minLength": 1
+            },
+            "start": {
+              "$ref": "#/$defs/DateOrDateTime"
+            },
+            "end": {
+              "$ref": "#/$defs/DateOrDateTime"
+            },
+            "time_zone": {
+              "$ref": "#/$defs/TimeZone"
+            }
+          },
+          "required": [
+            "kind",
+            "calendar_id",
+            "summary",
+            "start",
+            "end",
+            "time_zone"
+          ],
+          "additionalProperties": false
+        },
+        "effects": {
+          "type": "object",
+          "properties": {
+            "external_recipients": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "maxItems": 0
+            },
+            "reconcile_scope": {
+              "type": "string",
+              "const": "operation_marker"
+            }
+          },
+          "required": ["external_recipients", "reconcile_scope"],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "schema",
+        "operation_id",
+        "content_version",
+        "permission_revision",
+        "provider",
+        "account_id",
+        "target",
+        "action",
+        "effects"
+      ],
+      "additionalProperties": false,
+      "description": "参加者のいない自分だけの予定の作成（calendar.event.create、RemoteMutation、ADR 0146・0147・0198）。判定表の create_event の行（方針 event.create_own）に当たる操作で、方針による自動承認の対象になる。参加者を持たず（参加者がいる作成は calendar.event.create_with_attendees）、外部の相手へは送らない。作成物は操作の目印（buddy-op）で照合する。繰り返しの予定は作らない。実行担当の送出は、予定の自動作成を配線するときに作る（ADR 0198 の時点では契約・種類の表・自動承認の対応表だけ）。"
+    },
+    "CalendarEventDeleteOperationIntent": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "const": "buddy.operation.v1"
+        },
+        "operation_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "content_version": {
+          "$ref": "#/$defs/ContentVersion"
+        },
+        "permission_revision": {
+          "$ref": "#/$defs/PermissionRevision"
+        },
+        "provider": {
+          "type": "string",
+          "enum": ["mock", "gmail", "microsoft_graph"]
+        },
+        "account_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "target": {
+          "type": "object",
+          "properties": {
+            "remote_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "source_revision": {
+              "$ref": "#/$defs/SourceRevision"
+            }
+          },
+          "required": ["remote_id", "source_revision"],
+          "additionalProperties": false
+        },
+        "action": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "calendar.event.delete"
+            },
+            "calendar_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "created_by": {
+              "type": "object",
+              "properties": {
+                "operation_id": {
+                  "$ref": "#/$defs/Id"
+                },
+                "content_version": {
+                  "$ref": "#/$defs/ContentVersion"
+                }
+              },
+              "required": ["operation_id", "content_version"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["kind", "calendar_id", "created_by"],
+          "additionalProperties": false
+        },
+        "effects": {
+          "type": "object",
+          "properties": {
+            "external_recipients": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "maxItems": 0
+            },
+            "reconcile_scope": {
+              "type": "string",
+              "const": "exact_target"
+            }
+          },
+          "required": ["external_recipients", "reconcile_scope"],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "schema",
+        "operation_id",
+        "content_version",
+        "permission_revision",
+        "provider",
+        "account_id",
+        "target",
+        "action",
+        "effects"
+      ],
+      "additionalProperties": false,
+      "description": "Buddy が自動で作った自分だけの予定を、取り消しで削除する（calendar.event.delete、RemoteMutation、ADR 0198）。自動実行の取り消しの補償の操作だけに使い、方針では承認しない。target は削除する予定と、取り消しを押したときに読んだその版（etag など）で、版を条件にして 1 回だけ消す。created_by は予定を作った操作と内容版で、目印（buddy-op）が同じ予定だけを消す。参加者がいる・繰り返しになった・本人が手を加えた予定は消さない。外部の相手へは送らないので external_recipients は空。"
+    },
     "TaskDeleteOperationIntent": {
       "type": "object",
       "properties": {
@@ -9129,9 +9329,11 @@
         "calendar.event.create_with_attendees",
         "mail.trash",
         "mail.draft.delete",
-        "task.delete"
+        "task.delete",
+        "calendar.event.create",
+        "calendar.event.delete"
       ],
-      "description": "操作の種類。確定 intent の action.kind と同じ値（ADR 0027・0075・0156・0157）。経路（Read / LocalCommand / RemoteMutation）はコードの表が決める。"
+      "description": "操作の種類。確定 intent の action.kind と同じ値（ADR 0027・0075・0156・0157・0198）。経路（Read / LocalCommand / RemoteMutation）はコードの表が決める。"
     },
     "ApprovalRequiredOperationKind": {
       "type": "string",
@@ -9326,6 +9528,12 @@
         },
         {
           "$ref": "#/$defs/TaskDeleteOperationIntent"
+        },
+        {
+          "$ref": "#/$defs/CalendarEventCreateOperationIntent"
+        },
+        {
+          "$ref": "#/$defs/CalendarEventDeleteOperationIntent"
         }
       ],
       "description": "承認対象として確定した変更内容。ラベル変更（H01）・返信の下書き・用事の登録（ADR 0027）と、送信・予定の変更・参加者のいる予定の作成・ごみ箱（ADR 0075）。content_hash はこの確定 intent 全体の JCS+SHA-256。依頼ID・表示端末・state_revisionを混ぜない。"
@@ -13151,13 +13359,14 @@
                 { "$ref": "#/$defs/ForgetLedgerNotice" },
                 { "$ref": "#/$defs/StorageBoundaryNotice" },
                 { "$ref": "#/$defs/StorageModeNotice" },
-                { "$ref": "#/$defs/CandidateNotice" }
+                { "$ref": "#/$defs/CandidateNotice" },
+                { "$ref": "#/$defs/SafetyNotice" }
               ]
             }
           },
           "required": ["type", "notice"],
           "additionalProperties": false,
-          "description": "期限切れ・忘却・忘却台帳の前進・記録しない会話の終了・保存モードの変更（StorageModeNotice。UI-05 の段階 6、ADR 0189）・気づきの増減（CandidateNotice。ADR 0196）の知らせ（UI-05 の段階 3、ADR 0187、U40・U168）。Core の NoticeSink に入った知らせを、そのとき開いている購読（接続範囲を確かめた後のもの）にだけ送る。イベントの記録（cursor）に入れず、再送・永続しない。取り逃した端末の表示は canvas の版と getCanvas で収束し、忘却台帳は次の接続の同期で追いつく。ID と理由と番号だけで、本文・要約・検索語・HMAC を含めない。RetentionNotice の source_item（元サービスの生の ID）は Core が除いて送り、除いて空になった知らせは送らない。端末は知らない知らせを無視する。"
+          "description": "期限切れ・忘却・忘却台帳の前進・記録しない会話の終了・保存モードの変更（StorageModeNotice。UI-05 の段階 6、ADR 0189）・気づきの増減（CandidateNotice。ADR 0196）・安全停止の状態の変化（SafetyNotice。ADR 0198）の知らせ（UI-05 の段階 3、ADR 0187、U40・U168）。Core の NoticeSink に入った知らせを、そのとき開いている購読（接続範囲を確かめた後のもの）にだけ送る。イベントの記録（cursor）に入れず、再送・永続しない。取り逃した端末の表示は canvas の版と getCanvas で収束し、忘却台帳は次の接続の同期で追いつく。ID と理由と番号だけで、本文・要約・検索語・HMAC を含めない。RetentionNotice の source_item（元サービスの生の ID）は Core が除いて送り、除いて空になった知らせは送らない。端末は知らない知らせを無視する。"
         },
         {
           "type": "object",
@@ -21925,6 +22134,23 @@
       ],
       "additionalProperties": false,
       "description": "記録しない会話が終わったことの知らせ（キャンバス向け。UI-05、ADR 0059）。Core が再起動して記録しない区切りの RAM を失ったので、通常の区切りへ戻した。ended_generation は終わった記録しない区切りの世代、segment_id と segment_generation は戻った先の通常の区切り。区切りの本文・発言・要約を入れない。端末は ended_generation 以前の由来の入力・結果を送らない（送っても Core が拒否する）。"
+    },
+    "SafetyNotice": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "const": "buddy.safety-notice.v1"
+        },
+        "notice_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "occurred_at": {
+          "$ref": "#/$defs/UtcTime"
+        }
+      },
+      "required": ["schema", "notice_id", "occurred_at"],
+      "additionalProperties": false,
+      "description": "自動実行の安全停止の状態が変わった（止まった・再開した）ことの知らせ（U315、ADR 0198）。Core が安全停止の版の変化を見つけたときに、開いている購読へ流す。停止の理由・状態・版・操作の ID・本文を入れない。端末は受けたら GET /v1/auto-actions で安全停止の状態を読み直して状態欄に出す（知らせを状態の正本にしない）。ロック中・記録しない会話の間も送るが、端末はロック中は読まず、解除したときに読む。"
     },
     "StorageModeNotice": {
       "type": "object",

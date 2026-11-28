@@ -925,8 +925,10 @@ function contentOf(
         headline: action.subject,
         detail: `宛先 ${action.to.join('、')}`,
       };
+    // 参加者のいない自分だけの予定の作成（calendar.event.create、ADR 0198）は、実行担当の送出はまだないが、見出しは同じ形で出す。
     case 'calendar.event.update':
     case 'calendar.event.create_with_attendees':
+    case 'calendar.event.create':
       return { headline: action.summary, detail: action.start };
     case 'mail.trash':
       return {
@@ -939,6 +941,9 @@ function contentOf(
     // 自動で登録した用事の取り消し（ADR 0157）。上と同じく承認画面には出さない。
     case 'task.delete':
       return { headline: '自動で登録した用事の削除', detail: null };
+    // 自動で作った予定の取り消し（ADR 0198）。上と同じく承認画面には出さない。
+    case 'calendar.event.delete':
+      return { headline: '自動で作った予定の削除', detail: null };
   }
 }
 
@@ -980,6 +985,8 @@ export function previewView(
     case 'mail.trash':
     case 'mail.draft.delete':
     case 'task.delete':
+    case 'calendar.event.create':
+    case 'calendar.event.delete':
       break;
   }
   const external = 'provider' in intent;

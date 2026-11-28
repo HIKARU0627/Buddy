@@ -9524,6 +9524,439 @@
     "semantic_errors": ["created_by_self"]
   },
   {
+    "id": "intent-calendar-event-create-as-operation",
+    "schema": "OperationIntent",
+    "valid": true,
+    "value": {
+      "schema": "buddy.operation.v1",
+      "operation_id": "00000000-0000-4000-8000-000000000401",
+      "content_version": "1",
+      "permission_revision": "1",
+      "provider": "mock",
+      "account_id": "00000000-0000-4000-8000-000000000002",
+      "target": null,
+      "action": {
+        "kind": "calendar.event.create",
+        "calendar_id": "primary",
+        "summary": "（合成）歯科の予約",
+        "start": "2030-10-07T17:00:00",
+        "end": "2030-10-07T17:30:00",
+        "time_zone": "Asia/Tokyo"
+      },
+      "effects": {
+        "external_recipients": [],
+        "reconcile_scope": "operation_marker"
+      }
+    }
+  },
+  {
+    "id": "intent-calendar-event-create-with-attendees",
+    "schema": "OperationIntent",
+    "valid": false,
+    "value": {
+      "schema": "buddy.operation.v1",
+      "operation_id": "00000000-0000-4000-8000-000000000401",
+      "content_version": "1",
+      "permission_revision": "1",
+      "provider": "mock",
+      "account_id": "00000000-0000-4000-8000-000000000002",
+      "target": null,
+      "action": {
+        "kind": "calendar.event.create",
+        "calendar_id": "primary",
+        "summary": "（合成）歯科の予約",
+        "start": "2030-10-07T17:00:00",
+        "end": "2030-10-07T17:30:00",
+        "time_zone": "Asia/Tokyo",
+        "attendees": ["someone@example.invalid"],
+        "notify_attendees": false
+      },
+      "effects": {
+        "external_recipients": [],
+        "reconcile_scope": "operation_marker"
+      }
+    }
+  },
+  {
+    "id": "intent-calendar-event-create-with-recipients",
+    "schema": "OperationIntent",
+    "valid": false,
+    "value": {
+      "schema": "buddy.operation.v1",
+      "operation_id": "00000000-0000-4000-8000-000000000401",
+      "content_version": "1",
+      "permission_revision": "1",
+      "provider": "mock",
+      "account_id": "00000000-0000-4000-8000-000000000002",
+      "target": null,
+      "action": {
+        "kind": "calendar.event.create",
+        "calendar_id": "primary",
+        "summary": "（合成）歯科の予約",
+        "start": "2030-10-07T17:00:00",
+        "end": "2030-10-07T17:30:00",
+        "time_zone": "Asia/Tokyo"
+      },
+      "effects": {
+        "external_recipients": ["someone@example.invalid"],
+        "reconcile_scope": "operation_marker"
+      }
+    }
+  },
+  {
+    "id": "intent-calendar-event-create-with-target",
+    "schema": "OperationIntent",
+    "valid": false,
+    "value": {
+      "schema": "buddy.operation.v1",
+      "operation_id": "00000000-0000-4000-8000-000000000401",
+      "content_version": "1",
+      "permission_revision": "1",
+      "provider": "mock",
+      "account_id": "00000000-0000-4000-8000-000000000002",
+      "target": {
+        "remote_id": "event-0101",
+        "source_revision": "e1"
+      },
+      "action": {
+        "kind": "calendar.event.create",
+        "calendar_id": "primary",
+        "summary": "（合成）歯科の予約",
+        "start": "2030-10-07T17:00:00",
+        "end": "2030-10-07T17:30:00",
+        "time_zone": "Asia/Tokyo"
+      },
+      "effects": {
+        "external_recipients": [],
+        "reconcile_scope": "operation_marker"
+      }
+    }
+  },
+  {
+    "id": "intent-calendar-event-create-end-before-start",
+    "schema": "OperationIntent",
+    "valid": true,
+    "value": {
+      "schema": "buddy.operation.v1",
+      "operation_id": "00000000-0000-4000-8000-000000000401",
+      "content_version": "1",
+      "permission_revision": "1",
+      "provider": "mock",
+      "account_id": "00000000-0000-4000-8000-000000000002",
+      "target": null,
+      "action": {
+        "kind": "calendar.event.create",
+        "calendar_id": "primary",
+        "summary": "（合成）歯科の予約",
+        "start": "2030-10-07T17:00:00",
+        "end": "2030-10-07T16:30:00",
+        "time_zone": "Asia/Tokyo"
+      },
+      "effects": {
+        "external_recipients": [],
+        "reconcile_scope": "operation_marker"
+      }
+    },
+    "semantic_errors": ["event_time_order"]
+  },
+  {
+    "id": "intent-calendar-event-create-all-day",
+    "schema": "OperationIntent",
+    "valid": true,
+    "value": {
+      "schema": "buddy.operation.v1",
+      "operation_id": "00000000-0000-4000-8000-000000000401",
+      "content_version": "1",
+      "permission_revision": "1",
+      "provider": "mock",
+      "account_id": "00000000-0000-4000-8000-000000000002",
+      "target": null,
+      "action": {
+        "kind": "calendar.event.create",
+        "calendar_id": "primary",
+        "summary": "（合成）休みの日",
+        "start": "2030-10-07",
+        "end": "2030-10-08",
+        "time_zone": "Asia/Tokyo"
+      },
+      "effects": {
+        "external_recipients": [],
+        "reconcile_scope": "operation_marker"
+      }
+    }
+  },
+  {
+    "id": "intent-calendar-event-create-all-day-same-day",
+    "schema": "OperationIntent",
+    "valid": true,
+    "value": {
+      "schema": "buddy.operation.v1",
+      "operation_id": "00000000-0000-4000-8000-000000000401",
+      "content_version": "1",
+      "permission_revision": "1",
+      "provider": "mock",
+      "account_id": "00000000-0000-4000-8000-000000000002",
+      "target": null,
+      "action": {
+        "kind": "calendar.event.create",
+        "calendar_id": "primary",
+        "summary": "（合成）休みの日",
+        "start": "2030-10-07",
+        "end": "2030-10-07",
+        "time_zone": "Asia/Tokyo"
+      },
+      "effects": {
+        "external_recipients": [],
+        "reconcile_scope": "operation_marker"
+      }
+    },
+    "semantic_errors": ["event_time_order"]
+  },
+  {
+    "id": "intent-calendar-event-delete-as-operation",
+    "refs": ["X24", "U310"],
+    "schema": "OperationIntent",
+    "valid": true,
+    "value": {
+      "schema": "buddy.operation.v1",
+      "operation_id": "00000000-0000-4000-8000-000000000411",
+      "content_version": "1",
+      "permission_revision": "1",
+      "provider": "mock",
+      "account_id": "00000000-0000-4000-8000-000000000002",
+      "target": {
+        "remote_id": "event-0101",
+        "source_revision": "e1"
+      },
+      "action": {
+        "kind": "calendar.event.delete",
+        "calendar_id": "primary",
+        "created_by": {
+          "operation_id": "00000000-0000-4000-8000-000000000401",
+          "content_version": "1"
+        }
+      },
+      "effects": {
+        "external_recipients": [],
+        "reconcile_scope": "exact_target"
+      }
+    }
+  },
+  {
+    "id": "intent-calendar-event-delete-without-created-by",
+    "schema": "OperationIntent",
+    "valid": false,
+    "value": {
+      "schema": "buddy.operation.v1",
+      "operation_id": "00000000-0000-4000-8000-000000000411",
+      "content_version": "1",
+      "permission_revision": "1",
+      "provider": "mock",
+      "account_id": "00000000-0000-4000-8000-000000000002",
+      "target": {
+        "remote_id": "event-0101",
+        "source_revision": "e1"
+      },
+      "action": {
+        "kind": "calendar.event.delete",
+        "calendar_id": "primary"
+      },
+      "effects": {
+        "external_recipients": [],
+        "reconcile_scope": "exact_target"
+      }
+    }
+  },
+  {
+    "id": "intent-calendar-event-delete-without-calendar",
+    "schema": "OperationIntent",
+    "valid": false,
+    "value": {
+      "schema": "buddy.operation.v1",
+      "operation_id": "00000000-0000-4000-8000-000000000411",
+      "content_version": "1",
+      "permission_revision": "1",
+      "provider": "mock",
+      "account_id": "00000000-0000-4000-8000-000000000002",
+      "target": {
+        "remote_id": "event-0101",
+        "source_revision": "e1"
+      },
+      "action": {
+        "kind": "calendar.event.delete",
+        "created_by": {
+          "operation_id": "00000000-0000-4000-8000-000000000401",
+          "content_version": "1"
+        }
+      },
+      "effects": {
+        "external_recipients": [],
+        "reconcile_scope": "exact_target"
+      }
+    }
+  },
+  {
+    "id": "intent-calendar-event-delete-without-revision",
+    "schema": "OperationIntent",
+    "valid": false,
+    "value": {
+      "schema": "buddy.operation.v1",
+      "operation_id": "00000000-0000-4000-8000-000000000411",
+      "content_version": "1",
+      "permission_revision": "1",
+      "provider": "mock",
+      "account_id": "00000000-0000-4000-8000-000000000002",
+      "target": {
+        "remote_id": "event-0101"
+      },
+      "action": {
+        "kind": "calendar.event.delete",
+        "calendar_id": "primary",
+        "created_by": {
+          "operation_id": "00000000-0000-4000-8000-000000000401",
+          "content_version": "1"
+        }
+      },
+      "effects": {
+        "external_recipients": [],
+        "reconcile_scope": "exact_target"
+      }
+    }
+  },
+  {
+    "id": "intent-calendar-event-delete-marker-scope",
+    "schema": "OperationIntent",
+    "valid": false,
+    "value": {
+      "schema": "buddy.operation.v1",
+      "operation_id": "00000000-0000-4000-8000-000000000411",
+      "content_version": "1",
+      "permission_revision": "1",
+      "provider": "mock",
+      "account_id": "00000000-0000-4000-8000-000000000002",
+      "target": {
+        "remote_id": "event-0101",
+        "source_revision": "e1"
+      },
+      "action": {
+        "kind": "calendar.event.delete",
+        "calendar_id": "primary",
+        "created_by": {
+          "operation_id": "00000000-0000-4000-8000-000000000401",
+          "content_version": "1"
+        }
+      },
+      "effects": {
+        "external_recipients": [],
+        "reconcile_scope": "operation_marker"
+      }
+    }
+  },
+  {
+    "id": "intent-calendar-event-delete-with-recipients",
+    "refs": ["X24", "U310"],
+    "schema": "OperationIntent",
+    "valid": false,
+    "value": {
+      "schema": "buddy.operation.v1",
+      "operation_id": "00000000-0000-4000-8000-000000000411",
+      "content_version": "1",
+      "permission_revision": "1",
+      "provider": "mock",
+      "account_id": "00000000-0000-4000-8000-000000000002",
+      "target": {
+        "remote_id": "event-0101",
+        "source_revision": "e1"
+      },
+      "action": {
+        "kind": "calendar.event.delete",
+        "calendar_id": "primary",
+        "created_by": {
+          "operation_id": "00000000-0000-4000-8000-000000000401",
+          "content_version": "1"
+        }
+      },
+      "effects": {
+        "external_recipients": ["someone@example.invalid"],
+        "reconcile_scope": "exact_target"
+      }
+    }
+  },
+  {
+    "id": "intent-calendar-event-delete-of-itself",
+    "refs": ["X24", "U310"],
+    "schema": "OperationIntent",
+    "valid": true,
+    "value": {
+      "schema": "buddy.operation.v1",
+      "operation_id": "00000000-0000-4000-8000-000000000411",
+      "content_version": "1",
+      "permission_revision": "1",
+      "provider": "mock",
+      "account_id": "00000000-0000-4000-8000-000000000002",
+      "target": {
+        "remote_id": "event-0101",
+        "source_revision": "e1"
+      },
+      "action": {
+        "kind": "calendar.event.delete",
+        "calendar_id": "primary",
+        "created_by": {
+          "operation_id": "00000000-0000-4000-8000-000000000411",
+          "content_version": "1"
+        }
+      },
+      "effects": {
+        "external_recipients": [],
+        "reconcile_scope": "exact_target"
+      }
+    },
+    "semantic_errors": ["created_by_self"]
+  },
+  {
+    "id": "safety-notice",
+    "refs": ["X23", "U315"],
+    "schema": "SafetyNotice",
+    "valid": true,
+    "value": {
+      "schema": "buddy.safety-notice.v1",
+      "notice_id": "00000000-0000-4000-8000-0000000000f1",
+      "occurred_at": "2030-01-01T00:00:40Z"
+    }
+  },
+  {
+    "id": "safety-notice-with-state",
+    "refs": ["X23", "U315"],
+    "schema": "SafetyNotice",
+    "valid": false,
+    "value": {
+      "schema": "buddy.safety-notice.v1",
+      "notice_id": "00000000-0000-4000-8000-0000000000f1",
+      "occurred_at": "2030-01-01T00:00:40Z",
+      "state": "stopped"
+    }
+  },
+  {
+    "id": "safety-notice-with-revision",
+    "schema": "SafetyNotice",
+    "valid": false,
+    "value": {
+      "schema": "buddy.safety-notice.v1",
+      "notice_id": "00000000-0000-4000-8000-0000000000f1",
+      "occurred_at": "2030-01-01T00:00:40Z",
+      "safety_revision": "3"
+    }
+  },
+  {
+    "id": "safety-notice-without-id",
+    "schema": "SafetyNotice",
+    "valid": false,
+    "value": {
+      "schema": "buddy.safety-notice.v1",
+      "occurred_at": "2030-01-01T00:00:40Z"
+    }
+  },
+  {
     "id": "intent-task-create-missing-body",
     "schema": "OperationIntent",
     "valid": false,

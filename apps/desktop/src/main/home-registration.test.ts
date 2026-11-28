@@ -541,6 +541,8 @@ test(
           '/v1/stream/storage-mode',
           // 接続したら記録しない会話の承認を待つ確認を読む（ADR 0197）。
           '/v1/private-confirmations',
+          // 接続したら自動実行の安全停止を読む（状態欄の安全停止。U315、ADR 0198）。
+          '/v1/auto-actions',
         ].includes(request.path),
         request.path,
       );

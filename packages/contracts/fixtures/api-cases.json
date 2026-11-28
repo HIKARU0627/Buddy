@@ -1253,11 +1253,35 @@
           }
         },
         {
+          "type": "notice",
+          "notice": {
+            "schema": "buddy.safety-notice.v1",
+            "notice_id": "00000000-0000-4000-8000-0000000000f1",
+            "occurred_at": "2030-01-01T00:00:40Z"
+          }
+        },
+        {
           "type": "resnapshot_required",
           "reason": "store_generation_changed"
         }
       ],
       "invalid_messages": [
+        {
+          "type": "notice",
+          "notice": {
+            "schema": "buddy.safety-notice.v1",
+            "notice_id": "00000000-0000-4000-8000-0000000000f1",
+            "occurred_at": "2030-01-01T00:00:40Z",
+            "stop_reason": "rate_exceeded"
+          }
+        },
+        {
+          "type": "notice",
+          "notice": {
+            "schema": "buddy.safety-notice.v1",
+            "occurred_at": "2030-01-01T00:00:40Z"
+          }
+        },
         {
           "type": "notice",
           "notice": {

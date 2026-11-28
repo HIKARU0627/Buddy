@@ -64,6 +64,7 @@ export type BuddyContract =
   | CandidateAlertSettings
   | CandidateAlertSettingsChangeRequest
   | CandidateNotice
+  | SafetyNotice
   | CandidateEvidence
   | CandidateStateCommand
   | HouseholdOverview
@@ -450,7 +451,9 @@ export type OperationIntent =
   | CalendarCreateWithAttendeesOperationIntent
   | MailTrashOperationIntent
   | DraftDeleteOperationIntent
-  | TaskDeleteOperationIntent;
+  | TaskDeleteOperationIntent
+  | CalendarEventCreateOperationIntent
+  | CalendarEventDeleteOperationIntent;
 /**
  * 承認対象の内容版。宛先・本文・対象・影響・前提が変わったときだけ上がる（設計 07 §1、08 §1）。
  */
@@ -492,7 +495,7 @@ export type CommandReceipt =
       committed_state_revision: StateRevision;
     };
 /**
- * 操作の種類。確定 intent の action.kind と同じ値（ADR 0027・0075・0156・0157）。経路（Read / LocalCommand / RemoteMutation）はコードの表が決める。
+ * 操作の種類。確定 intent の action.kind と同じ値（ADR 0027・0075・0156・0157・0198）。経路（Read / LocalCommand / RemoteMutation）はコードの表が決める。
  */
 export type OperationKind =
   | 'mail.labels.change'
@@ -503,7 +506,9 @@ export type OperationKind =
   | 'calendar.event.create_with_attendees'
   | 'mail.trash'
   | 'mail.draft.delete'
-  | 'task.delete';
+  | 'task.delete'
+  | 'calendar.event.create'
+  | 'calendar.event.delete';
 /**
  * DB の世代。通常の再起動では維持し、バックアップ復元・新規作成で新しい値にする。等値比較だけに使う（設計 07 §1・§4、ADR 0003）。
  */
@@ -917,7 +922,7 @@ export type LookupMethod = 'by_remote_id' | 'by_operation_marker' | 'none';
 export type ReconcileScope =
   'exact_target' | 'operation_marker' | 'local_transaction';
 /**
- * 操作の工程（設計 08 §4、ADR 0027）。2 工程の操作はこの順にだけ進める。
+ * 操作の工程（設計 08 §4、ADR 0027・0198）。2 工程の操作はこの順にだけ進める。
  */
 export type OperationStepKind =
   | 'apply_labels'
@@ -929,7 +934,9 @@ export type OperationStepKind =
   | 'create_event_with_attendees'
   | 'trash_mail'
   | 'delete_draft'
-  | 'delete_task';
+  | 'delete_task'
+  | 'create_event'
+  | 'delete_event';
 /**
  * Outlook のアカウント種別（設計 04 接続・権限）。接続時に特定し、個人と職場・学校で使える範囲を分ける。
  */
@@ -1058,7 +1065,8 @@ export type EventStreamMessage =
         | ForgetLedgerNotice
         | StorageBoundaryNotice
         | StorageModeNotice
-        | CandidateNotice;
+        | CandidateNotice
+        | SafetyNotice;
     }
   | {
       type: 'resnapshot_required';
@@ -3283,6 +3291,66 @@ export interface TaskDeleteOperationIntent {
   };
 }
 /**
+ * 参加者のいない自分だけの予定の作成（calendar.event.create、RemoteMutation、ADR 0146・0147・0198）。判定表の create_event の行（方針 event.create_own）に当たる操作で、方針による自動承認の対象になる。参加者を持たず（参加者がいる作成は calendar.event.create_with_attendees）、外部の相手へは送らない。作成物は操作の目印（buddy-op）で照合する。繰り返しの予定は作らない。実行担当の送出は、予定の自動作成を配線するときに作る（ADR 0198 の時点では契約・種類の表・自動承認の対応表だけ）。
+ */
+export interface CalendarEventCreateOperationIntent {
+  schema: 'buddy.operation.v1';
+  operation_id: Id;
+  content_version: ContentVersion;
+  permission_revision: PermissionRevision;
+  provider: 'mock' | 'gmail' | 'microsoft_graph';
+  account_id: Id;
+  /**
+   * 自分だけの予定の作成は新しい予定なので、既存の対象を持たない。
+   */
+  target: null;
+  action: {
+    kind: 'calendar.event.create';
+    calendar_id: string;
+    summary: string;
+    start: DateOrDateTime;
+    end: DateOrDateTime;
+    time_zone: TimeZone;
+  };
+  effects: {
+    /**
+     * @maxItems 0
+     */
+    external_recipients: [];
+    reconcile_scope: 'operation_marker';
+  };
+}
+/**
+ * Buddy が自動で作った自分だけの予定を、取り消しで削除する（calendar.event.delete、RemoteMutation、ADR 0198）。自動実行の取り消しの補償の操作だけに使い、方針では承認しない。target は削除する予定と、取り消しを押したときに読んだその版（etag など）で、版を条件にして 1 回だけ消す。created_by は予定を作った操作と内容版で、目印（buddy-op）が同じ予定だけを消す。参加者がいる・繰り返しになった・本人が手を加えた予定は消さない。外部の相手へは送らないので external_recipients は空。
+ */
+export interface CalendarEventDeleteOperationIntent {
+  schema: 'buddy.operation.v1';
+  operation_id: Id;
+  content_version: ContentVersion;
+  permission_revision: PermissionRevision;
+  provider: 'mock' | 'gmail' | 'microsoft_graph';
+  account_id: Id;
+  target: {
+    remote_id: string;
+    source_revision: SourceRevision;
+  };
+  action: {
+    kind: 'calendar.event.delete';
+    calendar_id: string;
+    created_by: {
+      operation_id: Id;
+      content_version: ContentVersion;
+    };
+  };
+  effects: {
+    /**
+     * @maxItems 0
+     */
+    external_recipients: [];
+    reconcile_scope: 'exact_target';
+  };
+}
+/**
  * 画面承認が必要な外部変更の送出直前の照合（設計 08 §2・§3、ADR 0075）。未承認・取消済み・内容変更・宛先変更・対象変更・旧版を形式として表し、結果不明の再送を許可しない。
  */
 export interface DispatchGuard {
@@ -4891,6 +4959,14 @@ export interface CandidateNotice {
    * この知らせで OS 通知を出す新しい気づきの数。中枢が candidateAlertDecision で出すと決め、送出意図を保存できたものだけを数える。0 なら OS 通知を出さない（件数が変わっただけ）。
    */
   alert_count: number;
+}
+/**
+ * 自動実行の安全停止の状態が変わった（止まった・再開した）ことの知らせ（U315、ADR 0198）。Core が安全停止の版の変化を見つけたときに、開いている購読へ流す。停止の理由・状態・版・操作の ID・本文を入れない。端末は受けたら GET /v1/auto-actions で安全停止の状態を読み直して状態欄に出す（知らせを状態の正本にしない）。ロック中・記録しない会話の間も送るが、端末はロック中は読まず、解除したときに読む。
+ */
+export interface SafetyNotice {
+  schema: 'buddy.safety-notice.v1';
+  notice_id: Id;
+  occurred_at: UtcTime;
 }
 /**
  * 気づきの根拠（設計 11 §4、ADR 0073）。許可範囲から取り直した根拠の版と引用だけを返し、本文を無期限に複製しない。

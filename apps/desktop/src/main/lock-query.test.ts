@@ -78,3 +78,46 @@ test('the status bar hides content unless unlocked and is not connected to the h
     },
   );
 });
+
+test('the status bar shows the hub safety stop only while connected (U315, ADR 0198)', () => {
+  const unlocked = {
+    lockState: 'unlocked',
+    stopScope: 'none',
+    ioEpoch: '0',
+  } as const;
+  const connected = {
+    connection: 'connected',
+    lastConfirmedAt: '2030-10-07T09:00:00.000Z',
+  } as const;
+  const shown = (bar: ReturnType<typeof buildStatusBar>) =>
+    bar.visibility === 'shown' ? bar.safety_stopped : 'hidden';
+  assert.equal(
+    shown(buildStatusBar(unlocked, { ...connected, safetyStopped: true })),
+    true,
+  );
+  assert.equal(
+    shown(buildStatusBar(unlocked, { ...connected, safetyStopped: false })),
+    false,
+  );
+  // まだ読めていない・接続していない・ロック中は出さない。
+  assert.equal(shown(buildStatusBar(unlocked, connected)), null);
+  assert.equal(
+    shown(
+      buildStatusBar(unlocked, {
+        connection: 'unreachable',
+        lastConfirmedAt: '2030-10-07T09:00:00.000Z',
+        safetyStopped: true,
+      }),
+    ),
+    null,
+  );
+  assert.equal(
+    shown(
+      buildStatusBar(
+        { ...unlocked, lockState: 'locked' },
+        { ...connected, safetyStopped: true },
+      ),
+    ),
+    'hidden',
+  );
+});

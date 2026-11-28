@@ -40,6 +40,7 @@ import { DB_FILE } from './paths.js';
 import type {
   ProviderDraftContent,
   ProviderReader,
+  ProviderWriteOutcome,
   ProviderWriter,
 } from './turn-ports.js';
 
@@ -62,6 +63,10 @@ interface FakeDrafts {
   reads: number;
   // 読み取りのたびに呼ぶ（2 回目の読み取りの前に下書きを書き換える、などに使う）。
   onRead?: (reads: number) => void;
+  // 接続の口座（省略は ACCOUNT）。結果不明の後に口座を付け替える試験に使う（ADR 0198 の見直し）。
+  account?: string;
+  // 削除の応答を差し替える（省略は版を見て消す）。
+  respond?: () => ProviderWriteOutcome<{ readonly draft_id: string }> | null;
   readonly deletes: { draft_id: string; source_revision: string }[];
 }
 
@@ -73,7 +78,7 @@ function fakeProvider(
     connection: () =>
       Promise.resolve({
         provider: 'mock',
-        account_id: ACCOUNT,
+        account_id: drafts.account ?? ACCOUNT,
         status: 'active',
         access: 'read_write',
         writable_kinds: ['mail.draft.create', 'mail.draft.delete'],
@@ -114,6 +119,8 @@ function fakeProvider(
       changeLabels: () => Promise.resolve({ kind: 'not_sent' }),
       deleteDraft: (_identity, request) => {
         drafts.deletes.push({ ...request });
+        const forced = drafts.respond?.() ?? null;
+        if (forced !== null) return Promise.resolve(forced);
         const draft = drafts.draft;
         if (draft === null || draft.draft_id !== request.draft_id)
           return Promise.resolve({
@@ -462,4 +469,35 @@ test('the pure checks: which kinds can be undone, the unchanged draft and the de
     ),
     { kind: 'unreadable' },
   );
+});
+
+test('an unknown delete outcome is not taken as undone when the connection is another account by then (ADR 0198 review)', async (t) => {
+  const drafts: FakeDrafts = { draft: null, reads: 0, deletes: [] };
+  const h = await start(t, drafts);
+  const operationId = await seedAutoDraft(h);
+  drafts.draft = createdDraft(operationId);
+  // 応答を失い、その間に口座が付け替えられた（新しい口座では下書きが見えない）。
+  drafts.respond = () => {
+    drafts.account = '00000000-0000-4000-8000-000000000003';
+    drafts.draft = null;
+    return { kind: 'unknown', reason: 'timeout' };
+  };
+  const accepted = await undoRequest(h, operationId);
+  assert.equal(accepted.status, 202, accepted.text);
+  const compensationId = String((accepted.json as Json)['operation_id']);
+  const state = () =>
+    (
+      h.sql((db) =>
+        db
+          .prepare('SELECT state FROM operations WHERE operation_id = ?')
+          .get(compensationId),
+      ) as { state: string }
+    ).state;
+  await waitFor(() => state() === 'unknown_held');
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  assert.equal(state(), 'unknown_held');
+  assert.deepEqual(await undoStates(h), ['in_progress']);
+  // 口座が違うので照合では読まない（押下・確かめ直しの 2 回だけ）。送り直さない。
+  assert.equal(drafts.reads, 2);
+  assert.equal(drafts.deletes.length, 1);
 });

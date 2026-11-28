@@ -139,6 +139,30 @@ export class NoticeRelay implements NoticeSink, NoticeNotifier {
     return handed;
   }
 
+  // 安全停止の状態の変化の知らせ（SafetyNotice、ADR 0198）を、開いている購読へだけ渡す。気づきの知らせと同じく、流れの表示の
+  // 後始末・起動の設定の受け取り口へは渡さない。契約に合わなければ送らない。渡せた購読の数を返す（溜めない・再送しない）。
+  publishSafety(message: StreamNoticeMessage): number {
+    if (
+      message.notice.schema !== 'buddy.safety-notice.v1' ||
+      this.#listeners.size === 0
+    )
+      return 0;
+    this.#contract ??= createApiContract();
+    if (!this.#contract.valid('EventStreamMessage', message)) {
+      this.#log('契約に合わない安全停止の知らせを端末へ送りませんでした。');
+      return 0;
+    }
+    let handed = 0;
+    for (const listener of [...this.#listeners]) {
+      try {
+        if (listener(message) !== false) handed += 1;
+      } catch {
+        // 1 つの購読の失敗で他の購読を止めない。
+      }
+    }
+    return handed;
+  }
+
   #log(message: string): void {
     this.#options.log?.(message);
   }

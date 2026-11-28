@@ -1,8 +1,8 @@
 // 端末状態から上部の状態欄の値を作る（設計 01 いつも見える状態、07 §2、ADR 0014・0025）。
 // 中枢との接続（connected・unreachable・not_connected）と最終確認時刻は core-link から受け取る（B03-05）。
 // 中枢が正本の値のうち、予算保留は中枢のスナップショットの budget_hold から読む（B07-05、ADR 0039）。保存モードは中枢の
-// 流れの今の保存モード（GET /v1/stream/storage-mode）から読む（UI-05 の段階 6、ADR 0189）。表示先・安全停止は中枢が
-// まだ配っていないので、接続中でも null（不明）。
+// 流れの今の保存モード（GET /v1/stream/storage-mode）から読む（UI-05 の段階 6、ADR 0189）。安全停止は中枢の自動実行の一覧
+// （GET /v1/auto-actions の safety）から読み、中枢の安全停止の知らせ・接続・ロック解除で読み直す（U315、ADR 0198）。
 // 音声状態（B05-06、ADR 0050）: 音声を使う組み立て（開発用のフラグの模擬）のときだけ値を持つ。停止中は端末の停止の範囲から
 // 決め（この端末の停止は device_stopped、来客モード・全体停止は global_stopped。ADR 0014 の読み取り）、停止していなければ
 // main の音声の制御（voice-controller.ts）の値（呼びかけ待ち・会話中・読み上げ中、音声レンダラーがまだ使えなければ null）。
@@ -22,6 +22,9 @@ export interface StatusBarHub {
   // 表示先（中枢の流れの今の表示先。UI-05 の段階 5、ADR 0193）。接続していない・まだ読んでいない・ロック中・キャンバス表示でない
   // 組み立ては null（不明）。省略は null。
   readonly displayTarget?: 'this_device' | 'other_device' | null;
+  // 自動実行の安全停止（中枢の自動実行の一覧の safety。U315、ADR 0198）。接続していない・まだ読んでいない・ロック中は null
+  // （不明）。省略は null。
+  readonly safetyStopped?: boolean | null;
 }
 
 export const NOT_CONNECTED_HUB: StatusBarHub = {
@@ -76,6 +79,8 @@ export function buildStatusBar(
     // 接続していなければ必ず null（状態欄の意味検査）。
     budget_held:
       hub.connection === 'connected' ? (hub.budgetHeld ?? null) : null,
-    safety_stopped: null,
+    // 接続していなければ必ず null（状態欄の意味検査）。
+    safety_stopped:
+      hub.connection === 'connected' ? (hub.safetyStopped ?? null) : null,
   };
 }

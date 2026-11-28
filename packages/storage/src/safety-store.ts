@@ -536,6 +536,7 @@ const AUTO_ACTION_KINDS: readonly AutoActionKind[] = [
   'create_task',
   'label_mail',
   'draft_reply',
+  'create_event',
 ];
 
 function safetyOpShapeReasons(op: SafetyOp): readonly string[] {

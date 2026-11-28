@@ -79,7 +79,7 @@
 - Windows の CI の shard 1 の時間切れ（Issue #348）は #350 で大きく縮めた。voice-budget の「再起動の照合」が 1 回だけ時間切れになったので Issue は開けたまま。
 - B04・B05・B07 の模擬証拠は、main の現行のソースと一致しない（`pnpm run evidence:check`。この期間より前からの食い違いを含む）。それぞれの工程か main の記録の更新のときに作り直す。
 - Windows の中枢の鍵の保護（ADR 0202、U700〜U705、本人の決定 2026-11-28「Windows でも中枢を使えるように」）: データ鍵・TLS の秘密鍵・OAuth のトークン・バックアップの鍵を DPAPI（CurrentUser、PowerShell の子プロセス・値は標準入力）で保護して `%LOCALAPPDATA%\Buddy\key-store` に置き、Windows の起動前検査をつないだ。Windows の既定のデータディレクトリを `%LOCALAPPDATA%\Buddy\core` に改めた。本物の DPAPI の往復は Windows の CI だけで確かめ、Windows の実機は未実施。自動起動・Tailscale・手順書は別の作業。
-- Windows の中枢（ADR 0203、U720〜U726、本人の決定 2026-11-28）: ログオン時のタスク（`\BuddyCore`、本人の SID・最小の権限・失敗時の再起動なし）と起動役 `autostart launch`、powercfg の電源の診断、Windows の Tailscale の CLI の候補、手順書（docs/b01・b03 の W）。模擬と windows-latest の試験だけで、実機は未実施。自動起動した Core が HTTPS を開かない（U723、macOS も同じ）。
+- Windows の中枢（ADR 0203、U720〜U728、本人の決定 2026-11-28）: ログオン時のタスク（`\BuddyCore`、本人の SID・最小の権限・失敗時の再起動なし）と起動役 `autostart launch`、powercfg の電源の診断、Windows の Tailscale の CLI の候補、手順書（docs/b01・b03 の W）。自動起動した Core の HTTPS は https.json で開く（U723、macOS も同じ。見直しで直した）。模擬と windows-latest の試験だけで、実機は未実施。
 
 CI が通ればマージしてよいと本人から許可を受けている。マージの状態は GitHub の PR の画面で確かめる。
 

@@ -180,24 +180,34 @@ test('whoami の CSV から SID だけを読む', () => {
 test('状態の問い合わせのスクリプトは固定の文字列で、出力の JSON を厳しく読む', () => {
   assert.equal(
     windowsTaskQueryScript('BuddyCore'),
-    "$ErrorActionPreference = 'Stop'; try { $t = Get-ScheduledTask -TaskPath '\\' -TaskName 'BuddyCore' } catch { if ($_.CategoryInfo.Category -eq 'ObjectNotFound') { '{\"found\":false}'; exit 0 }; exit 3 }; [pscustomobject]@{ found = $true; enabled = [bool]$t.Settings.Enabled; state = [string]$t.State } | ConvertTo-Json -Compress",
+    "$ErrorActionPreference = 'Stop'; try { $t = Get-ScheduledTask -TaskPath '\\' -TaskName 'BuddyCore' } catch { if ([string]$_.FullyQualifiedErrorId -like 'CmdletizationQuery_NotFound*') { '{\"found\":false}'; exit 0 }; exit 3 }; $u = [string]$t.Principal.UserId; if ($u -notmatch '^S-1-') { try { $u = (New-Object System.Security.Principal.NTAccount($u)).Translate([System.Security.Principal.SecurityIdentifier]).Value } catch { $u = '' } }; [pscustomobject]@{ found = $true; enabled = [bool]$t.Settings.Enabled; state = [string]$t.State; user_sid = [string]$u } | ConvertTo-Json -Compress",
   );
   assert.throws(() => windowsTaskQueryScript("x' ; calc"), TypeError);
   assert.deepEqual(parseWindowsTaskQuery('{"found":false}\r\n'), {
     found: false,
   });
   assert.deepEqual(
-    parseWindowsTaskQuery('{"found":true,"enabled":true,"state":"Ready"}'),
-    { found: true, enabled: true, state: 'Ready' },
+    parseWindowsTaskQuery(
+      `{"found":true,"enabled":true,"state":"Ready","user_sid":"${SID}"}`,
+    ),
+    { found: true, enabled: true, state: 'Ready', userSid: SID },
+  );
+  assert.deepEqual(
+    parseWindowsTaskQuery(
+      '{"found":true,"enabled":false,"state":"Disabled","user_sid":""}',
+    ),
+    { found: true, enabled: false, state: 'Disabled', userSid: '' },
   );
   for (const output of [
     '',
     'null',
     '[]',
     '{"found":false,"extra":1}',
-    '{"found":true,"enabled":"true","state":"Ready"}',
-    '{"found":true,"enabled":true}',
-    '{"found":true,"enabled":true,"state":"Ready now"}',
+    `{"found":true,"enabled":"true","state":"Ready","user_sid":"${SID}"}`,
+    '{"found":true,"enabled":true,"state":"Ready"}',
+    `{"found":true,"enabled":true,"state":"Ready now","user_sid":"${SID}"}`,
+    '{"found":true,"enabled":true,"state":"Ready","user_sid":"synthetic-user"}',
+    `{"found":true,"enabled":true,"state":"Ready","user_sid":"${SID}","x":1}`,
   ])
     assert.equal(parseWindowsTaskQuery(output), null, output);
 });
@@ -207,6 +217,47 @@ const request: RegisterRequest = {
   loadNow: false,
   launch: LAUNCH,
 };
+
+const TEMP_DIR = 'C:\\Users\\synthetic\\AppData\\Local\\Temp';
+const taskJson = (enabled: boolean, userSid = SID) =>
+  `{"found":true,"enabled":${enabled},"state":"${enabled ? 'Ready' : 'Disabled'}","user_sid":"${userSid}"}`;
+
+// Task Scheduler の模擬。/Create で作られ、/Delete で消える。応答は options で差し替える。
+function fakeScheduler(
+  options: {
+    readonly initial?: string | null;
+    readonly whoami?: CommandResult;
+    readonly create?: CommandResult;
+    readonly afterCreate?: string | null;
+    readonly del?: CommandResult;
+    readonly query?: CommandResult;
+  } = {},
+) {
+  let current: string | null = options.initial ?? null;
+  return createMockCommandRunner((command, args) => {
+    if (command === WHOAMI)
+      return (
+        options.whoami ?? ok(`"synthetic-pc\\synthetic-user","${SID}"\r\n`)
+      );
+    if (command === POWERSHELL)
+      return options.query ?? ok(current ?? '{"found":false}');
+    if (command === SCHTASKS && args[0] === '/Create') {
+      const result = options.create ?? ok();
+      if (result.exitCode === 0)
+        current =
+          options.afterCreate === undefined
+            ? taskJson(true)
+            : options.afterCreate;
+      return result;
+    }
+    if (command === SCHTASKS && args[0] === '/Delete') {
+      const result = options.del ?? (current === null ? exit(1) : ok());
+      if (result.exitCode === 0) current = null;
+      return result;
+    }
+    return ok();
+  });
+}
 
 test('有効にしていなければ、コマンドもファイルも触らない', async () => {
   const runner = createMockCommandRunner(() => ok());
@@ -224,17 +275,14 @@ test('有効にしていなければ、コマンドもファイルも触らな�
   assert.deepEqual(fake.dirs, []);
 });
 
-test('登録: SID を読み、XML を一時ファイルに書いて schtasks で作り、一時ファイルを消す（すぐには起動しない）', async () => {
-  const runner = createMockCommandRunner((command) =>
-    command === WHOAMI
-      ? ok(`"synthetic-pc\\synthetic-user","${SID}"\r\n`)
-      : ok(),
-  );
+test('登録: SID を読み、既存のタスクを確かめ、XML を一時のディレクトリに書いて作り、作った後に確かめる', async () => {
+  const runner = fakeScheduler();
   const fake = fakeFiles();
   const supervisor = createWindowsScheduledTaskSupervisor({
     runner,
     systemRoot: SYSTEM_ROOT,
     files: fake.files,
+    tempDir: TEMP_DIR,
   });
   const result = await supervisor.register(request);
   assert.deepEqual(result, {
@@ -246,9 +294,10 @@ test('登録: SID を読み、XML を一時ファイルに書いて schtasks で
   assert.deepEqual(fake.dirs, ['C:\\buddy-test\\data & logs\\logs']);
   assert.equal(fake.written.size, 1);
   const [temporary, data] = [...fake.written][0] as [string, Buffer];
+  // 一時の定義ファイルはデータディレクトリではなく、本人の一時のディレクトリに置く。
   assert.match(
     temporary,
-    /^C:\\buddy-test\\data & logs\\\.autostart-task\.[0-9a-f-]{36}\.xml$/u,
+    /^C:\\Users\\synthetic\\AppData\\Local\\Temp\\buddy-autostart-task\.[0-9a-f-]{36}\.xml$/u,
   );
   // 書いた中身は BOM の後に UTF-16LE の XML（本人の SID・launch の引数を含む）。
   assert.deepEqual([...data.subarray(0, 2)], [0xff, 0xfe]);
@@ -256,23 +305,60 @@ test('登録: SID を読み、XML を一時ファイルに書いて schtasks で
   assert.ok(text.includes(`<UserId>${SID}</UserId>`));
   assert.ok(text.includes(' autostart launch --data-dir '));
   assert.deepEqual(fake.removed, [temporary]);
-  assert.deepEqual(runner.calls, [
-    { command: WHOAMI, args: ['/user', '/fo', 'csv', '/nh'] },
-    {
-      command: SCHTASKS,
-      args: ['/Create', '/TN', '\\BuddyCore', '/XML', temporary, '/F'],
-    },
-  ]);
+  assert.deepEqual(
+    runner.calls.map((call) => [call.command, call.args[0]]),
+    [
+      [WHOAMI, '/user'],
+      [POWERSHELL, '-NoProfile'],
+      [SCHTASKS, '/Create'],
+      [POWERSHELL, '-NoProfile'],
+    ],
+  );
+  assert.deepEqual(runner.calls[2], {
+    command: SCHTASKS,
+    args: ['/Create', '/TN', '\\BuddyCore', '/XML', temporary, '/F'],
+  });
 });
 
-test('登録: loadNow ならタスクを一度実行する', async () => {
-  const runner = createMockCommandRunner((command) =>
-    command === WHOAMI ? ok(`"a\\b","${SID}"`) : ok(),
+test('登録: 本人の既存のタスクは置き換え、別の利用者のタスクは置き換えない', async () => {
+  const mine = fakeScheduler({ initial: taskJson(false) });
+  assert.equal(
+    (
+      await createWindowsScheduledTaskSupervisor({
+        runner: mine,
+        systemRoot: SYSTEM_ROOT,
+        files: fakeFiles().files,
+        tempDir: TEMP_DIR,
+      }).register(request)
+    ).status,
+    'registered',
   );
+  for (const other of ['S-1-5-21-1000000001-1000000002-1000000003-1002', '']) {
+    const runner = fakeScheduler({ initial: taskJson(true, other) });
+    const fake = fakeFiles();
+    const result = await createWindowsScheduledTaskSupervisor({
+      runner,
+      systemRoot: SYSTEM_ROOT,
+      files: fake.files,
+      tempDir: TEMP_DIR,
+    }).register(request);
+    assert.deepEqual(result, {
+      status: 'failed',
+      step: 'existing_task',
+      reasons: ['task_owner_mismatch'],
+    });
+    assert.ok(!runner.calls.some((call) => call.command === SCHTASKS));
+    assert.equal(fake.written.size, 0);
+  }
+});
+
+test('登録: loadNow ならタスクの実行を一度頼む', async () => {
+  const runner = fakeScheduler();
   const supervisor = createWindowsScheduledTaskSupervisor({
     runner,
     systemRoot: SYSTEM_ROOT,
     files: fakeFiles().files,
+    tempDir: TEMP_DIR,
   });
   const result = await supervisor.register({ ...request, loadNow: true });
   assert.deepEqual(result, {
@@ -289,17 +375,14 @@ test('登録: loadNow ならタスクを一度実行する', async () => {
 
 test('登録の失敗は段階と理由のコードだけを返し、出力の文言を入れない', async () => {
   const cases: {
-    readonly respond: (
-      command: string,
-      args: readonly string[],
-    ) => CommandResult;
+    readonly runner: ReturnType<typeof fakeScheduler>;
     readonly systemRoot?: string;
     readonly failWrite?: boolean;
     readonly launch?: typeof LAUNCH;
     readonly expected: unknown;
   }[] = [
     {
-      respond: () => ok(),
+      runner: fakeScheduler(),
       launch: { ...LAUNCH, dataDir: 'relative\\data' },
       expected: {
         status: 'failed',
@@ -308,7 +391,7 @@ test('登録の失敗は段階と理由のコードだけを返し、出力の�
       },
     },
     {
-      respond: () => ok(),
+      runner: fakeScheduler(),
       systemRoot: 'Windows',
       expected: {
         status: 'failed',
@@ -317,7 +400,7 @@ test('登録の失敗は段階と理由のコードだけを返し、出力の�
       },
     },
     {
-      respond: () => exit(1),
+      runner: fakeScheduler({ whoami: exit(1) }),
       expected: {
         status: 'failed',
         step: 'query_user',
@@ -325,7 +408,7 @@ test('登録の失敗は段階と理由のコードだけを返し、出力の�
       },
     },
     {
-      respond: () => ok('"a\\b","S-1-5"'),
+      runner: fakeScheduler({ whoami: ok('"a\\b","S-1-5"') }),
       expected: {
         status: 'failed',
         step: 'query_user',
@@ -333,7 +416,16 @@ test('登録の失敗は段階と理由のコードだけを返し、出力の�
       },
     },
     {
-      respond: (command) => (command === WHOAMI ? ok(`"a\\b","${SID}"`) : ok()),
+      // 問い合わせの失敗（exit 3）は「ない」と取り違えず、登録しない。
+      runner: fakeScheduler({ query: exit(3) }),
+      expected: {
+        status: 'failed',
+        step: 'query_task',
+        reasons: ['task_query_failed'],
+      },
+    },
+    {
+      runner: fakeScheduler(),
       failWrite: true,
       expected: {
         status: 'failed',
@@ -342,8 +434,7 @@ test('登録の失敗は段階と理由のコードだけを返し、出力の�
       },
     },
     {
-      respond: (command) =>
-        command === WHOAMI ? ok(`"a\\b","${SID}"`) : exit(1),
+      runner: fakeScheduler({ create: exit(1) }),
       expected: {
         status: 'failed',
         step: 'create_task',
@@ -351,22 +442,45 @@ test('登録の失敗は段階と理由のコードだけを返し、出力の�
       },
     },
     {
-      respond: (command) =>
-        command === WHOAMI ? ok(`"a\\b","${SID}"`) : exit(null),
+      runner: fakeScheduler({ create: exit(null) }),
       expected: {
         status: 'failed',
         step: 'create_task',
         reasons: ['schtasks_create_exit:none'],
       },
     },
+    {
+      runner: fakeScheduler({ afterCreate: null }),
+      expected: {
+        status: 'failed',
+        step: 'verify_task',
+        reasons: ['task_missing_after_create'],
+      },
+    },
+    {
+      runner: fakeScheduler({ afterCreate: taskJson(false) }),
+      expected: {
+        status: 'failed',
+        step: 'verify_task',
+        reasons: ['task_disabled_after_create'],
+      },
+    },
+    {
+      runner: fakeScheduler({ afterCreate: taskJson(true, '') }),
+      expected: {
+        status: 'failed',
+        step: 'verify_task',
+        reasons: ['task_owner_mismatch'],
+      },
+    },
   ];
   for (const entry of cases) {
-    const runner = createMockCommandRunner(entry.respond);
     const fake = fakeFiles(entry.failWrite === true);
     const supervisor = createWindowsScheduledTaskSupervisor({
-      runner,
+      runner: entry.runner,
       systemRoot: entry.systemRoot ?? SYSTEM_ROOT,
       files: fake.files,
+      tempDir: TEMP_DIR,
     });
     const result = await supervisor.register({
       ...request,
@@ -380,11 +494,8 @@ test('登録の失敗は段階と理由のコードだけを返し、出力の�
   }
 });
 
-test('解除: タスクがあれば消し、なければ何もしない。Core は止めない', async () => {
-  const states = ['{"found":true,"enabled":true,"state":"Ready"}'];
-  const runner = createMockCommandRunner((command) =>
-    command === POWERSHELL ? ok(states[0]) : ok(),
-  );
+test('解除: 先に schtasks /Delete で消す。Core は止めない', async () => {
+  const runner = fakeScheduler({ initial: taskJson(true) });
   const supervisor = createWindowsScheduledTaskSupervisor({
     runner,
     systemRoot: SYSTEM_ROOT,
@@ -395,51 +506,63 @@ test('解除: タスクがあれば消し、なければ何もしない。Core �
     removedDefinition: true,
     bootedOut: false,
   });
-  assert.deepEqual(runner.calls[0]?.command, POWERSHELL);
-  assert.deepEqual(runner.calls[0]?.args.slice(0, 3), [
-    '-NoProfile',
-    '-NonInteractive',
-    '-Command',
+  // 消せたら問い合わせない。
+  assert.deepEqual(runner.calls, [
+    { command: SCHTASKS, args: ['/Delete', '/TN', '\\BuddyCore', '/F'] },
   ]);
-  assert.deepEqual(runner.calls[1], {
-    command: SCHTASKS,
-    args: ['/Delete', '/TN', '\\BuddyCore', '/F'],
-  });
-  states[0] = '{"found":false}';
-  const before = runner.calls.length;
-  assert.deepEqual(await supervisor.unregister({ unloadNow: false }), {
-    status: 'unregistered',
-    removedDefinition: false,
-    bootedOut: false,
-  });
-  // 見つからなければ schtasks を呼ばない。
-  assert.ok(
-    runner.calls.slice(before).every((call) => call.command === POWERSHELL),
-  );
 });
 
-test('解除: 消せず、確かめ直してもタスクが残れば失敗にする', async () => {
-  const runner = createMockCommandRunner((command) =>
-    command === POWERSHELL
-      ? ok('{"found":true,"enabled":true,"state":"Running"}')
-      : exit(1),
-  );
+test('解除: 消せなかったときだけ問い合わせ、「ない」と確かめられたら消すものがなかった扱い', async () => {
+  const runner = fakeScheduler();
   const supervisor = createWindowsScheduledTaskSupervisor({
     runner,
     systemRoot: SYSTEM_ROOT,
     files: fakeFiles().files,
   });
   assert.deepEqual(await supervisor.unregister({ unloadNow: false }), {
-    status: 'failed',
-    step: 'delete_task',
-    reasons: ['schtasks_delete_exit:1'],
+    status: 'unregistered',
+    removedDefinition: false,
+    bootedOut: false,
   });
+  assert.deepEqual(
+    runner.calls.map((call) => call.command),
+    [SCHTASKS, POWERSHELL],
+  );
 });
 
-test('状態: 有効なタスクは loaded、無効・なしは not_loaded、問い合わせの失敗は failed', async () => {
+test('解除: 消せず、問い合わせでタスクが残る・問い合わせも失敗するなら失敗にする', async () => {
+  const remains = fakeScheduler({ initial: taskJson(true), del: exit(1) });
+  assert.deepEqual(
+    await createWindowsScheduledTaskSupervisor({
+      runner: remains,
+      systemRoot: SYSTEM_ROOT,
+      files: fakeFiles().files,
+    }).unregister({ unloadNow: false }),
+    {
+      status: 'failed',
+      step: 'delete_task',
+      reasons: ['schtasks_delete_exit:1'],
+    },
+  );
+  const unknown = fakeScheduler({ del: exit(1), query: exit(3) });
+  assert.deepEqual(
+    await createWindowsScheduledTaskSupervisor({
+      runner: unknown,
+      systemRoot: SYSTEM_ROOT,
+      files: fakeFiles().files,
+    }).unregister({ unloadNow: false }),
+    {
+      status: 'failed',
+      step: 'delete_task',
+      reasons: ['schtasks_delete_exit:1', 'task_query_failed'],
+    },
+  );
+});
+
+test('状態: 有効なタスクは loaded、無効・なしは not_loaded、問い合わせの失敗（exit 3 を含む）は failed', async () => {
   const cases: [CommandResult, unknown][] = [
     [
-      ok('{"found":true,"enabled":true,"state":"Ready"}'),
+      ok(taskJson(true)),
       {
         status: 'ok',
         platform: 'windows',
@@ -449,7 +572,7 @@ test('状態: 有効なタスクは loaded、無効・なしは not_loaded、問
       },
     ],
     [
-      ok('{"found":true,"enabled":false,"state":"Disabled"}'),
+      ok(taskJson(false)),
       {
         status: 'ok',
         platform: 'windows',
@@ -505,8 +628,7 @@ test('runner が例外を投げても、例外にせず失敗の結果にする'
     systemRoot: SYSTEM_ROOT,
     files: fakeFiles().files,
   });
-  const result = await supervisor.status();
-  assert.deepEqual(result, {
+  assert.deepEqual(await supervisor.status(), {
     status: 'failed',
     step: 'query_task',
     reasons: ['task_query_failed'],

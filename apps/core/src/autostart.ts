@@ -15,6 +15,7 @@ import {
   windowsHostDiagnosticWarnings,
 } from '@buddy/platform';
 import type { CommandRunner } from '@buddy/platform';
+import { loadHttpsConfig } from './https-config.js';
 
 export type AutostartAction = 'enable' | 'disable' | 'status';
 
@@ -28,6 +29,8 @@ export interface AutostartDeps {
   // LaunchAgent・タスクが起動する node と CLI の絶対パス。
   readonly nodePath: string;
   readonly coreCliPath: string;
+  // 動いている Core があるか（制御チャネルの status）。省略すると status の出力に core を載せない。
+  readonly coreState?: () => Promise<'running' | 'not_running'>;
 }
 
 export interface AutostartOutcome {
@@ -72,7 +75,13 @@ export async function runAutostart(
           await readWindowsHostDiagnostics(deps.runner, deps.systemRoot),
         )
       : macHostDiagnosticWarnings(await readMacHostDiagnostics(deps.runner));
-  return { ok: true, output: { ...result, warnings } };
+  // 自動起動の Core は https.json がなければ HTTPS を開かない（端末がつながらない。ADR 0203 の U723）。
+  const https = await loadHttpsConfig(dataDir);
+  if (https.kind === 'missing') warnings.push('https_not_configured');
+  if (https.kind === 'invalid') warnings.push('https_config_invalid');
+  const core =
+    deps.coreState === undefined ? {} : { core: await deps.coreState() };
+  return { ok: true, output: { ...result, ...core, warnings } };
 }
 
 export type SpawnFunction = (

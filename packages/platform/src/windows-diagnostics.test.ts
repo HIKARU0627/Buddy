@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createMockCommandRunner } from './runner.js';
 import {
+  parseHibernateEnabled,
   parsePowercfgRange,
   readWindowsHostDiagnostics,
   sleepSettingOfSeconds,
@@ -11,6 +12,7 @@ import {
 } from './windows-diagnostics.js';
 
 const POWERCFG = 'C:\\Windows\\System32\\powercfg.exe';
+const REG = 'C:\\Windows\\System32\\reg.exe';
 
 function englishOutput(ac: string, dc: string): string {
   return [
@@ -93,24 +95,39 @@ test('秒の値をスリープの設定にする（0 はしない、それ以外
   });
 });
 
-test('powercfg を絶対パスで 2 回呼び、AC の値から警告を作る', async () => {
-  const runner = createMockCommandRunner((_command, args) =>
-    args.includes('STANDBYIDLE')
-      ? {
-          exitCode: 0,
-          stdout: englishOutput('00000000', '00000384'),
-          stderr: '',
-        }
-      : {
-          exitCode: 0,
-          stdout: japaneseOutput('00002a30', '00002a30'),
-          stderr: '',
-        },
-  );
+// `reg query HKLM\SYSTEM\CurrentControlSet\Control\Power /v HibernateEnabled` の形の合成の出力。
+function regOutput(hex: string): string {
+  return [
+    '',
+    'HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Power',
+    `    HibernateEnabled    REG_DWORD    0x${hex}`,
+    '',
+  ].join('\r\n');
+}
+
+function powerRunner(standby: string, hibernate: string, reg: string | null) {
+  return createMockCommandRunner((command, args) => {
+    if (command === REG)
+      return reg === null
+        ? { exitCode: 1, stdout: '', stderr: 'synthetic' }
+        : { exitCode: 0, stdout: regOutput(reg), stderr: '' };
+    return {
+      exitCode: 0,
+      stdout: args.includes('STANDBYIDLE')
+        ? englishOutput(standby, '00000384')
+        : japaneseOutput(hibernate, hibernate),
+      stderr: '',
+    };
+  });
+}
+
+test('powercfg と reg を絶対パスで呼び、AC の値と休止状態の有無から警告を作る', async () => {
+  const runner = powerRunner('00000000', '00002a30', '1');
   const diagnostics = await readWindowsHostDiagnostics(runner, 'C:\\Windows');
   assert.deepEqual(diagnostics, {
     systemSleep: { state: 'never', idleMinutes: null },
     hibernate: { state: 'after_idle', idleMinutes: 180 },
+    hibernateAvailable: true,
   });
   assert.deepEqual(windowsHostDiagnosticWarnings(diagnostics), [
     'hibernate_enabled',
@@ -120,7 +137,51 @@ test('powercfg を絶対パスで 2 回呼び、AC の値から警告を作る',
     [
       [POWERCFG, '/query', 'SCHEME_CURRENT', 'SUB_SLEEP', 'STANDBYIDLE'],
       [POWERCFG, '/query', 'SCHEME_CURRENT', 'SUB_SLEEP', 'HIBERNATEIDLE'],
+      [
+        REG,
+        'query',
+        'HKLM\\SYSTEM\\CurrentControlSet\\Control\\Power',
+        '/v',
+        'HibernateEnabled',
+      ],
     ],
+  );
+});
+
+test('休止状態そのものが無効（powercfg /h off）なら、休止状態までの時間があっても警告しない', async () => {
+  const diagnostics = await readWindowsHostDiagnostics(
+    powerRunner('00000708', '00002a30', '0'),
+    'C:\\Windows',
+  );
+  assert.deepEqual(diagnostics.hibernate, {
+    state: 'never',
+    idleMinutes: null,
+  });
+  assert.equal(diagnostics.hibernateAvailable, false);
+  assert.deepEqual(windowsHostDiagnosticWarnings(diagnostics), [
+    'system_sleep_enabled',
+  ]);
+});
+
+test('休止状態の有無を読めなければ、警告を「かもしれない」に弱める', async () => {
+  const diagnostics = await readWindowsHostDiagnostics(
+    powerRunner('00000000', '00002a30', null),
+    'C:\\Windows',
+  );
+  assert.equal(diagnostics.hibernateAvailable, null);
+  assert.deepEqual(windowsHostDiagnosticWarnings(diagnostics), [
+    'hibernate_maybe_enabled',
+  ]);
+});
+
+test('HibernateEnabled の出力を厳しく読む', () => {
+  assert.equal(parseHibernateEnabled(regOutput('1')), true);
+  assert.equal(parseHibernateEnabled(regOutput('0')), false);
+  assert.equal(parseHibernateEnabled(regOutput('2')), null);
+  assert.equal(parseHibernateEnabled(''), null);
+  assert.equal(
+    parseHibernateEnabled(`${regOutput('1')}${regOutput('0')}`),
+    null,
   );
 });
 

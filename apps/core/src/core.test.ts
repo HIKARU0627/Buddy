@@ -159,8 +159,10 @@ test('the control channel rejects malformed requests and keeps serving', async (
   assert.equal(reply['core_instance_id'], core.coreInstanceId);
   assert.equal(reply['store_generation'], core.storeGeneration);
   assert.equal(reply['pid'], process.pid);
+  assert.equal(reply['https'], 'off');
   assert.deepEqual(Object.keys(reply).sort(), [
     'core_instance_id',
+    'https',
     'ok',
     'pid',
     'request_id',
@@ -230,10 +232,11 @@ test('a live pid without a control response is refused as unconfirmed', async (t
   const dataDir = await tempDataDir(t);
   const first = await started(t, dataDir);
   await first.stop('test');
+  // 今回の OS の起動の後に始まったロック（今の時刻）。起動より前のロックは下の試験。
   const holder = {
     pid: 424242,
     core_instance_id: ID,
-    started_at: '2026-10-20T00:00:00.000Z',
+    started_at: new Date().toISOString(),
   };
   const lockText = `${JSON.stringify(holder)}\n`;
   await writeFile(join(first.dataDir, 'core.lock'), lockText);
@@ -255,6 +258,58 @@ test('a live pid without a control response is refused as unconfirmed', async (t
     await readFile(join(first.dataDir, 'core.lock'), 'utf8'),
     lockText,
   );
+});
+
+test('a lock started before this OS boot is cleaned up even if its pid is alive again', async (t) => {
+  const dataDir = await tempDataDir(t);
+  const first = await started(t, dataDir);
+  await first.stop('test');
+  const bootTime = Date.parse('2026-11-28T08:00:00.000Z');
+  // 起動時刻の余裕（10 分）の内側は、pid が生きていれば拒否のまま。
+  const near = {
+    pid: 424242,
+    core_instance_id: ID,
+    started_at: '2026-11-28T07:55:00.000Z',
+  };
+  await writeFile(
+    join(first.dataDir, 'core.lock'),
+    `${JSON.stringify(near)}\n`,
+  );
+  await assert.rejects(
+    startCore({
+      dataDir,
+      keyStore: keyStore(),
+      probeTimeoutMs: 300,
+      isPidAlive: () => true,
+      bootTimeMs: () => bootTime,
+    }),
+    (error: unknown) =>
+      error instanceof CoreStartError &&
+      error.code === 'previous_owner_unconfirmed',
+  );
+  // 余裕より前（OS の再起動・シャットダウンの前に始まった）なら、pid が別のプロセスに使い回されて生きていても片付ける。
+  const before = { ...near, started_at: '2026-11-28T07:49:59.000Z' };
+  await writeFile(
+    join(first.dataDir, 'core.lock'),
+    `${JSON.stringify(before)}\n`,
+  );
+  const probed: number[] = [];
+  const second = await startCore({
+    dataDir,
+    keyStore: keyStore(),
+    probeTimeoutMs: 300,
+    isPidAlive: (pid) => (probed.push(pid), true),
+    bootTimeMs: () => bootTime,
+  });
+  onCleanup(t, async () => {
+    await second.stop('test').catch(() => undefined);
+  });
+  assert.equal(second.state, 'running');
+  assert.deepEqual(probed, []);
+  const lock = JSON.parse(
+    await readFile(join(second.dataDir, 'core.lock'), 'utf8'),
+  ) as Record<string, unknown>;
+  assert.equal(lock['core_instance_id'], second.coreInstanceId);
 });
 
 test('an unreadable lock or state file refuses startup instead of regenerating', async (t) => {

@@ -27,9 +27,15 @@ import type {
 } from '@buddy/platform';
 import { DEFAULT_HTTPS_PORT } from './api-server.js';
 import { runAutostart, runAutostartLaunch } from './autostart.js';
+import {
+  checkHttpsListenConfig,
+  loadHttpsConfig,
+  saveHttpsConfig,
+} from './https-config.js';
 import { fingerprintLines } from './tls-certificate.js';
 import type { AutostartAction } from './autostart.js';
 import { join, resolve } from 'node:path';
+import { realpathSync } from 'node:fs';
 import { readFile, realpath } from 'node:fs/promises';
 import { parseArgs } from 'node:util';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -97,11 +103,15 @@ const USAGE = `使い方: buddy-core <start|status|stop> [--data-dir <path>]
          --https-host <ip>                  HTTPS を待ち受ける IP アドレス（製品は Tailscale のアドレス）。
                                             省略すれば HTTPS を開かない
          --https-port <port>                HTTPS のポート（既定 ${DEFAULT_HTTPS_PORT}。0 は OS が選ぶ）
+         --save                             --https-host・--https-port をデータディレクトリの https.json に
+                                            保存してから起動する（Tailscale のアドレスだけ。次からは省略できる）。
+                                            --https-host がなければ https.json を読む（自動起動の Core も同じ）
   status 状態を JSON で表示する（動いていなければ終了コード 3）
   stop   停止を要求し、解放まで待つ
   autostart <enable|disable|status>
          ログイン後の自動起動（macOS の LaunchAgent、Windows のログオン時のタスク）。enable は次のログインから
-         有効で、すぐには起動しない
+         有効で、すぐには起動しない。enable --https-host <ip> [--https-port <port>] で HTTPS の待ち受けを
+         https.json に保存する（自動起動の Core はこれを読んで HTTPS を開く）
   autostart launch
          Windows のタスクが呼ぶ起動役。start を窓のない別のプロセスとして起動し、ログをデータディレクトリの
          logs/ に書かせてすぐ終わる（Windows だけ）
@@ -171,6 +181,7 @@ async function main(argv: readonly string[]): Promise<number> {
         'mock-key-protection-unavailable': { type: 'boolean' },
         'https-host': { type: 'string' },
         'https-port': { type: 'string' },
+        save: { type: 'boolean' },
         'pairing-id': { type: 'string' },
         'device-id': { type: 'string' },
         reason: { type: 'string' },
@@ -250,9 +261,17 @@ async function main(argv: readonly string[]): Promise<number> {
   }
   if (
     command !== 'start' &&
+    !(autostartCommand && action === 'enable') &&
     (values['https-host'] !== undefined || values['https-port'] !== undefined)
   ) {
-    log('HTTPS の指定は start だけで使えます。');
+    log('HTTPS の指定は start と autostart enable だけで使えます。');
+    return EXIT.usage;
+  }
+  if (
+    values.save === true &&
+    (command !== 'start' || values['https-host'] === undefined)
+  ) {
+    log('--save は start で --https-host と一緒に使います。');
     return EXIT.usage;
   }
   if (
@@ -355,10 +374,27 @@ async function main(argv: readonly string[]): Promise<number> {
       log(
         `旧い既定のデータディレクトリ（%APPDATA%\\Buddy\\core）が残っています。自動では移しません（${legacy}）。そこのデータは模擬の鍵で作ったもので、本物の鍵では開けません。`,
       );
-    const https =
-      values['https-host'] === undefined
-        ? null
-        : { host: values['https-host'], port: httpsPort };
+    let https: StartHttps | null = null;
+    if (values['https-host'] !== undefined) {
+      https = { host: values['https-host'], port: httpsPort, saved: false };
+      if (values.save === true) {
+        const saved = await saveHttps(dataDir, https.host, httpsPort);
+        if (saved !== null) return saved;
+      }
+    } else {
+      // コマンドラインの指定がなければ、保存した https.json を読む（自動起動の Core、ADR 0203 の U723）。
+      const loaded = await loadHttpsConfig(dataDir);
+      if (loaded.kind === 'invalid') {
+        log(`HTTPS の設定（https.json）を使えません: ${loaded.reason}`);
+        out({
+          event: 'refused',
+          code: 'https_config_invalid',
+          reasons: [loaded.reason],
+        });
+        return EXIT.refused;
+      }
+      if (loaded.kind === 'ok') https = { ...loaded.config, saved: true };
+    }
     return start(dataDir, mode, https, secrets);
   }
   if (restoreCommand)
@@ -369,8 +405,13 @@ async function main(argv: readonly string[]): Promise<number> {
     );
   if (backupCommand)
     return backup(dataDir, action as 'setup' | 'run' | 'status');
-  if (autostartCommand)
+  if (autostartCommand) {
+    if (action === 'enable' && values['https-host'] !== undefined) {
+      const saved = await saveHttps(dataDir, values['https-host'], httpsPort);
+      if (saved !== null) return saved;
+    }
     return autostart(action as AutostartAction | 'launch', dataDir);
+  }
   if (firstDeviceCommand)
     return firstDevice(dataDir, values['pairing-id'] ?? null);
   if (deviceCommand) return device(dataDir, values['device-id'] ?? null);
@@ -404,6 +445,43 @@ async function main(argv: readonly string[]): Promise<number> {
   return command === 'status' ? status(dataDir) : stop(dataDir);
 }
 
+// 起動の HTTPS の指定。saved は https.json から読んだか（自動起動の Core。アドレスを標準出力に出さず、
+// アドレスがまだないときは待ち受けをやり直す）。
+interface StartHttps {
+  readonly host: string;
+  readonly port: number;
+  readonly saved: boolean;
+}
+
+// 保存した https.json の Core が、アドレスを待つときにやり直す間隔（ADR 0203 の U723）。
+const HTTPS_LISTEN_RETRY_MS = 15_000;
+
+// HTTPS の待ち受けを https.json に保存する。保存できなければ終了コードを返す（できれば null）。
+async function saveHttps(
+  dataDir: string,
+  host: string,
+  port: number,
+): Promise<number | null> {
+  const checked = checkHttpsListenConfig(host, port);
+  if (!checked.ok) {
+    log(
+      `保存できる HTTPS の待ち受けは Tailscale のアドレス（100.64.0.0/10・fd7a:115c:a1e0::/48）と 1〜65535 のポートだけです: ${checked.reason}`,
+    );
+    return EXIT.usage;
+  }
+  try {
+    await saveHttpsConfig(dataDir, checked.config);
+  } catch (error) {
+    const code = (error as { code?: unknown } | null)?.code;
+    log(
+      `https.json を書けませんでした: ${typeof code === 'string' ? code : 'unknown'}`,
+    );
+    return EXIT.error;
+  }
+  out({ event: 'https_config_saved', port: checked.config.port });
+  return null;
+}
+
 async function autostart(
   action: AutostartAction | 'launch',
   dataDir: string,
@@ -417,12 +495,23 @@ async function autostart(
         })
       : await runAutostart(action, dataDir, {
           nodePlatform: process.platform,
-          runner: createNodeCommandRunner(),
+          // PowerShell の起動は遅いことがあるので、自動起動の設定のコマンドは 30 秒まで待つ（ADR 0203）。
+          runner: createNodeCommandRunner({ timeoutMs: 30_000 }),
           homeDir: homedir(),
           uid: process.getuid?.(),
           systemRoot: process.env['SystemRoot'],
-          nodePath: process.execPath,
+          // シンボリックリンク（Homebrew など）を辿った実体のパスを登録する。node を入れ替えたら enable をやり直す。
+          nodePath: realpathSync(process.execPath),
           coreCliPath: fileURLToPath(import.meta.url),
+          coreState: async () => {
+            const endpoint = await endpointFor(dataDir);
+            const result = endpoint
+              ? await callControl(endpoint, 'status', 2000)
+              : { kind: 'absent' as const };
+            return result.kind === 'response' && result.body['ok'] === true
+              ? 'running'
+              : 'not_running';
+          },
         });
   out(outcome.output);
   return outcome.ok ? EXIT.ok : EXIT.autostart_failed;
@@ -481,7 +570,7 @@ function oauthProvidersFromEnv(
 async function start(
   dataDir: string,
   mode: KeyProtectionMode,
-  https: { readonly host: string; readonly port: number } | null,
+  https: StartHttps | null,
   secrets: StartupSecrets,
 ): Promise<number> {
   let handle: CoreHandle | null = null;
@@ -517,7 +606,11 @@ async function start(
       https === null
         ? undefined
         : {
-            ...https,
+            host: https.host,
+            port: https.port,
+            // 保存した設定の Core（自動起動）は、ログインの直後で Tailscale のアドレスがまだなくても起動し、
+            // 待ち受けをやり直す（U723）。コマンドラインの指定は従来どおり、待ち受けられなければ起動を拒否する。
+            ...(https.saved ? { listenRetryMs: HTTPS_LISTEN_RETRY_MS } : {}),
             tlsKeyStore: createCoreTlsKeyStore(mode),
             // 自宅判定の Tailscale の状態（ADR 0022）。模擬の起動では実機の tailscale を呼ばない
             // （取得できない扱いで、中枢と同じマシンのクライアントだけが通る）。
@@ -578,10 +671,11 @@ async function start(
       resumable_preparing: handle.recovery.resumable,
     });
     if (handle.https !== null)
-      // 証明書の指紋は秘密ではない（端末が中枢の画面の表示と比べる値）。
+      // 証明書の指紋は秘密ではない（端末が中枢の画面の表示と比べる値）。保存した設定で起動したとき（自動起動。
+      // 標準出力はログのファイルに残る）は、待ち受けのアドレスを出さない（U723）。
       out({
-        event: 'https_listening',
-        host: handle.https.host,
+        event: handle.https.listening ? 'https_listening' : 'https_pending',
+        ...(https?.saved === true ? {} : { host: handle.https.host }),
         port: handle.https.port,
         certificate_fingerprint: handle.https.certificateFingerprint,
         certificate_creation: handle.https.certificateCreation,

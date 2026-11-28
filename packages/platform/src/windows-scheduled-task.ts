@@ -14,6 +14,7 @@
 // 本人の SID・パス・コマンドの出力はログ・理由に入れない。
 import { randomUUID } from 'node:crypto';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { win32 } from 'node:path';
 import type { CommandRunner } from './runner.js';
 import type {
@@ -173,15 +174,20 @@ export function parseWhoamiUserSid(output: string): string | null {
 
 /**
  * タスクの状態を JSON で出す固定の PowerShell のスクリプト。タスク名は検査した固定の形だけを入れる。
- * 見つからない（ObjectNotFound）は `{"found":false}`、ほかの失敗は終了コード 3。
+ * 「タスクがない」は Get-ScheduledTask の見つからないときのエラー（FullyQualifiedErrorId が
+ * CmdletizationQuery_NotFound で始まる）だけで `{"found":false}`。ほかの失敗はすべて終了コード 3
+ * （権限・サービスの停止などを「ない」と取り違えない）。
+ * 実行する利用者（Principal の UserId）は SID にそろえて返す（名前なら SID に直す。直せなければ空）。
  */
 export function windowsTaskQueryScript(taskName: string): string {
   if (!TASK_NAME_PATTERN.test(taskName))
     throw new TypeError('タスク名が不正です。');
   return [
     "$ErrorActionPreference = 'Stop'",
-    `try { $t = Get-ScheduledTask -TaskPath '\\' -TaskName '${taskName}' } catch { if ($_.CategoryInfo.Category -eq 'ObjectNotFound') { '{"found":false}'; exit 0 }; exit 3 }`,
-    '[pscustomobject]@{ found = $true; enabled = [bool]$t.Settings.Enabled; state = [string]$t.State } | ConvertTo-Json -Compress',
+    `try { $t = Get-ScheduledTask -TaskPath '\\' -TaskName '${taskName}' } catch { if ([string]$_.FullyQualifiedErrorId -like 'CmdletizationQuery_NotFound*') { '{"found":false}'; exit 0 }; exit 3 }`,
+    '$u = [string]$t.Principal.UserId',
+    "if ($u -notmatch '^S-1-') { try { $u = (New-Object System.Security.Principal.NTAccount($u)).Translate([System.Security.Principal.SecurityIdentifier]).Value } catch { $u = '' } }",
+    '[pscustomobject]@{ found = $true; enabled = [bool]$t.Settings.Enabled; state = [string]$t.State; user_sid = [string]$u } | ConvertTo-Json -Compress',
   ].join('; ');
 }
 
@@ -192,6 +198,8 @@ export type WindowsTaskQuery =
       readonly enabled: boolean;
       /** Ready・Running・Disabled・Queued・Unknown。 */
       readonly state: string;
+      /** 実行する利用者の SID。読めなければ空。 */
+      readonly userSid: string;
     };
 
 /** windowsTaskQueryScript の出力を読む。形が違えば null。 */
@@ -207,14 +215,23 @@ export function parseWindowsTaskQuery(output: string): WindowsTaskQuery | null {
   const record = value as Record<string, unknown>;
   if (record['found'] === false && Object.keys(record).length === 1)
     return { found: false };
+  const userSid = record['user_sid'];
   if (
     record['found'] !== true ||
+    Object.keys(record).length !== 4 ||
     typeof record['enabled'] !== 'boolean' ||
     typeof record['state'] !== 'string' ||
-    !/^[A-Za-z]{1,32}$/u.test(record['state'])
+    !/^[A-Za-z]{1,32}$/u.test(record['state']) ||
+    typeof userSid !== 'string' ||
+    (userSid !== '' && !SID_PATTERN.test(userSid))
   )
     return null;
-  return { found: true, enabled: record['enabled'], state: record['state'] };
+  return {
+    found: true,
+    enabled: record['enabled'],
+    state: record['state'],
+    userSid,
+  };
 }
 
 export interface WindowsCoreCommandPaths {
@@ -260,6 +277,11 @@ export interface WindowsScheduledTaskOptions {
   readonly systemRoot: string | undefined;
   readonly taskName?: string;
   readonly files?: WindowsTaskFiles;
+  /**
+   * 一時の定義ファイルを置くディレクトリ（既定は os.tmpdir()。Windows では本人だけの %LOCALAPPDATA%\Temp）。
+   * データディレクトリには置かない（--data-dir を本人以外が書ける場所にしたときに差し替えられないように）。
+   */
+  readonly tempDir?: string;
 }
 
 function failed(step: string, reasons: readonly string[]): FailedResult {
@@ -326,6 +348,11 @@ export function createWindowsScheduledTaskSupervisor(
     if (commands === null) return noSystemRoot;
     const sid = await userSid(commands);
     if (typeof sid !== 'string') return sid;
+    // 同じ名前のタスクが別の利用者のものなら置き換えない（タスク名の先取り。U724）。
+    const existing = await query(commands);
+    if (existing === null) return failed('query_task', ['task_query_failed']);
+    if (existing.found && existing.userSid !== sid)
+      return failed('existing_task', ['task_owner_mismatch']);
     const definition: WindowsTaskDefinition = {
       ...request.launch,
       userSid: sid,
@@ -334,8 +361,8 @@ export function createWindowsScheduledTaskSupervisor(
     const xml = encodeWindowsTaskXml(renderWindowsTaskXml(definition));
     const dataDir = definition.dataDir;
     const temporary = win32.join(
-      dataDir,
-      `.autostart-task.${randomUUID()}.xml`,
+      options.tempDir ?? tmpdir(),
+      `buddy-autostart-task.${randomUUID()}.xml`,
     );
     try {
       // launch が書くログのディレクトリも先に作る（macOS の登録と同じ）。
@@ -363,6 +390,15 @@ export function createWindowsScheduledTaskSupervisor(
       return failed('create_task', [
         `schtasks_create_exit:${exitOf(created.exitCode)}`,
       ]);
+    // 作った後に一度問い合わせ、本人のタスクとして有効になっていることを確かめる。
+    const verified = await query(commands);
+    if (verified === null) return failed('verify_task', ['task_query_failed']);
+    if (!verified.found)
+      return failed('verify_task', ['task_missing_after_create']);
+    if (verified.userSid !== sid)
+      return failed('verify_task', ['task_owner_mismatch']);
+    if (!verified.enabled)
+      return failed('verify_task', ['task_disabled_after_create']);
     if (request.loadNow !== true)
       return {
         status: 'registered',
@@ -370,7 +406,8 @@ export function createWindowsScheduledTaskSupervisor(
         loaded: false,
         alreadyLoaded: false,
       };
-    // 今すぐ一度実行する。Core が動いていれば、起動した start が単一起動のロックで拒否される（二重には動かない）。
+    // 今すぐ一度実行を頼む（loaded は「実行を頼めた」の意味で、Core が起動したかは status で確かめる）。
+    // Core が動いていれば、起動した start が単一起動のロックで拒否される（二重には動かない）。
     const started = await run(commands.schtasks, ['/Run', '/TN', taskPath]);
     if (started.exitCode !== 0)
       return failed('run_task', [
@@ -388,13 +425,8 @@ export function createWindowsScheduledTaskSupervisor(
   // （止めるのは buddy-core stop）。bootedOut は常に false。
   async function unregister(): Promise<UnregisterResult> {
     if (commands === null) return noSystemRoot;
-    const before = await query(commands);
-    if (before !== null && !before.found)
-      return {
-        status: 'unregistered',
-        removedDefinition: false,
-        bootedOut: false,
-      };
+    // 先に消す。消せなかったときだけ問い合わせ、「ない」と確かめられたら消すものがなかった扱いにする
+    // （問い合わせの取り違えで、タスクを残したまま解除したと答えないように）。
     const deleted = await run(commands.schtasks, [
       '/Delete',
       '/TN',
@@ -407,7 +439,6 @@ export function createWindowsScheduledTaskSupervisor(
         removedDefinition: true,
         bootedOut: false,
       };
-    // 問い合わせに失敗していた・消す間に消えた場合は、もう一度確かめてから失敗にする。
     const after = await query(commands);
     if (after !== null && !after.found)
       return {
@@ -417,6 +448,7 @@ export function createWindowsScheduledTaskSupervisor(
       };
     return failed('delete_task', [
       `schtasks_delete_exit:${exitOf(deleted.exitCode)}`,
+      ...(after === null ? ['task_query_failed'] : []),
     ]);
   }
 

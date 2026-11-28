@@ -102,12 +102,15 @@ function powercfgOutput(acHex: string): string {
   ].join('\r\n');
 }
 
-test('Windows: status returns the logon task state and power warnings', async () => {
+test('Windows: status returns the logon task state, the Core state and the power and HTTPS warnings', async (t) => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'buddy-autostart-status-'));
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
   const runner = createMockCommandRunner((command, args) => {
     if (command.endsWith('powershell.exe'))
       return {
         exitCode: 0,
-        stdout: '{"found":true,"enabled":true,"state":"Ready"}',
+        stdout:
+          '{"found":true,"enabled":true,"state":"Ready","user_sid":"S-1-5-21-1000000001-1000000002-1000000003-1001"}',
         stderr: '',
       };
     if (command.endsWith('powercfg.exe'))
@@ -120,11 +123,13 @@ test('Windows: status returns the logon task state and power warnings', async ()
       };
     return { exitCode: 1, stdout: '', stderr: '' };
   });
-  const outcome = await runAutostart('status', 'C:\\buddy-test\\data', {
+  const deps = {
     ...WINDOWS_DEPS,
     runner,
-  });
-  assert.deepEqual(outcome, {
+    coreState: () => Promise.resolve('running' as const),
+  };
+  // https.json がなければ、自動起動の Core が HTTPS を開かないことを警告する（U723）。
+  assert.deepEqual(await runAutostart('status', dataDir, deps), {
     ok: true,
     output: {
       status: 'ok',
@@ -132,9 +137,31 @@ test('Windows: status returns the logon task state and power warnings', async ()
       definitionPath: '\\BuddyCore',
       installed: true,
       load: 'loaded',
-      warnings: ['system_sleep_enabled'],
+      core: 'running',
+      warnings: ['system_sleep_enabled', 'https_not_configured'],
     },
   });
+  await writeFile(
+    join(dataDir, 'https.json'),
+    '{"host":"100.64.0.10","port":47443}\n',
+    {
+      mode: 0o600,
+    },
+  );
+  const configured = await runAutostart('status', dataDir, deps);
+  assert.deepEqual(configured.output['warnings'], ['system_sleep_enabled']);
+  await writeFile(
+    join(dataDir, 'https.json'),
+    '{"host":"0.0.0.0","port":47443}\n',
+    {
+      mode: 0o600,
+    },
+  );
+  const invalid = await runAutostart('status', dataDir, deps);
+  assert.deepEqual(invalid.output['warnings'], [
+    'system_sleep_enabled',
+    'https_config_invalid',
+  ]);
   // macOS の pmset・fdesetup は呼ばない。
   assert.ok(
     runner.calls.every((call) =>
@@ -244,6 +271,31 @@ test('launch spawns a detached, hidden start with logs appended under the data d
     'core.err.log',
     'core.out.log',
   ]);
+});
+
+test('launch reports a failure to open the log files without spawning', async (t) => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'buddy-launch-'));
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  // logs をファイルにしておき、ログのディレクトリを作れない・開けない状態にする。
+  await writeFile(join(dataDir, 'logs'), 'not a directory');
+  let spawned = false;
+  const outcome = await runAutostartLaunch(dataDir, {
+    nodePlatform: 'win32',
+    nodePath: '/synthetic/bin/node',
+    coreCliPath: '/synthetic/cli.js',
+    spawn: () => {
+      spawned = true;
+      return new FakeChild() as unknown as ChildProcess;
+    },
+  });
+  assert.equal(outcome.ok, false);
+  assert.equal(outcome.output['status'], 'failed');
+  assert.equal(outcome.output['step'], 'open_logs');
+  assert.match(
+    (outcome.output['reasons'] as string[])[0] ?? '',
+    /^fs_error:[A-Z]+$/u,
+  );
+  assert.equal(spawned, false);
 });
 
 test('launch reports a spawn failure and is Windows only', async (t) => {

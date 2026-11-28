@@ -116,6 +116,9 @@ export interface ControlStatus {
   readonly started_at: string;
   readonly uptime_ms: number;
   readonly pid: number;
+  // HTTPS の待ち受けの状態（ADR 0203 の U723）。設定なしは off、アドレスを待っている間は pending、
+  // やり直しの途中で待ち受けられない失敗が起きたら failed。
+  readonly https: 'off' | 'pending' | 'listening' | 'failed';
 }
 
 // 最初の端末の開始・承認の応答（ADR 0021）。

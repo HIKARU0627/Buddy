@@ -3,6 +3,7 @@
 - 日付: 2026-10-20
 - 状態: B01-02（#44）の判断。`packages/platform` の境界・macOS の LaunchAgent・診断・鍵保護の可否の確認を実装し、模擬の runner で試験した。Core の起動前検査と `buddy-core autostart` に組み込んだ。実機の launchctl への登録、pmset・fdesetup・security の実機での読み取りは未実施（B01-05）。鍵保護の可否の確認（`security default-keychain`）は B02-02 で KeyStore に基づく確認へ置き換えた（ADR 0017）。
 - 追記（2026-11-28）: 本人の決定で Windows も中枢にできるようにした。Windows の自動起動（ログオン時のタスク）・電源の診断は [ADR 0203](0203-windows-hub-autostart-and-network.md)、鍵の保護は ADR 0202。下の表の「Windows・Linux の起動」は Linux など（理由のコードは `core_autostart_supports_macos_and_windows_only` に改めた）に読み替える。
+- 追記（2026-11-28、ADR 0203 の見直し）: LaunchAgent で起動した Core は `--https-host` を受け取らず HTTPS を開かなかった（U723）。plist は変えずに、データディレクトリの `https.json`（`autostart enable --https-host <ip>`・`start --https-host <ip> --save` で保存）を start が読むようにして直した。ログインの直後で Tailscale のアドレスがまだないときは、Core を起動して HTTPS の待ち受けをやり直す。あわせて、OS の起動より前に始まったロックは pid によらず古いロックとして片付ける（ログアウト・再起動の後の pid の使い回し）。
 - 根拠: 設計 02（処理の配置・保存と秘密情報・マルチプラットフォーム）、06 B01・初期のコード配置、09 §7、決定事項 J01・質問129。今回の作業環境では設計 02 の本文を `.local/design/notion/` に取得できなかったため、司令塔から受け取った要約に基づく。原本との照合はレビューで行う。
 
 ## 決めたこと

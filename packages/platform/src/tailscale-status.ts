@@ -51,14 +51,15 @@ export const TAILSCALE_COMMANDS: readonly string[] = [
 ];
 
 // Windows の Tailscale の CLI（ADR 0203）。インストーラーは `%ProgramFiles%\Tailscale\tailscale.exe` に置く。
-// PATH の探索は Windows ではカレントディレクトリを先に探すので、名前だけでは呼ばない（ADR 0022 のレビューの指摘 L9）。
-// 代わりに PATH の各ディレクトリ（ドライブ文字から始まる絶対パスだけ）に tailscale.exe を付けた絶対パスを順に試す。
+// 候補は Program Files の下（管理者だけが書ける）と既定の場所だけ。名前だけ（PATH・カレントディレクトリの探索）では
+// 呼ばず、PATH の各ディレクトリも探さない。PATH には別の利用者が書けるディレクトリ（ドライブの直下に作ったフォルダー
+// など）が入り得て、そこに置かれた tailscale.exe が Core の権限で動くため（ADR 0022 のレビューの指摘 L9 と同じ考え）。
+// 別の場所に入れた場合は Program Files に入れ直す（明示のパスの設定は作っていない。U728）。
 export const WINDOWS_TAILSCALE_DEFAULT =
   'C:\\Program Files\\Tailscale\\tailscale.exe';
-const WINDOWS_PATH_ENTRY_LIMIT = 64;
 
 // 実行中の OS に合う tailscale の候補。macOS（と対象外の OS）は TAILSCALE_COMMANDS。
-// env は Core では process.env（Windows の環境変数の名前は大文字小文字を区別しないが、試験の値に合わせて両方を読む）。
+// env は Core では process.env。
 export function tailscaleCommandsFor(
   nodePlatform: string,
   env: Readonly<Record<string, string | undefined>>,
@@ -80,11 +81,6 @@ export function tailscaleCommandsFor(
       add(win32.join(base as string, 'Tailscale', 'tailscale.exe'));
   }
   add(WINDOWS_TAILSCALE_DEFAULT);
-  const pathValue = env['Path'] ?? env['PATH'] ?? '';
-  for (const entry of pathValue.split(';').slice(0, WINDOWS_PATH_ENTRY_LIMIT)) {
-    const dir = entry.trim();
-    if (isWindowsDriveAbsolute(dir)) add(win32.join(dir, 'tailscale.exe'));
-  }
   return candidates;
 }
 
@@ -174,7 +170,9 @@ export function findPeerPath(
   };
 }
 
-// tailscale を一度実行して状態を読む。候補を順に試し、起動できなかったもの（exitCode null）は次へ進む。
+// tailscale を一度実行して状態を読む。候補を順に試し、実行ファイルがないもの（ENOENT）だけ次へ進む。
+// 実行ファイルがあって応答しない（時間切れ）・起動に失敗した（権限など）ときは、次の候補（別の実行ファイル）へ
+// 進まずに失敗にする（ADR 0203）。模擬の runner の理由のない exitCode null は、ない扱いで次へ進む。
 export async function fetchTailscaleStatus(
   runner: CommandRunner,
   commands: readonly string[] = TAILSCALE_COMMANDS,
@@ -188,7 +186,11 @@ export async function fetchTailscaleStatus(
       reason = 'tailscale_command_failed';
       continue;
     }
-    if (result.exitCode === null) continue;
+    if (result.exitCode === null) {
+      if (result.failure === undefined || result.failure === 'not_found')
+        continue;
+      return { ok: false, reason: 'tailscale_command_failed' };
+    }
     if (result.exitCode !== 0)
       return { ok: false, reason: 'tailscale_status_failed' };
     return parseTailscaleStatus(result.stdout);

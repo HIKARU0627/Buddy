@@ -134,10 +134,25 @@ test(
       /<LogonType>InteractiveToken<\/LogonType>/u.test(exported.stdout),
       '定義に期待の項目がない',
     );
+    // Task Scheduler は書き出しで既定値の RunLevel（LeastPrivilege）を省くので、ないか LeastPrivilege かを見る。
+    const runLevel = /<RunLevel>([^<]*)<\/RunLevel>/u.exec(exported.stdout);
     assert.ok(
-      /<RunLevel>LeastPrivilege<\/RunLevel>/u.test(exported.stdout),
-      '定義に期待の項目がない',
+      runLevel === null || runLevel[1] === 'LeastPrivilege',
+      '高い権限の定義になっている',
     );
+    assert.ok(
+      !exported.stdout.includes('HighestAvailable'),
+      '高い権限の定義になっている',
+    );
+    // 登録された定義そのものの権限を ScheduledTasks モジュールで読み、Limited（最小の権限）であることを確かめる。
+    const principal = await runner.run(
+      paths().powershell,
+      powerShellArgs(
+        `$ErrorActionPreference = 'Stop'; [string](Get-ScheduledTask -TaskPath '\\' -TaskName '${taskName}').Principal.RunLevel`,
+      ),
+    );
+    assert.equal(principal.exitCode, 0, 'タスクの権限を読めない');
+    assert.equal(principal.stdout.trim(), 'Limited');
     assert.ok(
       /<ExecutionTimeLimit>PT0S<\/ExecutionTimeLimit>/u.test(exported.stdout),
       '定義に期待の項目がない',

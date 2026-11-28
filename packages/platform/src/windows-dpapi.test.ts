@@ -49,7 +49,7 @@ import {
   keyProtectionPreflight,
   OAuthTokens,
   windowsDpapiSlotOpener,
-  windowsPowerShellPath,
+  dpapiPowerShellPath,
 } from './index.js';
 import type {
   SecretSlot,
@@ -172,12 +172,9 @@ async function rejectsWith(
 }
 
 test('PowerShell と置き場所の既定の場所: 絶対パスのドライブ文字のときだけ決まる', () => {
+  assert.equal(dpapiPowerShellPath({ SystemRoot: 'C:\\Windows' }), POWERSHELL);
   assert.equal(
-    windowsPowerShellPath({ SystemRoot: 'C:\\Windows' }),
-    POWERSHELL,
-  );
-  assert.equal(
-    windowsPowerShellPath({ SYSTEMROOT: 'D:\\WINDOWS' }),
+    dpapiPowerShellPath({ SYSTEMROOT: 'D:\\WINDOWS' }),
     'D:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
   );
   for (const env of [
@@ -185,7 +182,7 @@ test('PowerShell と置き場所の既定の場所: 絶対パスのドライブ�
     { SystemRoot: 'Windows' },
     { SystemRoot: '\\\\server\\share\\Windows' },
   ])
-    assert.equal(windowsPowerShellPath(env), null);
+    assert.equal(dpapiPowerShellPath(env), null);
   assert.equal(
     defaultWindowsKeyStoreDir({
       LOCALAPPDATA: 'C:\\Users\\example\\AppData\\Local',

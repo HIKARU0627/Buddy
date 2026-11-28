@@ -48,6 +48,7 @@ const planFor = (intent, viewKind, outcome = 'done') => {
     },
     facts: [],
     speech: null,
+    layout_hint: null,
   };
 };
 

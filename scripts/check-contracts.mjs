@@ -196,6 +196,7 @@ for (const [index, row] of planRows.entries()) {
     },
     facts: [],
     speech: null,
+    layout_hint: null,
   };
   assert(
     validators['ResponsePlan'](value),
@@ -212,6 +213,51 @@ assert.equal(
   responsePlanCases.intent_views.length,
   'Duplicate intent in intent_views',
 );
+// モデルが出す配置のヒント（UI-09、ADR 0200）。形の許可例・拒否例と、評価セットのヒントが形の検査を通るか
+// （schema_valid）・共通の記述とコードの束の形を検査する。意味の検査と結果は scripts/layout-hint.test.mjs が確かめる。
+const layoutHintCases = parseStrictJson(
+  await readFile(
+    new URL('packages/contracts/fixtures/layout-hint-cases.json', root),
+    'utf8',
+  ),
+);
+for (const entry of layoutHintCases.shape_cases) {
+  assert(!ids.has(entry.id), `Duplicate fixture id: ${entry.id}`);
+  ids.add(entry.id);
+  const validate = validators[entry.schema];
+  assert(validate, `Unknown schema: ${entry.schema}`);
+  assert.equal(
+    validate(entry.value),
+    entry.valid,
+    `${entry.id}: ${JSON.stringify(validate.errors)}`,
+  );
+}
+assert(
+  validators['CanvasDocument'](layoutHintCases.base.canvas),
+  JSON.stringify(validators['CanvasDocument'].errors),
+);
+for (const item of Object.values(layoutHintCases.base.items))
+  assert(
+    validators['CanvasItem'](item),
+    JSON.stringify(validators['CanvasItem'].errors),
+  );
+for (const entry of layoutHintCases.evaluation) {
+  assert(!ids.has(entry.id), `Duplicate fixture id: ${entry.id}`);
+  ids.add(entry.id);
+  for (const turn of entry.turns) {
+    if (turn.hint === null) {
+      assert.equal(turn.expected.outcome, 'none', entry.id);
+      continue;
+    }
+    assert.equal(
+      validators['CanvasLayoutHint'](turn.hint),
+      turn.schema_valid,
+      `${entry.id}: ${JSON.stringify(validators['CanvasLayoutHint'].errors)}`,
+    );
+    // 形の検査で戻る例の理由は schema だけ。
+    if (!turn.schema_valid) assert.equal(turn.expected.reason, 'schema');
+  }
+}
 // connector の能力と再試行の契約（B08-01、ADR 0027・0071）。読み取り・書込みの宣言と、
 // トークン・本文を返さない同期の状態の形式を検査する。規則との一致は scripts/connector-capability.test.mjs が確かめる。
 const connectorCases = parseStrictJson(

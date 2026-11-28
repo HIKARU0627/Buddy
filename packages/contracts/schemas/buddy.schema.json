@@ -2286,6 +2286,17 @@
               "type": "null"
             }
           ]
+        },
+        "layout_hint": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CanvasLayoutHint"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "モデルが出した配置のヒント（UI-09、ADR 0200）。配置の候補だけで、承認・実行権限・処理状態・表示してよい内容の正本にならない。Core は形の検査（CanvasLayoutHint）に通ったヒントだけをここへ入れ、通らなければ null にして理由 schema を記録する（計画全体を Schema 違反にしない）。キャンバスへ置く時点で意味を検査し、反すれば捨ててコードの配置に戻す。なければ null。"
         }
       },
       "required": [
@@ -2296,10 +2307,11 @@
         "outcome",
         "view",
         "facts",
-        "speech"
+        "speech",
+        "layout_hint"
       ],
       "additionalProperties": false,
-      "description": "Core が決めた表示と読み上げの計画（ADR 0070）。モデルの生出力（WireResponse）でも、検証済みの解釈（Interpretation）でも、実行可否（ActionReadiness）でもない。応答文の本文・宛先・承認・実行経路の欄を持たない。"
+      "description": "Core が決めた表示と読み上げの計画（ADR 0070）。モデルの生出力（WireResponse）でも、検証済みの解釈（Interpretation）でも、実行可否（ActionReadiness）でもない。応答文の本文・宛先・承認・実行経路の欄を持たない。配置のヒント（layout_hint）は候補だけを持つ（ADR 0200）。"
     },
     "ModelUsage": {
       "type": "object",
@@ -19814,6 +19826,77 @@
       "required": ["column", "row", "span", "rows"],
       "additionalProperties": false,
       "description": "配置のエンジンの格子のマス（UI-06、ADR 0032）。12 列で、列・行は 1 から。column + span − 1 が 12 を超えないこと（意味の検査）。ピクセル・座標は持たない。ユーザーの置き場所と、ユーザーの操作の置く先に使う。"
+    },
+    "CanvasLayoutHintGroup": {
+      "type": "object",
+      "properties": {
+        "group": {
+          "$ref": "#/$defs/CanvasGroupId"
+        },
+        "members": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CanvasItemId"
+          },
+          "minItems": 2,
+          "maxItems": 12,
+          "uniqueItems": true
+        }
+      },
+      "required": ["group", "members"],
+      "additionalProperties": false,
+      "description": "配置のヒントのまとまりの候補（UI-09、ADR 0200）。members の物を 1 つのまとまりにする候補。group はヒントの中の対応付けにだけ使い、記述には Core が付け直した名前（g1〜g4）を入れる。"
+    },
+    "CanvasLayoutHint": {
+      "type": "object",
+      "properties": {
+        "base_canvas_revision": {
+          "$ref": "#/$defs/CanvasRevision"
+        },
+        "focus": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CanvasItemId"
+          },
+          "maxItems": 2,
+          "uniqueItems": true,
+          "description": "目立たせる（強調を high にする）物の候補。"
+        },
+        "peripheral": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CanvasItemId"
+          },
+          "maxItems": 10,
+          "uniqueItems": true,
+          "description": "周辺に回す（強調を low にする）物の候補。Core が守る物（コードが焦点にした物・文字の結果・保留を捨てた知らせ）は指せない（意味の検査）。"
+        },
+        "order": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CanvasItemId"
+          },
+          "maxItems": 24,
+          "uniqueItems": true,
+          "description": "読む順の候補。空なら変えない。空でなければ、Core の配置を当てた後の見える物をちょうど 1 回ずつ含む（意味の検査）。"
+        },
+        "groups": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CanvasLayoutHintGroup"
+          },
+          "maxItems": 4
+        }
+      },
+      "required": [
+        "base_canvas_revision",
+        "focus",
+        "peripheral",
+        "order",
+        "groups"
+      ],
+      "additionalProperties": false,
+      "description": "モデルが出す配置のヒント（UI-09、ADR 0200）。今のキャンバスにある見える物の名前だけを指し、強調・読む順・まとまりの候補だけを持つ。物の追加・閉じる・動かす・棚への出し入れ・見出し・本文・承認・実行・処理状態の項目を持たない。Core は置く時点の記述で意味を検査し、反すればヒントを捨ててコードの配置に戻す。ヒントはその発言だけの上乗せで、次の発言ではコードの強調・まとまりへ戻す。まとまりの名前は記述へ入れず、Core が g1〜g4 に付け直す。base_canvas_revision はモデルが見た記述の版。"
     },
     "CanvasUserPin": {
       "type": "object",

@@ -110,6 +110,9 @@ export const ROUTE_CHECKS: Readonly<Record<string, readonly CoreCheck[]>> = {
   settleBudgetManually: [...SCREEN, 'expected_revision'],
   // 気づき（候補）の経路（B11-04 P2、ADR 0130）。一覧は題と期限の原文を含む読み取りなのでロック解除を求める。
   listCandidates: [...READ, 'unlocked'],
+  // 気づきの OS 通知の入・切（ADR 0196）。読み取りは端末の main が後ろで読むので画面操作を求めない。変更は本人の画面操作。
+  getCandidateAlertSettings: [...READ, 'unlocked'],
+  changeCandidateAlertSettings: SCREEN,
   // 根拠の再取得は許可範囲（取得範囲）から取り直して抄録を返すので、接続範囲を求める（postCanvasContent と同じ）。
   // 状態は本人の操作でなく観測で変わり得るだけなので、画面操作は求めない。
   getCandidateEvidence: COMMAND,

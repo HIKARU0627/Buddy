@@ -14,6 +14,14 @@
 // - candidate.sweep: 閉じた候補の保持の掃除。解決・却下から 7 日で題・抄録（封筒）を消し、97 日で識別子の行ごと消す
 //   （段階は domain の candidateRetentionPhase）。活動中の候補は消さない。元情報（source_item）の期限では消えない
 //   （期限の掃除は元情報を由来の期限に数えない。expiry-store・ADR 0118）。
+// - candidate.alert_settings_get / candidate.alert_settings_set: 気づきの OS 通知の入・切（マイグレーション 0025、ADR 0196）。
+//   行がなければ切・版 0。版は本人の変更ごとに 1 進み、違う版からの変更は settings_revision_conflict（入・切のどちらも）。
+// - candidate.alert_records: 1 つの識別子の配信の記録（deliveries、0001）。domain の candidateAlertDecision の材料。
+// - candidate.alert_intent: OS 通知の送出意図を書く（設計 08 §7: 配信の前に意図を保存する）。同じ transaction で、設定が入で
+//   版が判定を始めた時点と同じこと・候補が残っていて閉じていないこと・同じ識別子と再通知の ID の記録がないことを確かめる
+//   （最後の保証）。
+// - candidate.alert_settle: 意図を書いた記録を、端末の購読へ渡せた（delivered）か分からない（delivery_unknown）にする。
+//   意図のままの記録だけを変える（delivered と delivery_unknown は変えない。鳴らし直さない）。
 // 時刻は呼び出し側の値を信じる（DB は時計を持たない）。結果には ID・件数・状態だけを入れ、SQL・パスを入れない。
 
 import Database from 'better-sqlite3';
@@ -133,6 +141,31 @@ export interface CandidateTransitionInput {
   readonly now: string;
 }
 
+// 気づきの OS 通知の入・切（ADR 0073 の既定は切）。
+export type CandidateAlertSetting = 'on' | 'off';
+
+export interface CandidateAlertSettingsValue {
+  readonly os_notification: CandidateAlertSetting;
+  // 行がなければ 0。
+  readonly settings_revision: string;
+}
+
+export interface CandidateAlertIntentInput {
+  readonly delivery_id: string;
+  readonly notification_key: string;
+  // 本人の指定した再通知の ID。新しい候補の通知は空文字（deliveries の既定と同じ）。
+  readonly reminder_id: string;
+  // 通知を出すと判定したときに読んだ設定の版。今の版と違えば書かない。
+  readonly settings_revision: string;
+  readonly intent_at: string;
+}
+
+export interface CandidateDeliveryRecord {
+  readonly notification_key: string;
+  readonly reminder_id: string;
+  readonly status: 'intent_saved' | 'delivered' | 'delivery_unknown';
+}
+
 export interface CandidateBlobOutput {
   readonly blob_id: string;
   readonly format_version: number;
@@ -192,6 +225,27 @@ export type CandidateOp =
   // 区別できない。U545）。
   | { readonly kind: 'candidate.origin_scopes'; readonly candidate_id: string }
   | { readonly kind: 'candidate.counts' }
+  | { readonly kind: 'candidate.alert_settings_get' }
+  // 本人の画面操作の設定の変更。expected_revision が今の版と違えば settings_revision_conflict。同じ値でも版は進む。
+  | {
+      readonly kind: 'candidate.alert_settings_set';
+      readonly expected_revision: string;
+      readonly os_notification: CandidateAlertSetting;
+      readonly now: string;
+    }
+  | {
+      readonly kind: 'candidate.alert_records';
+      readonly notification_key: string;
+    }
+  | {
+      readonly kind: 'candidate.alert_intent';
+      readonly input: CandidateAlertIntentInput;
+    }
+  | {
+      readonly kind: 'candidate.alert_settle';
+      readonly delivery_id: string;
+      readonly status: 'delivered' | 'delivery_unknown';
+    }
   | {
       readonly kind: 'candidate.sweep';
       // 呼び出し側が判定済みの現在時刻（UTC）。時計の巻き戻りの保留は掃除の job が先に行う。
@@ -240,6 +294,16 @@ export interface CandidateOpValues {
     }[];
   };
   'candidate.counts': Readonly<Record<CandidateState, number>>;
+  'candidate.alert_settings_get': CandidateAlertSettingsValue;
+  'candidate.alert_settings_set': CandidateAlertSettingsValue;
+  'candidate.alert_records': {
+    readonly records: readonly CandidateDeliveryRecord[];
+  };
+  'candidate.alert_intent': { readonly delivery_id: string };
+  'candidate.alert_settle': {
+    readonly delivery_id: string;
+    readonly status: 'delivered' | 'delivery_unknown';
+  };
   'candidate.sweep': {
     // 題・抄録を消した候補の ID。
     readonly content_deleted: readonly string[];
@@ -268,6 +332,9 @@ export const CANDIDATE_WRITE_OPS: ReadonlySet<CandidateOpKind> = new Set([
   'candidate.create',
   'candidate.transition',
   'candidate.sweep',
+  'candidate.alert_settings_set',
+  'candidate.alert_intent',
+  'candidate.alert_settle',
 ]);
 
 const OP_KINDS: ReadonlySet<string> = new Set<CandidateOpKind>([
@@ -277,6 +344,11 @@ const OP_KINDS: ReadonlySet<string> = new Set<CandidateOpKind>([
   'candidate.get',
   'candidate.origin_scopes',
   'candidate.counts',
+  'candidate.alert_settings_get',
+  'candidate.alert_settings_set',
+  'candidate.alert_records',
+  'candidate.alert_intent',
+  'candidate.alert_settle',
   'candidate.sweep',
 ]);
 
@@ -462,10 +534,54 @@ export function candidateOpShapeReasons(op: CandidateOp): string[] {
     case 'candidate.origin_scopes':
       return isUuid(op.candidate_id) ? [] : ['candidate_id_invalid'];
     case 'candidate.counts':
+    case 'candidate.alert_settings_get':
       return [];
+    case 'candidate.alert_settings_set': {
+      const reasons: string[] = [];
+      if (
+        typeof op.expected_revision !== 'string' ||
+        !REVISION.test(op.expected_revision)
+      )
+        reasons.push('expected_revision_invalid');
+      if (op.os_notification !== 'on' && op.os_notification !== 'off')
+        reasons.push('os_notification_invalid');
+      if (utcMillis(op.now) === null) reasons.push('now_invalid');
+      return reasons;
+    }
+    case 'candidate.alert_records':
+      return isHex64(op.notification_key) ? [] : ['notification_key_invalid'];
+    case 'candidate.alert_intent':
+      return alertIntentReasons(op.input);
+    case 'candidate.alert_settle': {
+      const reasons: string[] = [];
+      if (!isUuid(op.delivery_id)) reasons.push('delivery_id_invalid');
+      if (op.status !== 'delivered' && op.status !== 'delivery_unknown')
+        reasons.push('status_invalid');
+      return reasons;
+    }
     case 'candidate.sweep':
       return utcMillis(op.now) === null ? ['now_invalid'] : [];
   }
+}
+
+function alertIntentReasons(input: CandidateAlertIntentInput): string[] {
+  if (input === null || typeof input !== 'object') return ['input_invalid'];
+  const reasons: string[] = [];
+  if (!isUuid(input.delivery_id)) reasons.push('delivery_id_invalid');
+  if (!isHex64(input.notification_key))
+    reasons.push('notification_key_invalid');
+  if (
+    typeof input.reminder_id !== 'string' ||
+    (input.reminder_id !== '' && !isUuid(input.reminder_id))
+  )
+    reasons.push('reminder_id_invalid');
+  if (
+    typeof input.settings_revision !== 'string' ||
+    !REVISION.test(input.settings_revision)
+  )
+    reasons.push('settings_revision_invalid');
+  if (utcMillis(input.intent_at) === null) reasons.push('intent_at_invalid');
+  return reasons;
 }
 
 // --- 読み取り ---
@@ -910,6 +1026,118 @@ function transitionCandidate(
   };
 }
 
+// --- 気づきの OS 通知（ADR 0196） ---
+
+export function readCandidateAlertSettings(
+  db: SqliteDatabase,
+): CandidateAlertSettingsValue {
+  const row = db
+    .prepare(
+      'SELECT os_notification, settings_revision FROM candidate_alert_settings WHERE setting_id = 1',
+    )
+    .get() as
+    | { os_notification: CandidateAlertSetting; settings_revision: number }
+    | undefined;
+  if (row === undefined)
+    return { os_notification: 'off', settings_revision: '0' };
+  return {
+    os_notification: row.os_notification,
+    settings_revision: String(row.settings_revision),
+  };
+}
+
+function setCandidateAlertSettings(
+  db: SqliteDatabase,
+  op: Extract<CandidateOp, { kind: 'candidate.alert_settings_set' }>,
+): CandidateAlertSettingsValue {
+  const current = readCandidateAlertSettings(db);
+  if (current.settings_revision !== op.expected_revision)
+    throw new CandidateRejection(['settings_revision_conflict']);
+  const now = utcMillis(op.now) as number;
+  if (current.settings_revision === '0')
+    db.prepare(
+      'INSERT INTO candidate_alert_settings (setting_id, os_notification, settings_revision, updated_at) VALUES (1, ?, 1, ?)',
+    ).run(op.os_notification, now);
+  else
+    db.prepare(
+      'UPDATE candidate_alert_settings SET os_notification = ?, settings_revision = settings_revision + 1, updated_at = ? WHERE setting_id = 1',
+    ).run(op.os_notification, now);
+  return readCandidateAlertSettings(db);
+}
+
+function readDeliveryRecords(
+  db: SqliteDatabase,
+  notificationKey: string,
+): CandidateOpValues['candidate.alert_records'] {
+  const records = db
+    .prepare(
+      'SELECT notification_key, reminder_id, status FROM deliveries WHERE notification_key = ? ORDER BY reminder_id',
+    )
+    .all(notificationKey) as CandidateDeliveryRecord[];
+  return {
+    records: records.map((record) => ({
+      notification_key: record.notification_key,
+      reminder_id: record.reminder_id,
+      status: record.status,
+    })),
+  };
+}
+
+// 送出意図を書く。判定（domain の candidateAlertDecision）は Core が先に行い、ここは同じ transaction で最後の保証を確かめる。
+function writeAlertIntent(
+  db: SqliteDatabase,
+  input: CandidateAlertIntentInput,
+): CandidateOpValues['candidate.alert_intent'] {
+  const settings = readCandidateAlertSettings(db);
+  if (settings.os_notification !== 'on')
+    throw new CandidateRejection(['alert_setting_off']);
+  if (settings.settings_revision !== input.settings_revision)
+    throw new CandidateRejection(['settings_revision_conflict']);
+  const candidate = db
+    .prepare(
+      'SELECT state FROM notification_candidates WHERE notification_key = ?',
+    )
+    .get(input.notification_key) as { state: CandidateState } | undefined;
+  if (candidate === undefined)
+    throw new CandidateRejection(['candidate_not_found']);
+  if (CLOSING.has(candidate.state))
+    throw new CandidateRejection(['candidate_closed']);
+  const delivered = db
+    .prepare(
+      'SELECT 1 FROM deliveries WHERE notification_key = ? AND reminder_id = ?',
+    )
+    .get(input.notification_key, input.reminder_id);
+  if (delivered !== undefined)
+    throw new CandidateRejection(['already_delivered']);
+  const sameId = db
+    .prepare('SELECT 1 FROM deliveries WHERE delivery_id = ?')
+    .get(input.delivery_id);
+  if (sameId !== undefined)
+    throw new CandidateRejection(['delivery_id_exists']);
+  db.prepare(
+    "INSERT INTO deliveries (delivery_id, notification_key, reminder_id, device_id, channel, status, intent_at) VALUES (?, ?, ?, NULL, 'os_notification', 'intent_saved', ?)",
+  ).run(
+    input.delivery_id,
+    input.notification_key,
+    input.reminder_id,
+    utcMillis(input.intent_at) as number,
+  );
+  return { delivery_id: input.delivery_id };
+}
+
+function settleAlert(
+  db: SqliteDatabase,
+  op: Extract<CandidateOp, { kind: 'candidate.alert_settle' }>,
+): CandidateOpValues['candidate.alert_settle'] {
+  const changed = db
+    .prepare(
+      "UPDATE deliveries SET status = ? WHERE delivery_id = ? AND status = 'intent_saved'",
+    )
+    .run(op.status, op.delivery_id).changes;
+  if (changed !== 1) throw new CandidateRejection(['delivery_not_pending']);
+  return { delivery_id: op.delivery_id, status: op.status };
+}
+
 // --- 保持の掃除 ---
 
 function deleteBlobs(
@@ -932,11 +1160,12 @@ function sweepCandidates(
 ): CandidateOpValues['candidate.sweep'] {
   const rows = db
     .prepare(
-      `SELECT candidate_id, state, closed_at, title_blob_id, excerpt_blob_id
+      `SELECT candidate_id, notification_key, state, closed_at, title_blob_id, excerpt_blob_id
          FROM notification_candidates WHERE closed_at IS NOT NULL ORDER BY candidate_id`,
     )
     .all() as {
     candidate_id: string;
+    notification_key: string;
     state: CandidateState;
     closed_at: number;
     title_blob_id: string | null;
@@ -961,6 +1190,10 @@ function sweepCandidates(
       db.prepare(
         "DELETE FROM derivations WHERE artifact_kind = 'notification_candidate' AND artifact_id = ?",
       ).run(row.candidate_id);
+      // 配信の記録も識別子と一緒に消す（保持は候補の識別子と同じ。policy の candidate_key。ADR 0196）。
+      db.prepare('DELETE FROM deliveries WHERE notification_key = ?').run(
+        row.notification_key,
+      );
       deleted.push(row.candidate_id);
     } else if (
       phase === 'identifier_only' &&
@@ -1046,6 +1279,19 @@ export function executeCandidateOp(
         result: { ok: true, value: countCandidates(db) },
         halt: false,
       };
+    case 'candidate.alert_settings_get':
+      return {
+        result: { ok: true, value: readCandidateAlertSettings(db) },
+        halt: false,
+      };
+    case 'candidate.alert_records':
+      return {
+        result: {
+          ok: true,
+          value: readDeliveryRecords(db, op.notification_key),
+        },
+        halt: false,
+      };
     default:
       break;
   }
@@ -1070,6 +1316,11 @@ export function executeCandidateOp(
           return createCandidate(db, op.input);
         if (op.kind === 'candidate.sweep')
           return sweepCandidates(db, op.now, utcMillis(op.now) as number);
+        if (op.kind === 'candidate.alert_settings_set')
+          return setCandidateAlertSettings(db, op);
+        if (op.kind === 'candidate.alert_intent')
+          return writeAlertIntent(db, op.input);
+        if (op.kind === 'candidate.alert_settle') return settleAlert(db, op);
         return transitionCandidate(
           db,
           (op as Extract<CandidateOp, { kind: 'candidate.transition' }>).input,

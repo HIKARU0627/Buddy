@@ -1463,3 +1463,336 @@ test('list pages with a keyset cursor and reaches every row exactly once, even w
       );
   });
 });
+
+// --- 気づきの OS 通知の入・切と配信の記録（マイグレーション 0025、ADR 0196） ---
+
+const D1 = 'd1000000-0000-4000-8000-000000000001';
+const D2 = 'd1000000-0000-4000-8000-000000000002';
+const R1 = 'e1000000-0000-4000-8000-000000000001';
+
+function alertSet(
+  db: SqliteDatabase,
+  expected: string,
+  value: 'on' | 'off',
+): { ok: boolean; value?: CandidateOpValue; reasons?: readonly string[] } {
+  return run(db, {
+    kind: 'candidate.alert_settings_set',
+    expected_revision: expected,
+    os_notification: value,
+    now: T0,
+  });
+}
+
+function intent(
+  db: SqliteDatabase,
+  over: Partial<{
+    delivery_id: string;
+    notification_key: string;
+    reminder_id: string;
+    settings_revision: string;
+    intent_at: string;
+  }> = {},
+): { ok: boolean; value?: CandidateOpValue; reasons?: readonly string[] } {
+  return run(db, {
+    kind: 'candidate.alert_intent',
+    input: {
+      delivery_id: D1,
+      notification_key: KEY_A,
+      reminder_id: '',
+      settings_revision: '1',
+      intent_at: T0,
+      ...over,
+    },
+  });
+}
+
+test('the OS notification setting starts off at revision 0 and moves one revision per change, refusing a stale revision either way', async () => {
+  await withDb((db) => {
+    assert.deepEqual(run(db, { kind: 'candidate.alert_settings_get' }).value, {
+      os_notification: 'off',
+      settings_revision: '0',
+    });
+    assert.deepEqual(alertSet(db, '0', 'on').value, {
+      os_notification: 'on',
+      settings_revision: '1',
+    });
+    // 同じ版の 2 回目（同じ要求の再送・古い画面）は、入にするときも切にするときも拒否する。
+    assert.deepEqual(alertSet(db, '0', 'on').reasons, [
+      'settings_revision_conflict',
+    ]);
+    assert.deepEqual(alertSet(db, '0', 'off').reasons, [
+      'settings_revision_conflict',
+    ]);
+    // 同じ値でも版は進む。
+    assert.deepEqual(alertSet(db, '1', 'on').value, {
+      os_notification: 'on',
+      settings_revision: '2',
+    });
+    assert.deepEqual(alertSet(db, '2', 'off').value, {
+      os_notification: 'off',
+      settings_revision: '3',
+    });
+    assert.deepEqual(
+      db.prepare('SELECT * FROM candidate_alert_settings').all(),
+      [
+        {
+          setting_id: 1,
+          os_notification: 'off',
+          settings_revision: 3,
+          updated_at: T0_MS,
+        },
+      ],
+    );
+    // 形の誤り。
+    for (const [expected, value, reason] of [
+      ['01', 'on', 'expected_revision_invalid'],
+      ['-1', 'on', 'expected_revision_invalid'],
+      ['3', 'yes', 'os_notification_invalid'],
+    ] as const)
+      assert.deepEqual(
+        alertSet(db, expected, value as 'on').reasons,
+        [reason],
+        `${expected} ${value}`,
+      );
+    // 書込みを止めた worker は変えない。
+    assert.deepEqual(
+      run(
+        db,
+        {
+          kind: 'candidate.alert_settings_set',
+          expected_revision: '3',
+          os_notification: 'on',
+          now: T0,
+        },
+        true,
+      ).reasons,
+      ['worker_halted'],
+    );
+  });
+});
+
+test('the DB keeps the OS notification setting to one row whose revision only steps by one and is never deleted', async () => {
+  await withDb((db) => {
+    assert.equal(alertSet(db, '0', 'on').ok, true);
+    const refused = (sql: string, name: string): void =>
+      assert.throws(() => db.prepare(sql).run(), new RegExp(name), sql);
+    refused(
+      "INSERT INTO candidate_alert_settings (setting_id, os_notification, settings_revision, updated_at) VALUES (1, 'off', 1, 0)",
+      'candidate_alert_settings_no_replace',
+    );
+    refused(
+      "INSERT OR REPLACE INTO candidate_alert_settings (setting_id, os_notification, settings_revision, updated_at) VALUES (1, 'off', 1, 0)",
+      'candidate_alert_settings_no_replace',
+    );
+    refused(
+      'UPDATE candidate_alert_settings SET settings_revision = 3',
+      'candidate_alert_settings_revision_step',
+    );
+    refused(
+      'UPDATE candidate_alert_settings SET settings_revision = 0',
+      'candidate_alert_settings_revision_step',
+    );
+    refused(
+      'DELETE FROM candidate_alert_settings',
+      'candidate_alert_settings_no_delete',
+    );
+    refused(
+      "UPDATE candidate_alert_settings SET os_notification = 'maybe', settings_revision = 2",
+      'CHECK constraint failed',
+    );
+  });
+  await withDb((db) => {
+    assert.throws(
+      () =>
+        db
+          .prepare(
+            "INSERT INTO candidate_alert_settings (setting_id, os_notification, settings_revision, updated_at) VALUES (1, 'on', 2, 0)",
+          )
+          .run(),
+      /candidate_alert_settings_insert_first/u,
+    );
+  });
+});
+
+test('an alert intent is written only while the setting is on at the same revision, for a live candidate, once per key', async () => {
+  await withDb((db) => {
+    create(db);
+    // 行がない（既定の切）・切のときは書かない。
+    assert.deepEqual(intent(db, { settings_revision: '0' }).reasons, [
+      'alert_setting_off',
+    ]);
+    assert.equal(alertSet(db, '0', 'off').ok, true);
+    assert.deepEqual(intent(db).reasons, ['alert_setting_off']);
+    assert.equal(alertSet(db, '1', 'on').ok, true);
+    // 判定を始めた後に設定が変わった（版が違う）。
+    assert.deepEqual(intent(db, { settings_revision: '1' }).reasons, [
+      'settings_revision_conflict',
+    ]);
+    // 候補がない。
+    assert.deepEqual(
+      intent(db, { settings_revision: '2', notification_key: KEY_B }).reasons,
+      ['candidate_not_found'],
+    );
+    assert.deepEqual(intent(db, { settings_revision: '2' }).value, {
+      delivery_id: D1,
+    });
+    // 同じ識別子・同じ再通知の ID は 2 回目を書かない（別の配信 ID でも）。
+    assert.deepEqual(
+      intent(db, { settings_revision: '2', delivery_id: D2 }).reasons,
+      ['already_delivered'],
+    );
+    // 本人の指定した再通知は別の ID で書ける。
+    assert.deepEqual(
+      intent(db, { settings_revision: '2', delivery_id: D2, reminder_id: R1 })
+        .value,
+      { delivery_id: D2 },
+    );
+    assert.deepEqual(
+      run(db, { kind: 'candidate.alert_records', notification_key: KEY_A })
+        .value,
+      {
+        records: [
+          { notification_key: KEY_A, reminder_id: '', status: 'intent_saved' },
+          {
+            notification_key: KEY_A,
+            reminder_id: R1,
+            status: 'intent_saved',
+          },
+        ],
+      },
+    );
+    assert.deepEqual(
+      db
+        .prepare(
+          'SELECT device_id, channel, intent_at FROM deliveries ORDER BY delivery_id',
+        )
+        .all(),
+      [
+        { device_id: null, channel: 'os_notification', intent_at: T0_MS },
+        { device_id: null, channel: 'os_notification', intent_at: T0_MS },
+      ],
+    );
+  });
+});
+
+test('no alert intent is written for a dismissed or resolved candidate', async () => {
+  await withDb((db) => {
+    create(db, { candidate_id: C1, notification_key: KEY_A });
+    create(db, { candidate_id: C2, notification_key: KEY_B });
+    assert.equal(alertSet(db, '0', 'on').ok, true);
+    assert.equal(transition(db, C1, 'dismiss', 'new').ok, true);
+    assert.equal(transition(db, C2, 'resolve', 'new').ok, true);
+    for (const key of [KEY_A, KEY_B])
+      assert.deepEqual(
+        intent(db, { notification_key: key }).reasons,
+        ['candidate_closed'],
+        key,
+      );
+    assert.equal(count(db, 'SELECT count(*) FROM deliveries'), 0);
+  });
+});
+
+test('an intent settles once to delivered or delivery_unknown and never back', async () => {
+  await withDb((db) => {
+    create(db, { candidate_id: C1, notification_key: KEY_A });
+    create(db, { candidate_id: C2, notification_key: KEY_B });
+    assert.equal(alertSet(db, '0', 'on').ok, true);
+    assert.equal(intent(db).ok, true);
+    assert.equal(
+      intent(db, { delivery_id: D2, notification_key: KEY_B }).ok,
+      true,
+    );
+    const settle = (id: string, status: 'delivered' | 'delivery_unknown') =>
+      run(db, { kind: 'candidate.alert_settle', delivery_id: id, status });
+    assert.deepEqual(settle(D1, 'delivered').value, {
+      delivery_id: D1,
+      status: 'delivered',
+    });
+    assert.deepEqual(settle(D2, 'delivery_unknown').value, {
+      delivery_id: D2,
+      status: 'delivery_unknown',
+    });
+    for (const [id, status] of [
+      [D1, 'delivery_unknown'],
+      [D2, 'delivered'],
+      [R1, 'delivered'],
+    ] as const)
+      assert.deepEqual(settle(id, status).reasons, ['delivery_not_pending']);
+    assert.deepEqual(
+      db
+        .prepare(
+          'SELECT delivery_id, status FROM deliveries ORDER BY delivery_id',
+        )
+        .all(),
+      [
+        { delivery_id: D1, status: 'delivered' },
+        { delivery_id: D2, status: 'delivery_unknown' },
+      ],
+    );
+    assert.deepEqual(
+      run(db, {
+        kind: 'candidate.alert_settle',
+        delivery_id: D1,
+        status: 'intent_saved' as never,
+      }).reasons,
+      ['status_invalid'],
+    );
+  });
+});
+
+test('malformed alert commands are refused before anything is read or written', async () => {
+  await withDb((db) => {
+    for (const [over, reason] of [
+      [{ delivery_id: 'd-1' }, 'delivery_id_invalid'],
+      [{ notification_key: 'A'.repeat(64) }, 'notification_key_invalid'],
+      [{ reminder_id: 'later' }, 'reminder_id_invalid'],
+      [{ settings_revision: '' }, 'settings_revision_invalid'],
+      [{ intent_at: '2031-02-30T00:00:00Z' }, 'intent_at_invalid'],
+    ] as const)
+      assert.deepEqual(intent(db, over).reasons, [reason], reason);
+    assert.deepEqual(
+      run(db, { kind: 'candidate.alert_records', notification_key: 'x' })
+        .reasons,
+      ['notification_key_invalid'],
+    );
+  });
+});
+
+test('the delivery records leave with the candidate key, by the 97 day sweep or by forgetting', async () => {
+  await withDb((db) => {
+    create(db, { candidate_id: C1, notification_key: KEY_A });
+    create(db, { candidate_id: C2, notification_key: KEY_B });
+    assert.equal(alertSet(db, '0', 'on').ok, true);
+    assert.equal(intent(db).ok, true);
+    assert.equal(
+      intent(db, { delivery_id: D2, notification_key: KEY_B }).ok,
+      true,
+    );
+    assert.equal(transition(db, C1, 'resolve', 'new', T0).ok, true);
+    const keys = (): unknown[] =>
+      db
+        .prepare(
+          'SELECT notification_key FROM deliveries ORDER BY notification_key',
+        )
+        .all();
+    // 97 日の 1 秒前までは残す。
+    assert.deepEqual(sweep(db, at(T0_MS + KEY_RETENTION_MS - 1000)), {
+      content_deleted: [C1],
+      deleted: [],
+    });
+    assert.deepEqual(keys(), [
+      { notification_key: KEY_A },
+      { notification_key: KEY_B },
+    ]);
+    assert.deepEqual(sweep(db, at(T0_MS + KEY_RETENTION_MS)), {
+      content_deleted: [],
+      deleted: [C1],
+    });
+    assert.deepEqual(keys(), [{ notification_key: KEY_B }]);
+    assert.equal(
+      deleteForgetNode(db, { kind: 'notification_candidate', id: C2 }),
+      1,
+    );
+    assert.deepEqual(keys(), []);
+  });
+});

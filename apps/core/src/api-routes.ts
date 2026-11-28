@@ -233,6 +233,17 @@ export const API_ROUTES: readonly ApiRoute[] = [
   ),
   // 気づき（候補）の一覧・根拠の再取得・状態の変更（B11-04 P2、ADR 0130）。処理は api-candidates.ts。
   route('listCandidates', 'GET', '/v1/candidates'),
+  // 気づきの OS 通知の入・切（ADR 0196）。処理は candidate-alerts.ts。読み取りは端末の main が後ろで読む。
+  route('getCandidateAlertSettings', 'GET', '/v1/candidates/alert-settings'),
+  route(
+    'changeCandidateAlertSettings',
+    'POST',
+    '/v1/candidates/alert-settings',
+    {
+      body: 'CandidateAlertSettingsChangeRequest',
+      ...SCREEN,
+    },
+  ),
   // 根拠は許可範囲から取り直すので接続範囲を本文で示す（postCanvasContent と同じ POST）。
   route(
     'getCandidateEvidence',

@@ -76,6 +76,12 @@ const listBody = (
   ...fields,
 });
 
+const alertBody = (value: 'on' | 'off', revision: string) => ({
+  schema: 'buddy.candidate-alert-settings.v1',
+  os_notification: value,
+  candidate_alert_settings_revision: revision,
+});
+
 type Outcome =
   | { kind: 'response'; status: number; body: unknown }
   | { kind: 'unknown' }
@@ -95,6 +101,8 @@ interface Rig {
   readonly calls: Call[];
   readonly logs: string[];
   list: () => Outcome;
+  // OS 通知の入・切の読み取り（ADR 0196。既定は切・版 0）。
+  alert: () => Outcome;
   post: (call: Call) => Outcome;
   // 中枢への要求の答えを返す前に待つ（途中で世代が変わる状況を作る）。
   delay: (() => Promise<void>) | null;
@@ -109,6 +117,11 @@ function rig(): Rig {
     calls,
     logs,
     list: () => ({ kind: 'response', status: 200, body: listBody() }),
+    alert: () => ({
+      kind: 'response',
+      status: 200,
+      body: alertBody('off', '0'),
+    }),
     post: () => ({ kind: 'unknown' }),
     delay: null,
     scope: SCOPE,
@@ -124,6 +137,11 @@ function rig(): Rig {
       if (state.delay !== null) await state.delay();
       if (call.method === 'GET' && call.path === '/v1/candidates')
         return state.list();
+      if (
+        call.method === 'GET' &&
+        call.path === '/v1/candidates/alert-settings'
+      )
+        return state.alert();
       return state.post(call);
     },
   } as unknown as ClientConnection;
@@ -159,6 +177,7 @@ test('before any read the view says unavailable, not "no candidates"', () => {
     entries: [],
     truncated: false,
     list_seq: 1,
+    alert: null,
   });
 });
 
@@ -168,10 +187,19 @@ test('the list keeps the hub order and gives the screen only refs and display va
   assert.equal(listed.ok, true);
   assert.deepEqual(r.calls, [
     { method: 'GET', path: '/v1/candidates', expectedScopeId: SCOPE },
+    {
+      method: 'GET',
+      path: '/v1/candidates/alert-settings',
+      expectedScopeId: SCOPE,
+    },
   ]);
   const view = r.bridge.view();
   assert.deepEqual(
-    { ...view, entries: view.entries.map((entry) => ({ ...entry, ref: 'r' })) },
+    {
+      ...view,
+      entries: view.entries.map((entry) => ({ ...entry, ref: 'r' })),
+      alert: view.alert === null ? null : { ...view.alert, ref: 'a' },
+    },
     {
       fetch: 'loaded',
       fetched_at: '2030-10-09T03:00:00Z',
@@ -220,7 +248,8 @@ test('the list keeps the hub order and gives the screen only refs and display va
         },
       ],
       truncated: false,
-      list_seq: 2,
+      list_seq: 3,
+      alert: { ref: 'a', os_notification: 'off' },
     },
   );
   // 参照は main が作った値で、候補 ID・通知キー・版・操作 ID は画面へ出ない。
@@ -329,7 +358,13 @@ test('a state change sends the read state as expected_state through the scoped c
     result.value.entries.map((entry) => entry.state),
     ['seen', 'seen'],
   );
-  assert.equal(r.calls.filter((call) => call.method === 'GET').length, 2);
+  // 一覧の読み取りは 2 回（最初と変更の後）。それぞれ OS 通知の設定も読む。
+  assert.equal(
+    r.calls.filter(
+      (call) => call.method === 'GET' && call.path === '/v1/candidates',
+    ).length,
+    2,
+  );
 });
 
 test('a dismiss that leaves the list removes the row after the re-read', async () => {
@@ -570,4 +605,130 @@ test('without a scope nothing is sent', async () => {
     fail('not_connected'),
   );
   assert.equal(r.posts().length, 0);
+});
+
+// --- OS 通知の入・切とトレイの件数（ADR 0196） ---
+
+test('the OS notification setting is read with the list; the tray count shows only while on and read', async () => {
+  const r = rig();
+  // 読めていない間は入とみなさない。
+  assert.equal(r.bridge.alertEnabled(), false);
+  assert.equal(r.bridge.trayCount(), null);
+  await r.bridge.list();
+  assert.equal(r.bridge.view().alert?.os_notification, 'off');
+  assert.equal(r.bridge.trayCount(), null);
+  r.alert = () => ({
+    kind: 'response',
+    status: 200,
+    body: alertBody('on', '1'),
+  });
+  await r.bridge.list();
+  assert.equal(r.bridge.alertEnabled(), true);
+  assert.equal(r.bridge.trayCount(), 1);
+  // 設定を読めなくなっても前の値のまま（「切」の証拠にしない）。ログはコードだけ。
+  r.alert = () => ({ kind: 'response', status: 503, body: {} });
+  await r.bridge.list();
+  assert.equal(r.bridge.alertEnabled(), true);
+  assert.deepEqual(r.logs, ['candidate_alert_settings_unavailable']);
+  // 版は画面へ出さない。
+  assert(
+    !JSON.stringify(r.bridge.view()).includes(
+      'candidate_alert_settings_revision',
+    ),
+  );
+  // 世代が進んだら捨てる。
+  r.bridge.reset();
+  assert.equal(r.bridge.view().alert, null);
+  assert.equal(r.bridge.trayCount(), null);
+});
+
+test('in the background the list is read only while the setting is on', async () => {
+  const r = rig();
+  await r.bridge.background();
+  assert.deepEqual(
+    r.calls.map((call) => call.path),
+    ['/v1/candidates/alert-settings'],
+  );
+  assert.equal(r.bridge.view().fetch, 'unavailable');
+  r.alert = () => ({
+    kind: 'response',
+    status: 200,
+    body: alertBody('on', '1'),
+  });
+  await r.bridge.background();
+  assert.deepEqual(
+    r.calls.map((call) => call.path),
+    [
+      '/v1/candidates/alert-settings',
+      '/v1/candidates/alert-settings',
+      '/v1/candidates',
+      '/v1/candidates/alert-settings',
+    ],
+  );
+  assert.equal(r.bridge.trayCount(), 1);
+});
+
+test('a setting change carries the main revision, refuses a stale screen ref, and never resends', async () => {
+  const r = rig();
+  // 読めたことがない設定は変えない。
+  assert.deepEqual(
+    await r.bridge.changeAlert(uuid(0x999), 'on'),
+    fail('entry_not_found'),
+  );
+  await r.bridge.list();
+  const ref = r.bridge.view().alert?.ref as string;
+  // 画面が古い参照を見ている: 送らない。
+  assert.deepEqual(
+    await r.bridge.changeAlert(uuid(0x999), 'on'),
+    fail('preview_stale'),
+  );
+  assert.deepEqual(r.posts(), []);
+  r.post = () => ({
+    kind: 'response',
+    status: 200,
+    body: alertBody('on', '1'),
+  });
+  // 中枢の設定は変えた後の値になる（読み直しも同じ値を返す）。
+  r.alert = () => ({
+    kind: 'response',
+    status: 200,
+    body: alertBody('on', '1'),
+  });
+  const changed = await r.bridge.changeAlert(ref, 'on');
+  assert.equal(changed.ok, true);
+  assert.deepEqual(r.posts(), [
+    {
+      method: 'POST',
+      path: '/v1/candidates/alert-settings',
+      body: {
+        expected_candidate_alert_settings_revision: '0',
+        os_notification: 'on',
+      },
+      scoped: true,
+      screenOperation: true,
+      expectedScopeId: SCOPE,
+    },
+  ]);
+  // 版が変わったので参照も新しい。入にしたので一覧を読み直した（トレイの件数）。
+  const next = r.bridge.view().alert;
+  assert.equal(next?.os_notification, 'on');
+  assert.notEqual(next?.ref, ref);
+  assert.equal(r.bridge.trayCount(), 1);
+  // 別の画面で変わった（409）・結果が分からない: 送り直さず、設定を読み直す。
+  for (const [outcome, reason] of [
+    [{ kind: 'response', status: 409, body: {} }, 'preview_stale'],
+    [{ kind: 'unknown' }, 'outcome_unknown'],
+    [{ kind: 'response', status: 503, body: {} }, 'outcome_unknown'],
+    [{ kind: 'response', status: 422, body: {} }, 'core_rejected'],
+  ] as const) {
+    const before = r.posts().length;
+    r.post = () => outcome as Outcome;
+    const current = r.bridge.view().alert?.ref as string;
+    assert.deepEqual(
+      await r.bridge.changeAlert(current, 'off'),
+      fail(reason),
+      reason,
+    );
+    assert.equal(r.posts().length, before + 1, reason);
+  }
 });

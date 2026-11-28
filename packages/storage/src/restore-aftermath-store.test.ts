@@ -228,6 +228,7 @@ test('restore aftermath: every reset is written in one transaction (hand-written
       sync_scopes_reset_count: 1,
       receipt_settings_closed_count: 0,
       memory_settings_closed_count: 0,
+      candidate_alert_settings_closed_count: 0,
       safety_revision: '8',
     });
     const after = snapshot(db);
@@ -383,7 +384,7 @@ test('restore aftermath: every reset is written in one transaction (hand-written
     assert.deepEqual(after['meta'], [
       { key: 'restore_backup_created_at', value: String(BACKUP_AT) },
       { key: 'restore_restored_at', value: String(RESTORED_AT) },
-      { key: 'schema_version', value: '24' },
+      { key: 'schema_version', value: '25' },
       { key: 'store_generation', value: NEW_GENERATION },
     ]);
     // 隔離の印のある操作は、承認・準備へ進めない（DB の最後の保証）。
@@ -544,6 +545,60 @@ test('restore aftermath: 許可のない記憶の種類の設定は変えず、�
         .prepare('SELECT settings_revision, updated_at FROM memory_settings')
         .all(),
       [{ settings_revision: 1, updated_at: 5 }],
+    );
+  });
+});
+
+test('restore aftermath: 気づきの OS 通知が入なら切にし、版を 1 進める（ADR 0196、U585）', async () => {
+  await withSeeded((db) => {
+    db.prepare(
+      "INSERT INTO candidate_alert_settings (setting_id, os_notification, settings_revision, updated_at) VALUES (1, 'off', 1, 5)",
+    ).run();
+    db.prepare(
+      "UPDATE candidate_alert_settings SET os_notification = 'on', settings_revision = 2 WHERE setting_id = 1",
+    ).run();
+    const result = applyRestoreAftermath(db, INPUT);
+    assert.equal(result.candidate_alert_settings_closed_count, 1);
+    assert.deepEqual(
+      db.prepare('SELECT * FROM candidate_alert_settings').all(),
+      [
+        {
+          setting_id: 1,
+          os_notification: 'off',
+          settings_revision: 3,
+          updated_at: RESTORED_AT,
+        },
+      ],
+    );
+  });
+});
+
+test('restore aftermath: 切の気づきの OS 通知は変えず版も進めない。行がなければ作らない（ADR 0196）', async () => {
+  await withSeeded((db) => {
+    assert.equal(
+      applyRestoreAftermath(db, INPUT).candidate_alert_settings_closed_count,
+      0,
+    );
+    assert.deepEqual(
+      db.prepare('SELECT * FROM candidate_alert_settings').all(),
+      [],
+    );
+  });
+  await withSeeded((db) => {
+    db.prepare(
+      "INSERT INTO candidate_alert_settings (setting_id, os_notification, settings_revision, updated_at) VALUES (1, 'off', 1, 5)",
+    ).run();
+    assert.equal(
+      applyRestoreAftermath(db, INPUT).candidate_alert_settings_closed_count,
+      0,
+    );
+    assert.deepEqual(
+      db
+        .prepare(
+          'SELECT os_notification, settings_revision, updated_at FROM candidate_alert_settings',
+        )
+        .all(),
+      [{ os_notification: 'off', settings_revision: 1, updated_at: 5 }],
     );
   });
 });

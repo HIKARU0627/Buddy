@@ -45,6 +45,10 @@ import type {
   TlsKeyStore,
 } from '@buddy/platform';
 import { createCandidateRoutes } from './api-candidates.js';
+import {
+  createCandidateAlertRoutes,
+  createCandidateAlerts,
+} from './candidate-alerts.js';
 import { createForgetRoutes } from './api-forget.js';
 import { createMemoryRoutes } from './api-memory.js';
 import { createHouseholdRoutes } from './api-household.js';
@@ -1962,8 +1966,26 @@ async function startHttps(
     now: () => now().getTime(),
     receipt: householdReceipt,
   });
+  // 気づきの OS 通知（B11-05 の P2、ADR 0196）。候補の作成・状態の遷移が書けた後に、設定が入なら candidateAlertDecision で
+  // 出すかを決め、送出意図を保存してから開いている購読へ CandidateNotice を送る。記録しない会話の間は OS 通知を出さない。
+  // 入・切の設定は GET・POST /v1/candidates/alert-settings（既定は切）。
+  const candidateAlerts = createCandidateAlerts({
+    store,
+    send: (message) => notices.publishCandidate(message),
+    privateConversation: () => storage.privateConversation(),
+    now,
+    newId: () => randomUUID(),
+    log,
+  });
+  store.onCandidateWrite(candidateAlerts.observe);
+  const candidateAlertRoutes = createCandidateAlertRoutes({
+    store,
+    now,
+    changed: candidateAlerts.settingsChanged,
+  });
   const candidateHandlers = {
     ...candidateRoutes.handlers,
+    ...candidateAlertRoutes.handlers,
     listCandidates: candidateRefresh.wrap(
       candidateRoutes.handlers.listCandidates,
     ),

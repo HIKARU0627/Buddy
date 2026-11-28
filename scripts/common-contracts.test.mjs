@@ -72,6 +72,9 @@ const VERSION_FIELDS = {
   // 保存してよい記憶の種類の設定の版（ADR 0191）。
   memory_settings_revision: 'MemorySettingsRevision',
   expected_memory_settings_revision: 'MemorySettingsRevision',
+  // 気づきの OS 通知の入・切の設定の版（ADR 0196）。
+  candidate_alert_settings_revision: 'CandidateAlertSettingsRevision',
+  expected_candidate_alert_settings_revision: 'CandidateAlertSettingsRevision',
   // 分類ごとの予算の版（ADR 0166）。
   budget_revision: 'HouseholdBudgetRevision',
   expected_budget_revision: 'HouseholdBudgetRevision',
@@ -133,6 +136,7 @@ const DECIMAL_KINDS = [
   'HouseholdSettingsRevision',
   'HouseholdBudgetRevision',
   'MemorySettingsRevision',
+  'CandidateAlertSettingsRevision',
   'Sequence',
 ];
 

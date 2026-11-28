@@ -329,6 +329,8 @@ const CANVAS_FORBIDDEN = [
   // 気づきの一覧・状態の変更（B11-05、ADR 0132）。従来の窓と状態の層。キャンバスの部品が気づきの操作に見せかけられない。
   'desktop.candidates_list',
   'desktop.candidate_state',
+  // 気づきの OS 通知の入・切の変更（ADR 0196）。気づきの欄と同じく従来の窓と状態の層。
+  'desktop.candidate_alert_setting',
   // 連携の接続の一覧・取得範囲の変更（B08-02 P3・B09-05、ADR 0142）。従来の窓の中枢の画面と状態の層。
   // キャンバスの部品が連携の操作に見せかけられない。
   'desktop.connections_list',
@@ -526,15 +528,15 @@ test('window roles: every request and notification channel of the schema has a r
     [...notifications].sort(),
     [...DESKTOP_NOTIFICATION_CHANNELS].sort(),
   );
-  // 手で数えた数（現在の DesktopIpcChannel は 61 個。B04-05 の 7 個と UI-02 の canvas_summon、UI-04 の
+  // 手で数えた数（現在の DesktopIpcChannel は 62 個。B04-05 の 7 個と UI-02 の canvas_summon、UI-04 の
   // status_panel、UI-06 の canvas_user_op、UI-07 の canvas_content、B07-05 の予算の確認 3 個、B05-06 の音声 3 個、
   // B05-05 の音声の会話の操作 1 個、B11-05 の気づき 2 個、B08-02 P3・B09-05 の連携 2 個、ADR 0145 の選べる対象 1 個、B13-05 の自動実行 3 個、
   // ADR 0162〜0172・0177・0179 の家計簿 12 個、UI-10 の忘却の画面 3 個（ADR 0183）、UI-05 の段階 6 の保存モードの
-  // 切り替え 1 個（ADR 0189）、保存してよい記憶の種類の設定の変更 1 個（ADR 0191）、UI-05 の段階 5 の表示先の移動 1 個（ADR 0193）を含む）。
-  // 禁止の一覧 56 ＋ 全員の get_state ＋ 入力バーの turn_submit・canvas_summon ＋
+  // 切り替え 1 個（ADR 0189）、保存してよい記憶の種類の設定の変更 1 個（ADR 0191）、UI-05 の段階 5 の表示先の移動 1 個（ADR 0193）、気づきの OS 通知の入・切の変更 1 個（ADR 0196）を含む）。
+  // 禁止の一覧 57 ＋ 全員の get_state ＋ 入力バーの turn_submit・canvas_summon ＋
   // キャンバスの canvas_user_op・canvas_content。
-  assert.equal(channels.size, 61);
-  assert.equal(CANVAS_FORBIDDEN.length + 5, 61);
+  assert.equal(channels.size, 62);
+  assert.equal(CANVAS_FORBIDDEN.length + 5, 62);
 });
 
 // PR #102 のレビュー（ADR 0032）: 見出しのマークアップ・URL、既存の text の更新、記録しない区切りの一時の記述、

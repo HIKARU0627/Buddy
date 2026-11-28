@@ -87,9 +87,9 @@ test('0009 は版 8 の DB の端末に世代の行（全部 0・停止なし）
       ).run(LIVE_1, DEV_A, RES_1);
       assert.deepEqual(applyMigrations(db, all), {
         from: 8,
-        to: 24,
+        to: 25,
         applied: [
-          9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
+          9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
         ],
       });
       assert.deepEqual(db.prepare('SELECT * FROM device_epochs').all(), [

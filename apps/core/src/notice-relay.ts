@@ -21,9 +21,11 @@ export type StreamNoticeMessage = Extract<
   { type: 'notice' }
 >;
 
-// WSS の購読の口（event-stream.ts の EventStreamOptions.notices）。
+// WSS の購読の口（event-stream.ts の EventStreamOptions.notices）。受け手は送れなかった（閉じた・詰まった）ときだけ false を返す。
+export type NoticeListener = (message: StreamNoticeMessage) => unknown;
+
 export interface NoticeNotifier {
-  subscribe(listener: (message: StreamNoticeMessage) => void): () => void;
+  subscribe(listener: NoticeListener): () => void;
 }
 
 // 端末へ送る形にする。source_item を除き、除いて空なら null（送らない）。
@@ -47,7 +49,7 @@ export interface NoticeRelayOptions {
 
 export class NoticeRelay implements NoticeSink, NoticeNotifier {
   readonly #options: NoticeRelayOptions;
-  readonly #listeners = new Set<(message: StreamNoticeMessage) => void>();
+  readonly #listeners = new Set<NoticeListener>();
   #contract: ApiContract | null;
   // 流れの表示の後始末（Core が HTTPS の受付と流れの経路を作った後に付ける）。false は当てられなかったこと。
   #display: ((notice: Notice) => boolean) | null = null;
@@ -62,7 +64,7 @@ export class NoticeRelay implements NoticeSink, NoticeNotifier {
     this.#display = handler;
   }
 
-  subscribe(listener: (message: StreamNoticeMessage) => void): () => void {
+  subscribe(listener: NoticeListener): () => void {
     this.#listeners.add(listener);
     return () => {
       this.#listeners.delete(listener);
@@ -110,6 +112,31 @@ export class NoticeRelay implements NoticeSink, NoticeNotifier {
     }
     // 3. 起動の設定で渡された受け取り口。結果（Promise）は呼び出し側へ返す（失敗のログは呼び出し側が出す）。
     return this.#options.downstream?.publish(notice);
+  }
+
+  // 気づきの増減の知らせ（CandidateNotice、ADR 0196）を、開いている購読へだけ渡す。流れの表示の後始末・起動の設定の受け取り口へは
+  // 渡さない（キャンバス・掃除と関係しない）。契約に合わなければ送らない。渡せた購読の数を返す（購読がなければ 0。溜めない・
+  // 再送しない）。
+  publishCandidate(message: StreamNoticeMessage): number {
+    if (
+      message.notice.schema !== 'buddy.candidate-notice.v1' ||
+      this.#listeners.size === 0
+    )
+      return 0;
+    this.#contract ??= createApiContract();
+    if (!this.#contract.valid('EventStreamMessage', message)) {
+      this.#log('契約に合わない気づきの知らせを端末へ送りませんでした。');
+      return 0;
+    }
+    let handed = 0;
+    for (const listener of [...this.#listeners]) {
+      try {
+        if (listener(message) !== false) handed += 1;
+      } catch {
+        // 1 つの購読の失敗で他の購読を止めない。
+      }
+    }
+    return handed;
   }
 
   #log(message: string): void {

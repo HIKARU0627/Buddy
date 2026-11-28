@@ -73,7 +73,12 @@ const VOICE = [
   'desktop.voice_control',
 ];
 // B11-05 で足した、気づきの一覧・状態の変更のチャネル（従来の窓と状態の層。キャンバス・入力バーは使わない。ADR 0132）。
-const CANDIDATES = ['desktop.candidates_list', 'desktop.candidate_state'];
+// 気づきの OS 通知の入・切の変更（ADR 0196）も同じ窓。
+const CANDIDATES = [
+  'desktop.candidates_list',
+  'desktop.candidate_state',
+  'desktop.candidate_alert_setting',
+];
 // B08-02 P3・B09-05 で足した、連携の接続の一覧・取得範囲の変更のチャネル（従来の窓の中枢の画面と状態の層。
 // キャンバス・入力バーは使わない。ADR 0142）。
 const CONNECTIONS = [

@@ -1124,6 +1124,24 @@
           }
         },
         {
+          "type": "notice",
+          "notice": {
+            "schema": "buddy.candidate-notice.v1",
+            "notice_id": "00000000-0000-4000-8000-0000000000e7",
+            "occurred_at": "2030-01-01T00:00:33Z",
+            "alert_count": 2
+          }
+        },
+        {
+          "type": "notice",
+          "notice": {
+            "schema": "buddy.candidate-notice.v1",
+            "notice_id": "00000000-0000-4000-8000-0000000000e8",
+            "occurred_at": "2030-01-01T00:00:34Z",
+            "alert_count": 0
+          }
+        },
+        {
           "type": "resnapshot_required",
           "reason": "store_generation_changed"
         }
@@ -1137,6 +1155,43 @@
             "storage_mode": "private",
             "reason": "private_started",
             "segment_id": "00000000-0000-4000-8000-000000000041"
+          }
+        },
+        {
+          "type": "notice",
+          "notice": {
+            "schema": "buddy.candidate-notice.v1",
+            "notice_id": "00000000-0000-4000-8000-0000000000e7",
+            "occurred_at": "2030-01-01T00:00:33Z",
+            "alert_count": 1,
+            "title": "参加可否の返信：10/7まで"
+          }
+        },
+        {
+          "type": "notice",
+          "notice": {
+            "schema": "buddy.candidate-notice.v1",
+            "notice_id": "00000000-0000-4000-8000-0000000000e7",
+            "occurred_at": "2030-01-01T00:00:33Z",
+            "alert_count": 1,
+            "candidate_ids": ["00000000-0000-4000-8000-000000000601"]
+          }
+        },
+        {
+          "type": "notice",
+          "notice": {
+            "schema": "buddy.candidate-notice.v1",
+            "notice_id": "00000000-0000-4000-8000-0000000000e7",
+            "occurred_at": "2030-01-01T00:00:33Z",
+            "alert_count": -1
+          }
+        },
+        {
+          "type": "notice",
+          "notice": {
+            "schema": "buddy.candidate-notice.v1",
+            "notice_id": "00000000-0000-4000-8000-0000000000e7",
+            "occurred_at": "2030-01-01T00:00:33Z"
           }
         },
         {
@@ -2826,6 +2881,65 @@
         ["no_token_outside_home", 401, "unauthenticated"],
         ["locked", 403, "device_locked"],
         ["lock_unknown", 403, "device_locked"]
+      ]
+    },
+    "getCandidateAlertSettings": {
+      "response": {
+        "schema": "buddy.candidate-alert-settings.v1",
+        "os_notification": "off",
+        "candidate_alert_settings_revision": "0"
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"],
+        ["locked", 403, "device_locked"],
+        ["lock_unknown", 403, "device_locked"]
+      ],
+      "accepted_contexts": ["stale_scope", "remote_device"]
+    },
+    "changeCandidateAlertSettings": {
+      "request": {
+        "request_id": "00000000-0000-4000-8000-0000000f0301",
+        "command_scope_id": "00000000-0000-4000-8000-000000009002",
+        "expected_candidate_alert_settings_revision": "0",
+        "os_notification": "on"
+      },
+      "response": {
+        "schema": "buddy.candidate-alert-settings.v1",
+        "os_notification": "on",
+        "candidate_alert_settings_revision": "1"
+      },
+      "rejections": [
+        ["no_token", 401, "unauthenticated"],
+        ["outside_home", 403, "outside_home_network"],
+        ["no_token_outside_home", 401, "unauthenticated"],
+        ["stale_scope", 410, "expired_scope"],
+        ["locked", 403, "device_locked"],
+        ["lock_unknown", 403, "device_locked"],
+        ["too_large", 413, "payload_too_large"],
+        ["voice_origin", 403, "screen_operation_required"],
+        ["chat_origin", 403, "screen_operation_required"],
+        ["system_origin", 403, "screen_operation_required"]
+      ],
+      "invalid_bodies": [
+        {
+          "request_id": "00000000-0000-4000-8000-0000000f0301",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "expected_candidate_alert_settings_revision": "0",
+          "os_notification": "sometimes"
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-0000000f0301",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "os_notification": "on"
+        },
+        {
+          "request_id": "00000000-0000-4000-8000-0000000f0301",
+          "command_scope_id": "00000000-0000-4000-8000-000000009002",
+          "expected_candidate_alert_settings_revision": "01",
+          "os_notification": "off"
+        }
       ]
     },
     "getCandidateEvidence": {

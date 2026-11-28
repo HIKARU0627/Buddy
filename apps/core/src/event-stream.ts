@@ -362,12 +362,13 @@ export function createEventStream(
       if (!closed)
         unsubscribeNotices =
           options.notices?.subscribe((message) => {
-            if (closed || client.readyState !== WebSocket.OPEN) return;
+            if (closed || client.readyState !== WebSocket.OPEN) return false;
             if (client.bufferedAmount > maxBuffered) {
               finish('slow_consumer');
-              return;
+              return false;
             }
             client.send(JSON.stringify(message));
+            return true;
           }) ?? null;
       pingTimer = setInterval(() => {
         if (closed) return;

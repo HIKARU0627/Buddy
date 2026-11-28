@@ -73,6 +73,8 @@ export interface RestoreAftermathValue {
   readonly receipt_settings_closed_count: number;
   // 保存してよい記憶の種類の設定に許可があったので、全部 off にした数（0 か 1。ADR 0191 の見直し、U494）。
   readonly memory_settings_closed_count: number;
+  // 気づきの OS 通知が入だったので切にした数（0 か 1。ADR 0196、U585）。
+  readonly candidate_alert_settings_closed_count: number;
   readonly safety_revision: string;
 }
 
@@ -474,6 +476,22 @@ function writeAftermath(
           )
           .run(input.restored_at).changes;
 
+  // 7d. 気づきの OS 通知の入・切（ADR 0196、U585）。7c と同じ考えで、入なら切にして版を 1 進める（バックアップの後に本人が
+  // 切った通知を復元で戻さない。本人は画面で入にし直せる）。行は消さない（0025 の trigger が DELETE を拒む）。0025 より前の版の
+  // バックアップには表がないので、表があるときだけ。
+  const candidateAlertClosed =
+    db
+      .prepare(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'candidate_alert_settings'",
+      )
+      .get() === undefined
+      ? 0
+      : db
+          .prepare(
+            "UPDATE candidate_alert_settings SET os_notification = 'off', settings_revision = settings_revision + 1, updated_at = ? WHERE setting_id = 1 AND os_notification = 'on'",
+          )
+          .run(input.restored_at).changes;
+
   // 8. DB の世代と、効いている復元の時刻（予算の保留・付帯クレジット・候補起点の自動実行の検査が読む）。
   const setMeta = db.prepare(
     'INSERT INTO schema_meta (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value',
@@ -508,6 +526,7 @@ function writeAftermath(
     sync_scopes_reset_count: syncReset,
     receipt_settings_closed_count: receiptClosed,
     memory_settings_closed_count: memorySettingsClosed,
+    candidate_alert_settings_closed_count: candidateAlertClosed,
     safety_revision: safety.safety_revision,
   };
 }

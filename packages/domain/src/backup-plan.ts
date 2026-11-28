@@ -143,6 +143,9 @@ export const BACKUP_INCLUDED_TABLES: readonly string[] = [
   // 0024（ADR 0191）: 保存してよい記憶の種類の設定。本人の決定なので含める（復元の後始末で許可を全部 off にして版を進める。
   // バックアップの後に取り消した許可を戻さない。ADR 0191 の見直し、U494）。
   'memory_settings',
+  // 0025（ADR 0196）: 気づきの OS 通知の入・切。本人の決定なので含める（復元の後始末で on なら off にして版を進める。
+  // バックアップの後に切った通知を復元で戻さない。U494 と同じ考え、U585）。
+  'candidate_alert_settings',
 ];
 
 const has = (record: object, key: string): boolean =>

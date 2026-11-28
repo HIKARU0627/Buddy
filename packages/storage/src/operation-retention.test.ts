@@ -752,8 +752,8 @@ test('0011 moves a version 10 DB: rows survive, old tasks have no content yet, a
   await withVersion10((db) => {
     assert.deepEqual(applyMigrations(db), {
       from: 10,
-      to: 24,
-      applied: [11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24],
+      to: 25,
+      applied: [11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25],
     });
     assert.deepEqual(
       db
@@ -925,7 +925,7 @@ test('0011: the task content migration is staged, linked once, and resumes after
     db.close();
     const reopened = openWriteConnection(path, { platform: 'macos' });
     try {
-      assert.equal(readSchemaVersion(reopened), 24);
+      assert.equal(readSchemaVersion(reopened), 25);
       const again = value(
         retention(reopened, {
           kind: 'task.migration_next',
@@ -1055,8 +1055,8 @@ test('0011: a re-created parent row that is missing is caught, and the migration
     // 正しい 0011 はその後に適用できる。
     assert.deepEqual(applyMigrations(db), {
       from: 10,
-      to: 24,
-      applied: [11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24],
+      to: 25,
+      applied: [11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25],
     });
   });
 });
@@ -1081,8 +1081,8 @@ test('0011 fills completed_at of finished operations from before 0011 (the body 
       const before = Date.now() - 1000;
       assert.deepEqual(applyMigrations(db), {
         from: 10,
-        to: 24,
-        applied: [11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24],
+        to: 25,
+        applied: [11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25],
       });
       const after = Date.now() + 1000;
       const rows = db
@@ -1198,8 +1198,8 @@ test('0011 applies to a version 10 DB with 6000 operations within 10 seconds (ch
       const restStarted = Date.now();
       assert.deepEqual(applyMigrations(db, migrations), {
         from: 11,
-        to: 24,
-        applied: [12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24],
+        to: 25,
+        applied: [12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25],
       });
       const restElapsed = Date.now() - restStarted;
       // 0016・0019 の作り直しの重さが極端に増えたことに気づくための緩い上限（手元の Linux では 0.3 秒ほど）。

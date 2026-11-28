@@ -6,6 +6,9 @@
 //   中枢が並べた順（position）。
 // - 未取得・取得の失敗を「候補なし」にしない（設計 01）。
 // - 再通知の時刻は本人のタイムゾーンで解釈する（domain の candidateSnoozeUntil。checkSnoozeUntil に従う）。
+// - OS の通知の入・切（ADR 0196）: 画面は main が渡す設定の参照と入・切だけを持ち、変更の要求に参照を載せる（版は main）。
+//   別の画面で変わった・結果が分からないときは、一覧を読み直し終えるまで選択を押させない（ADR 0191 の設定と同じ）。
+//   設定を読めていない間は選択を出さない（「切」と言わない）。
 // 理由のコード・API の名前は画面に出さない。
 import type {
   DesktopCandidateEntry,
@@ -58,6 +61,12 @@ export const CANDIDATE_LABELS = {
     '件数が多いため、一部だけを表示しています。対応した気づきが減ると、残りが表示されます。',
   zoneMissing:
     'タイムゾーンを確かめられないため、見出しで分けずに表示しています。',
+  alert: '新しい気づきを OS の通知で知らせる',
+  alertDescription:
+    '入にすると、Buddy が前面にないときに、音なしの通知「新しい気づきが N 件あります」を出し、トレイ（macOS はメニューバー）に新着の件数を出します。題・差出人・本文は通知に出しません。画面がロックされている間は出しません。すべての端末で同じ設定です。',
+  alertUnavailable:
+    'OS の通知の設定をまだ読めていません。「読み直す」を押してください。',
+  alertBusy: '設定を送っています…',
 } as const;
 
 export const KIND_LABELS: Readonly<
@@ -235,6 +244,8 @@ export interface CandidateViewState {
   readonly notice: CandidateNotice | null;
   // 再通知の日時を選んでいる行。
   readonly snooze: SnoozeDraft | null;
+  // OS の通知の入・切を送って結果を待っている、または断られて読み直しを待っている（押させない）。
+  readonly alertBusy: boolean;
 }
 
 export const INITIAL_CANDIDATE_STATE: CandidateViewState = {
@@ -244,7 +255,49 @@ export const INITIAL_CANDIDATE_STATE: CandidateViewState = {
   busy: null,
   notice: null,
   snooze: null,
+  alertBusy: false,
 };
+
+const ALERT_SUCCESS_TEXT: Readonly<Record<'on' | 'off', string>> = {
+  on: 'OS の通知を入にしました。これから新しくできた気づきを知らせます（今ある気づきは知らせません）。',
+  off: 'OS の通知を切にしました。トレイの新着の件数も出しません。',
+};
+
+export function candidateAlertFailureText(reason: RejectReason): string {
+  switch (reason) {
+    case 'preview_stale':
+      return '別の画面で OS の通知の設定が変わっていました。設定を読み直したので、もう一度確かめてください。';
+    case 'outcome_unknown':
+      return 'OS の通知の設定を変えられたか確かめられませんでした。自動では送り直しません。設定を読み直しています。';
+    case 'entry_not_found':
+      return CANDIDATE_LABELS.alertUnavailable;
+    default:
+      return candidateFailureText(reason);
+  }
+}
+
+// OS の通知の入・切の変更の応答を反映する。断られたら欄の頭に理由を出す（押せないままにするかは呼び出し側が決める）。
+export function applyAlertResponse(
+  state: CandidateViewState,
+  value: 'on' | 'off',
+  response: DesktopIpcResponse,
+): CandidateViewState {
+  if (response.outcome === 'rejected')
+    return {
+      ...state,
+      notice: {
+        tone: 'warning',
+        text: candidateAlertFailureText(response.reason),
+        ref: null,
+      },
+    };
+  if (!('candidates' in response)) return { ...state, alertBusy: false };
+  return {
+    ...withView(state, response.candidates),
+    alertBusy: false,
+    notice: { tone: 'success', text: ALERT_SUCCESS_TEXT[value], ref: null },
+  };
+}
 
 const SUCCESS_TEXT: Readonly<Record<string, string>> = {
   open: '開きました。',
@@ -361,6 +414,8 @@ export interface CandidateActions {
   readonly cancelSnooze: () => void;
   readonly setSnoozeInput: (value: string) => void;
   readonly snooze: (ref: string, choice: CandidateSnoozeChoice['kind']) => void;
+  // OS の通知の入・切（ADR 0196）。
+  readonly setAlert: (value: 'on' | 'off') => void;
 }
 
 export interface CandidateApi {
@@ -400,7 +455,42 @@ export class CandidateStore {
         });
       },
       snooze: (ref, kind) => this.#snooze(ref, kind),
+      setAlert: (value) => this.#setAlert(value),
     };
+  }
+
+  #setAlert(value: 'on' | 'off'): void {
+    const alert = this.#state.view?.alert ?? null;
+    if (alert === null || this.#state.alertBusy) return;
+    const epoch = this.#epoch;
+    let held = false;
+    this.#set({ ...this.#state, alertBusy: true, notice: null });
+    void this.#send(
+      request('desktop.candidate_alert_setting', {
+        settings_ref: alert.ref,
+        os_notification: value,
+      }),
+      (state, response) => {
+        held =
+          response.outcome === 'rejected' &&
+          (response.reason === 'preview_stale' ||
+            response.reason === 'outcome_unknown');
+        const next = applyAlertResponse(state, value, response);
+        return held ? next : { ...next, alertBusy: false };
+      },
+      (state) => ({ ...applyFailure(state, null), alertBusy: false }),
+    ).then(() => {
+      // 別の画面で変わった・結果が分からない: 読み直し（新しい参照）を受け取るまで押させない。
+      if (!held || epoch !== this.#epoch) return;
+      void this.#send(
+        request('desktop.candidates_list', null),
+        (state, response) =>
+          response.outcome === 'ok' && 'candidates' in response
+            ? { ...withView(state, response.candidates), alertBusy: false }
+            : { ...state, alertBusy: false },
+        (state) => ({ ...state, alertBusy: false }),
+      );
+    });
   }
 
   readonly subscribe = (listener: () => void): (() => void) => {

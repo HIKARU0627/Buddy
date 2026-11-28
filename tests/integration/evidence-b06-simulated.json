@@ -57,7 +57,7 @@
     },
     {
       "path": "apps/core/src/api-routes.ts",
-      "sha256": "dba1b58c0ee48c68b3bce9c12b3abc74bea2148e51665568b8aa85bf5f1fdcbb"
+      "sha256": "87010f15897a0eeb52c15e34fca475a5c72ebbf1b9ddd220da31a1f894f89061"
     },
     {
       "path": "apps/core/src/api-server.ts",
@@ -116,6 +116,10 @@
       "sha256": "bbfa6bedec9901e3604458c838cf53b5510d375a9cbd2fc6e9431d6c9a49c82f"
     },
     {
+      "path": "apps/core/src/candidate-alerts.ts",
+      "sha256": "6d20f41dae9087ad0c7441442bc5b1bba40a1fda8fb229ff2349d431a6829163"
+    },
+    {
       "path": "apps/core/src/candidate-intake.ts",
       "sha256": "086feb7e5b839940a8ae7eee114957b4505d4b4d7c0c7bc2f909f23b7fe53398"
     },
@@ -153,7 +157,7 @@
     },
     {
       "path": "apps/core/src/core.ts",
-      "sha256": "40d5fbff996c945f095e57e73900c1be49621b866c9639c09ffb048b1f506db6"
+      "sha256": "c04777042b3f17b276d79ed3fdfbed5883fe5af3a2202f7f3537b000c8ee89fd"
     },
     {
       "path": "apps/core/src/data-dir.ts",
@@ -181,7 +185,7 @@
     },
     {
       "path": "apps/core/src/event-stream.ts",
-      "sha256": "3425e321226d927c3dccb63304c92e5b83fafb358c5e9c4693b27904d4eea620"
+      "sha256": "94e7d8c6f91ec1ff1961e97adc382d40d6573404d554e7ba02ae3835a911090b"
     },
     {
       "path": "apps/core/src/forget-ledger.ts",
@@ -253,7 +257,7 @@
     },
     {
       "path": "apps/core/src/notice-relay.ts",
-      "sha256": "c2f5adbb70f13bda15c7f4b047a8cabca32aee9d95e30f314a408d76893470de"
+      "sha256": "621cdf8c169a7d25c42a8cbf72f67cb474abf115e865ad948b3795bca16c45c2"
     },
     {
       "path": "apps/core/src/notice-sink.ts",
@@ -493,7 +497,7 @@
     },
     {
       "path": "packages/contracts/schemas/buddy.schema.json",
-      "sha256": "fbdafe9b48b1556eb7d3549b4b5b8d2b520e7fe2eb25ffb490e0770068d0e096"
+      "sha256": "d00eca2c6c2256e950d694b1580f10c1e01fa67c7e01e66d03b777416062f37f"
     },
     {
       "path": "packages/domain/package.json",
@@ -505,7 +509,7 @@
     },
     {
       "path": "packages/domain/src/api.ts",
-      "sha256": "1effd61f7caefd4279ca3f330147f04bcb7792c53a3637ceb867bc68e654b3f5"
+      "sha256": "59d0eb0a88aa3a50e0a37c4e139d0b4a442c1e6b7b5cc77c209db4132bc22c5a"
     },
     {
       "path": "packages/domain/src/approval.ts",
@@ -525,7 +529,7 @@
     },
     {
       "path": "packages/domain/src/backup-plan.ts",
-      "sha256": "932c4af8cadf282e9e3fa18ff2a7f55a1aa74a8bf040d43456c75656f4f088e4"
+      "sha256": "93890e188b02498eda8de022ff51bffdb45610506fc376360eb2d5b3f23f6e4f"
     },
     {
       "path": "packages/domain/src/budget-credit.ts",
@@ -593,7 +597,7 @@
     },
     {
       "path": "packages/domain/src/desktop.ts",
-      "sha256": "8511e0c7853cceb6ad45ca487e9b854fb97e6cacfa1672cc2f3f797053b54a27"
+      "sha256": "71610ba42486177aeda272e7c1b23333f7ce805e18df053a82fefe6d92e0ade8"
     },
     {
       "path": "packages/domain/src/dispatch-guard.ts",
@@ -976,6 +980,10 @@
       "sha256": "890b8ae416710dadcffb49e8f387dcb13fb4f478064d18701381c54e291ef18c"
     },
     {
+      "path": "packages/storage/migrations/0025_candidate_alert_settings.sql",
+      "sha256": "14181fb674aa3908db1b6bcef2eff7cd5b79456acdf1b441eb29ddab92455b78"
+    },
+    {
       "path": "packages/storage/migrations/connection.sql",
       "sha256": "43dab403fa9aac2dbc4aa82fd13aef3522fae16438cf9b5edf11d95997e930a7"
     },
@@ -1013,7 +1021,7 @@
     },
     {
       "path": "packages/storage/src/candidate-store.ts",
-      "sha256": "fd0b0ef4513e58f0fe8d185a35d10fbd87e931b800275a22bae60da40a628cb7"
+      "sha256": "df4c011e96f5818b60d827cf52d0a1de714a215f2939fe1a067607fe20091989"
     },
     {
       "path": "packages/storage/src/connection-targets-store.ts",
@@ -1033,7 +1041,7 @@
     },
     {
       "path": "packages/storage/src/db-client.ts",
-      "sha256": "9267b84374c1d19d501310571cbfb80f08435c5ebcc2e7b9f3cbc7c60e39a401"
+      "sha256": "4dbbad455e02ed18a857d934eac273ca63c9ce6303c9da5ef9e4c1343976ce41"
     },
     {
       "path": "packages/storage/src/db-protocol.ts",
@@ -1069,7 +1077,7 @@
     },
     {
       "path": "packages/storage/src/forget-store.ts",
-      "sha256": "53a305e1be6c39686abf17f5eb8fe388097835cb994116dac7ac83dd08922998"
+      "sha256": "dff25291423ae336b1fd1047700c5399c6a29085ec6a35a766e7fffd3acf583b"
     },
     {
       "path": "packages/storage/src/home-network-store.ts",
@@ -1113,7 +1121,7 @@
     },
     {
       "path": "packages/storage/src/policy.ts",
-      "sha256": "ccaa8c0d8da41ebf577aed389e7e48577e5eb10698365de62ba70ea2c6be259b"
+      "sha256": "6e1326c72bd3c969291327f86e2771cfa586192bfdc80a146610ed8d006d33a7"
     },
     {
       "path": "packages/storage/src/research-store.ts",
@@ -1121,7 +1129,7 @@
     },
     {
       "path": "packages/storage/src/restore-aftermath-store.ts",
-      "sha256": "d269e137e5b0ef76ea92a1e5549d56ecbdbce79943089d31ae1ec24e23001ab0"
+      "sha256": "ee0c15831d90b851551f5634ed0303be833e64384c0cc73c5195eafcef7c8c40"
     },
     {
       "path": "packages/storage/src/restore-facts.ts",
@@ -1173,7 +1181,7 @@
     },
     {
       "path": "tests/integration/b06-expectations.json",
-      "sha256": "e1780418762c6e02a240298a77f8fb62c68386d76379fc265bdefd3a164f05f3"
+      "sha256": "0570c4591323063b44d6c76f68d796675eb1786a454bdc8905a8dbef642b92c7"
     },
     {
       "path": "tests/integration/b06-support.mjs",
@@ -1192,9 +1200,9 @@
     {
       "case_id": "X16-retention-deadline-and-resummary",
       "kind": "simulated",
-      "commit": "c664b6eb5e4b02e4030440cad4d80fe5c0b8a34b",
+      "commit": "13266a7de3cc95b3edeaf42eb7a317c85d712cac",
       "contract_version": "1.0.0",
-      "db_version": "24",
+      "db_version": "25",
       "environment": {
         "os": "linux 6.18.44-fc-v880 / v24.22.3",
         "hub": "同一プロセスの保存期限の掃除・忘却の Core の経路・バックアップと復元・保存境界の保持者（一時ディレクトリの DB と DB worker、HTTPS は 127.0.0.1）と模擬の Live の provider",
@@ -1206,7 +1214,7 @@
       "provider_state_changes": 0,
       "approvals": 0,
       "final_state": "turns=T_S2;summaries=",
-      "observed_at": "2026-11-27T23:46:53.728Z",
+      "observed_at": "2026-11-28T00:51:35.405Z",
       "deviation": "模擬の試験。合成のデータ鍵・台帳の鍵・バックアップの鍵（模擬の KeyStore）、一時ディレクトリの DB と DB worker、同じプロセスの Core（HTTPS は 127.0.0.1）、模擬の Live の provider を使った。忘却の公開ゲートは製品では閉じたままで、試験の組み立てで開いた関数を渡した。実機の Mac mini での実際のバックアップと鍵の復元・同期フォルダー・SSD の痕跡・実 API・実請求は未実施（B15）。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -1214,9 +1222,9 @@
     {
       "case_id": "X16-clock-rollback-no-extension",
       "kind": "simulated",
-      "commit": "c664b6eb5e4b02e4030440cad4d80fe5c0b8a34b",
+      "commit": "13266a7de3cc95b3edeaf42eb7a317c85d712cac",
       "contract_version": "1.0.0",
-      "db_version": "24",
+      "db_version": "25",
       "environment": {
         "os": "linux 6.18.44-fc-v880 / v24.22.3",
         "hub": "同一プロセスの保存期限の掃除・忘却の Core の経路・バックアップと復元・保存境界の保持者（一時ディレクトリの DB と DB worker、HTTPS は 127.0.0.1）と模擬の Live の provider",
@@ -1228,7 +1236,7 @@
       "provider_state_changes": 0,
       "approvals": 0,
       "final_state": "turns=none",
-      "observed_at": "2026-11-27T23:46:53.728Z",
+      "observed_at": "2026-11-28T00:51:35.405Z",
       "deviation": "模擬の試験。合成のデータ鍵・台帳の鍵・バックアップの鍵（模擬の KeyStore）、一時ディレクトリの DB と DB worker、同じプロセスの Core（HTTPS は 127.0.0.1）、模擬の Live の provider を使った。忘却の公開ゲートは製品では閉じたままで、試験の組み立てで開いた関数を渡した。実機の Mac mini での実際のバックアップと鍵の復元・同期フォルダー・SSD の痕跡・実 API・実請求は未実施（B15）。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -1236,9 +1244,9 @@
     {
       "case_id": "X44-memory-review-deadline",
       "kind": "simulated",
-      "commit": "c664b6eb5e4b02e4030440cad4d80fe5c0b8a34b",
+      "commit": "13266a7de3cc95b3edeaf42eb7a317c85d712cac",
       "contract_version": "1.0.0",
-      "db_version": "24",
+      "db_version": "25",
       "environment": {
         "os": "linux 6.18.44-fc-v880 / v24.22.3",
         "hub": "同一プロセスの保存期限の掃除・忘却の Core の経路・バックアップと復元・保存境界の保持者（一時ディレクトリの DB と DB worker、HTTPS は 127.0.0.1）と模擬の Live の provider",
@@ -1250,7 +1258,7 @@
       "provider_state_changes": 0,
       "approvals": 0,
       "final_state": "memories=M_CONTINUE:active",
-      "observed_at": "2026-11-27T23:46:53.728Z",
+      "observed_at": "2026-11-28T00:51:35.405Z",
       "deviation": "模擬の試験。合成のデータ鍵・台帳の鍵・バックアップの鍵（模擬の KeyStore）、一時ディレクトリの DB と DB worker、同じプロセスの Core（HTTPS は 127.0.0.1）、模擬の Live の provider を使った。忘却の公開ゲートは製品では閉じたままで、試験の組み立てで開いた関数を渡した。実機の Mac mini での実際のバックアップと鍵の復元・同期フォルダー・SSD の痕跡・実 API・実請求は未実施（B15）。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -1258,9 +1266,9 @@
     {
       "case_id": "X15-forget-and-late-result-order",
       "kind": "simulated",
-      "commit": "c664b6eb5e4b02e4030440cad4d80fe5c0b8a34b",
+      "commit": "13266a7de3cc95b3edeaf42eb7a317c85d712cac",
       "contract_version": "1.0.0",
-      "db_version": "24",
+      "db_version": "25",
       "environment": {
         "os": "linux 6.18.44-fc-v880 / v24.22.3",
         "hub": "同一プロセスの保存期限の掃除・忘却の Core の経路・バックアップと復元・保存境界の保持者（一時ディレクトリの DB と DB worker、HTTPS は 127.0.0.1）と模擬の Live の provider",
@@ -1272,7 +1280,7 @@
       "provider_state_changes": 0,
       "approvals": 0,
       "final_state": "memories=L2,M_OTHER;generation=1",
-      "observed_at": "2026-11-27T23:46:53.728Z",
+      "observed_at": "2026-11-28T00:51:35.405Z",
       "deviation": "模擬の試験。合成のデータ鍵・台帳の鍵・バックアップの鍵（模擬の KeyStore）、一時ディレクトリの DB と DB worker、同じプロセスの Core（HTTPS は 127.0.0.1）、模擬の Live の provider を使った。忘却の公開ゲートは製品では閉じたままで、試験の組み立てで開いた関数を渡した。実機の Mac mini での実際のバックアップと鍵の復元・同期フォルダー・SSD の痕跡・実 API・実請求は未実施（B15）。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -1280,9 +1288,9 @@
     {
       "case_id": "X16-old-backup-restore-applies-ledger",
       "kind": "simulated",
-      "commit": "c664b6eb5e4b02e4030440cad4d80fe5c0b8a34b",
+      "commit": "13266a7de3cc95b3edeaf42eb7a317c85d712cac",
       "contract_version": "1.0.0",
-      "db_version": "24",
+      "db_version": "25",
       "environment": {
         "os": "linux 6.18.44-fc-v880 / v24.22.3",
         "hub": "同一プロセスの保存期限の掃除・忘却の Core の経路・バックアップと復元・保存境界の保持者（一時ディレクトリの DB と DB worker、HTTPS は 127.0.0.1）と模擬の Live の provider",
@@ -1294,7 +1302,7 @@
       "provider_state_changes": 0,
       "approvals": 0,
       "final_state": "restored;memories=M_OTHER;generation=1",
-      "observed_at": "2026-11-27T23:46:53.728Z",
+      "observed_at": "2026-11-28T00:51:35.405Z",
       "deviation": "模擬の試験。合成のデータ鍵・台帳の鍵・バックアップの鍵（模擬の KeyStore）、一時ディレクトリの DB と DB worker、同じプロセスの Core（HTTPS は 127.0.0.1）、模擬の Live の provider を使った。忘却の公開ゲートは製品では閉じたままで、試験の組み立てで開いた関数を渡した。実機の Mac mini での実際のバックアップと鍵の復元・同期フォルダー・SSD の痕跡・実 API・実請求は未実施（B15）。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -1302,9 +1310,9 @@
     {
       "case_id": "X17-private-conversation-not-saved",
       "kind": "simulated",
-      "commit": "c664b6eb5e4b02e4030440cad4d80fe5c0b8a34b",
+      "commit": "13266a7de3cc95b3edeaf42eb7a317c85d712cac",
       "contract_version": "1.0.0",
-      "db_version": "24",
+      "db_version": "25",
       "environment": {
         "os": "linux 6.18.44-fc-v880 / v24.22.3",
         "hub": "同一プロセスの保存期限の掃除・忘却の Core の経路・バックアップと復元・保存境界の保持者（一時ディレクトリの DB と DB worker、HTTPS は 127.0.0.1）と模擬の Live の provider",
@@ -1316,7 +1324,7 @@
       "provider_state_changes": 0,
       "approvals": 0,
       "final_state": "turns=2;private_turn=200;resent_after_exit=409;live=409",
-      "observed_at": "2026-11-27T23:46:53.728Z",
+      "observed_at": "2026-11-28T00:51:35.405Z",
       "deviation": "模擬の試験。合成のデータ鍵・台帳の鍵・バックアップの鍵（模擬の KeyStore）、一時ディレクトリの DB と DB worker、同じプロセスの Core（HTTPS は 127.0.0.1）、模擬の Live の provider を使った。忘却の公開ゲートは製品では閉じたままで、試験の組み立てで開いた関数を渡した。実機の Mac mini での実際のバックアップと鍵の復元・同期フォルダー・SSD の痕跡・実 API・実請求は未実施（B15）。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -1324,9 +1332,9 @@
     {
       "case_id": "X59-private-conversation-no-memory-save",
       "kind": "simulated",
-      "commit": "c664b6eb5e4b02e4030440cad4d80fe5c0b8a34b",
+      "commit": "13266a7de3cc95b3edeaf42eb7a317c85d712cac",
       "contract_version": "1.0.0",
-      "db_version": "24",
+      "db_version": "25",
       "environment": {
         "os": "linux 6.18.44-fc-v880 / v24.22.3",
         "hub": "同一プロセスの保存期限の掃除・忘却の Core の経路・バックアップと復元・保存境界の保持者（一時ディレクトリの DB と DB worker、HTTPS は 127.0.0.1）と模擬の Live の provider",
@@ -1338,7 +1346,7 @@
       "provider_state_changes": 0,
       "approvals": 0,
       "final_state": "memories=1;private_save=200/0;resent_after_exit=409",
-      "observed_at": "2026-11-27T23:46:53.728Z",
+      "observed_at": "2026-11-28T00:51:35.405Z",
       "deviation": "模擬の試験。合成のデータ鍵・台帳の鍵・バックアップの鍵（模擬の KeyStore）、一時ディレクトリの DB と DB worker、同じプロセスの Core（HTTPS は 127.0.0.1）、模擬の Live の provider を使った。忘却の公開ゲートは製品では閉じたままで、試験の組み立てで開いた関数を渡した。実機の Mac mini での実際のバックアップと鍵の復元・同期フォルダー・SSD の痕跡・実 API・実請求は未実施（B15）。",
       "voice_stop_ms": null,
       "outcome": "matched_expectation"
@@ -1438,7 +1446,7 @@
         },
         "variant": null,
         "event_order": null,
-        "db_version": "24",
+        "db_version": "25",
         "provider_requests": 0,
         "provider_state_changes": 0,
         "approvals": 0,
@@ -1502,7 +1510,7 @@
         },
         "variant": null,
         "event_order": null,
-        "db_version": "24",
+        "db_version": "25",
         "provider_requests": 0,
         "provider_state_changes": 0,
         "approvals": 0,
@@ -1570,7 +1578,7 @@
         },
         "variant": null,
         "event_order": null,
-        "db_version": "24",
+        "db_version": "25",
         "provider_requests": 0,
         "provider_state_changes": 0,
         "approvals": 0,
@@ -1671,7 +1679,7 @@
         },
         "variant": null,
         "event_order": null,
-        "db_version": "24",
+        "db_version": "25",
         "provider_requests": 0,
         "provider_state_changes": 0,
         "approvals": 0,
@@ -1709,7 +1717,7 @@
         },
         "variant": null,
         "event_order": null,
-        "db_version": "24",
+        "db_version": "25",
         "provider_requests": 0,
         "provider_state_changes": 0,
         "approvals": 0,
@@ -1783,7 +1791,7 @@
         },
         "variant": null,
         "event_order": null,
-        "db_version": "24",
+        "db_version": "25",
         "provider_requests": 0,
         "provider_state_changes": 0,
         "approvals": 0,
@@ -1862,7 +1870,7 @@
           "late_from_unrelated_source",
           "late_from_forgotten_source"
         ],
-        "db_version": "24",
+        "db_version": "25",
         "provider_requests": 0,
         "provider_state_changes": 0,
         "approvals": 0,
@@ -1950,7 +1958,7 @@
           "execute",
           "late_from_unrelated_source"
         ],
-        "db_version": "24",
+        "db_version": "25",
         "provider_requests": 0,
         "provider_state_changes": 0,
         "approvals": 0,
@@ -2014,7 +2022,7 @@
         },
         "variant": null,
         "event_order": null,
-        "db_version": "24",
+        "db_version": "25",
         "provider_requests": 0,
         "provider_state_changes": 0,
         "approvals": 0,
@@ -2052,7 +2060,7 @@
         },
         "variant": null,
         "event_order": null,
-        "db_version": "24",
+        "db_version": "25",
         "provider_requests": 0,
         "provider_state_changes": 0,
         "approvals": 0,
@@ -2153,7 +2161,7 @@
         },
         "variant": null,
         "event_order": null,
-        "db_version": "24",
+        "db_version": "25",
         "provider_requests": 0,
         "provider_state_changes": 0,
         "approvals": 0,
@@ -2221,7 +2229,7 @@
         },
         "variant": null,
         "event_order": null,
-        "db_version": "24",
+        "db_version": "25",
         "provider_requests": 0,
         "provider_state_changes": 0,
         "approvals": 0,
@@ -2321,7 +2329,7 @@
         },
         "variant": null,
         "event_order": null,
-        "db_version": "24",
+        "db_version": "25",
         "provider_requests": 0,
         "provider_state_changes": 0,
         "approvals": 0,
@@ -2395,7 +2403,7 @@
         },
         "variant": null,
         "event_order": null,
-        "db_version": "24",
+        "db_version": "25",
         "provider_requests": 0,
         "provider_state_changes": 0,
         "approvals": 0,
@@ -2459,7 +2467,7 @@
         },
         "variant": null,
         "event_order": null,
-        "db_version": "24",
+        "db_version": "25",
         "provider_requests": 0,
         "provider_state_changes": 0,
         "approvals": 0,
@@ -2527,7 +2535,7 @@
         },
         "variant": null,
         "event_order": null,
-        "db_version": "24",
+        "db_version": "25",
         "provider_requests": 0,
         "provider_state_changes": 0,
         "approvals": 0,
@@ -2606,7 +2614,7 @@
           "late_from_forgotten_source",
           "late_from_unrelated_source"
         ],
-        "db_version": "24",
+        "db_version": "25",
         "provider_requests": 0,
         "provider_state_changes": 0,
         "approvals": 0,
@@ -2680,7 +2688,7 @@
         },
         "variant": null,
         "event_order": null,
-        "db_version": "24",
+        "db_version": "25",
         "provider_requests": 0,
         "provider_state_changes": 0,
         "approvals": 0,
@@ -2718,7 +2726,7 @@
         },
         "variant": null,
         "event_order": null,
-        "db_version": "24",
+        "db_version": "25",
         "provider_requests": 0,
         "provider_state_changes": 0,
         "approvals": 0,
@@ -2818,7 +2826,7 @@
         },
         "variant": null,
         "event_order": null,
-        "db_version": "24",
+        "db_version": "25",
         "provider_requests": 0,
         "provider_state_changes": 0,
         "approvals": 0,
@@ -2919,7 +2927,7 @@
         },
         "variant": null,
         "event_order": null,
-        "db_version": "24",
+        "db_version": "25",
         "provider_requests": 0,
         "provider_state_changes": 0,
         "approvals": 0,

@@ -57,6 +57,7 @@ const view = (
   entries,
   truncated: false,
   list_seq: 2,
+  alert: null,
   ...overrides,
 });
 
@@ -418,4 +419,101 @@ test('an IPC failure says so without inventing a list', async () => {
   assert.equal(store.snapshot().view, null);
   assert.equal(store.snapshot().reading, false);
   assert.equal(store.snapshot().notice?.tone, 'warning');
+});
+
+// --- OS の通知の入・切（ADR 0196） ---
+
+const ALERT_REF = '00000000-0000-4000-8000-0000000000a1';
+const NEW_ALERT_REF = '00000000-0000-4000-8000-0000000000a2';
+
+test('the OS notification choice sends the settings ref and the value only, once at a time', async () => {
+  const { store, pending, answer } = harness();
+  // 設定を読めていない間は送らない。
+  store.actions.refresh();
+  await answer(listed(view(SIX)));
+  store.actions.setAlert('on');
+  assert.equal(pending.length, 0);
+  store.actions.refresh();
+  await answer(
+    listed(
+      view(SIX, {
+        list_seq: 3,
+        alert: { ref: ALERT_REF, os_notification: 'off' },
+      }),
+    ),
+  );
+  store.actions.setAlert('on');
+  // 結果を待つ間は次の変更を送らない。
+  store.actions.setAlert('off');
+  assert.deepEqual(
+    pending.map((item) => [item.request.channel, item.request.payload]),
+    [
+      [
+        'desktop.candidate_alert_setting',
+        { settings_ref: ALERT_REF, os_notification: 'on' },
+      ],
+    ],
+  );
+  assert.equal(store.snapshot().alertBusy, true);
+  await answer(
+    listed(
+      view(SIX, {
+        list_seq: 4,
+        alert: { ref: NEW_ALERT_REF, os_notification: 'on' },
+      }),
+    ),
+  );
+  assert.equal(store.snapshot().alertBusy, false);
+  assert.equal(store.snapshot().view?.alert?.os_notification, 'on');
+  assert.equal(store.snapshot().notice?.tone, 'success');
+  assert.match(
+    store.snapshot().notice?.text ?? '',
+    /今ある気づきは知らせません/u,
+  );
+});
+
+test('a stale or unknown OS notification change stays locked until the re-read list arrives', async () => {
+  for (const reason of ['preview_stale', 'outcome_unknown'] as const) {
+    const { store, pending, answer } = harness();
+    store.actions.refresh();
+    await answer(
+      listed(view(SIX, { alert: { ref: ALERT_REF, os_notification: 'off' } })),
+    );
+    store.actions.setAlert('on');
+    await answer({ outcome: 'rejected', reason });
+    assert.equal(store.snapshot().notice?.tone, 'warning', reason);
+    assert.equal(store.snapshot().alertBusy, true, reason);
+    // 読み直しを待つ間は押しても送らない。
+    store.actions.setAlert('on');
+    assert.deepEqual(
+      pending.map((item) => item.request.channel),
+      ['desktop.candidates_list'],
+      reason,
+    );
+    await answer(
+      listed(
+        view(SIX, {
+          list_seq: 3,
+          alert: { ref: NEW_ALERT_REF, os_notification: 'on' },
+        }),
+      ),
+    );
+    assert.equal(store.snapshot().alertBusy, false, reason);
+    assert.equal(store.snapshot().view?.alert?.ref, NEW_ALERT_REF, reason);
+    // 断った理由の文言は残す。
+    assert.equal(store.snapshot().notice?.tone, 'warning', reason);
+  }
+});
+
+test('another refusal of the OS notification change unlocks at once and never resends', async () => {
+  const { store, pending, answer } = harness();
+  store.actions.refresh();
+  await answer(
+    listed(view(SIX, { alert: { ref: ALERT_REF, os_notification: 'on' } })),
+  );
+  store.actions.setAlert('off');
+  await answer({ outcome: 'rejected', reason: 'core_rejected' });
+  assert.equal(store.snapshot().alertBusy, false);
+  assert.equal(pending.length, 0);
+  assert.equal(store.snapshot().view?.alert?.os_notification, 'on');
 });

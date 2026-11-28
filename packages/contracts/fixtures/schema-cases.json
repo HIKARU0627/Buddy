@@ -28181,7 +28181,11 @@
           }
         ],
         "truncated": false,
-        "list_seq": 1
+        "list_seq": 1,
+        "alert": {
+          "ref": "00000000-0000-4000-8000-000000000c71",
+          "os_notification": "off"
+        }
       }
     }
   },
@@ -28200,7 +28204,8 @@
         "counts": null,
         "entries": [],
         "truncated": false,
-        "list_seq": 1
+        "list_seq": 1,
+        "alert": null
       }
     }
   },
@@ -28244,7 +28249,8 @@
           }
         ],
         "truncated": false,
-        "list_seq": 1
+        "list_seq": 1,
+        "alert": null
       }
     }
   },
@@ -28288,7 +28294,8 @@
           }
         ],
         "truncated": false,
-        "list_seq": 1
+        "list_seq": 1,
+        "alert": null
       }
     }
   },
@@ -28331,7 +28338,8 @@
           }
         ],
         "truncated": false,
-        "list_seq": 1
+        "list_seq": 1,
+        "alert": null
       }
     }
   },
@@ -30852,6 +30860,231 @@
       "result": "rejected",
       "reasons": ["display_owned_elsewhere"],
       "ttl_ms": null
+    }
+  },
+  {
+    "id": "candidate-alert-settings-default-off",
+    "schema": "CandidateAlertSettings",
+    "valid": true,
+    "value": {
+      "schema": "buddy.candidate-alert-settings.v1",
+      "os_notification": "off",
+      "candidate_alert_settings_revision": "0"
+    }
+  },
+  {
+    "id": "candidate-alert-settings-on",
+    "schema": "CandidateAlertSettings",
+    "valid": true,
+    "value": {
+      "schema": "buddy.candidate-alert-settings.v1",
+      "os_notification": "on",
+      "candidate_alert_settings_revision": "12"
+    }
+  },
+  {
+    "id": "candidate-alert-settings-boolean",
+    "schema": "CandidateAlertSettings",
+    "valid": false,
+    "value": {
+      "schema": "buddy.candidate-alert-settings.v1",
+      "os_notification": true,
+      "candidate_alert_settings_revision": "1"
+    }
+  },
+  {
+    "id": "candidate-alert-settings-revision-leading-zero",
+    "schema": "CandidateAlertSettings",
+    "valid": false,
+    "value": {
+      "schema": "buddy.candidate-alert-settings.v1",
+      "os_notification": "on",
+      "candidate_alert_settings_revision": "01"
+    }
+  },
+  {
+    "id": "candidate-alert-settings-with-tray-flag",
+    "schema": "CandidateAlertSettings",
+    "valid": false,
+    "value": {
+      "schema": "buddy.candidate-alert-settings.v1",
+      "os_notification": "on",
+      "candidate_alert_settings_revision": "1",
+      "tray_count": "off"
+    }
+  },
+  {
+    "id": "candidate-alert-settings-change-request",
+    "schema": "CandidateAlertSettingsChangeRequest",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-0000000f0301",
+      "command_scope_id": "00000000-0000-4000-8000-000000009002",
+      "expected_candidate_alert_settings_revision": "3",
+      "os_notification": "off"
+    }
+  },
+  {
+    "id": "candidate-alert-settings-change-request-without-revision",
+    "schema": "CandidateAlertSettingsChangeRequest",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-0000000f0301",
+      "command_scope_id": "00000000-0000-4000-8000-000000009002",
+      "os_notification": "off"
+    }
+  },
+  {
+    "id": "candidate-notice",
+    "schema": "CandidateNotice",
+    "valid": true,
+    "value": {
+      "schema": "buddy.candidate-notice.v1",
+      "notice_id": "00000000-0000-4000-8000-0000000000e7",
+      "occurred_at": "2030-01-01T00:00:33Z",
+      "alert_count": 1000
+    }
+  },
+  {
+    "id": "candidate-notice-too-many",
+    "schema": "CandidateNotice",
+    "valid": false,
+    "value": {
+      "schema": "buddy.candidate-notice.v1",
+      "notice_id": "00000000-0000-4000-8000-0000000000e7",
+      "occurred_at": "2030-01-01T00:00:33Z",
+      "alert_count": 1001
+    }
+  },
+  {
+    "id": "candidate-notice-with-notification-key",
+    "schema": "CandidateNotice",
+    "valid": false,
+    "value": {
+      "schema": "buddy.candidate-notice.v1",
+      "notice_id": "00000000-0000-4000-8000-0000000000e7",
+      "occurred_at": "2030-01-01T00:00:33Z",
+      "alert_count": 1,
+      "notification_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  },
+  {
+    "id": "desktop-ipc-candidate-alert-setting",
+    "schema": "DesktopIpcRequest",
+    "valid": true,
+    "value": {
+      "channel": "desktop.candidate_alert_setting",
+      "request_id": "00000000-0000-4000-8000-000000000c81",
+      "payload": {
+        "settings_ref": "00000000-0000-4000-8000-000000000c71",
+        "os_notification": "on"
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-candidate-alert-setting-with-revision",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.candidate_alert_setting",
+      "request_id": "00000000-0000-4000-8000-000000000c81",
+      "payload": {
+        "settings_ref": "00000000-0000-4000-8000-000000000c71",
+        "os_notification": "on",
+        "expected_candidate_alert_settings_revision": "0"
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-candidate-alert-setting-without-ref",
+    "schema": "DesktopIpcRequest",
+    "valid": false,
+    "value": {
+      "channel": "desktop.candidate_alert_setting",
+      "request_id": "00000000-0000-4000-8000-000000000c81",
+      "payload": {
+        "os_notification": "off"
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-candidates-view-alert-on",
+    "schema": "DesktopIpcResponse",
+    "valid": true,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000c81",
+      "channel": "desktop.candidate_alert_setting",
+      "outcome": "ok",
+      "candidates": {
+        "fetch": "loaded",
+        "fetched_at": "2030-10-06T03:00:00Z",
+        "zone": "Asia/Tokyo",
+        "counts": {
+          "new": 0,
+          "seen": 0,
+          "acted": 0,
+          "dismissed": 0,
+          "snoozed": 0,
+          "resolved": 0
+        },
+        "entries": [],
+        "truncated": false,
+        "list_seq": 2,
+        "alert": {
+          "ref": "00000000-0000-4000-8000-000000000c72",
+          "os_notification": "on"
+        }
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-candidates-view-alert-with-revision",
+    "schema": "DesktopIpcResponse",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000c81",
+      "channel": "desktop.candidate_alert_setting",
+      "outcome": "ok",
+      "candidates": {
+        "fetch": "loaded",
+        "fetched_at": "2030-10-06T03:00:00Z",
+        "zone": "Asia/Tokyo",
+        "counts": {
+          "new": 0,
+          "seen": 0,
+          "acted": 0,
+          "dismissed": 0,
+          "snoozed": 0,
+          "resolved": 0
+        },
+        "entries": [],
+        "truncated": false,
+        "list_seq": 2,
+        "alert": {
+          "ref": "00000000-0000-4000-8000-000000000c72",
+          "os_notification": "on",
+          "candidate_alert_settings_revision": "1"
+        }
+      }
+    }
+  },
+  {
+    "id": "desktop-ipc-candidates-view-without-alert",
+    "schema": "DesktopIpcResponse",
+    "valid": false,
+    "value": {
+      "request_id": "00000000-0000-4000-8000-000000000c80",
+      "channel": "desktop.candidates_list",
+      "outcome": "ok",
+      "candidates": {
+        "fetch": "unavailable",
+        "fetched_at": null,
+        "zone": null,
+        "counts": null,
+        "entries": [],
+        "truncated": false,
+        "list_seq": 1
+      }
     }
   },
   {

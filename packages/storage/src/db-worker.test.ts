@@ -247,7 +247,7 @@ test('the client sees the received ACK before the durable result and records tim
   await withClient(
     async (_path, client) => {
       assert.equal(client.storeGeneration, STORE_GENERATION);
-      assert.equal(client.schemaVersion, 24);
+      assert.equal(client.schemaVersion, 25);
       const order: string[] = [];
       const submission = client.submit(createCommand('op-1'));
       const received = submission.received.then((value) => {
@@ -575,6 +575,19 @@ test('the candidate create, transition, list and counts round-trip through the w
         excerpt: null,
         origins: [{ source_kind: 'source_item' as const, source_id: 'msg-1' }],
       };
+      // 書けた後の知らせ（ADR 0196）: 作成・遷移が ok のときだけ受け手へ渡る。読み取り・拒否は渡らない。受け手の例外は
+      // 命令の結果にしない。
+      const written: string[] = [];
+      client.onCandidateWrite(() => {
+        throw new Error('listener');
+      });
+      const off = client.onCandidateWrite((op, value) => {
+        written.push(
+          op.kind === 'candidate.create'
+            ? `create:${(value as { result: string }).result}`
+            : `transition:${op.input.event}`,
+        );
+      });
       const created = await client.candidate({
         kind: 'candidate.create',
         input,
@@ -656,6 +669,26 @@ test('the candidate create, transition, list and counts round-trip through the w
           list.value.candidates.map((candidate) => candidate.candidate_id),
           [input.candidate_id],
         );
+      await new Promise((resolve) => setImmediate(resolve));
+      assert.deepEqual(written, [
+        'create:created',
+        'create:duplicate',
+        'transition:dismiss',
+      ]);
+      // 外した受け手には渡さない。
+      off();
+      const another = await client.candidate({
+        kind: 'candidate.create',
+        input: {
+          ...input,
+          candidate_id: 'a1000000-0000-4000-8000-000000000003',
+          notification_key: 'b'.repeat(64),
+          title: sealedIntent(),
+        },
+      });
+      assert.equal(another.ok, true);
+      await new Promise((resolve) => setImmediate(resolve));
+      assert.equal(written.length, 3);
     } finally {
       await client.close();
     }

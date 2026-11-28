@@ -176,6 +176,15 @@
       "$ref": "#/$defs/CandidateListResponse"
     },
     {
+      "$ref": "#/$defs/CandidateAlertSettings"
+    },
+    {
+      "$ref": "#/$defs/CandidateAlertSettingsChangeRequest"
+    },
+    {
+      "$ref": "#/$defs/CandidateNotice"
+    },
+    {
       "$ref": "#/$defs/CandidateEvidence"
     },
     {
@@ -6185,6 +6194,71 @@
       "required": ["candidates", "counts", "next_cursor", "zone", "as_of"],
       "additionalProperties": false,
       "description": "気づきの一覧（設計 11 §4、ADR 0073・0132）。表示順は domain が決める。見出しそのものは含めず、見出しを分けるのに要る本人のタイムゾーンと並べた時刻を返す。本文・添付の内容は含めない。"
+    },
+    "CandidateAlertSettingsRevision": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)$",
+      "description": "気づきの OS 通知の入・切の設定の版（ADR 0003 の共通の 10 進の形）。まだ変えていなければ 0、変えるたびに 1 進む（ADR 0196）。"
+    },
+    "CandidateAlertSettings": {
+      "type": "object",
+      "properties": {
+        "schema": { "const": "buddy.candidate-alert-settings.v1" },
+        "os_notification": {
+          "type": "string",
+          "enum": ["on", "off"],
+          "description": "新しい気づきの OS 通知と、トレイ（macOS はメニューバー）の new の件数を出すか。既定は off（ADR 0073）。"
+        },
+        "candidate_alert_settings_revision": {
+          "$ref": "#/$defs/CandidateAlertSettingsRevision"
+        }
+      },
+      "required": [
+        "schema",
+        "os_notification",
+        "candidate_alert_settings_revision"
+      ],
+      "additionalProperties": false,
+      "description": "気づきの OS 通知の入・切（ADR 0073・0196）。中枢が正本で、本人の画面操作だけが変える。すべての端末で同じ値を使う。通知を出すかの判定は中枢のコード（candidateAlertDecision）が持ち、端末は出す時点の前面・ロックだけを見る。"
+    },
+    "CandidateAlertSettingsChangeRequest": {
+      "type": "object",
+      "properties": {
+        "request_id": { "$ref": "#/$defs/Id" },
+        "command_scope_id": { "$ref": "#/$defs/Id" },
+        "expected_candidate_alert_settings_revision": {
+          "$ref": "#/$defs/CandidateAlertSettingsRevision"
+        },
+        "os_notification": {
+          "type": "string",
+          "enum": ["on", "off"]
+        }
+      },
+      "required": [
+        "request_id",
+        "command_scope_id",
+        "expected_candidate_alert_settings_revision",
+        "os_notification"
+      ],
+      "additionalProperties": false,
+      "description": "気づきの OS 通知の入・切の変更（POST /v1/candidates/alert-settings、ADR 0196）。本人の画面操作だけが送る。同じ値でも版は進む。版が今と違えば、入にするときも切にするときも 409（同じ要求の再送も 409）。"
+    },
+    "CandidateNotice": {
+      "type": "object",
+      "properties": {
+        "schema": { "const": "buddy.candidate-notice.v1" },
+        "notice_id": { "$ref": "#/$defs/Id" },
+        "occurred_at": { "$ref": "#/$defs/UtcTime" },
+        "alert_count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000,
+          "description": "この知らせで OS 通知を出す新しい気づきの数。中枢が candidateAlertDecision で出すと決め、送出意図を保存できたものだけを数える。0 なら OS 通知を出さない（件数が変わっただけ）。"
+        }
+      },
+      "required": ["schema", "notice_id", "occurred_at", "alert_count"],
+      "additionalProperties": false,
+      "description": "気づきが増えた・状態が変わったことの知らせ（ADR 0196）。中枢は OS 通知の設定が入のときだけ、開いている購読へ流す。題・期限・種類・候補 ID・通知の識別子を入れない。端末は受けたら気づきの一覧を読み直してトレイの new の件数を合わせ、alert_count が 1 以上で、ロック解除済みで、アプリが前面でないときだけ、音なしの OS 通知「新しい気づきが N 件あります」を出す。知らせの値を状態の正本にしない。"
     },
     "CandidateEvidence": {
       "type": "object",
@@ -13061,13 +13135,14 @@
                 { "$ref": "#/$defs/RetentionNotice" },
                 { "$ref": "#/$defs/ForgetLedgerNotice" },
                 { "$ref": "#/$defs/StorageBoundaryNotice" },
-                { "$ref": "#/$defs/StorageModeNotice" }
+                { "$ref": "#/$defs/StorageModeNotice" },
+                { "$ref": "#/$defs/CandidateNotice" }
               ]
             }
           },
           "required": ["type", "notice"],
           "additionalProperties": false,
-          "description": "期限切れ・忘却・忘却台帳の前進・記録しない会話の終了・保存モードの変更（StorageModeNotice。UI-05 の段階 6、ADR 0189）の知らせ（UI-05 の段階 3、ADR 0187、U40・U168）。Core の NoticeSink に入った知らせを、そのとき開いている購読（接続範囲を確かめた後のもの）にだけ送る。イベントの記録（cursor）に入れず、再送・永続しない。取り逃した端末の表示は canvas の版と getCanvas で収束し、忘却台帳は次の接続の同期で追いつく。ID と理由と番号だけで、本文・要約・検索語・HMAC を含めない。RetentionNotice の source_item（元サービスの生の ID）は Core が除いて送り、除いて空になった知らせは送らない。端末は知らない知らせを無視する。"
+          "description": "期限切れ・忘却・忘却台帳の前進・記録しない会話の終了・保存モードの変更（StorageModeNotice。UI-05 の段階 6、ADR 0189）・気づきの増減（CandidateNotice。ADR 0196）の知らせ（UI-05 の段階 3、ADR 0187、U40・U168）。Core の NoticeSink に入った知らせを、そのとき開いている購読（接続範囲を確かめた後のもの）にだけ送る。イベントの記録（cursor）に入れず、再送・永続しない。取り逃した端末の表示は canvas の版と getCanvas で収束し、忘却台帳は次の接続の同期で追いつく。ID と理由と番号だけで、本文・要約・検索語・HMAC を含めない。RetentionNotice の source_item（元サービスの生の ID）は Core が除いて送り、除いて空になった知らせは送らない。端末は知らない知らせを無視する。"
         },
         {
           "type": "object",
@@ -14057,6 +14132,7 @@
         "desktop.voice_control",
         "desktop.candidates_list",
         "desktop.candidate_state",
+        "desktop.candidate_alert_setting",
         "desktop.connections_list",
         "desktop.connection_targets_update",
         "desktop.connection_targets_discover",
@@ -14082,7 +14158,7 @@
         "desktop.storage_mode_change",
         "desktop.display_handoff"
       ],
-      "description": "UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014・0025）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。中枢との接続・ペアリングは用途別のチャネルだけで、要求の宛先・本文を Renderer が決められない。音声レンダラーの IPC（B05）は別に定める。 発言・承認表示の準備・承認・取消・照合は用途別のチャネルで、操作は main が持つ参照（ref）で指す（B04-05、ADR 0031）。 キャンバスを前に出す（canvas_summon）は状態の層と入力バーからだけ使う（UI-02、ADR 0032）。状態の層のパネルを出す・しまう（status_panel）は状態の層と島からだけ使う（UI-04、ADR 0032・0181）。 島（画面の上の中央の島の窓。ADR 0181 の段階 4）は、状態の取得（get_state・get_connection・get_voice）・この端末の入出力の停止（io_stop）・パネルを出す（status_panel）だけを使う。承認・取消・再開・登録・終了・発言・キャンバスを前に出すは使えず、島から確認を出さない（確認の入口は状態の層のパネルのまま）。キャンバスのユーザーの操作（canvas_user_op）はキャンバスの窓からだけ、キャンバスが前に出ている間だけ使う（UI-06、ADR 0032）。 予算の確認（超過枠の承認・見送り budget_overage_decide、M 超過の確認 budget_overrun_review、不明な費用の手での精算 budget_manual_settle）は状態の層からだけ使う。承認・確認・精算は main の OS の確認ダイアログを 1 回だけ挟み、画面が持つのは main が作る参照（ref）だけ（B07-05、ADR 0039）。 音声（B05-06、ADR 0050）: 音声の状態の取得（get_voice）・呼びかけなしで音声の会話を始める「続ける」（voice_continue）・外部への送信の同意の取り消し（voice_consent_revoke）は状態の層からだけ使う（音声の状態の取得だけは島も使う。ADR 0181）。外部への送信の同意は main の OS の確認ダイアログで 1 回だけ取り、画面は同意を作れない。音声レンダラーへの IPC は VoiceRendererRequest で、このチャネルとは別。 気づき（B11-05、ADR 0132）: 一覧の取得（candidates_list）と状態の変更（candidate_state。開く・今回は扱わない・再通知）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バーは使えない。候補は main が作る参照（ref）で指し、候補 ID・expected_state・接続範囲は main が持つ。 連携の接続（B08-02 P3・B09-05、ADR 0142）: 一覧の取得（connections_list）と取得範囲の変更（connection_targets_update）は中枢の画面（接続・端末）でだけ使い、キャンバス・入力バーは使えない。接続は main が作る参照（ref）で指し、接続 ID・permission_revision は main が持つ。画面が送れるのは今の保存値と、この世代で中枢から読んだ選べる対象（connection_targets_discover）のうちの選択と、期間・添付の範囲だけ（ADR 0145）。選べる対象の読み取りは提供元への読み取りを伴うので、中枢の画面のロック解除済みの画面操作だけ。 自動実行（B13-05、ADR 0154）: 一覧と安全停止の状態の取得（auto_actions_list）・取り消し（auto_action_undo）・安全停止の解除（safety_resume）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バーは使えない。自動実行した操作と安全停止の状態は main が作る参照（ref）で指し、操作 ID・state_revision・safety_revision・接続範囲は main が持つ。 家計簿（ADR 0162）: 月ごとの合計と 1 か月の記録の取得（household_view）・分類の変更（household_category）・削除（household_delete）・利用通知の取り込みの入・切（household_intake、ADR 0163）・書き出しの取り込み（household_import、ADR 0164。ファイルは main が OS のファイル選択で本人に選ばせ、画面はパスも中身も渡さない）・分類ごとの予算の変更（household_budget、ADR 0166）・記録の手入力（household_add、ADR 0167）・記録の中身の変更（household_edit、ADR 0169）・記録の CSV への書き出し（household_export、ADR 0172。保存先は main が OS の保存先の選択で本人に選ばせ、画面はパスも中身も渡さない）・レシートの写真の読み取りの入・切（household_receipt_setting、ADR 0177。入にするときは main の OS の確認ダイアログを挟む）・レシートの写真の読み取り（household_receipt_read、ADR 0177。写真は main が OS のファイル選択で本人に選ばせ、画面はパスも中身も渡さない。結果は手入力の欄に入れる候補だけ）・請求予定を消す（household_bill_delete、ADR 0179）は従来の窓（標準の端末画面）から使い、キャンバス・入力バーは使えない。記録と請求予定は main が作る参照（ref）で指し、記録・請求予定の ID・内容版・接続範囲は main が持つ。 忘却の画面（UI-10、ADR 0183）: 記憶の一覧の取得（memories_list）・忘却の計画を作らせる（forget_plan）・確かめた計画の実行（forget_execute。main の OS の確認ダイアログを 1 回だけ挟む）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バー・島は使えない。記憶と計画は main が作る参照（ref）で指し、記憶 ID・計画 ID・台帳の世代の照合・接続範囲は main が持つ。計画は中枢が作り、承認・実行権限・閉包の判定の正本は中枢にある。保存してよい記憶の種類の設定の変更（memory_settings_change、ADR 0191）も同じ窓から、ロック解除済みの画面操作（前面）でだけ使う。設定の版は main が持ち、正本は中枢の設定。 保存モードの切り替え（UI-05 の段階 6、ADR 0189）: 記録しないモードに入る・出る、通常（7 日）と継続相談（30 日）の切り替え（storage_mode_change）は、従来の窓（標準の端末画面）と状態の層のパネルから、ロック解除済みの画面操作（前面）でだけ使う。キャンバス・入力バー・島は使えない（島は記録しないモードの印を出すだけ）。音声・チャット・文字の発言からは切り替えない。main は中枢の流れの経路（POST /v1/stream/storage-mode）へ画面操作として送り、結果が分からなければ送り直さずに今の保存モードを読み直す。 流れの表示先の移動（UI-05 の段階 5、ADR 0193）: 呼び出したこの端末へ流れの表示先を移す「このPCに出す」（display_handoff）は、状態の層のパネルから、ロック解除済みの画面操作（前面）でだけ使う。キャンバス・入力バー・島・従来の窓は使えない。端末 ID・会話の ID・route_revision は main が持ち、画面は送らない。main は中枢の流れの経路（POST /v1/stream/handoff）へ画面操作として 1 回だけ送り、結果が分からなければ送り直さずに今の表示先を読み直す。"
+      "description": "UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014・0025）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。中枢との接続・ペアリングは用途別のチャネルだけで、要求の宛先・本文を Renderer が決められない。音声レンダラーの IPC（B05）は別に定める。 発言・承認表示の準備・承認・取消・照合は用途別のチャネルで、操作は main が持つ参照（ref）で指す（B04-05、ADR 0031）。 キャンバスを前に出す（canvas_summon）は状態の層と入力バーからだけ使う（UI-02、ADR 0032）。状態の層のパネルを出す・しまう（status_panel）は状態の層と島からだけ使う（UI-04、ADR 0032・0181）。 島（画面の上の中央の島の窓。ADR 0181 の段階 4）は、状態の取得（get_state・get_connection・get_voice）・この端末の入出力の停止（io_stop）・パネルを出す（status_panel）だけを使う。承認・取消・再開・登録・終了・発言・キャンバスを前に出すは使えず、島から確認を出さない（確認の入口は状態の層のパネルのまま）。キャンバスのユーザーの操作（canvas_user_op）はキャンバスの窓からだけ、キャンバスが前に出ている間だけ使う（UI-06、ADR 0032）。 予算の確認（超過枠の承認・見送り budget_overage_decide、M 超過の確認 budget_overrun_review、不明な費用の手での精算 budget_manual_settle）は状態の層からだけ使う。承認・確認・精算は main の OS の確認ダイアログを 1 回だけ挟み、画面が持つのは main が作る参照（ref）だけ（B07-05、ADR 0039）。 音声（B05-06、ADR 0050）: 音声の状態の取得（get_voice）・呼びかけなしで音声の会話を始める「続ける」（voice_continue）・外部への送信の同意の取り消し（voice_consent_revoke）は状態の層からだけ使う（音声の状態の取得だけは島も使う。ADR 0181）。外部への送信の同意は main の OS の確認ダイアログで 1 回だけ取り、画面は同意を作れない。音声レンダラーへの IPC は VoiceRendererRequest で、このチャネルとは別。 気づき（B11-05、ADR 0132）: 一覧の取得（candidates_list）と状態の変更（candidate_state。開く・今回は扱わない・再通知）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バーは使えない。候補は main が作る参照（ref）で指し、候補 ID・expected_state・接続範囲は main が持つ。OS 通知の入・切の変更（candidate_alert_setting、ADR 0196）も同じ窓から、ロック解除済みの画面操作（前面）でだけ使う。設定の版は main が持ち、正本は中枢の設定。 連携の接続（B08-02 P3・B09-05、ADR 0142）: 一覧の取得（connections_list）と取得範囲の変更（connection_targets_update）は中枢の画面（接続・端末）でだけ使い、キャンバス・入力バーは使えない。接続は main が作る参照（ref）で指し、接続 ID・permission_revision は main が持つ。画面が送れるのは今の保存値と、この世代で中枢から読んだ選べる対象（connection_targets_discover）のうちの選択と、期間・添付の範囲だけ（ADR 0145）。選べる対象の読み取りは提供元への読み取りを伴うので、中枢の画面のロック解除済みの画面操作だけ。 自動実行（B13-05、ADR 0154）: 一覧と安全停止の状態の取得（auto_actions_list）・取り消し（auto_action_undo）・安全停止の解除（safety_resume）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バーは使えない。自動実行した操作と安全停止の状態は main が作る参照（ref）で指し、操作 ID・state_revision・safety_revision・接続範囲は main が持つ。 家計簿（ADR 0162）: 月ごとの合計と 1 か月の記録の取得（household_view）・分類の変更（household_category）・削除（household_delete）・利用通知の取り込みの入・切（household_intake、ADR 0163）・書き出しの取り込み（household_import、ADR 0164。ファイルは main が OS のファイル選択で本人に選ばせ、画面はパスも中身も渡さない）・分類ごとの予算の変更（household_budget、ADR 0166）・記録の手入力（household_add、ADR 0167）・記録の中身の変更（household_edit、ADR 0169）・記録の CSV への書き出し（household_export、ADR 0172。保存先は main が OS の保存先の選択で本人に選ばせ、画面はパスも中身も渡さない）・レシートの写真の読み取りの入・切（household_receipt_setting、ADR 0177。入にするときは main の OS の確認ダイアログを挟む）・レシートの写真の読み取り（household_receipt_read、ADR 0177。写真は main が OS のファイル選択で本人に選ばせ、画面はパスも中身も渡さない。結果は手入力の欄に入れる候補だけ）・請求予定を消す（household_bill_delete、ADR 0179）は従来の窓（標準の端末画面）から使い、キャンバス・入力バーは使えない。記録と請求予定は main が作る参照（ref）で指し、記録・請求予定の ID・内容版・接続範囲は main が持つ。 忘却の画面（UI-10、ADR 0183）: 記憶の一覧の取得（memories_list）・忘却の計画を作らせる（forget_plan）・確かめた計画の実行（forget_execute。main の OS の確認ダイアログを 1 回だけ挟む）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バー・島は使えない。記憶と計画は main が作る参照（ref）で指し、記憶 ID・計画 ID・台帳の世代の照合・接続範囲は main が持つ。計画は中枢が作り、承認・実行権限・閉包の判定の正本は中枢にある。保存してよい記憶の種類の設定の変更（memory_settings_change、ADR 0191）も同じ窓から、ロック解除済みの画面操作（前面）でだけ使う。設定の版は main が持ち、正本は中枢の設定。 保存モードの切り替え（UI-05 の段階 6、ADR 0189）: 記録しないモードに入る・出る、通常（7 日）と継続相談（30 日）の切り替え（storage_mode_change）は、従来の窓（標準の端末画面）と状態の層のパネルから、ロック解除済みの画面操作（前面）でだけ使う。キャンバス・入力バー・島は使えない（島は記録しないモードの印を出すだけ）。音声・チャット・文字の発言からは切り替えない。main は中枢の流れの経路（POST /v1/stream/storage-mode）へ画面操作として送り、結果が分からなければ送り直さずに今の保存モードを読み直す。 流れの表示先の移動（UI-05 の段階 5、ADR 0193）: 呼び出したこの端末へ流れの表示先を移す「このPCに出す」（display_handoff）は、状態の層のパネルから、ロック解除済みの画面操作（前面）でだけ使う。キャンバス・入力バー・島・従来の窓は使えない。端末 ID・会話の ID・route_revision は main が持ち、画面は送らない。main は中枢の流れの経路（POST /v1/stream/handoff）へ画面操作として 1 回だけ送り、結果が分からなければ送り直さずに今の表示先を読み直す。"
     },
     "DesktopIpcRequest": {
       "oneOf": [
@@ -14980,6 +15056,35 @@
           "required": ["channel", "request_id", "payload"],
           "additionalProperties": false,
           "description": "気づきの状態を 1 つ進める（B11-05、ADR 0132）。ref は直前の一覧で main が渡した参照（候補 ID ではない）。main は一覧で読んだ状態を expected_state にして中枢へ送り、記録できたら一覧を読み直して返す。状態が変わっていた（409）なら読み直して preview_stale、結果が分からなければ自動では送り直さず outcome_unknown。ロック解除済みの画面操作だけ。外部へは送らない記録の操作なので、入出力の停止中も受け付ける。"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "channel": {
+              "type": "string",
+              "const": "desktop.candidate_alert_setting"
+            },
+            "request_id": {
+              "$ref": "#/$defs/Id"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "settings_ref": {
+                  "$ref": "#/$defs/Id"
+                },
+                "os_notification": {
+                  "type": "string",
+                  "enum": ["on", "off"]
+                }
+              },
+              "required": ["settings_ref", "os_notification"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["channel", "request_id", "payload"],
+          "additionalProperties": false,
+          "description": "気づきの OS 通知の入・切を変える（ADR 0196）。画面が見ている設定の参照（settings_ref）を送り、設定の版は main が付ける。参照が main の今の参照と違えば（画面が古い設定を見ている）preview_stale で、中枢へは送らない。版が今と違えば（別の画面で変わった）preview_stale で、main は設定を読み直す。結果が分からなければ outcome_unknown で、自動では送り直さない。ロック解除済みの画面操作（前面）だけ。中枢の設定を変えるだけで外部へは送らないので、入出力の停止中も受け付ける。"
         },
         {
           "type": "object",
@@ -16827,7 +16932,11 @@
             },
             "channel": {
               "type": "string",
-              "enum": ["desktop.candidates_list", "desktop.candidate_state"]
+              "enum": [
+                "desktop.candidates_list",
+                "desktop.candidate_state",
+                "desktop.candidate_alert_setting"
+              ]
             },
             "outcome": {
               "type": "string",
@@ -16839,7 +16948,7 @@
           },
           "required": ["request_id", "channel", "outcome", "candidates"],
           "additionalProperties": false,
-          "description": "受け付けた。気づきの一覧の表示用の値を返す（状態の変更の後は読み直した一覧。読み直せなかったときは fetch が stale）。B11-05、ADR 0132。"
+          "description": "受け付けた。気づきの一覧の表示用の値を返す（状態の変更の後は読み直した一覧。読み直せなかったときは fetch が stale。OS 通知の入・切の変更の後は変えた後の設定）。B11-05、ADR 0132・0196。"
         },
         {
           "type": "object",
@@ -17578,6 +17687,13 @@
           "type": "integer",
           "minimum": 1,
           "description": "main が付ける一覧の通し番号。画面はこれより小さい番号の応答を反映しない（ADR 0026 と同じ）。"
+        },
+        "alert": {
+          "anyOf": [
+            { "$ref": "#/$defs/DesktopCandidateAlertView" },
+            { "type": "null" }
+          ],
+          "description": "気づきの OS 通知の入・切（ADR 0196）。中枢から読めたことがなければ null（「切」と区別する）。"
         }
       },
       "required": [
@@ -17587,10 +17703,27 @@
         "counts",
         "entries",
         "truncated",
-        "list_seq"
+        "list_seq",
+        "alert"
       ],
       "additionalProperties": false,
       "description": "気づきの画面に出す値（B11-05、ADR 0132。設計 01 気づき、11 §4）。見出しは画面が domain の orderCandidates で zone と fetched_at から分ける。"
+    },
+    "DesktopCandidateAlertView": {
+      "type": "object",
+      "properties": {
+        "ref": {
+          "$ref": "#/$defs/Id",
+          "description": "main が付ける設定の参照。中枢の設定の版が変わるたびに新しくなる。画面は変更の要求にこの参照を載せ、main は今の参照と違えば preview_stale で断る（ADR 0191 の設定の参照と同じ）。"
+        },
+        "os_notification": {
+          "type": "string",
+          "enum": ["on", "off"]
+        }
+      },
+      "required": ["ref", "os_notification"],
+      "additionalProperties": false,
+      "description": "気づきの欄の「OS の通知」の表示用の値（ADR 0196）。設定の版は main が持ち、画面へは渡さない。"
     },
     "DesktopAutoActionEntry": {
       "type": "object",

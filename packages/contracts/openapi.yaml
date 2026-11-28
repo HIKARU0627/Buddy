@@ -970,7 +970,7 @@ paths:
     get:
       operationId: streamEvents
       summary: イベントの購読（WSS）
-      description: WebSocket へ切り替え、EventStreamMessage を流す。認証はヘッダーで行い、秘密を URL クエリーに入れない。開始位置はクエリーの cursor（getSnapshot・getEvents・イベントが返した値）で、その後の COMMIT 済みのイベントを順に流す。中枢が発行した形でない cursor は切り替えずに 422。接続は端末の今の接続範囲（getBootstrap で発行したもの）に結び付き、なければすぐに閉じる。DB 世代の変化・履歴期限・接続範囲の失効（再接続・期限）では resnapshot_required を送って閉じる。端末の失効・自宅判定の不成立でも理由つきで閉じる。同じ端末の同時の購読は上限（4）までで、超えれば切り替えずに 429、同時の切り替えで後から開いたものは理由つきで閉じる。キャンバスの記述が新しい版になったときは canvas の知らせ（版だけ。cursor を持たず、記録に入れない）を購読に送り、端末は getCanvas で取る（ADR 0032）。期限切れ・忘却・忘却台帳の前進の知らせは notice（ID と理由と番号だけ。cursor を持たず、記録に入れず、再送しない）として、接続範囲を確かめた後の購読に送る（UI-05 の段階 3、ADR 0187）。中枢は ping を送り、応答のない接続を切る。閉じるコードは x-buddy-websocket-close-codes（07 §2・§4、ADR 0009・0023）。
+      description: WebSocket へ切り替え、EventStreamMessage を流す。認証はヘッダーで行い、秘密を URL クエリーに入れない。開始位置はクエリーの cursor（getSnapshot・getEvents・イベントが返した値）で、その後の COMMIT 済みのイベントを順に流す。中枢が発行した形でない cursor は切り替えずに 422。接続は端末の今の接続範囲（getBootstrap で発行したもの）に結び付き、なければすぐに閉じる。DB 世代の変化・履歴期限・接続範囲の失効（再接続・期限）では resnapshot_required を送って閉じる。端末の失効・自宅判定の不成立でも理由つきで閉じる。同じ端末の同時の購読は上限（4）までで、超えれば切り替えずに 429、同時の切り替えで後から開いたものは理由つきで閉じる。キャンバスの記述が新しい版になったときは canvas の知らせ（版だけ。cursor を持たず、記録に入れない）を購読に送り、端末は getCanvas で取る（ADR 0032）。期限切れ・忘却・忘却台帳の前進の知らせは notice（ID と理由と番号だけ。cursor を持たず、記録に入れず、再送しない）として、接続範囲を確かめた後の購読に送る（UI-05 の段階 3、ADR 0187）。気づきの OS 通知が入のときは、気づきの増減の知らせ（CandidateNotice。題・候補 ID を含めず、OS 通知を出す数だけ）も同じ notice で送る（ADR 0196）。中枢は ping を送り、応答のない接続を切る。閉じるコードは x-buddy-websocket-close-codes（07 §2・§4、ADR 0009・0023）。
       x-buddy-core-checks: *id001
       parameters:
         - $ref: '#/components/parameters/Cursor'
@@ -1909,6 +1909,76 @@ paths:
           $ref: '#/components/responses/Unauthenticated'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /v1/candidates/alert-settings:
+    get:
+      operationId: getCandidateAlertSettings
+      summary: 気づきの OS 通知の入・切
+      description: 新しい気づきの OS 通知とトレイの new の件数を出すか（on・off）と設定の版を返す（ADR 0073・0196）。まだ変えていなければ off・版 0。端末の main が一覧と一緒に読み、ロック解除後・接続の後にも読むので、画面操作は求めない（ロック解除済みだけ）。
+      x-buddy-core-checks:
+        - device_token
+        - home_network
+        - unlocked
+      parameters:
+        - $ref: '#/components/parameters/LockState'
+      responses:
+        '200':
+          description: 今の設定。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/CandidateAlertSettings
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+    post:
+      operationId: changeCandidateAlertSettings
+      summary: 気づきの OS 通知の入・切の変更
+      description: 本人がロック解除済みの画面で、新しい気づきの OS 通知（とトレイの new の件数）の入・切を変える（ADR 0196）。版（expected_candidate_alert_settings_revision）が今と違えば、入にするときも切にするときも 409（同じ要求の再送も 409）。入にした時点で既にある気づきは通知しない（入にした後に新しく作られた気づきだけ）。中枢は通知の送出意図を書く transaction でこの設定を読み直し、切なら・判定の後に設定が変わったら書かない。音声・チャット・発言からは変えない。成否が不明なときは 503。
+      x-buddy-core-checks:
+        - device_token
+        - home_network
+        - command_scope
+        - unlocked
+        - screen_operation
+      parameters:
+        - $ref: '#/components/parameters/InputOrigin'
+        - $ref: '#/components/parameters/LockState'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas/buddy.schema.json#/$defs/CandidateAlertSettingsChangeRequest
+      responses:
+        '200':
+          description: 変更後の設定。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/CandidateAlertSettings
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/Gone'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
         '422':
           $ref: '#/components/responses/Unprocessable'
         '429':

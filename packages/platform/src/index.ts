@@ -1,4 +1,4 @@
-// OS 別の鍵保護・起動・端末能力のアダプター（設計 06 の初期のコード配置、ADR 0013・0017・0020）。
+// OS 別の鍵保護・起動・端末能力のアダプター（設計 06 の初期のコード配置、ADR 0013・0017・0020・0202）。
 // Core から使う。共有層（contracts・domain）からは import しない。Electron には依存しない。
 export * from './runner.js';
 export * from './supervisor.js';
@@ -15,3 +15,5 @@ export * from './tailscale-status.js';
 // B06-08: バックアップの鍵（backup_file・ledger_hmac_key）の KeyStore（ADR 0055）。
 export * from './backup-key-store.js';
 export * from './oauth-token-store.js';
+// Windows の中枢の鍵の保護（DPAPI、CurrentUser。ADR 0202）。
+export * from './windows-dpapi.js';

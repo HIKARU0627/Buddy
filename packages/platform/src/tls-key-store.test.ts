@@ -193,12 +193,11 @@ test(
 );
 
 test(
-  'Windows・Linux の中枢は初期版の対象外で鍵を返さない',
+  'Linux の中枢は初期版の対象外で鍵を返さない。Windows は DPAPI（ADR 0202）',
   { timeout: 30_000 },
   async () => {
     const loadModule = () => Promise.reject(new Error('must not load'));
     for (const [platform, reason] of [
-      ['win32', 'windows_core_not_supported_in_initial_release'],
       ['linux', 'linux_core_not_supported_in_initial_release'],
       ['freebsd', 'platform_not_supported'],
     ] as const) {
@@ -213,5 +212,13 @@ test(
       createTlsKeyStore('darwin', { loadModule }).backend,
       'macos_keychain',
     );
+    // Windows は DPAPI。置き場所（LOCALAPPDATA）がなければ使えない（作っただけでは子プロセスを呼ばない）。
+    const windows = createTlsKeyStore('win32', { loadModule, env: {} });
+    assert.equal(windows.backend, 'windows_dpapi');
+    assert.deepEqual(await windows.loadOrCreateTlsKey(), {
+      ok: false,
+      backend: 'windows_dpapi',
+      reason: 'dpapi_unavailable',
+    });
   },
 );

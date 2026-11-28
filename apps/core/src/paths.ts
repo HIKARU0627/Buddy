@@ -16,12 +16,14 @@ export function defaultDataDir({
   env,
   homedir,
 }: PlatformContext): string {
+  // Windows は %LOCALAPPDATA%（移動プロファイルで同期しない、この PC だけの場所）。DB と WAL を同期の対象にせず、
+  // DPAPI で保護した鍵（%LOCALAPPDATA%\Buddy\key-store）と同じ PC・同じ利用者の場所にそろえる（ADR 0202）。
   if (platform === 'win32') {
-    const appData = env['APPDATA'];
+    const localAppData = env['LOCALAPPDATA'];
     const base =
-      appData && win32.isAbsolute(appData)
-        ? appData
-        : win32.join(homedir, 'AppData', 'Roaming');
+      localAppData && win32.isAbsolute(localAppData)
+        ? localAppData
+        : win32.join(homedir, 'AppData', 'Local');
     return win32.join(base, 'Buddy', 'core');
   }
   if (platform === 'darwin')

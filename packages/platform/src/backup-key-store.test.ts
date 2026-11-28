@@ -143,7 +143,6 @@ test('新しい鍵の素材は 32 バイトで毎回違う', () => {
 
 test('初期版で対応しない OS は鍵を返さない', async () => {
   for (const [platform, reason] of [
-    ['win32', 'windows_core_not_supported_in_initial_release'],
     ['linux', 'linux_core_not_supported_in_initial_release'],
     ['freebsd', 'platform_not_supported'],
   ] as const) {

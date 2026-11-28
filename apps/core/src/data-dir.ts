@@ -28,8 +28,8 @@ export class DataDirError extends Error {
 }
 
 // 本人だけが読み書きできるディレクトリを用意し、実体の絶対パスを返す。
-// POSIX では所有者を確かめて 0700 にそろえる。Windows は %APPDATA% 既定の ACL に任せる
-// （ACL の検査は B01-02 の鍵保護・配置の検討で扱う）。
+// POSIX では所有者を確かめて 0700 にそろえる。Windows は既定の %LOCALAPPDATA% の ACL（本人・SYSTEM・
+// Administrators）に任せ、ACL の検査はしない（ADR 0202、未決事項 U700。秘密の鍵は DPAPI で別に保護する）。
 export async function prepareDataDir(dataDir: string): Promise<string> {
   await mkdir(dataDir, { recursive: true, mode: 0o700 });
   const real = await realpath(dataDir);

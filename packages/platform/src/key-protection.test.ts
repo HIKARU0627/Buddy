@@ -103,14 +103,13 @@ test('macOS: キーチェーンを使えない・鍵が不正なら起動前検�
   assert.equal(corrupt.items.get('dev.buddy.core/data-key-v1'), 'not base64!');
 });
 
-test('Windows・Linux の中枢は初期版の対象外として使えない', async () => {
+test('Linux の中枢は初期版の対象外として使えない（Windows は ADR 0202 から DPAPI）', async () => {
   let loads = 0;
   const loadModule = () => {
     loads += 1;
     return Promise.resolve(fakeKeyring().module);
   };
   const cases: [string, string][] = [
-    ['win32', 'windows_core_not_supported_in_initial_release'],
     ['linux', 'linux_core_not_supported_in_initial_release'],
     ['freebsd', 'platform_not_supported'],
   ];
@@ -238,6 +237,17 @@ test('起動前検査: 例外・不正な結果は使えない扱いにする（
       ),
       'probe_result_invalid',
     ],
+    // 決めていない保護手段（資格情報マネージャーなど）の「使える」も受け入れない。
+    [
+      probe(() =>
+        Promise.resolve({
+          available: true,
+          backend: 'windows_credential_manager',
+          reason: null,
+        }),
+      ),
+      'probe_result_invalid',
+    ],
     // 理由コードに使えない値（パスや改行を含む出力など）はそのまま出さない。
     [
       probe(() =>
@@ -278,4 +288,31 @@ test('起動前検査: 例外・不正な結果は使えない扱いにする（
     await keyProtectionPreflight(disguised, { allowMock: true }),
     ['key_protection_unavailable:probe_result_invalid'],
   );
+  assert.deepEqual(
+    await keyProtectionPreflight(
+      {
+        kind: 'mock',
+        check: () =>
+          Promise.resolve({
+            available: true,
+            backend: 'windows_dpapi',
+            reason: null,
+          }),
+      },
+      { allowMock: true },
+    ),
+    ['key_protection_unavailable:probe_result_invalid'],
+  );
+});
+
+test('起動前検査: 実機の probe の「使える」は macOS のキーチェーンと Windows の DPAPI だけ受け入れる', async () => {
+  for (const backend of ['macos_keychain', 'windows_dpapi'] as const)
+    assert.deepEqual(
+      await keyProtectionPreflight({
+        kind: 'os',
+        check: () =>
+          Promise.resolve({ available: true, backend, reason: null }),
+      }),
+      [],
+    );
 });

@@ -208,16 +208,15 @@ test(
       code: 'preflight_failed',
       reasons: ['key_protection_unavailable:mock_unavailable'],
     });
-    // 模擬の指定がなければ実行中の OS の鍵保護を確かめる。Linux・Windows の中枢は初期版の対象外なので起動しない。
-    // macOS では実機のキーチェーンを確かめることになるため、この試験では実行しない。
-    if (process.platform !== 'darwin') {
+    // 模擬の指定がなければ実行中の OS の鍵保護を確かめる。Linux の中枢は初期版の対象外なので起動しない。
+    // macOS では実機のキーチェーンを、Windows では実機の DPAPI と本人の %LOCALAPPDATA% を確かめる（鍵を作る）
+    // ことになるため、この試験では実行しない（ADR 0202。Windows の DPAPI は packages/platform の試験で一時ディレクトリに作る）。
+    if (process.platform === 'linux') {
       const unsupported = await run(['start', '--data-dir', dataDir]);
       assert.equal(unsupported.code, 5);
-      const [reason = ''] = lastJson(unsupported.stdout)['reasons'] as string[];
-      assert.match(
-        reason,
-        /^key_protection_unavailable:(linux|windows)_core_not_supported_in_initial_release$/u,
-      );
+      assert.deepEqual(lastJson(unsupported.stdout)['reasons'], [
+        'key_protection_unavailable:linux_core_not_supported_in_initial_release',
+      ]);
     }
     await assert.rejects(readdir(dataDir), { code: 'ENOENT' });
   },

@@ -1,7 +1,8 @@
 // 中枢の TLS の秘密鍵の KeyStore（設計 02 端末登録と接続・保存と秘密情報、ADR 0017・0020）。
 // HTTPS の自己署名証明書の秘密鍵（ECDSA P-256）を OS の保護領域に置き、取得・初回作成する。
-// 初期版の中枢は macOS だけで、データ鍵と同じサービス名 `dev.buddy.core` の別の項目
-// （アカウント名 `tls-key-v1`）に、PKCS#8 の DER を正準の base64 で保存する。平文の鍵をディスクに置かない。
+// データ鍵と同じ保護領域の別の項目（アカウント名 `tls-key-v1`）に、PKCS#8 の DER を正準の base64 で保存する。
+// macOS はキーチェーン（サービス名 `dev.buddy.core`）、Windows は DPAPI（CurrentUser）で保護したファイル
+// （ADR 0202）。Linux の中枢は初期版の対象外。平文の鍵をディスクに置かない。
 // 使えない・読めない・形式が不正なときは構造化した理由を返し、平文の保存へ切り替えない。
 // 鍵の値（DER・PEM・base64）はログ・例外・結果の理由に入れない。
 import {
@@ -11,13 +12,20 @@ import {
 } from 'node:crypto';
 import type { KeyObject } from 'node:crypto';
 import { inspect } from 'node:util';
-import { decodeCanonicalBase64, keychainSlotOpener } from './key-store.js';
+import {
+  decodeCanonicalBase64,
+  keychainSlotOpener,
+  slotFailureReason,
+} from './key-store.js';
 import type {
   KeyStoreBackend,
   MacKeychainKeyStoreOptions,
+  OsKeyStoreOptions,
   SecretSlot,
 } from './key-store.js';
 import { corePlatformOf } from './supervisor.js';
+import { windowsDpapiSlotOpener } from './windows-dpapi.js';
+import type { WindowsDpapiOptions } from './windows-dpapi.js';
 
 /** キーチェーンのアカウント名。鍵の世代を名前に持ち、個人情報を含まない。 */
 export const TLS_KEY_ACCOUNT = 'tls-key-v1';
@@ -26,6 +34,7 @@ export const TLS_KEY_CURVE = 'prime256v1';
 
 export type TlsKeyStoreFailureReason =
   | 'keystore_module_unavailable'
+  | 'dpapi_unavailable'
   | 'keystore_read_failed'
   | 'keystore_write_failed'
   // 作成しない読み出しで、鍵がまだない。
@@ -34,7 +43,6 @@ export type TlsKeyStoreFailureReason =
   | 'tls_key_format_invalid'
   // 作成した鍵を読み戻した値が書いた値と一致しない。
   | 'tls_key_verify_failed'
-  | 'windows_core_not_supported_in_initial_release'
   | 'linux_core_not_supported_in_initial_release'
   | 'platform_not_supported'
   | 'mock_unavailable';
@@ -161,8 +169,10 @@ export function createSlotTlsKeyStore(
     let stored: string | null;
     try {
       stored = await slot.read();
-    } catch {
-      return fail('keystore_read_failed');
+    } catch (error) {
+      return fail(
+        slotFailureReason(error, unavailableReason, 'keystore_read_failed'),
+      );
     }
     if (stored !== null) {
       if (typeof stored !== 'string') return fail('tls_key_format_invalid');
@@ -179,15 +189,19 @@ export function createSlotTlsKeyStore(
       .toString('base64');
     try {
       await slot.write(encoded);
-    } catch {
-      return fail('keystore_write_failed');
+    } catch (error) {
+      return fail(
+        slotFailureReason(error, unavailableReason, 'keystore_write_failed'),
+      );
     }
     // 書いた値を読み戻し、保護領域から同じ鍵を取得できることを確かめてから使う。
     let readBack: string | null;
     try {
       readBack = await slot.read();
-    } catch {
-      return fail('keystore_read_failed');
+    } catch (error) {
+      return fail(
+        slotFailureReason(error, unavailableReason, 'keystore_read_failed'),
+      );
     }
     if (readBack !== encoded) return fail('tls_key_verify_failed');
     return {
@@ -218,17 +232,26 @@ export function createMacKeychainTlsKeyStore(
   });
 }
 
-/** 初期版で中枢の鍵保護に対応しない OS の TlsKeyStore。鍵を返さない。 */
+/** Windows の DPAPI（CurrentUser）の TlsKeyStore（項目名 `tls-key-v1`、ADR 0202）。 */
+export function createWindowsDpapiTlsKeyStore(
+  options: WindowsDpapiOptions = {},
+): TlsKeyStore {
+  return createSlotTlsKeyStore({
+    kind: 'os',
+    backend: 'windows_dpapi',
+    unavailableReason: 'dpapi_unavailable',
+    openSlot: windowsDpapiSlotOpener(TLS_KEY_ACCOUNT, options),
+  });
+}
+
+/** 中枢の鍵保護に対応しない OS（Linux など）の TlsKeyStore。鍵を返さない。 */
 export function createUnsupportedTlsKeyStore(
   nodePlatform: string,
 ): TlsKeyStore {
-  const platform = corePlatformOf(nodePlatform);
   const reason: TlsKeyStoreFailureReason =
-    platform === 'windows'
-      ? 'windows_core_not_supported_in_initial_release'
-      : platform === 'linux'
-        ? 'linux_core_not_supported_in_initial_release'
-        : 'platform_not_supported';
+    corePlatformOf(nodePlatform) === 'linux'
+      ? 'linux_core_not_supported_in_initial_release'
+      : 'platform_not_supported';
   const result: TlsKeyResult = { ok: false, backend: 'none', reason };
   return {
     kind: 'os',
@@ -241,11 +264,16 @@ export function createUnsupportedTlsKeyStore(
 /** 実行中の OS に合う TlsKeyStore（Core では process.platform を渡す）。 */
 export function createTlsKeyStore(
   nodePlatform: string,
-  options: MacKeychainKeyStoreOptions = {},
+  options: OsKeyStoreOptions = {},
 ): TlsKeyStore {
-  return corePlatformOf(nodePlatform) === 'macos'
-    ? createMacKeychainTlsKeyStore(options)
-    : createUnsupportedTlsKeyStore(nodePlatform);
+  switch (corePlatformOf(nodePlatform)) {
+    case 'macos':
+      return createMacKeychainTlsKeyStore(options);
+    case 'windows':
+      return createWindowsDpapiTlsKeyStore(options);
+    default:
+      return createUnsupportedTlsKeyStore(nodePlatform);
+  }
 }
 
 export interface MockTlsKeyStoreOptions {

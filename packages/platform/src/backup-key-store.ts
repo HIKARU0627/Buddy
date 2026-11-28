@@ -2,17 +2,25 @@
 // バックアップ本体の鍵（backup_file）と台帳・記憶の HMAC の鍵（ledger_hmac_key）を、データ鍵と同じサービス名
 // `dev.buddy.core` の別の項目（アカウント名 `backup-file:<key_id>`・`ledger-hmac:<key_id>`）に、32 バイトを正準の base64 で置く。
 // 鍵の ID を名前に持つので、ID ごとに 1 項目。別の ID の鍵を上書きしない（置換は新しい ID の鍵を足してから切り替える）。
-// 初期版の中枢は macOS だけ。使えない・読めない・形式が不正なときは理由だけを返し、平文の保存へ切り替えない。
+// macOS はキーチェーン、Windows は DPAPI（CurrentUser）で保護したファイル（ADR 0202）。Linux の中枢は初期版の対象外。
+// 使えない・読めない・形式が不正なときは理由だけを返し、平文の保存へ切り替えない。
 // 鍵の値（バイト列・base64）はログ・例外・結果の理由に入れない。
 import { randomBytes } from 'node:crypto';
 import { inspect } from 'node:util';
-import { decodeCanonicalBase64, keychainSlotOpener } from './key-store.js';
+import {
+  decodeCanonicalBase64,
+  keychainSlotOpener,
+  slotFailureReason,
+} from './key-store.js';
 import type {
   KeyStoreBackend,
   MacKeychainKeyStoreOptions,
+  OsKeyStoreOptions,
   SecretSlot,
 } from './key-store.js';
 import { corePlatformOf } from './supervisor.js';
+import { windowsDpapiSlotOpener } from './windows-dpapi.js';
+import type { WindowsDpapiOptions } from './windows-dpapi.js';
 
 export const BACKUP_KEY_BYTES = 32;
 const KEY_ID = /^[a-z0-9][a-z0-9._-]{0,63}$/u;
@@ -21,6 +29,7 @@ export type BackupKeyPurposeName = 'backup_file' | 'ledger_hmac_key';
 
 export type BackupKeyStoreFailureReason =
   | 'keystore_module_unavailable'
+  | 'dpapi_unavailable'
   | 'keystore_read_failed'
   | 'keystore_write_failed'
   | 'backup_key_id_invalid'
@@ -30,7 +39,6 @@ export type BackupKeyStoreFailureReason =
   | 'backup_key_exists'
   // 書いた値を読み戻したら違った。
   | 'backup_key_verify_failed'
-  | 'windows_core_not_supported_in_initial_release'
   | 'linux_core_not_supported_in_initial_release'
   | 'platform_not_supported'
   | 'mock_unavailable';
@@ -145,8 +153,10 @@ export function createSlotBackupKeyStore(
   ): Promise<{ readonly stored: string | null } | BackupKeyResult> {
     try {
       return { stored: await slot.read() };
-    } catch {
-      return fail('keystore_read_failed');
+    } catch (error) {
+      return fail(
+        slotFailureReason(error, unavailableReason, 'keystore_read_failed'),
+      );
     }
   }
   function decode(
@@ -187,8 +197,10 @@ export function createSlotBackupKeyStore(
       }
       try {
         await slot.write(encoded);
-      } catch {
-        return fail('keystore_write_failed');
+      } catch (error) {
+        return fail(
+          slotFailureReason(error, unavailableReason, 'keystore_write_failed'),
+        );
       }
       const back = await readSlot(slot);
       if ('ok' in back) return back;
@@ -218,17 +230,26 @@ export function createMacKeychainBackupKeyStore(
   });
 }
 
-/** 初期版で中枢の鍵保護に対応しない OS。鍵を返さない。 */
+/** Windows の DPAPI（CurrentUser）のバックアップの鍵の KeyStore（ADR 0202）。項目名はキーチェーンと同じ。 */
+export function createWindowsDpapiBackupKeyStore(
+  options: WindowsDpapiOptions = {},
+): BackupKeyStore {
+  return createSlotBackupKeyStore({
+    kind: 'os',
+    backend: 'windows_dpapi',
+    unavailableReason: 'dpapi_unavailable',
+    openSlot: (account) => windowsDpapiSlotOpener(account, options)(),
+  });
+}
+
+/** 中枢の鍵保護に対応しない OS（Linux など）。鍵を返さない。 */
 export function createUnsupportedBackupKeyStore(
   nodePlatform: string,
 ): BackupKeyStore {
-  const platform = corePlatformOf(nodePlatform);
   const reason: BackupKeyStoreFailureReason =
-    platform === 'windows'
-      ? 'windows_core_not_supported_in_initial_release'
-      : platform === 'linux'
-        ? 'linux_core_not_supported_in_initial_release'
-        : 'platform_not_supported';
+    corePlatformOf(nodePlatform) === 'linux'
+      ? 'linux_core_not_supported_in_initial_release'
+      : 'platform_not_supported';
   const failure: BackupKeyResult = { ok: false, backend: 'none', reason };
   return {
     kind: 'os',
@@ -240,11 +261,16 @@ export function createUnsupportedBackupKeyStore(
 
 export function createBackupKeyStore(
   nodePlatform: string,
-  options: MacKeychainKeyStoreOptions = {},
+  options: OsKeyStoreOptions = {},
 ): BackupKeyStore {
-  return corePlatformOf(nodePlatform) === 'macos'
-    ? createMacKeychainBackupKeyStore(options)
-    : createUnsupportedBackupKeyStore(nodePlatform);
+  switch (corePlatformOf(nodePlatform)) {
+    case 'macos':
+      return createMacKeychainBackupKeyStore(options);
+    case 'windows':
+      return createWindowsDpapiBackupKeyStore(options);
+    default:
+      return createUnsupportedBackupKeyStore(nodePlatform);
+  }
 }
 
 export interface MockBackupKeyStoreOptions {

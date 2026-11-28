@@ -26,7 +26,8 @@ export async function runPreflight(
 }
 
 export type KeyProtectionMode =
-  // 実行中の OS の鍵保護を確かめる（macOS はキーチェーンのデータ鍵。初期版の中枢は macOS だけ）。
+  // 実行中の OS の鍵保護を確かめる（macOS はキーチェーン、Windows は DPAPI のデータ鍵。ADR 0202。
+  // Linux の中枢は初期版の対象外）。
   | 'os'
   // 模擬起動。模擬の鍵保護が使えるものとして扱う。
   | 'mock'
@@ -57,7 +58,7 @@ export function createCoreKeyStore(
 
 export interface KeyProtectionCheckOptions {
   // 試験で差し替える。省略時は実行中の OS と、その起動の種類の KeyStore（createCoreKeyStore）。
-  // 'os' の検査では keyStore を macOS でだけ使い、模擬の KeyStore（kind: 'mock'）は拒否される。
+  // 'os' の検査では keyStore を macOS・Windows でだけ使い、模擬の KeyStore（kind: 'mock'）は拒否される。
   readonly nodePlatform?: string;
   readonly keyStore?: KeyStore;
 }

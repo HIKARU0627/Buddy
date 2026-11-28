@@ -71,13 +71,13 @@
 | #361 | 0199        | 気づきの候補に結び付いた自動実行の結果と取り消しボタン（U282）                        |
 | #362 | 0198        | 自動で作った予定の取り消しの経路（製品では無効）と状態欄の安全停止の知らせ（B13）     |
 | #363 | 0200        | LLM の配置のヒントと不正ならコードの配置に戻す仕組み（UI-09。製品には未接続）         |
+| #364 | 0201        | 気づきの根拠を許可範囲から取り直す「根拠を見る」（マイグレーション 0026）             |
 
 ## 作業中の PR
 
 - 本人の決定（2026-11-27、U431）: 忘却の公開ゲートは閉じたままにする。開くのは、記憶を保存する経路と保存してよい種類の設定ができ、U385・U383 を決め、実機（合成データ）で計画から実行まで確かめた後に、改めて本人が決める。
 - Windows の CI の shard 1 の時間切れ（Issue #348）は #350 で大きく縮めた。voice-budget の「再起動の照合」が 1 回だけ時間切れになったので Issue は開けたまま。
 - B04・B05・B07 の模擬証拠は、main の現行のソースと一致しない（`pnpm run evidence:check`。この期間より前からの食い違いを含む）。それぞれの工程か main の記録の更新のときに作り直す。
-- 気づきの根拠の取り直し（ADR 0201、U680〜U689、Issue #271 の (1) と #283 の「根拠を見る」）: 由来の位置を候補の側に控える表（マイグレーション 0026、DB の版 26・表 67）を足し、`fetchEvidence`・`checkEvidence` を Google の予定・メールにつなぎ、`CandidateEvidence.source` を `sources` に変え、端末に `desktop.candidate_evidence` と「根拠を見る」を足した。見直しで、根拠の再確認を一覧から切り離して後ろで回し（U681）、窓・ラベルの外は解決せず未確認にし（U685）、ブリッジは根拠の本文を落として中継する（U689）ようにした。Outlook（U682）とメールの引用の本文の作り方・版（U683）は残り。模擬だけ。
 - Windows の中枢の鍵の保護（ADR 0202、U700〜U705、本人の決定 2026-11-28「Windows でも中枢を使えるように」）: データ鍵・TLS の秘密鍵・OAuth のトークン・バックアップの鍵を DPAPI（CurrentUser、PowerShell の子プロセス・値は標準入力）で保護して `%LOCALAPPDATA%\Buddy\key-store` に置き、Windows の起動前検査をつないだ。Windows の既定のデータディレクトリを `%LOCALAPPDATA%\Buddy\core` に改めた。本物の DPAPI の往復は Windows の CI だけで確かめ、Windows の実機は未実施。自動起動・Tailscale・手順書は別の作業。
 
 CI が通ればマージしてよいと本人から許可を受けている。マージの状態は GitHub の PR の画面で確かめる。
@@ -160,5 +160,5 @@ CI が通ればマージしてよいと本人から許可を受けている。�
 - コミットの前に `pnpm run security:staged`、push の前に `pnpm run security:scan`。
 - 公開物の検査は、`example.com`・`example.org`・`example.net`・`example.invalid` 以外のメールアドレスの形を拒む。試験の送り主は合成の一覧を引数で渡している（`checkHouseholdNoticeSender` の第 2 引数、`createHouseholdMailIntake` の `issuers`）。検査を避ける書き方はしない。
 - マイグレーションを足すときは、`packages/storage/src/migrations.test.ts` の一覧・hash・表の数、`packages/domain/src/backup-plan.ts` の表の分類、`packages/storage/src/policy.ts`、`tests/fixtures/backup-restore-cases.json`、`packages/storage/migrations/README.md` をそろえ、試験の中の DB の版（`store-binding`・`db-worker`・`backup-ops`・`backup-store`・`operation-retention`・`voice-store`・`restore-aftermath-store`・`apps/core` の `backup`・`restore`・`forget-ledger` の試験、`tests/integration/b05-expectations.json`・`b06-expectations.json`・`b07-expectations.json`（b06 は模擬の証拠 `evidence-b06-simulated.json` も作り直す）、`packages/storage/src/household-store.test.ts` の版の試験）を上げる。除外する表なら `backup-store.test.ts` と `apps/core/src/backup.test.ts` の除外の一覧も直す。
-- 次の ADR の番号は 0202、次の未決事項の番号は U700（U411〜U429・U441〜U459・U509〜U519・U535〜U539・U551〜U559・U566〜U579・U598〜U599・U613〜U619・U631〜U639・U644〜U659・U677〜U679・U690〜U699 は空き）。記憶の保存の経路は ADR 0191（自動の抽出からの保存は未作成）、記録しない会話の独立した確認は ADR 0192（製品では口を閉じたまま。画面の経路は U503）。
+- 次の ADR の番号は 0204、次の未決事項の番号は U740（U411〜U429・U441〜U459・U509〜U519・U535〜U539・U551〜U559・U566〜U579・U598〜U599・U613〜U619・U631〜U639・U644〜U659・U677〜U679・U690〜U699・U706〜U719 は空き。ADR 0203 と U720〜U739 は Windows の中枢の自動起動の作業が使う）。記憶の保存の経路は ADR 0191（自動の抽出からの保存は未作成）、記録しない会話の独立した確認は ADR 0192（製品では口を閉じたまま。画面の経路は U503）。
 - この環境の既定の Node.js が 22 のときは、24 系を PATH の先頭に置いてから pnpm を使う（`pnpm install` が版の違いで止まる）。clone の履歴が浅いと push の前の検査（`pnpm run security:scan`）が止まるので、`git fetch --unshallow` で全履歴を取ってから検査する。

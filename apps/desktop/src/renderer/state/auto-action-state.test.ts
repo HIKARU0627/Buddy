@@ -172,12 +172,17 @@ interface Pending {
 
 function harness() {
   const pending: Pending[] = [];
-  const store = new AutoActionStore({
-    invoke: (request) =>
-      new Promise<DesktopIpcResponse>((resolve, reject) => {
-        pending.push({ request, resolve, reject });
-      }),
-  });
+  // 気づきの欄へ知らせた回数（ADR 0199）。
+  const changes: number[] = [];
+  const store = new AutoActionStore(
+    {
+      invoke: (request) =>
+        new Promise<DesktopIpcResponse>((resolve, reject) => {
+          pending.push({ request, resolve, reject });
+        }),
+    },
+    () => changes.push(1),
+  );
   const answer = async (response: Partial<DesktopIpcResponse>) => {
     const next = pending.shift();
     assert(next !== undefined, 'no pending request');
@@ -188,7 +193,7 @@ function harness() {
     } as DesktopIpcResponse);
     await new Promise((resolve) => setImmediate(resolve));
   };
-  return { store, pending, answer };
+  return { store, pending, answer, changes };
 }
 
 const listed = (v: DesktopAutoActionView) => ({
@@ -323,4 +328,31 @@ test('a failed IPC call says so in place, and hide drops content and late answer
   store.hide();
   await answer(listed(view([entry(1)], { list_seq: 9 })));
   assert.deepEqual(store.snapshot(), INITIAL_AUTO_ACTION_STATE);
+});
+
+// 気づきの行の自動実行の写しを古いままにしない（ADR 0199）。
+test('an undo and the person refresh tell the candidate panel; opening and its own re-read do not', async () => {
+  const { store, pending, answer, changes } = harness();
+  // 開いたとき・気づきの欄から頼まれた読み直し（reload）は知らせない（知らせ合いを繰り返さない）。
+  store.actions.reload();
+  await answer(listed(view([entry(1)])));
+  assert.deepEqual(changes, []);
+  // 本人の「読み直す」は、読めたら知らせる。
+  store.actions.refresh();
+  await answer(listed(view([entry(1)], { list_seq: 3 })));
+  assert.deepEqual(changes, [1]);
+  // 取り消しは、断られても知らせる。
+  store.actions.undo(id(1));
+  await answer({ outcome: 'rejected', reason: 'confirmation_pending' });
+  assert.deepEqual(changes, [1, 1]);
+  assert.equal(
+    store.snapshot().notice?.text,
+    'この操作の取り消しは送っている途中です。結果が出るまで待ってください。',
+  );
+  // ロック（hide）の後に届いた答えでは知らせない。
+  store.actions.undo(id(1));
+  store.hide();
+  await answer({ outcome: 'rejected', reason: 'outcome_unknown' });
+  assert.deepEqual(changes, [1, 1]);
+  assert.equal(pending.length, 0);
 });

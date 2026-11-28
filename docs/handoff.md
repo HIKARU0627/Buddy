@@ -67,10 +67,11 @@
 | #357 | 0195        | 相談を最初から裏のジョブへ回す受付の口と B10-04 の模擬の観測の記録                    |
 | #358 | 0194        | 予定の重複の気づきを同期の公開の後に作り、メールの抽出の結果の入口を作る（B11-04）    |
 | #359 | 0196        | 気づきの OS 通知の設定と配線（B11-05 P2、マイグレーション 0025）                      |
+| #360 | 0197        | 記録しない会話の独立した確認を画面に出して承認を受ける経路（U503。口は閉じたまま）    |
 
 ## 作業中の PR
 
-- 記録しない会話の独立した確認を画面に出して承認を受ける経路（ADR 0197、U503・U600〜U612）。一覧・承認・断るの契約と Core の経路、端末の main と画面（状態の層のパネルと従来の窓の欄、島は数に足して広げるだけ）を作り、口を開いた試験の組み立てで端末の画面から承認して最小の操作記録と 1 回だけの外部の変更までを模擬で通した。口 `PRIVATE_CONFIRMATION_SCREEN_OPEN` は本人の判断を待って false のまま（開く条件は ADR 0197）。
+- 気づきの候補に結び付いた自動実行の結果と取り消しボタン（ADR 0199、U282・U640〜U643。U641 は本人の確認を急ぐ）。`operation_ids` を承認の行の `candidate_id` から読み（マイグレーションなし）、気づきの欄が自動実行の一覧と突き合わせて既存の取り消しの経路で取り消す。模擬だけで、画面の実機は未実施。
 - 本人の決定（2026-11-27、U431）: 忘却の公開ゲートは閉じたままにする。開くのは、記憶を保存する経路と保存してよい種類の設定ができ、U385・U383 を決め、実機（合成データ）で計画から実行まで確かめた後に、改めて本人が決める。
 - Windows の CI の shard 1 の時間切れ（Issue #348）は #350 で大きく縮めた。voice-budget の「再起動の照合」が 1 回だけ時間切れになったので Issue は開けたまま。
 - B04・B05・B07 の模擬証拠は、main の現行のソースと一致しない（`pnpm run evidence:check`。この期間より前からの食い違いを含む）。それぞれの工程か main の記録の更新のときに作り直す。
@@ -155,5 +156,5 @@ CI が通ればマージしてよいと本人から許可を受けている。�
 - コミットの前に `pnpm run security:staged`、push の前に `pnpm run security:scan`。
 - 公開物の検査は、`example.com`・`example.org`・`example.net`・`example.invalid` 以外のメールアドレスの形を拒む。試験の送り主は合成の一覧を引数で渡している（`checkHouseholdNoticeSender` の第 2 引数、`createHouseholdMailIntake` の `issuers`）。検査を避ける書き方はしない。
 - マイグレーションを足すときは、`packages/storage/src/migrations.test.ts` の一覧・hash・表の数、`packages/domain/src/backup-plan.ts` の表の分類、`packages/storage/src/policy.ts`、`tests/fixtures/backup-restore-cases.json`、`packages/storage/migrations/README.md` をそろえ、試験の中の DB の版（`store-binding`・`db-worker`・`backup-ops`・`backup-store`・`operation-retention`・`voice-store`・`restore-aftermath-store`・`apps/core` の `backup`・`restore`・`forget-ledger` の試験、`tests/integration/b05-expectations.json`・`b07-expectations.json`、`packages/storage/src/household-store.test.ts` の版の試験）を上げる。除外する表なら `backup-store.test.ts` と `apps/core/src/backup.test.ts` の除外の一覧も直す。
-- 次の ADR の番号は 0198、次の未決事項の番号は U620（U411〜U429・U441〜U459・U509〜U519・U535〜U539・U551〜U559・U566〜U579・U598〜U599 は空き。ADR 0197 と U600〜U619 は記録しない会話の確認の画面の作業が使う）。記憶の保存の経路は ADR 0191（自動の抽出からの保存は未作成）、記録しない会話の独立した確認は ADR 0192（製品では口を閉じたまま。画面の経路は U503）。
+- 次の ADR の番号は 0200、次の未決事項の番号は U660（U411〜U429・U441〜U459・U509〜U519・U535〜U539・U551〜U559・U566〜U579・U598〜U599・U613〜U619・U644〜U659 は空き。ADR 0198 と U620〜U639 は B13 の残りの作業が使う）。記憶の保存の経路は ADR 0191（自動の抽出からの保存は未作成）、記録しない会話の独立した確認は ADR 0192（製品では口を閉じたまま。画面の経路は U503）。
 - この環境の既定の Node.js が 22 のときは、24 系を PATH の先頭に置いてから pnpm を使う（`pnpm install` が版の違いで止まる）。clone の履歴が浅いと push の前の検査（`pnpm run security:scan`）が止まるので、`git fetch --unshallow` で全履歴を取ってから検査する。

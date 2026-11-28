@@ -199,6 +199,9 @@ export interface CandidateRow {
   readonly content_deleted_at: number | null;
   readonly title: CandidateBlobOutput | null;
   readonly excerpt: CandidateBlobOutput | null;
+  // この候補を起点に方針で自動承認した操作の ID（承認の行の candidate_id から読む。ADR 0148・0199、U282）。承認の古い順、
+  // 同じ時刻は操作 ID の昇順。操作の行と承認の行が保持の期限（90 日）で消えれば、ここからも消える。
+  readonly operation_ids: readonly string[];
 }
 
 // 一覧の続きの位置（受信時刻のミリ秒と候補 ID）。
@@ -706,10 +709,39 @@ function domainDeadline(row: SqlRow): Deadline {
   }
 }
 
+// 候補ごとの結び付いた操作の ID（ADR 0199）。結び付きは承認の行（approvals.candidate_id。方針による自動承認で候補を
+// 起点にしたものだけが持つ。0015 の trigger）にだけあり、別の表を持たない。取り消しの補償の操作は画面の承認で
+// candidate_id を持たないので入らない。
+function operationIdsByCandidate(
+  db: SqliteDatabase,
+  candidateIds: readonly string[],
+): Map<string, string[]> {
+  const linked = new Map<string, string[]>();
+  if (candidateIds.length === 0) return linked;
+  const rows = db
+    .prepare(
+      `SELECT candidate_id, operation_id, min(approved_at) AS approved_at FROM approvals
+        WHERE candidate_id IN (SELECT value FROM json_each(?))
+        GROUP BY candidate_id, operation_id
+        ORDER BY candidate_id, approved_at, operation_id`,
+    )
+    .all(JSON.stringify(candidateIds)) as {
+    candidate_id: string;
+    operation_id: string;
+  }[];
+  for (const row of rows) {
+    const list = linked.get(row.candidate_id);
+    if (list === undefined) linked.set(row.candidate_id, [row.operation_id]);
+    else list.push(row.operation_id);
+  }
+  return linked;
+}
+
 function toRow(
   db: SqliteDatabase,
   row: SqlRow,
   withExcerpt: boolean,
+  operationIds: readonly string[],
 ): CandidateRow {
   return {
     candidate_id: row.candidate_id,
@@ -740,6 +772,7 @@ function toRow(
     content_deleted_at: row.content_deleted_at,
     title: readBlob(db, row.title_blob_id),
     excerpt: withExcerpt ? readBlob(db, row.excerpt_blob_id) : null,
+    operation_ids: [...operationIds],
   };
 }
 
@@ -769,8 +802,14 @@ function listCandidates(
   const truncated = rows.length > op.limit;
   const page = rows.slice(0, op.limit);
   const last = page[page.length - 1];
+  const linked = operationIdsByCandidate(
+    db,
+    page.map((row) => row.candidate_id),
+  );
   return {
-    candidates: page.map((row) => toRow(db, row, false)),
+    candidates: page.map((row) =>
+      toRow(db, row, false, linked.get(row.candidate_id) ?? []),
+    ),
     truncated,
     next_after:
       truncated && last !== undefined
@@ -797,7 +836,11 @@ function getCandidate(
     source_kind: edge.source_kind as CandidateOriginInput['source_kind'],
     source_id: edge.source_id,
   }));
-  return { candidate: toRow(db, row, true), origins };
+  const linked = operationIdsByCandidate(db, [candidateId]);
+  return {
+    candidate: toRow(db, row, true, linked.get(candidateId) ?? []),
+    origins,
+  };
 }
 
 export function countCandidates(

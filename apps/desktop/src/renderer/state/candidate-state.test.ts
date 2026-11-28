@@ -39,6 +39,8 @@ const entry = (
   initial_import: false,
   unread_partial: false,
   has_operations: false,
+  auto_actions: [],
+  auto_actions_unlisted: 0,
   delivery_unknown: false,
   ...overrides,
 });
@@ -58,6 +60,7 @@ const view = (
   truncated: false,
   list_seq: 2,
   alert: null,
+  auto_action_fetch: 'loaded',
   ...overrides,
 });
 
@@ -151,13 +154,10 @@ test('deadlines: date-only says so and shows no time; other zones are named; unr
 });
 
 test('row notes and actions follow the domain rules', () => {
+  // 結び付いた自動実行の操作は注記ではなく行の中の欄で出す（ADR 0199）。
   assert.deepEqual(
     rowNotes(entry(1, { unread_partial: true, has_operations: true })),
-    [
-      '対応済みかは未確認',
-      '本文・添付の一部は未読',
-      '自動実行の操作があります',
-    ],
+    ['対応済みかは未確認', '本文・添付の一部は未読'],
   );
   assert.deepEqual(rowNotes(entry(0, { kind: 'schedule_overlap' })), []);
   assert.deepEqual(rowActions(entry(1)), ['open', 'snooze', 'dismiss']);
@@ -213,6 +213,8 @@ interface Pending {
 
 function harness(now = NOW) {
   const pending: Pending[] = [];
+  // 気づきの欄で取り消した後に、自動実行の欄の読み直しを頼んだ回数（ADR 0199）。
+  const autoRefreshes: number[] = [];
   const store = new CandidateStore(
     {
       invoke: (request) =>
@@ -221,6 +223,7 @@ function harness(now = NOW) {
         }),
     },
     () => now,
+    () => autoRefreshes.push(1),
   );
   const answer = async (response: Partial<DesktopIpcResponse>) => {
     const next = pending.shift();
@@ -232,7 +235,7 @@ function harness(now = NOW) {
     } as DesktopIpcResponse);
     await new Promise((resolve) => setImmediate(resolve));
   };
-  return { store, pending, answer };
+  return { store, pending, answer, autoRefreshes };
 }
 
 const listed = (v: DesktopCandidateView) => ({
@@ -516,4 +519,196 @@ test('another refusal of the OS notification change unlocks at once and never re
   assert.equal(store.snapshot().alertBusy, false);
   assert.equal(pending.length, 0);
   assert.equal(store.snapshot().view?.alert?.os_notification, 'on');
+});
+
+// --- 結び付いた自動実行の取り消し（ADR 0199） ---
+
+const AUTO_REF = id(0xa01);
+const LOCKED_REF = id(0xa02);
+const LINKED = entry(1, {
+  has_operations: true,
+  auto_actions: [
+    {
+      ref: AUTO_REF,
+      position: 0,
+      kind: 'label_mail',
+      completed_at: '2030-10-09T02:00:00Z',
+      undo_state: 'available',
+      undo_deadline: '2030-10-19T02:00:00Z',
+      delivery_unknown: false,
+    },
+    {
+      ref: LOCKED_REF,
+      position: 1,
+      kind: 'draft_reply',
+      completed_at: '2030-10-09T01:00:00Z',
+      undo_state: 'unavailable',
+      undo_deadline: '2030-10-19T01:00:00Z',
+      delivery_unknown: false,
+    },
+  ],
+  auto_actions_unlisted: 1,
+});
+
+test('undo of a linked automatic operation sends only its ref on the auto-action channel, once at a time, then re-reads', async () => {
+  const { store, pending, answer, autoRefreshes } = harness();
+  store.actions.refresh();
+  await answer(listed(view([LINKED, entry(2)])));
+  store.actions.undoAutoAction(id(1), AUTO_REF);
+  // 結果を待つ間は、次の取り消しも状態の変更も送らない。
+  store.actions.undoAutoAction(id(1), AUTO_REF);
+  store.actions.dismiss(id(2));
+  assert.deepEqual(
+    pending.map((item) => [item.request.channel, item.request.payload]),
+    [['desktop.auto_action_undo', { ref: AUTO_REF }]],
+  );
+  assert.equal(store.snapshot().busy, AUTO_REF);
+  await answer({
+    outcome: 'ok',
+    auto_actions: {
+      fetch: 'loaded',
+      fetched_at: '2030-10-09T03:00:00Z',
+      safety: null,
+      entries: [],
+      list_seq: 5,
+    },
+  });
+  assert.equal(store.snapshot().busy, null);
+  assert.deepEqual(store.snapshot().notice, {
+    tone: 'success',
+    text: '取り消しを受け付けました。元に戻ったかは、この欄を読み直すと確かめられます。',
+    ref: id(1),
+  });
+  // 受け付けたら気づきの一覧を読み直し、自動実行の欄にも読み直しを頼む。
+  assert.deepEqual(
+    pending.map((item) => [item.request.channel, item.request.payload]),
+    [['desktop.candidates_list', null]],
+  );
+  assert.deepEqual(autoRefreshes, [1]);
+  const undone = {
+    ...LINKED,
+    auto_actions: LINKED.auto_actions.map((item) =>
+      item.ref === AUTO_REF
+        ? { ...item, undo_state: 'in_progress' as const }
+        : item,
+    ),
+  };
+  await answer(listed(view([undone, entry(2)], { list_seq: 3 })));
+  assert.equal(
+    store.snapshot().view?.entries[0]?.auto_actions[0]?.undo_state,
+    'in_progress',
+  );
+  // 文言は読み直しの後も残す。
+  assert.equal(store.snapshot().notice?.ref, id(1));
+});
+
+test('an unavailable, unknown, expired or unknown-ref automatic operation is not sent', async () => {
+  const { store, pending, answer } = harness();
+  store.actions.refresh();
+  await answer(listed(view([LINKED])));
+  // 取り消せない（unavailable）。
+  store.actions.undoAutoAction(id(1), LOCKED_REF);
+  // 知らない参照・別の行の参照。
+  store.actions.undoAutoAction(id(1), id(0xbad));
+  store.actions.undoAutoAction(id(2), AUTO_REF);
+  assert.equal(pending.length, 0);
+  // 取り消しの結果が分からない行・画面の時計で期限を過ぎた行も送らない。
+  for (const over of [
+    { delivery_unknown: true },
+    { undo_deadline: '2030-10-09T02:59:59Z' },
+  ]) {
+    const { store: other, pending: queue, answer: reply } = harness();
+    other.actions.refresh();
+    await reply(
+      listed(
+        view([
+          {
+            ...LINKED,
+            auto_actions: LINKED.auto_actions
+              .slice(0, 1)
+              .map((item) => ({ ...item, ...over })),
+          },
+        ]),
+      ),
+    );
+    other.actions.undoAutoAction(id(1), AUTO_REF);
+    assert.equal(queue.length, 0, JSON.stringify(over));
+    assert.equal(other.snapshot().busy, null);
+  }
+});
+
+test('a refused or unknown undo shows the auto-action words on the row, never resends, and re-reads', async () => {
+  for (const [reason, words] of [
+    [
+      'undo_target_changed',
+      /対象がその後に変わっていたため、自動では元に戻しませんでした/u,
+    ],
+    ['outcome_unknown', /自動では送り直しません/u],
+    ['preview_stale', /期限切れ・取り消し済みなど/u],
+  ] as const) {
+    const { store, pending, answer, autoRefreshes } = harness();
+    store.actions.refresh();
+    await answer(listed(view([LINKED])));
+    store.actions.undoAutoAction(id(1), AUTO_REF);
+    await answer({ outcome: 'rejected', reason });
+    assert.equal(store.snapshot().notice?.ref, id(1), reason);
+    assert.equal(store.snapshot().notice?.tone, 'warning', reason);
+    assert.match(store.snapshot().notice?.text ?? '', words);
+    assert.equal(store.snapshot().busy, null);
+    // 送り直さず、一覧の読み直しだけ。
+    assert.deepEqual(
+      pending.map((item) => item.request.channel),
+      ['desktop.candidates_list'],
+      reason,
+    );
+    assert.deepEqual(autoRefreshes, [1]);
+  }
+});
+
+test('an undo answered after hide (lock) is dropped without a re-read', async () => {
+  const { store, pending, answer, autoRefreshes } = harness();
+  store.actions.refresh();
+  await answer(listed(view([LINKED])));
+  store.actions.undoAutoAction(id(1), AUTO_REF);
+  store.hide();
+  await answer({ outcome: 'rejected', reason: 'outcome_unknown' });
+  assert.deepEqual(store.snapshot(), INITIAL_CANDIDATE_STATE);
+  assert.equal(pending.length, 0);
+  assert.deepEqual(autoRefreshes, []);
+});
+
+test('reload from the automatic-operation panel re-reads the list and keeps the row words', async () => {
+  const { store, pending, answer } = harness();
+  store.actions.refresh();
+  await answer(listed(view([LINKED])));
+  store.actions.undoAutoAction(id(1), AUTO_REF);
+  await answer({ outcome: 'rejected', reason: 'confirmation_pending' });
+  // 同じ操作を自動実行の欄から送っている途中の文言（自動実行の欄と同じ）。
+  assert.equal(
+    store.snapshot().notice?.text,
+    'この操作の取り消しは送っている途中です。結果が出るまで待ってください。',
+  );
+  await answer(listed(view([LINKED], { list_seq: 3 })));
+  // 自動実行の欄で取り消した後の読み直し（reload）は、行の文言を消さずに写しを新しくする。
+  store.actions.reload();
+  assert.deepEqual(
+    pending.map((item) => item.request.channel),
+    ['desktop.candidates_list'],
+  );
+  const undone = {
+    ...LINKED,
+    auto_actions: LINKED.auto_actions.map((item) => ({
+      ...item,
+      undo_state: 'undone' as const,
+    })),
+  };
+  await answer(listed(view([undone], { list_seq: 4 })));
+  assert.equal(
+    store.snapshot().view?.entries[0]?.auto_actions[0]?.undo_state,
+    'undone',
+  );
+  assert.equal(store.snapshot().notice?.ref, id(1));
+  // 取り消し済みになった写しでは送らない。
+  store.actions.undoAutoAction(id(1), AUTO_REF);
+  assert.equal(pending.length, 0);
 });

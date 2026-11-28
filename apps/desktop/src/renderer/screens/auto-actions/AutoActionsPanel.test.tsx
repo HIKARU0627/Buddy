@@ -68,6 +68,7 @@ const STOPPED = {
 const noop = () => undefined;
 const ACTIONS: AutoActionActions = {
   refresh: noop,
+  reload: noop,
   undo: noop,
   startResume: noop,
   cancelResume: noop,

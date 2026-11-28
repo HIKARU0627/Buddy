@@ -7,6 +7,7 @@ import { test } from 'node:test';
 import type { ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type {
+  DesktopAutoActionEntry,
   DesktopCandidateEntry,
   DesktopCandidateView,
 } from '@buddy/contracts';
@@ -35,6 +36,8 @@ const entry = (
   initial_import: false,
   unread_partial: false,
   has_operations: false,
+  auto_actions: [],
+  auto_actions_unlisted: 0,
   delivery_unknown: false,
   ...overrides,
 });
@@ -51,6 +54,7 @@ const view = (
   truncated: false,
   list_seq: 2,
   alert: null,
+  auto_action_fetch: 'loaded',
   ...overrides,
 });
 
@@ -70,6 +74,7 @@ const ENTRIES = [
     deadline: { kind: 'date', date: '2030-10-10', original_text: '10/10' },
     unread_partial: true,
     has_operations: true,
+    auto_actions_unlisted: 1,
   }),
   entry(2, {
     kind: 'mail_deadline',
@@ -88,6 +93,7 @@ const ENTRIES = [
 const noop = () => undefined;
 const ACTIONS: CandidateActions = {
   refresh: noop,
+  reload: noop,
   open: noop,
   dismiss: noop,
   startSnooze: noop,
@@ -95,6 +101,7 @@ const ACTIONS: CandidateActions = {
   setSnoozeInput: noop,
   snooze: noop,
   setAlert: noop,
+  undoAutoAction: noop,
 };
 
 const render = (node: ReactNode) =>
@@ -157,10 +164,11 @@ test('rows are grouped under the headings with the deadline, kind, state and not
   assert.match(words, /返信の依頼/u);
   assert.match(words, /新着/u);
   assert.match(words, /対応済み/u);
-  // 注記（メールの候補は常に「対応済みかは未確認」、一部未読、自動実行の操作）。予定の重複には出さない。
+  // 注記（メールの候補は常に「対応済みかは未確認」、一部未読）。予定の重複には出さない。自動実行の操作は行の中の欄で出す。
   assert.match(words, /対応済みかは未確認/u);
   assert.match(words, /本文・添付の一部は未読/u);
-  assert.match(words, /自動実行の操作があります/u);
+  assert.match(words, /この気づきから自動で行った操作/u);
+  assert.equal(words.split('この気づきから自動で行った操作').length - 1, 1);
   // 初回取り込みの過去の期限は折りたたみ（Disclosure）。
   assert.match(html, /data-heading="initial_import_past"/u);
   // 内部の ID・理由のコード・API の名前は出さない。相談する・根拠を見るはまだ出さない（ADR 0132）。
@@ -256,4 +264,129 @@ test('the OS notification choice shows the setting, says what the notification c
   });
   assert.match(on, /data-candidate-alert="on"/u);
   assert.match(text(on), /設定を送っています…/u);
+});
+
+// 候補に結び付いた自動実行の結果と取り消し（ADR 0199）。基準 NOW は 2030-10-09T03:00:00Z。
+const auto = (
+  n: number,
+  overrides: Partial<DesktopAutoActionEntry> = {},
+): DesktopAutoActionEntry => ({
+  ref: id(0x900 + n),
+  position: n,
+  kind: 'label_mail',
+  completed_at: '2030-10-09T02:00:00Z',
+  undo_state: 'available',
+  undo_deadline: '2030-10-19T02:00:00Z',
+  delivery_unknown: false,
+  ...overrides,
+});
+
+const linkedRow = (
+  autos: DesktopAutoActionEntry[],
+  unlisted = 0,
+): DesktopCandidateEntry =>
+  entry(1, {
+    title: '連絡の返信',
+    has_operations: true,
+    auto_actions: autos,
+    auto_actions_unlisted: unlisted,
+  });
+
+const undoButton = (html: string, kind: string): string | null =>
+  new RegExp(
+    `<button[^>]*aria-label="取り消す（${kind}・連絡の返信）"[^>]*>`,
+    'u',
+  ).exec(html)?.[0] ?? null;
+
+test('a candidate shows its automatic operations: an undoable one can be pressed, an unavailable one cannot', () => {
+  const html = panel({
+    view: view([
+      linkedRow(
+        [
+          auto(0),
+          auto(1, {
+            kind: 'draft_reply',
+            completed_at: '2030-10-08T03:00:00Z',
+            undo_state: 'unavailable',
+          }),
+          auto(2, { kind: 'create_task', undo_state: 'undone' }),
+        ],
+        2,
+      ),
+      entry(2, { title: '結び付きのない気づき' }),
+    ]),
+    seq: 2,
+  });
+  const words = text(html);
+  // 欄は結び付いた操作のある行だけ。
+  assert.equal(words.split('この気づきから自動で行った操作').length - 1, 1);
+  assert.match(words, /メールのラベル付け/u);
+  assert.match(words, /実行 1\u00a0時間前/u);
+  // 期限 10-19T02:00Z まで 9 日 23 時間（日は切り捨て）。
+  assert.match(words, /取り消せます（あと\u00a09\u00a0日）/u);
+  const available = undoButton(html, 'メールのラベル付け');
+  assert(available !== null);
+  assert.doesNotMatch(available, /disabled/u);
+  // 取り消せない（unavailable）は押せないボタンと理由。
+  assert.match(words, /返信の下書きの保存/u);
+  assert.match(words, /この操作は今は取り消せません/u);
+  const blocked = undoButton(html, '返信の下書きの保存');
+  assert(blocked !== null);
+  assert.match(blocked, /disabled/u);
+  // 削除で戻すことの説明は取り消せる行だけ（下書きは取り消せないので出さない）。
+  assert.doesNotMatch(words, /Buddy が作った下書きを削除します/u);
+  // 取り消し済みは文言だけで、ボタンを出さない。
+  assert.match(words, /取り消しました/u);
+  assert.equal(undoButton(html, 'タスクの登録'), null);
+  // 一覧に無い操作は件数だけ。
+  assert.match(
+    words,
+    /ほかに 2\u00a0件の操作は、結果をこの欄では確かめられません/u,
+  );
+  // 操作 ID・自動実行の参照の値・理由のコードは文字として出さない。
+  for (const banned of ['operation_id', 'unavailable', 'undo_state', id(0x900)])
+    assert(!words.includes(banned), banned);
+});
+
+test('an expired, unknown or busy automatic operation cannot be pressed; the list state is told when unread or stale', () => {
+  const expired = panel({
+    view: view([
+      linkedRow([
+        auto(0, { undo_deadline: '2030-10-09T02:59:00Z' }),
+        auto(1, { kind: 'create_task', delivery_unknown: true }),
+      ]),
+    ]),
+    seq: 2,
+  });
+  // 中枢が取り消せると返しても、画面の時計で期限を過ぎていれば押させない。
+  assert.match(text(expired), /取り消しの期限を過ぎました/u);
+  assert.match(undoButton(expired, 'メールのラベル付け') ?? '', /disabled/u);
+  // 取り消しの結果が分からない操作はボタンを出さない。
+  assert.match(text(expired), /取り消しの結果を確認できませんでした/u);
+  assert.equal(undoButton(expired, 'タスクの登録'), null);
+  // 取り消しを送っている間は、押した行が「取り消しています…」で、どれも押せない。
+  const busy = panel({
+    view: view([linkedRow([auto(0), auto(1, { kind: 'create_task' })])]),
+    seq: 2,
+    busy: id(0x900),
+  });
+  assert.match(text(busy), /取り消しています…/u);
+  assert.match(undoButton(busy, 'タスクの登録') ?? '', /disabled/u);
+  assert.match(text(busy), /Buddy が登録したタスクを削除します/u);
+  const unread = text(
+    panel({
+      view: view([linkedRow([], 3)], { auto_action_fetch: 'unavailable' }),
+      seq: 2,
+    }),
+  );
+  // 読めていないときは「読めていません」だけで、件数の文言は出さない（ADR 0199）。
+  assert.match(unread, /自動実行の結果をまだ読めていません/u);
+  assert.doesNotMatch(unread, /ほかに/u);
+  const stale = text(
+    panel({
+      view: view([linkedRow([auto(0)])], { auto_action_fetch: 'stale' }),
+      seq: 2,
+    }),
+  );
+  assert.match(stale, /自動実行の最新の取得に失敗しました/u);
 });

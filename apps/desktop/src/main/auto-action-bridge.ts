@@ -16,6 +16,8 @@
 //   safety_revision で、中枢も同じ値で照合し直す。結果が分からなければ送り直さず、読み直して確かめさせる。
 // - 世代（ロック・切断）: reset で一覧・参照・保留を捨て、非同期の処理は await の後に世代を照合する（またいだ読み取りは
 //   反映しない。またいだ変更は結果不明として返す）。
+// - 気づきの欄（ADR 0199）: 候補に結び付いた操作の行を、この欄と同じ参照で気づきの経路へ渡す（linked）。気づきの欄の
+//   「取り消す」も desktop.auto_action_undo でこの経路の undo を通る（別の実行の経路を作らない）。
 // Electron に依存しない（node:test で試験する）。
 import type {
   AutoActionItem,
@@ -69,6 +71,9 @@ export class AutoActionBridge {
   readonly #refs = new Map<string, string>();
   // 結果が分からなかった操作（操作 ID → そのときの読み取りの通し番号）。それより後に始めた読み取りが成功するまで取り消させない。
   readonly #held = new Map<string, number>();
+  // 取り消しを送っていて応答を待っている操作。気づきの欄と自動実行の欄は別々に押せるので、同じ操作を同じ版で 2 回
+  // 送らないよう main で止める（ADR 0199）。
+  readonly #sending = new Set<string>();
   #safety: SafetyState | null = null;
   // 今の安全停止の状態の参照（safety_revision が変わるたびに作り直す）。
   #safetyRef: string | null = null;
@@ -93,6 +98,7 @@ export class AutoActionBridge {
     this.#records = new Map();
     this.#refs.clear();
     this.#held.clear();
+    this.#sending.clear();
     this.#safety = null;
     this.#safetyRef = null;
     this.#fetchedAt = null;
@@ -100,22 +106,61 @@ export class AutoActionBridge {
     this.#listSeq += 1;
   }
 
+  #entry(
+    operationId: string,
+    record: AutoActionRecord,
+  ): DesktopAutoActionEntry {
+    const item = record.item;
+    return {
+      ref: this.#refs.get(operationId) as string,
+      position: record.position,
+      kind: item.action_kind,
+      completed_at: item.completed_at,
+      undo_state: item.undo_state,
+      undo_deadline: item.undo_deadline,
+      delivery_unknown: this.#held.has(operationId),
+    };
+  }
+
+  // 一覧の取得の状態（view の fetch と同じ）。
+  fetchState(): DesktopAutoActionView['fetch'] {
+    return this.#fetchedAt === null
+      ? 'unavailable'
+      : this.#failed
+        ? 'stale'
+        : 'loaded';
+  }
+
+  // 気づきの候補に結び付いた操作（ADR 0199）のうち、今の一覧で読めた行（一覧の順。参照はこの欄と同じ）と、一覧に無い
+  // 件数。操作 ID は main の中（気づきの経路）から渡され、画面へは参照と表示用の値だけを返す。同じ ID が重なっても 1 件。
+  linked(operationIds: readonly string[]): {
+    readonly entries: readonly DesktopAutoActionEntry[];
+    readonly unlisted: number;
+  } {
+    const unique = [...new Set(operationIds)];
+    const found = unique
+      .map((operationId) => ({
+        operationId,
+        record: this.#records.get(operationId),
+      }))
+      .filter(
+        (pair): pair is { operationId: string; record: AutoActionRecord } =>
+          pair.record !== undefined,
+      )
+      .sort((a, b) => a.record.position - b.record.position);
+    return {
+      entries: found.map(({ operationId, record }) =>
+        this.#entry(operationId, record),
+      ),
+      unlisted: unique.length - found.length,
+    };
+  }
+
   // 画面に出す値。
   view(): DesktopAutoActionView {
     const entries = [...this.#records.entries()]
       .sort((a, b) => a[1].position - b[1].position)
-      .map(([operationId, record]): DesktopAutoActionEntry => {
-        const item = record.item;
-        return {
-          ref: this.#refs.get(operationId) as string,
-          position: record.position,
-          kind: item.action_kind,
-          completed_at: item.completed_at,
-          undo_state: item.undo_state,
-          undo_deadline: item.undo_deadline,
-          delivery_unknown: this.#held.has(operationId),
-        };
-      });
+      .map(([operationId, record]) => this.#entry(operationId, record));
     const safety: DesktopSafetyView | null =
       this.#safety === null || this.#safetyRef === null
         ? null
@@ -126,12 +171,7 @@ export class AutoActionBridge {
             stopped_at: this.#safety.stopped_at,
           };
     return {
-      fetch:
-        this.#fetchedAt === null
-          ? 'unavailable'
-          : this.#failed
-            ? 'stale'
-            : 'loaded',
+      fetch: this.fetchState(),
       fetched_at: this.#fetchedAt,
       safety,
       entries,
@@ -261,16 +301,25 @@ export class AutoActionBridge {
       this.#held.has(operationId)
     )
       return fail('entry_not_found');
+    // 同じ操作の取り消しを送っている途中（別の欄から続けて押した）。送らずに断る。
+    if (this.#sending.has(operationId)) return fail('confirmation_pending');
     // 取り消せると読めた操作だけを送る（期限・種類・状態の正本は中枢の検査）。
     if (record.item.undo_state !== 'available') return fail('preview_stale');
-    const outcome = await connection.request({
-      method: 'POST',
-      path: `/v1/auto-actions/${encodeURIComponent(operationId)}/undo`,
-      body: { expected_state_revision: record.item.state_revision },
-      scoped: true,
-      screenOperation: true,
-      expectedScopeId: scope,
-    });
+    this.#sending.add(operationId);
+    let outcome: Awaited<ReturnType<ClientConnection['request']>>;
+    try {
+      outcome = await connection.request({
+        method: 'POST',
+        path: `/v1/auto-actions/${encodeURIComponent(operationId)}/undo`,
+        body: { expected_state_revision: record.item.state_revision },
+        scoped: true,
+        screenOperation: true,
+        expectedScopeId: scope,
+      });
+    } finally {
+      // 世代が進んで集合を作り直した後は、新しい世代の送信中の印を消さない（reset で空になっている）。
+      if (gen === this.#gen) this.#sending.delete(operationId);
+    }
     if (outcome.kind === 'not_sent') return fail('not_connected');
     // 送った後に世代が変わった: 当たったかどうかを今の世代の一覧で示せないので結果不明（自動では送り直さない）。
     if (gen !== this.#gen) return fail('outcome_unknown');

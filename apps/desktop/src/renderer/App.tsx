@@ -4,7 +4,7 @@
 // hub_screen）なら、端末の画面の本体を「端末の登録」「登録済みの端末」「自宅のネットワーク」「このマシンの接続」の Tabs にする。
 // ロック中・ロック状態不明では main が接続の内容を隠すので、端末の画面（内容を隠した状態帯）になる。
 // 画面を足すときは screens/<名前>/ に置き、ここで切り替える。
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert } from '@heroui/react';
 import type {
   DesktopOperationEntry,
@@ -143,11 +143,23 @@ function ConnectedApp({ api }: { readonly api: BuddyDesktopApi }) {
         mark: boundary.line.mark === 'square' ? 'square' : 'dot',
       });
   }, [storageMode, markBoundary]);
-  // 気づき（B11-05、ADR 0132）。会話と同じく、ロック解除済みで中枢に接続している間だけ内容を持つ（切断・ロックで捨てる）。
-  const candidates = useCandidateState(api, workLive);
   // 自動実行の一覧・安全停止・取り消し（B13-05、ADR 0154）。気づきと同じく、ロック解除済みで中枢に接続している間だけ
   // 内容を持つ（切断・ロックで捨てる）。
-  const autoActions = useAutoActionState(api, workLive);
+  // 自動実行の欄で取り消した・読み直した後は、気づきの行の自動実行の写しも読み直す（ADR 0199）。気づきの欄は後で
+  // 作るので、参照を通して呼ぶ。
+  const reloadCandidates = useRef<() => void>(() => undefined);
+  const candidatesChanged = useCallback(() => reloadCandidates.current(), []);
+  const autoActions = useAutoActionState(api, workLive, candidatesChanged);
+  // 気づき（B11-05、ADR 0132）。会話と同じく、ロック解除済みで中枢に接続している間だけ内容を持つ（切断・ロックで捨てる）。
+  // 気づきの欄で自動実行を取り消したら、自動実行の欄も読み直す（ADR 0199。知らせ返さない reload を使う）。
+  const candidates = useCandidateState(
+    api,
+    workLive,
+    autoActions.actions.reload,
+  );
+  useEffect(() => {
+    reloadCandidates.current = candidates.actions.reload;
+  }, [candidates.actions]);
   // 家計簿（ADR 0162）。自動実行と同じく、ロック解除済みで中枢に接続している間だけ内容を持つ（切断・ロックで捨てる）。
   const household = useHouseholdState(api, workLive);
   // 忘却の画面（UI-10、ADR 0183）。家計簿と同じく、ロック解除済みで中枢に接続している間だけ内容を持つ（切断・ロックで捨てる）。

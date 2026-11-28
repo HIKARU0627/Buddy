@@ -583,19 +583,21 @@ export class DesktopCoreLink {
       changed: () => options.onChange(),
       log: (code) => this.#log(code),
     });
-    this.#candidates = new CandidateBridge({
-      contract: options.contract,
-      connection: () => this.#connection,
-      newRef: () => options.clock.newRequestId(),
-      now: () => options.clock.now(),
-      log: (code) => this.#log(code),
-    });
     this.#autoActions = new AutoActionBridge({
       contract: options.contract,
       connection: () => this.#connection,
       newRef: () => options.clock.newRequestId(),
       now: () => options.clock.now(),
       log: (code) => this.#log(code),
+    });
+    // 気づきの欄に、候補に結び付いた自動実行の行を自動実行の経路の参照で出す（ADR 0199）。
+    this.#candidates = new CandidateBridge({
+      contract: options.contract,
+      connection: () => this.#connection,
+      newRef: () => options.clock.newRequestId(),
+      now: () => options.clock.now(),
+      log: (code) => this.#log(code),
+      autoActions: this.#autoActions,
     });
     this.#memories = new MemoryBridge({
       contract: options.contract,

@@ -17,6 +17,10 @@
 //   main が持つ。中枢の版が変わるたびに新しい設定の参照を作る）。画面からの変更は、画面が見ている参照が今の参照と違えば
 //   送らずに preview_stale（ADR 0191 の設定の参照と同じ）。409・結果不明は送り直さず、今の設定を読み直す。読めたことがない
 //   設定は変えない。トレイの new の件数は、入で一覧を読めているときだけ返す（切・読めていないときは出さない）。
+// - 自動実行の結果（ADR 0199）: 候補の operation_ids を、自動実行の経路（AutoActionBridge）が読んだ一覧と突き合わせ、
+//   読めた行（自動実行の欄と同じ参照・種類・取り消しの状態）と、一覧に無い件数だけを画面へ渡す。操作 ID は渡さない。
+//   画面を開いたとき・読み直すとき（list）に、結び付いた操作がある候補があれば自動実行の一覧も読み直す。取り消しは画面が
+//   desktop.auto_action_undo で自動実行の経路を通す（ここから送らない）。
 // Electron に依存しない（node:test で試験する）。
 import { randomUUID } from 'node:crypto';
 import type {
@@ -24,6 +28,7 @@ import type {
   CandidateListResponse,
   CandidateSnapshot,
   CandidateStateCounts,
+  DesktopAutoActionEntry,
   DesktopCandidateEntry,
   DesktopCandidateView,
 } from '@buddy/contracts';
@@ -39,6 +44,18 @@ export interface CandidateHost {
   // UTC のミリ秒（再通知の時刻の確かめ）。
   readonly now: () => number;
   readonly log: (code: string) => void;
+  // 自動実行の一覧（AutoActionBridge）。無ければ結び付いた操作はすべて一覧に無い件数に数える。
+  readonly autoActions?: CandidateAutoActions;
+}
+
+// 気づきの欄が使う自動実行の経路の口（ADR 0199）。
+export interface CandidateAutoActions {
+  refresh(): Promise<void>;
+  fetchState(): DesktopCandidateView['auto_action_fetch'];
+  linked(operationIds: readonly string[]): {
+    readonly entries: readonly DesktopAutoActionEntry[];
+    readonly unlisted: number;
+  };
 }
 
 export type CandidateOutcome<T> =
@@ -133,6 +150,7 @@ export class CandidateBridge {
       .sort((a, b) => a[1].position - b[1].position)
       .map(([candidateId, record]): DesktopCandidateEntry => {
         const snapshot = record.snapshot;
+        const linked = this.#linked(snapshot.operation_ids);
         return {
           ref: this.#refs.get(candidateId) as string,
           position: record.position,
@@ -143,6 +161,8 @@ export class CandidateBridge {
           initial_import: snapshot.initial_import,
           unread_partial: snapshot.unread_partial,
           has_operations: snapshot.operation_ids.length > 0,
+          auto_actions: [...linked.entries],
+          auto_actions_unlisted: linked.unlisted,
           delivery_unknown: this.#held.has(candidateId),
         };
       });
@@ -166,7 +186,32 @@ export class CandidateBridge {
               ref: this.#alertRef,
               os_notification: this.#alert.os_notification,
             },
+      auto_action_fetch: this.#host.autoActions?.fetchState() ?? 'unavailable',
     };
+  }
+
+  // 結び付いた操作を自動実行の一覧と突き合わせる。一覧を読めていなければ、すべて一覧に無い件数にする（「結果なし」に
+  // しない）。
+  #linked(operationIds: readonly string[]): {
+    readonly entries: readonly DesktopAutoActionEntry[];
+    readonly unlisted: number;
+  } {
+    if (operationIds.length === 0) return { entries: [], unlisted: 0 };
+    const autoActions = this.#host.autoActions;
+    if (autoActions === undefined || autoActions.fetchState() === 'unavailable')
+      return { entries: [], unlisted: new Set(operationIds).size };
+    return autoActions.linked(operationIds);
+  }
+
+  // 結び付いた操作がある候補があれば、自動実行の一覧を読み直す（読めなければ自動実行の経路が stale にする）。
+  async #refreshAutoActions(): Promise<void> {
+    const autoActions = this.#host.autoActions;
+    if (autoActions === undefined) return;
+    for (const record of this.#records.values())
+      if (record.snapshot.operation_ids.length > 0) {
+        await autoActions.refresh();
+        return;
+      }
   }
 
   // 後ろでの読み直し（中枢の知らせ・接続・ロック解除）。設定だけを先に読み、入のときだけ一覧も読む（切のときは題を
@@ -362,13 +407,16 @@ export class CandidateBridge {
     this.#failed = false;
   }
 
-  // 一覧を読み直して返す（画面を開いたとき・本人が読み直すとき）。
+  // 一覧を読み直して返す（画面を開いたとき・本人が読み直すとき・気づきの欄で取り消した後）。結び付いた操作があれば
+  // 自動実行の一覧も読み直す。
   async list(): Promise<CandidateOutcome<DesktopCandidateView>> {
     const gen = this.#gen;
     const connection = this.#host.connection();
     if (connection === null || connection.state.commandScopeId === null)
       return fail('not_connected');
     await this.refresh();
+    if (gen !== this.#gen) return fail('not_connected');
+    await this.#refreshAutoActions();
     if (gen !== this.#gen) return fail('not_connected');
     return { ok: true, value: this.view() };
   }

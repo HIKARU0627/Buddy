@@ -276,14 +276,13 @@ test('macOS のキーチェーン: 失敗は理由だけを返し、例外のメ
   assert.equal(attempts, 2);
 });
 
-test('Windows・Linux の中枢は KeyStore を持たず、ネイティブモジュールを読み込まない', async () => {
+test('Linux の中枢は KeyStore を持たず、ネイティブモジュールを読み込まない。Windows は DPAPI（ADR 0202）', async () => {
   let loads = 0;
   const loadModule = () => {
     loads += 1;
     return Promise.reject(new Error('must not load'));
   };
   const cases: [string, string][] = [
-    ['win32', 'windows_core_not_supported_in_initial_release'],
     ['linux', 'linux_core_not_supported_in_initial_release'],
     ['freebsd', 'platform_not_supported'],
   ];
@@ -305,6 +304,15 @@ test('Windows・Linux の中枢は KeyStore を持たず、ネイティブモジ
     createKeyStore('darwin', { loadModule }).backend,
     'macos_keychain',
   );
+  // Windows は DPAPI の KeyStore。キーチェーンのネイティブモジュールは読み込まない。
+  // 置き場所（LOCALAPPDATA）・PowerShell（SystemRoot）が分からなければ使えない（平文へ切り替えない）。
+  const windows = createKeyStore('win32', { loadModule, env: {} });
+  assert.equal(windows.backend, 'windows_dpapi');
+  assert.deepEqual(await windows.loadOrCreateDataKey(), {
+    ok: false,
+    backend: 'windows_dpapi',
+    reason: 'dpapi_unavailable',
+  });
   assert.equal(loads, 0);
 });
 

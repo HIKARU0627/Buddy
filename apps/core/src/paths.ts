@@ -3,6 +3,7 @@
 
 import { createHash } from 'node:crypto';
 import { posix, win32 } from 'node:path';
+import { isWindowsDriveAbsolutePath } from '@buddy/platform';
 
 export interface PlatformContext {
   readonly platform: NodeJS.Platform;
@@ -16,12 +17,14 @@ export function defaultDataDir({
   env,
   homedir,
 }: PlatformContext): string {
+  // Windows は %LOCALAPPDATA%（移動プロファイルで同期しない、この PC だけの場所）。DB と WAL を同期の対象にせず、
+  // DPAPI で保護した鍵（%LOCALAPPDATA%\Buddy\key-store）と同じ PC・同じ利用者の場所にそろえる（ADR 0202）。
+  // LOCALAPPDATA の検査は鍵の置き場所と同じ（ドライブ文字で始まる絶対パスだけ。共有・相対パスは使わない）。
   if (platform === 'win32') {
-    const appData = env['APPDATA'];
-    const base =
-      appData && win32.isAbsolute(appData)
-        ? appData
-        : win32.join(homedir, 'AppData', 'Roaming');
+    const localAppData = env['LOCALAPPDATA'];
+    const base = isWindowsDriveAbsolutePath(localAppData)
+      ? (localAppData as string)
+      : win32.join(homedir, 'AppData', 'Local');
     return win32.join(base, 'Buddy', 'core');
   }
   if (platform === 'darwin')
@@ -37,6 +40,36 @@ export function defaultDataDir({
   const base =
     xdg && posix.isAbsolute(xdg) ? xdg : posix.join(homedir, '.local', 'share');
   return posix.join(base, 'buddy', 'core');
+}
+
+// ADR 0202 より前の Windows の既定のデータディレクトリ（%APPDATA%\Buddy\core、Roaming）。
+export function legacyWindowsDataDir({
+  env,
+  homedir,
+}: PlatformContext): string {
+  const appData = env['APPDATA'];
+  const base = isWindowsDriveAbsolutePath(appData)
+    ? (appData as string)
+    : win32.join(homedir, 'AppData', 'Roaming');
+  return win32.join(base, 'Buddy', 'core');
+}
+
+export const LEGACY_DATA_DIR_PRESENT = 'legacy_data_dir_present';
+
+// Windows で既定のデータディレクトリを使う起動のとき、旧い既定（%APPDATA%\Buddy\core）があり新しい既定がなければ
+// 理由のコードを返す（起動のログで一度だけ知らせる。自動では移さない。ADR 0202・U705）。
+// 旧い場所のデータは鍵保護を断っていた頃の模擬の鍵で作ったもので、本物の鍵では開けない。
+export function legacyDataDirNotice(
+  context: PlatformContext & {
+    readonly dataDirGiven: boolean;
+    readonly exists: (path: string) => boolean;
+  },
+): typeof LEGACY_DATA_DIR_PRESENT | null {
+  if (context.platform !== 'win32' || context.dataDirGiven) return null;
+  return context.exists(legacyWindowsDataDir(context)) &&
+    !context.exists(defaultDataDir(context))
+    ? LEGACY_DATA_DIR_PRESENT
+    : null;
 }
 
 export const LOCK_FILE = 'core.lock';

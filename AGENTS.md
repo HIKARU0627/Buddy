@@ -23,7 +23,7 @@ Codex と Claude Code はこのファイルを共通の指示として使う。�
 ## 設計境界
 
 - Buddy は生活・学習・開発を支える個人アシスタント。開発支援専用に用途を狭めない。
-- Core は Electron に依存しない Node.js / TypeScript。初期中枢は Mac mini、PC クライアントは Windows / macOS。
+- Core は Electron に依存しない Node.js / TypeScript。中枢は Mac mini（macOS）か Windows（本人の決定 2026-11-28、ADR 0202・0203）、PC クライアントは Windows / macOS。
 - contracts / domain に Electron・DOM・Node 専用 API を入れない。副作用はアダプターと Core 側へ置く。別ワークスペースの src を相対パスで直接 import しない。
 - ワイヤ契約は OpenAPI / JSON Schema を正本とし、TypeScript 型は生成・整合検査する。状態機械・認可・意味検証をスキーマ検証と混同しない。
 - LLM とクライアントは承認、実行権限、処理状態、effect_kind の正本にならない。Read / LocalCommand / RemoteMutation の判定はコードが持つ。

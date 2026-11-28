@@ -6,6 +6,7 @@
 // で「新しい要求の受付停止 → 終了処理 → ソケット・ロックの解放 → 終了」を行う。
 // 標準出力には機械向けの JSON を 1 行ずつ、標準エラーには人向けの記録を書く。
 
+import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import {
@@ -43,7 +44,12 @@ import { householdOptionsFor, takeStartupSecrets } from './cli-secrets.js';
 import type { StartupSecrets } from './cli-secrets.js';
 import type { CoreHandle, CoreHttpsOptions } from './core.js';
 import { parseLockRecord } from './lock.js';
-import { LOCK_FILE, controlEndpoint, defaultDataDir } from './paths.js';
+import {
+  LOCK_FILE,
+  controlEndpoint,
+  defaultDataDir,
+  legacyDataDirNotice,
+} from './paths.js';
 import { createCoreKeyStore, keyProtectionCheck } from './preflight.js';
 import type { KeyProtectionMode } from './preflight.js';
 
@@ -332,6 +338,18 @@ async function main(argv: readonly string[]): Promise<number> {
         : 'os';
     // 秘密は読んだ直後に環境から消す（以降に起動する子プロセスへ受け継がせない）。
     const secrets = takeStartupSecrets(process.env);
+    // Windows の旧い既定のデータディレクトリが残っていれば一度だけ知らせる（パスの値は出さない。ADR 0202）。
+    const legacy = legacyDataDirNotice({
+      platform: process.platform,
+      env: process.env,
+      homedir: homedir(),
+      dataDirGiven: values['data-dir'] !== undefined,
+      exists: existsSync,
+    });
+    if (legacy !== null)
+      log(
+        `旧い既定のデータディレクトリ（%APPDATA%\\Buddy\\core）が残っています。自動では移しません（${legacy}）。そこのデータは模擬の鍵で作ったもので、本物の鍵では開けません。`,
+      );
     const https =
       values['https-host'] === undefined
         ? null

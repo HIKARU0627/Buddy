@@ -1,11 +1,18 @@
 // 中枢のデータ鍵の KeyStore（設計 02 保存と秘密情報・03・08 §5、ADR 0017）。
 // データ鍵（AES-256-GCM の 32 バイトの鍵）を OS の保護領域に置き、取得・初回作成する。
-// 初期版の中枢は macOS だけで、キーチェーンに @napi-rs/keyring で保存する。
+// macOS はキーチェーンに @napi-rs/keyring で、Windows は DPAPI（CurrentUser）で保護したファイルに保存する
+// （ADR 0202。Linux の中枢は初期版の対象外）。
 // 使えない・読めない・形式が不正なときは構造化した理由を返し、平文の保存へ切り替えない。
 // 鍵の値（バイト列・base64）はログ・例外・結果の理由に入れない。
 import { randomBytes } from 'node:crypto';
 import { inspect } from 'node:util';
 import { corePlatformOf } from './supervisor.js';
+import {
+  KeyStoreUnavailableError,
+  SecretSlotExistsError,
+  windowsDpapiSlotOpener,
+} from './windows-dpapi.js';
+import type { WindowsDpapiOptions } from './windows-dpapi.js';
 
 /** キーチェーンのサービス名。個人情報を含まない固定の汎用名（LaunchAgent の Label と同じ）。 */
 export const KEY_STORE_SERVICE = 'dev.buddy.core';
@@ -16,11 +23,14 @@ export const DATA_KEY_ID = 'data-key-v1';
 /** AES-256 の鍵の長さ（バイト）。 */
 export const DATA_KEY_BYTES = 32;
 
-export type KeyStoreBackend = 'macos_keychain' | 'none' | 'mock';
+export type KeyStoreBackend =
+  'macos_keychain' | 'windows_dpapi' | 'none' | 'mock';
 
 export type KeyStoreFailureReason =
   // ネイティブモジュール（@napi-rs/keyring）を読み込めない。
   | 'keystore_module_unavailable'
+  // Windows の DPAPI を使えない（PowerShell を起動できない、DPAPI の型を読み込めない、置き場所がない。ADR 0202）。
+  | 'dpapi_unavailable'
   // 保護領域の読み出しに失敗した（ロック中・アクセスの拒否など）。
   | 'keystore_read_failed'
   // 保護領域への書込みに失敗した。
@@ -35,7 +45,6 @@ export type KeyStoreFailureReason =
   | 'data_key_verify_failed'
   // 復元で別のデータ鍵を入れようとしたが、違う素材の既存の鍵がある（上書きしない）。
   | 'data_key_exists'
-  | 'windows_core_not_supported_in_initial_release'
   | 'linux_core_not_supported_in_initial_release'
   | 'platform_not_supported'
   // 模擬の KeyStore が使えない状態。
@@ -111,8 +120,48 @@ export interface SecretSlot {
   /** 値がなければ null。読めなければ例外。 */
   read(): Promise<string | null>;
   write(value: string): Promise<void>;
+  /**
+   * 初回の作成（対応する保護領域だけが持つ。Windows の DPAPI）。項目がすでにあれば上書きせず
+   * SecretSlotExistsError を投げる。持たない保護領域では write で作る（U704）。
+   */
+  readonly create?: (value: string) => Promise<void>;
   /** 項目を消す（対応する保護領域だけが持つ。OAuth トークンの失効・削除で使う）。 */
   readonly remove?: () => Promise<void>;
+}
+
+/**
+ * 空の項目に値を置く。create を持つ保護領域は排他的に作り、並行した作成に先を越されたら 'exists'（上書きしない）。
+ * 持たない保護領域は write で置き、書いた後の読み戻しの照合で並行した作成を検出する（ADR 0017）。
+ */
+export async function createSlotValue(
+  slot: SecretSlot,
+  value: string,
+): Promise<'created' | 'exists'> {
+  if (slot.create === undefined) {
+    await slot.write(value);
+    return 'created';
+  }
+  try {
+    await slot.create(value);
+    return 'created';
+  } catch (error) {
+    if (error instanceof SecretSlotExistsError) return 'exists';
+    throw error;
+  }
+}
+
+/**
+ * 保護領域の操作の失敗を理由にする。保護領域そのものを使えない（KeyStoreUnavailableError）なら
+ * unavailableReason、それ以外は操作ごとの失敗（読み出し・書込み・削除）にする。例外の文は使わない。
+ */
+export function slotFailureReason<R extends string>(
+  error: unknown,
+  unavailableReason: R,
+  operationReason: R,
+): R {
+  return error instanceof KeyStoreUnavailableError
+    ? unavailableReason
+    : operationReason;
 }
 
 const BASE64 =
@@ -173,8 +222,10 @@ export function createSlotKeyStore(options: SlotKeyStoreOptions): KeyStore {
     let stored: string | null;
     try {
       stored = await slot.read();
-    } catch {
-      return fail('keystore_read_failed');
+    } catch (error) {
+      return fail(
+        slotFailureReason(error, unavailableReason, 'keystore_read_failed'),
+      );
     }
     if (stored !== null) {
       if (typeof stored !== 'string') return fail('data_key_format_invalid');
@@ -191,16 +242,22 @@ export function createSlotKeyStore(options: SlotKeyStoreOptions): KeyStore {
     const bytes = randomBytes(DATA_KEY_BYTES);
     const encoded = bytes.toString('base64');
     try {
-      await slot.write(encoded);
-    } catch {
-      return fail('keystore_write_failed');
+      // 並行した作成に先を越されたら、先に置かれた鍵を読んで使う（上書きしない。U704）。
+      if ((await createSlotValue(slot, encoded)) === 'exists')
+        return load(false);
+    } catch (error) {
+      return fail(
+        slotFailureReason(error, unavailableReason, 'keystore_write_failed'),
+      );
     }
     // 書いた値を読み戻し、保護領域から同じ鍵を取得できることを確かめてから使う。
     let readBack: string | null;
     try {
       readBack = await slot.read();
-    } catch {
-      return fail('keystore_read_failed');
+    } catch (error) {
+      return fail(
+        slotFailureReason(error, unavailableReason, 'keystore_read_failed'),
+      );
     }
     if (readBack !== encoded) return fail('data_key_verify_failed');
     return {
@@ -211,7 +268,10 @@ export function createSlotKeyStore(options: SlotKeyStoreOptions): KeyStore {
     };
   }
 
-  async function importKey(material: Uint8Array): Promise<DataKeyResult> {
+  async function importKey(
+    material: Uint8Array,
+    retried = false,
+  ): Promise<DataKeyResult> {
     if (material.length !== DATA_KEY_BYTES)
       return fail('data_key_length_invalid');
     let slot: SecretSlot;
@@ -223,8 +283,10 @@ export function createSlotKeyStore(options: SlotKeyStoreOptions): KeyStore {
     let stored: string | null;
     try {
       stored = await slot.read();
-    } catch {
-      return fail('keystore_read_failed');
+    } catch (error) {
+      return fail(
+        slotFailureReason(error, unavailableReason, 'keystore_read_failed'),
+      );
     }
     const encoded = Buffer.from(material).toString('base64');
     if (stored !== null) {
@@ -241,15 +303,23 @@ export function createSlotKeyStore(options: SlotKeyStoreOptions): KeyStore {
       };
     }
     try {
-      await slot.write(encoded);
-    } catch {
-      return fail('keystore_write_failed');
+      // 並行して置かれたら読み直して素材を照合する（1 度だけ。上書きしない。U704）。
+      if ((await createSlotValue(slot, encoded)) === 'exists')
+        return retried
+          ? fail('data_key_verify_failed')
+          : importKey(material, true);
+    } catch (error) {
+      return fail(
+        slotFailureReason(error, unavailableReason, 'keystore_write_failed'),
+      );
     }
     let readBack: string | null;
     try {
       readBack = await slot.read();
-    } catch {
-      return fail('keystore_read_failed');
+    } catch (error) {
+      return fail(
+        slotFailureReason(error, unavailableReason, 'keystore_read_failed'),
+      );
     }
     if (readBack !== encoded) return fail('data_key_verify_failed');
     return {
@@ -265,7 +335,7 @@ export function createSlotKeyStore(options: SlotKeyStoreOptions): KeyStore {
     backend,
     loadDataKey: () => load(false),
     loadOrCreateDataKey: () => load(true),
-    importDataKey: importKey,
+    importDataKey: (material) => importKey(material),
   };
 }
 
@@ -351,15 +421,34 @@ export function keychainSlotOpener(
   };
 }
 
-/** 初期版で中枢の鍵保護に対応しない OS の KeyStore。鍵を返さない。 */
+/** 実行中の OS に合う KeyStore の選択肢。macOS は loadModule、Windows は WindowsDpapiOptions だけを使う。 */
+export interface OsKeyStoreOptions
+  extends MacKeychainKeyStoreOptions, WindowsDpapiOptions {}
+
+/**
+ * Windows の DPAPI（CurrentUser）の KeyStore（ADR 0202）。データ鍵（項目名 `data-key-v1`）を
+ * 32 バイトの正準の base64 にして DPAPI で保護し、%LOCALAPPDATA%\Buddy\key-store の下のファイルに置く。
+ */
+export function createWindowsDpapiKeyStore(
+  options: WindowsDpapiOptions = {},
+): KeyStore {
+  return createSlotKeyStore({
+    kind: 'os',
+    backend: 'windows_dpapi',
+    unavailableReason: 'dpapi_unavailable',
+    openSlot: windowsDpapiSlotOpener(DATA_KEY_ACCOUNT, options),
+  });
+}
+
+/**
+ * 中枢の鍵保護に対応しない OS の KeyStore。鍵を返さない。
+ * Linux の中枢は初期版の対象外（ADR 0013・0202）。Windows は ADR 0202 から DPAPI で対応する。
+ */
 export function createUnsupportedKeyStore(nodePlatform: string): KeyStore {
-  const platform = corePlatformOf(nodePlatform);
   const reason: KeyStoreFailureReason =
-    platform === 'windows'
-      ? 'windows_core_not_supported_in_initial_release'
-      : platform === 'linux'
-        ? 'linux_core_not_supported_in_initial_release'
-        : 'platform_not_supported';
+    corePlatformOf(nodePlatform) === 'linux'
+      ? 'linux_core_not_supported_in_initial_release'
+      : 'platform_not_supported';
   const result: DataKeyResult = { ok: false, backend: 'none', reason };
   return {
     kind: 'os',
@@ -373,11 +462,16 @@ export function createUnsupportedKeyStore(nodePlatform: string): KeyStore {
 /** 実行中の OS に合う KeyStore（Core では process.platform を渡す）。 */
 export function createKeyStore(
   nodePlatform: string,
-  options: MacKeychainKeyStoreOptions = {},
+  options: OsKeyStoreOptions = {},
 ): KeyStore {
-  return corePlatformOf(nodePlatform) === 'macos'
-    ? createMacKeychainKeyStore(options)
-    : createUnsupportedKeyStore(nodePlatform);
+  switch (corePlatformOf(nodePlatform)) {
+    case 'macos':
+      return createMacKeychainKeyStore(options);
+    case 'windows':
+      return createWindowsDpapiKeyStore(options);
+    default:
+      return createUnsupportedKeyStore(nodePlatform);
+  }
 }
 
 export interface MockKeyStoreOptions {

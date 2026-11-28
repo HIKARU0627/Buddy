@@ -14,7 +14,8 @@ import {
   stat,
   chmod,
 } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join, win32 } from 'node:path';
+import { isWindowsDriveAbsolutePath } from '@buddy/platform';
 import { STATE_FILE } from './paths.js';
 import { UUID_PATTERN, isJsonObject, parseStrictJson } from './strict-json.js';
 
@@ -27,13 +28,86 @@ export class DataDirError extends Error {
   }
 }
 
+// Windows のデータディレクトリの場所の検査（ADR 0202、U700 (b)）。
+// 実パス（ジャンクション・シンボリックリンクをたどった先）が %LOCALAPPDATA% か %USERPROFILE% の実パスの下でなければ、
+// 理由のコードを返す。既定の外（例 C:\BuddyData）はドライブの既定の ACL（Authenticated Users の変更の許可）を継承し、
+// 同じ PC の別の利用者が DB の暗号化していない欄・budget-runtime.json・backup-config.json などを書き換えられるため。
+// プロファイルの下は既定で本人・SYSTEM・Administrators だけの ACL を継承する。ACL そのものは読まない。
+export async function windowsDataDirLocationReason(
+  realDir: string,
+  env: Readonly<Record<string, string | undefined>>,
+  resolveReal: (path: string) => Promise<string> = realpath,
+): Promise<string | null> {
+  const bases: string[] = [];
+  for (const name of ['LOCALAPPDATA', 'USERPROFILE']) {
+    const value = env[name];
+    if (!isWindowsDriveAbsolutePath(value)) continue;
+    try {
+      bases.push(await resolveReal(value as string));
+    } catch {
+      // 無い場所は基準にしない。
+    }
+  }
+  if (bases.length === 0) return 'data_dir_profile_unknown';
+  const target = realDir.toLowerCase();
+  for (const base of bases) {
+    const relative = win32.relative(base.toLowerCase(), target);
+    if (
+      relative !== '' &&
+      relative.split('\\')[0] !== '..' &&
+      !win32.isAbsolute(relative)
+    )
+      return null;
+  }
+  return 'data_dir_outside_user_profile';
+}
+
+// まだ無いパスの実パス: 有る祖先までを実パスにして、残りをつなぐ（作る前に場所を確かめるため）。
+export async function realpathOfPlanned(
+  path: string,
+  resolveReal: (path: string) => Promise<string>,
+): Promise<string> {
+  const rest: string[] = [];
+  let current = path;
+  for (;;) {
+    try {
+      return join(await resolveReal(current), ...rest.reverse());
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      const parent = dirname(current);
+      if (parent === current) throw error;
+      rest.push(current.slice(parent.length).replace(/^[\\/]+/u, ''));
+      current = parent;
+    }
+  }
+}
+
+function outsideProfile(reason: string): DataDirError {
+  return new DataDirError(
+    reason,
+    'データディレクトリは利用者のプロファイル（%LOCALAPPDATA% か %USERPROFILE%）の下に置いてください。',
+  );
+}
+
 // 本人だけが読み書きできるディレクトリを用意し、実体の絶対パスを返す。
-// POSIX では所有者を確かめて 0700 にそろえる。Windows は %APPDATA% 既定の ACL に任せる
-// （ACL の検査は B01-02 の鍵保護・配置の検討で扱う）。
+// POSIX では所有者を確かめて 0700 にそろえる。Windows は %LOCALAPPDATA% か %USERPROFILE% の下（実パスで判定）に限り、
+// プロファイルの既定の ACL（本人・SYSTEM・Administrators）に任せる。ACL そのものは読まない（ADR 0202、U700）。
+// 秘密の鍵は DPAPI で別に保護する。
 export async function prepareDataDir(dataDir: string): Promise<string> {
+  if (process.platform === 'win32') {
+    // 作る前に場所を確かめる（既定の外にディレクトリを作らない）。
+    const planned = await realpathOfPlanned(dataDir, realpath);
+    const before = await windowsDataDirLocationReason(planned, process.env);
+    if (before !== null) throw outsideProfile(before);
+  }
   await mkdir(dataDir, { recursive: true, mode: 0o700 });
   const real = await realpath(dataDir);
-  if (process.platform === 'win32') return real;
+  if (process.platform === 'win32') {
+    // 作った後の実パスでも確かめる（途中のジャンクションの差し替え）。
+    const after = await windowsDataDirLocationReason(real, process.env);
+    if (after !== null) throw outsideProfile(after);
+    return real;
+  }
   const info = await stat(real);
   if (!info.isDirectory())
     throw new DataDirError(

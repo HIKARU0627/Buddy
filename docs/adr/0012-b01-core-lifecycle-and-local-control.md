@@ -72,3 +72,8 @@ Core は Electron に依存しない独立した Node.js プロセスで、`budd
 - DB（store_generation の正本、バックアップ復元・新規作成での世代の更新、操作 ID）は B02 で、`core-state.json` を置き換えます。一時リースの更新も B02 以降です。
 - ログイン後の LaunchAgent による起動と、鍵保護の実検査は B01-02 です。
 - 模擬ジョブ・状態復旧の試験、電源断と復帰（X20 の残り・T07）は未実施です。
+
+## 追記（2026-11-28、[ADR 0202](0202-windows-core-key-protection-dpapi.md)）
+
+- 本人の決定（2026-11-28）で Windows の中枢を使えるようにした。Windows のデータディレクトリの既定を `%APPDATA%\Buddy\core`（Roaming）から `%LOCALAPPDATA%\Buddy\core` に改めた（移動プロファイルで SQLite と WAL を同期させない。DPAPI の鍵と同じ PC・同じ利用者の場所にそろえる。U705）。
+- Windows のデータディレクトリは、実パスが %LOCALAPPDATA% か %USERPROFILE% の下でなければ起動を断る（U700 (b)。ACL そのものは読まず、プロファイルの既定の ACL に任せる）。旧い既定の場所のデータは模擬の鍵で作ったものなので移さず、起動のログで知らせる。名前付きパイプの ACL は変えていない。

@@ -1,7 +1,15 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { controlEndpoint, defaultDataDir, socketPathTooLong } from './paths.js';
-import { createMacKeychainKeyStore, createMockKeyStore } from '@buddy/platform';
+import { mkdtemp, readdir, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import {
+  createMacKeychainKeyStore,
+  createMockKeyStore,
+  createMockStdinCommandRunner,
+  createWindowsDpapiKeyStore,
+} from '@buddy/platform';
 import type { KeyringModule } from '@buddy/platform';
 import { keyProtectionCheck, runPreflight } from './preflight.js';
 
@@ -12,21 +20,34 @@ test('default data directories follow each OS convention', () => {
     defaultDataDir({ platform: 'darwin', env: {}, homedir: '/Users/example' }),
     '/Users/example/Library/Application Support/Buddy/core',
   );
+  // Windows は %LOCALAPPDATA%（移動プロファイルで同期しない場所。ADR 0202）。%APPDATA%（Roaming）は使わない。
+  assert.equal(
+    defaultDataDir({
+      platform: 'win32',
+      env: {
+        LOCALAPPDATA: 'C:\\Users\\example\\AppData\\Local',
+        APPDATA: 'C:\\Users\\example\\AppData\\Roaming',
+      },
+      homedir: 'C:\\Users\\example',
+    }),
+    'C:\\Users\\example\\AppData\\Local\\Buddy\\core',
+  );
   assert.equal(
     defaultDataDir({
       platform: 'win32',
       env: { APPDATA: 'C:\\Users\\example\\AppData\\Roaming' },
       homedir: 'C:\\Users\\example',
     }),
-    'C:\\Users\\example\\AppData\\Roaming\\Buddy\\core',
+    'C:\\Users\\example\\AppData\\Local\\Buddy\\core',
   );
+  // 相対パスの LOCALAPPDATA は使わず、ホームの下の既定へ戻す。
   assert.equal(
     defaultDataDir({
       platform: 'win32',
-      env: {},
-      homedir: 'C:\\Users\\example',
+      env: { LOCALAPPDATA: 'relative\\Local' },
+      homedir: 'D:\\Profiles\\example',
     }),
-    'C:\\Users\\example\\AppData\\Roaming\\Buddy\\core',
+    'D:\\Profiles\\example\\AppData\\Local\\Buddy\\core',
   );
   assert.equal(
     defaultDataDir({
@@ -81,22 +102,103 @@ test('unix socket paths longer than 103 bytes are refused, pipes are not limited
   );
 });
 
-test('preflight: mock key protection passes, unavailable key protection refuses without a plaintext fallback', async () => {
+// 模擬の DPAPI。標準入力の「操作・entropy・データ」の 3 行を読む（本物の DPAPI の暗号ではない。往復の形だけを再現する）。
+// protect は DPAPI の blob の見出し（版 1・提供者の GUID・マスターキーの版と GUID・dwFlags 0 の 44 バイト）の後に、
+// データの各バイトを 0x5a と XOR した値を付けて返す。unprotect は見出しを外して戻す。
+const FAKE_DPAPI_HEADER = Buffer.from(
+  'AQAAANCMnd8BFdERjHoAwE/Cl+sBAAAAAAECAwQFBgcICQoLDA0ODwAAAAA=',
+  'base64',
+);
+function fakeDpapiRunner() {
+  return createMockStdinCommandRunner((_command, _args, stdin) => {
+    const [op = '', , data = ''] = stdin.split('\n');
+    const bytes = Buffer.from(data, 'base64');
+    const xor = (input: Buffer) =>
+      Buffer.from(input.map((byte) => byte ^ 0x5a));
+    if (op === 'protect')
+      return {
+        exitCode: 0,
+        stdout: `${Buffer.concat([FAKE_DPAPI_HEADER, xor(bytes)]).toString('base64')}\r\n`,
+        stderr: '',
+      };
+    if (op === 'unprotect')
+      return {
+        exitCode: 0,
+        stdout: xor(bytes.subarray(FAKE_DPAPI_HEADER.length)).toString(
+          'base64',
+        ),
+        stderr: '',
+      };
+    return { exitCode: 11, stdout: '', stderr: '' };
+  });
+}
+
+test('preflight: mock key protection passes, unavailable key protection refuses without a plaintext fallback', async (t) => {
   assert.deepEqual(await runPreflight([keyProtectionCheck('mock')]), []);
   assert.deepEqual(
     await runPreflight([keyProtectionCheck('mock_unavailable')]),
     ['key_protection_unavailable:mock_unavailable'],
   );
-  // 初期版の中枢は macOS だけ。Linux・Windows の中枢は鍵保護がないので起動しない。
+  // Linux の中枢は初期版の対象外。鍵保護がないので起動しない。
   assert.deepEqual(
     await runPreflight([keyProtectionCheck('os', { nodePlatform: 'linux' })]),
     ['key_protection_unavailable:linux_core_not_supported_in_initial_release'],
   );
+  // Windows は DPAPI（ADR 0202）。模擬の PowerShell と一時ディレクトリを使い、本人の置き場所と実機の DPAPI には触れない。
+  const keyDir = await mkdtemp(join(tmpdir(), 'buddy-dpapi-preflight-'));
+  t.after(() => rm(keyDir, { recursive: true, force: true }));
+  const dpapi = fakeDpapiRunner();
   assert.deepEqual(
-    await runPreflight([keyProtectionCheck('os', { nodePlatform: 'win32' })]),
-    [
-      'key_protection_unavailable:windows_core_not_supported_in_initial_release',
-    ],
+    await runPreflight([
+      keyProtectionCheck('os', {
+        nodePlatform: 'win32',
+        keyStore: createWindowsDpapiKeyStore({
+          directory: keyDir,
+          powershellPath:
+            'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
+          runner: dpapi,
+        }),
+      }),
+    ]),
+    [],
+  );
+  // 初回は作成（protect）して読み戻す（unprotect）。項目は 1 つ。
+  assert.deepEqual(
+    dpapi.calls.map((call) => call.stdin.split('\n')[0]),
+    ['protect', 'unprotect'],
+  );
+  assert.equal((await readdir(keyDir)).length, 1);
+  // PowerShell を起動できない・置き場所（LOCALAPPDATA）がないときは起動しない。平文へ切り替えない。
+  const noProcess = createMockStdinCommandRunner(() => ({
+    exitCode: null,
+    stdout: '',
+    stderr: '',
+  }));
+  const emptyDir = await mkdtemp(join(tmpdir(), 'buddy-dpapi-preflight-'));
+  t.after(() => rm(emptyDir, { recursive: true, force: true }));
+  assert.deepEqual(
+    await runPreflight([
+      keyProtectionCheck('os', {
+        nodePlatform: 'win32',
+        keyStore: createWindowsDpapiKeyStore({
+          directory: emptyDir,
+          powershellPath:
+            'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
+          runner: noProcess,
+        }),
+      }),
+    ]),
+    ['key_protection_unavailable:dpapi_unavailable'],
+  );
+  assert.deepEqual(await readdir(emptyDir), []);
+  assert.deepEqual(
+    await runPreflight([
+      keyProtectionCheck('os', {
+        nodePlatform: 'win32',
+        keyStore: createWindowsDpapiKeyStore({ env: {}, runner: noProcess }),
+      }),
+    ]),
+    ['key_protection_unavailable:dpapi_unavailable'],
   );
   // macOS はキーチェーンのデータ鍵を取得（初回は作成）できるかを確かめる。
   // 模擬の keyring モジュールを使い、実機のキーチェーンには触れない。

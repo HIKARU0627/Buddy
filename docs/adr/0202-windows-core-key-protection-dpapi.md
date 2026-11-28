@@ -1,0 +1,87 @@
+# ADR 0202: Windows の中枢を使えるようにする（鍵の保護は DPAPI）
+
+- 日付: 2026-11-28
+- 状態: 本人の決定（下記）を受けた判断と、中枢の鍵の保護（データ鍵・TLS の秘密鍵・OAuth のトークン・バックアップの鍵）の Windows の実装。`packages/platform` に DPAPI の保護領域（`src/windows-dpapi.ts`）を足し、KeyStore の OS の選択・鍵保護の確認・起動前検査を Windows につないだ。データディレクトリの Windows の既定の場所を %LOCALAPPDATA% に改め、置き場所を利用者のプロファイルの下に限った。試験は模擬の PowerShell（どの OS でも動く）と、Windows の CI（windows-latest）だけで動く本物の DPAPI・本物の起動の試験。**Windows の実機（本人の PC）での確認は未実施**。
+- 根拠: 本人の決定（2026-11-28）、ADR 0013（OS 別のアダプター・鍵保護不能時の停止）・0017（KeyStore）・0020（TLS の秘密鍵）・0055（バックアップの鍵）・0144（OAuth のトークン）・0012（データディレクトリ）。設計本文（02 保存と秘密情報・マルチプラットフォーム）は今回の作業環境に取得していない。原本との照合はレビューで行う。
+- 番号: ADR は 0202、未決事項は U700〜U705。
+- 範囲外（別の作業）: ログイン後の自動起動（Task Scheduler）・Tailscale の状態の取得・自宅のネットワークの登録・docs/b01・b03 の Windows の中枢の手順。`packages/platform` の `startup.ts`・`supervisor.ts` の起動・監督の `unsupported`（`initial_release_supports_macos_core_only`）は、この ADR では変えていない。並行の作業（ADR 0203）は Task Scheduler を InteractiveToken（本人のログオンのセッション）で作るので、DPAPI の CurrentUser の復号ができる前提（S4U では本人の資格情報が無く、DPAPI の鍵を開けない）。
+
+## 本人の決定（2026-11-28）
+
+本人が「Windows でも中枢を使えるようにしてください」と決めた。ADR 0013 の「Windows・Linux の中枢は初期版の対象外」を、**Windows について改める**。Linux の中枢は初期版の対象外のまま。
+
+## 決めたこと
+
+| 対象                     | 決定                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 保護の手段               | Windows の DPAPI（`System.Security.Cryptography.ProtectedData`）の **CurrentUser** のスコープ。同じ Windows の利用者（とその資格情報）でなければ復号できない。LocalMachine のスコープは使わない（同じ PC の別の利用者が復号できるため）                                                                                                                                                                                                                                                                                                                               |
+| 呼び出し方               | ネイティブのモジュールを使わず、`%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe -NoLogo -NoProfile -NonInteractive -EncodedCommand <固定のスクリプト>` を子プロセスで呼ぶ。PATH から探さない。shell を通さない（`execFile`）。時間の上限は 30 秒、出力の上限は 1 MiB（超えたら止めて「使えない」）                                                                                                                                                                                                                                                       |
+| スクリプト               | 最初に言語モードを確かめ、FullLanguage でなければ `exit 10`（制約付き言語モードでも使える構文）。System.Security は `Add-Type` ではなく `[Reflection.Assembly]::Load('System.Security, Version=4.0.0.0, …')` で読む（モジュールの自動読み込みを起こさない）。標準入力は `[Console]::In.ReadToEnd()` で読む（スクリプトに `$input` を入れると標準入力を先に読み取ってしまうので使わない）                                                                                                                                                                              |
+| 子プロセスの環境         | 親の環境を受け継がせず、PowerShell の起動と利用者のプロファイルの場所に要るものだけを写す（`SystemRoot`・`SystemDrive`・`windir`・`TEMP`・`TMP`・`USERPROFILE`・`APPDATA`・`LOCALAPPDATA`・`HOMEDRIVE`・`HOMEPATH`・`USERNAME`・`USERDOMAIN`・`COMPUTERNAME`・`ComSpec`・`PATHEXT`・`PROCESSOR_ARCHITECTURE`・`NUMBER_OF_PROCESSORS`・`OS`・`ALLUSERSPROFILE`・`ProgramData`・`ProgramFiles`）。PATH は %SystemRoot% の下の 3 か所だけにする。起動のシークレット・`PSModulePath`・利用者が足した PATH は渡さない                                                      |
+| 秘密の渡し方             | 秘密の値はコマンドラインの引数に載せない。標準入力に「操作（`protect` / `unprotect`）・entropy の base64・データの base64」の 3 行を書いて閉じる。スクリプトは定数で値を含まない。標準出力は結果の base64 だけ。標準エラーと例外の文（利用者名・パスを含み得る）は理由に入れない                                                                                                                                                                                                                                                                                      |
+| entropy                  | `dev.buddy.core/<項目名>` の UTF-8。保護した blob を別の項目のファイルへ移しても復号に失敗する（本物の DPAPI で Windows の CI が確かめる）                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| blob の形の検査          | Protect の結果と、Unprotect の前の保存値の両方で、DPAPI の blob の見出し（版 1 と提供者の GUID `df9d8cd0-1501-11d1-8c7a-00c04fc297eb`、base64 で `AQAAANCMnd8BFdERjHoAwE/Cl+s`）があり、dwFlags（40 バイト目）に CRYPTPROTECT_LOCAL_MACHINE（0x4）が無いことを確かめる。違えば置かない（書込みの失敗）・復号しない（読み出しの失敗）                                                                                                                                                                                                                                  |
+| 項目名                   | macOS のキーチェーンのアカウント名と同じ: `data-key-v1`・`tls-key-v1`・`backup-file:<key_id>`・`ledger-hmac:<key_id>`・`oauth-v1:<connection_id>`                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| blob の置き場所          | `%LOCALAPPDATA%\Buddy\key-store\<項目名の SHA-256 の 16 進>.dpapi`。データディレクトリの外（キーチェーンと同じく利用者ごとに 1 つで、データディレクトリの写し・バックアップに含めない）。LOCALAPPDATA がドライブ文字で始まる絶対パスでなければ使えない（ネットワークの共有・相対パスへ切り替えない）。ファイル名を SHA-256 にするのは、Windows のファイル名が大文字・小文字を区別しない・`:` を使えないため                                                                                                                                                           |
+| ファイルの中身           | `{"v":1,"scope":"current_user","account":<項目名>,"blob":<保護した値の正準の base64>}`。読み出しで欄の組・版・スコープ・項目名・base64 の形・blob の見出しを照合し、違えば復号しない（読み出しの失敗）。空のファイル・256 KiB を超えるファイルは読まない。保護する値は UTF-8 で 64 KiB まで                                                                                                                                                                                                                                                                           |
+| 書込み                   | 同じディレクトリの一時ファイル（`.<ファイル名>.<UUID>.tmp`、`wx`）に書いて fsync し、置く。書込みから置くまでのどこで失敗しても一時ファイルを消す。上書き（OAuth のトークンの回転）は rename。**初回の作成（項目が無いとき）は link で置き、すでにあれば上書きせず読み直す**（U704。`SecretSlot.create`）。削除は項目が無くても成功（OAuth のトークンの削除の性質に合わせる）                                                                                                                                                                                         |
+| 中断した一時ファイル     | 項目を開くたびに、置き場所の中で上の命名の規則に合い、10 分より古い一時ファイルだけを消す（並行して書いている別のプロセスの一時ファイルは消さない。規則に合わないファイルは触らない）                                                                                                                                                                                                                                                                                                                                                                                 |
+| 置き場所の検査           | 置き場所は開くたびに作り（`mkdir -p`）、ディレクトリであること・リンク（シンボリックリンク・ジャンクション）でないことを確かめる。違えば使えない。ACL そのものは読まない（U700）                                                                                                                                                                                                                                                                                                                                                                                      |
+| 失敗の区別               | 使えない（PowerShell を起動できない・時間切れ・出力の上限超え、制約付き言語モード・DPAPI の型を読み込めない（終了コード 10）、置き場所・LOCALAPPDATA・SystemRoot がない）は `dpapi_unavailable`。Protect の失敗・blob の形の不正は `keystore_write_failed`、Unprotect の失敗（13）・ファイルの形の不正・不正な出力は `keystore_read_failed`。鍵の形式の検査・読み戻しの照合・不正な値を上書きしないことは既存の上の層のまま                                                                                                                                           |
+| 保護手段の名前           | `backend: 'windows_dpapi'`。起動前検査が実機の probe から受け入れる「使える」は `macos_keychain` と `windows_dpapi` だけ（模擬・none・その他の名前は `probe_result_invalid`）                                                                                                                                                                                                                                                                                                                                                                                         |
+| 鍵保護の確認の条件       | Windows の probe は DPAPI の KeyStore でデータ鍵を `loadOrCreateDataKey` で取得できるか（初回は作成して Protect し、Unprotect で読み戻して一致を確かめる）。PowerShell を呼べて（FullLanguage で）、DPAPI で保護・復号でき、置き場所に書けるときだけ `available`。使えなければ従来どおり `key_protection_unavailable:<理由>` で起動を断る                                                                                                                                                                                                                             |
+| OS の選択                | `createKeyStore`・`createTlsKeyStore`・`createBackupKeyStore`・`createOAuthTokenStore`・`createKeyProtectionProbe` は `win32` で DPAPI の実装を返す。Core（preflight・cli の start・backup・restore）は `process.platform` を渡すだけなので、呼び出し側は変えていない。Linux は `linux_core_not_supported_in_initial_release` のまま                                                                                                                                                                                                                                  |
+| 理由の整理               | `windows_core_not_supported_in_initial_release` は使わなくなったので、各 KeyStore の理由の型から外した。対応しない OS の KeyStore（`createUnsupported*`）は Linux なら Linux の理由、それ以外は `platform_not_supported`                                                                                                                                                                                                                                                                                                                                              |
+| データディレクトリの既定 | Windows は `%LOCALAPPDATA%\Buddy\core`。LOCALAPPDATA の検査は鍵の置き場所と同じ（ドライブ文字で始まる絶対パスでなければ `<ホーム>\AppData\Local\Buddy\core`）。これまでの `%APPDATA%\Buddy\core`（Roaming）は移動プロファイルで同期され得るため、SQLite と WAL を置かない。鍵（key-store）と同じ PC・同じ利用者の場所にそろえる                                                                                                                                                                                                                                       |
+| 旧い既定の場所           | 旧い既定の場所にあるデータは、Windows の中枢が鍵保護を断っていた頃に模擬の鍵（`--mock-key-protection`）で作ったもので、本物の鍵では開けないので移さない。既定の場所で起動するときに旧い場所があり新しい場所が無ければ、起動のログで一度だけ `legacy_data_dir_present` を知らせる（パスの値は出さない。自動では移さない）                                                                                                                                                                                                                                              |
+| データディレクトリの場所 | Windows では、データディレクトリの実パス（ジャンクション・シンボリックリンクをたどった先）が %LOCALAPPDATA% か %USERPROFILE% の実パスの下でなければ起動を断る（`data_dir_outside_user_profile`、プロファイルが分からなければ `data_dir_profile_unknown`）。作る前に、有る祖先までの実パスで確かめる（外にディレクトリを作らない）。作った後の実パスでも確かめる。budget-runtime.json・backup-config.json・budget-credit-observations.json はデータディレクトリの中なので同じ場所の検査に入る。POSIX の所有者・0700・`0o022` の検査は Windows では飛ばしたまま（U700） |
+
+### DPAPI を選んだ理由（資格情報マネージャーを使わない理由）
+
+`@napi-rs/keyring` は Windows の資格情報マネージャーにも保存できるが、1 項目の値の上限が 2560 バイトで、Microsoft のアクセストークン（数 KB になり得る）を `oauth-v1:<connection_id>` の JSON に入れると収まらないおそれがある。DPAPI は値の大きさの制限がなく、ネイティブのモジュールも要らない（Windows の CI で本物を動かせる）。本人の決定の指示（PowerShell の子プロセスで DPAPI を呼ぶ）にも合う。試験では 4096 文字のアクセストークンを保存・読み出しする。
+
+## 守ること（変えていないもの）
+
+- 平文の保存へ切り替える経路・設定は作らない。保護手段が使えなければ起動を断る（ADR 0013・0017）。
+- 鍵の作成・正準の base64 と長さの検査・書いた値の読み戻し・不正な値を上書きしない・復元のデータ鍵の導入で違う素材を上書きしない（U130・U134）・バックアップの鍵の ID ごとの上書きの拒否は、OS によらない上の層（`createSlotKeyStore` など）がそのまま行う。初回の作成で先を越されたときは、上書きせずに読み直して照合する（データ鍵・TLS の鍵は先の鍵を使う。復元の導入・バックアップの鍵は違えば `data_key_exists`・`backup_key_exists`）。保存・忘却・世代の最終ガードは Core の側で変えていない。
+- 鍵・トークンの値は DB・ログ・例外・理由・コマンドラインに出さない。ファイルには保護した blob だけを置く（試験で平文とその base64 がファイルに無いことを確かめる）。
+- PowerShell の子プロセスには決めた環境変数だけを渡す（上の表）。CLI は起動の環境変数から読んだシークレットを `start` の最初に `process.env` から消す（ADR 0144 の追補）ので、二重に防ぐ。
+- macOS のキーチェーンは `create` を持たないので、初回の作成は従来どおり write と読み戻しの照合（ADR 0017）。
+
+## 試験
+
+- どの OS でも動く模擬の試験（`packages/platform/src/windows-dpapi.test.ts`）: PowerShell と置き場所の既定の場所の決まり方、固定の引数とスクリプトの中身（CurrentUser・標準入力・LocalMachine を使わない・最初の言語モードの検査・Assembly::Load・`Add-Type` と `$input` を使わない）、子プロセスの環境（決めた名前だけ・PATH・シークレットを渡さない）、ファイル名（SHA-256 の期待値は `sha256sum` で別に求めた）、秘密が標準入力だけに載り引数に載らないこと（標準入力の期待値は `base64` コマンドで別に求めた手書きの値）、ファイルの中身（手書きの JSON。模擬の blob は見出しを付けた値を Python で別に求めた）と POSIX での 0700・0600、blob の見出しと LocalMachine の印（読み出し・書込みの両方）、差し替え・削除・一時ファイルを残さないこと、初回の作成の排他と並行した作成（データ鍵・復元の導入・TLS の鍵・バックアップの鍵）、置けなかったときと中断した古い一時ファイルの掃除、別の項目への差し替え（項目名の照合と entropy）、ファイルの形の不正、境界（ちょうど 64 KiB の値・文字数は上限内でバイト数が上限を超える値・空のファイル・256 KiB を超えるファイル）、失敗の区別（使えない／操作の失敗）と例外の文に秘密・利用者のパス・コマンドの出力が出ないこと、置き場所（決まらない・ファイル・シンボリックリンク・書込み不可）、データ鍵・TLS・バックアップ・OAuth の各 KeyStore、OS の選択と起動前検査。模擬の DPAPI は本物の暗号ではなく、blob の見出しと entropy の結び付けと往復の形だけを再現する。
+- 標準入力つきの実機用 runner は `node -e` の子プロセスで、標準入力の受け渡しと終了コード、起動できない・時間切れ・出力の上限超えの `exitCode: null`、env を渡したときに親の環境を受け継がないことを確かめる（どの OS でも動く）。
+- `apps/core/src/data-dir-windows.test.ts`: データディレクトリの場所の判定（プロファイルの下・外・大文字小文字・名前の前方一致・`..`・共有・ジャンクションの先・プロファイルが分からない）を模擬の実パスで、まだ無いパスの実パスの求め方を POSIX のシンボリックリンクで、旧い既定の場所の知らせを確かめる。
+- **Windows の CI（windows-latest）だけで動く試験**（他の OS では skip。リポジトリの OS ごとの試験の書き方に合わせた）:
+  - `windows-dpapi.test.ts`「Windows の実機の DPAPI: …」: 本物の runner を包んで終了コードを記録し、往復（日本語を含む値）・blob の見出し（`AQAAANCMnd8BFdERjHoAwE/Cl+s` で始まり LocalMachine の印が無い）・初回の作成がすでにある項目を上書きしないこと・entropy が違う blob の復号の拒否（終了コード 13）・データ鍵の作成と読み直し・probe と起動前検査・TLS の鍵・4096 文字の OAuth のトークン・バックアップの鍵を確かめる。
+  - `cli.test.ts`「Windows の実機の DPAPI: 鍵保護の指定なしの start が running になり、stop で止まる」: 子プロセスの LOCALAPPDATA を一時ディレクトリに向け、本物の DPAPI のまま `start` → `running` → `stop` と、一時ディレクトリの `Buddy\key-store` にデータ鍵の `.dpapi` だけができることを確かめる（本人の %LOCALAPPDATA% には触れない）。
+  - `data-dir-windows.test.ts`「Windows の実機: プロファイルの外のデータディレクトリは作らずに断り、外を指すジャンクションも断る」。
+- `apps/core/src/paths.test.ts`: Windows の既定のデータディレクトリ（%LOCALAPPDATA%・Roaming を使わない・相対パスのとき）、Windows の起動前検査（模擬の PowerShell で通る・起動できないと `dpapi_unavailable`・LOCALAPPDATA がないと `dpapi_unavailable`）。
+- `apps/core/src/cli.test.ts`: 鍵保護の指定なしの `start` の拒否は Linux だけで確かめる。
+
+## 原本に決めがない項目（未決事項）
+
+`docs/b00/contract-map.md` の U700〜U705。
+
+- U700: Windows のデータディレクトリの場所と ACL（**(b) に改めた**: 実パスが %LOCALAPPDATA% か %USERPROFILE% の下でなければ起動を断る。ACL そのものは読まない）。
+- U701: key-store の置き場所（暫定: %LOCALAPPDATA%\Buddy\key-store。データディレクトリの外）。
+- U702: PowerShell が使えない・制限された環境（暫定: 使えないとして起動を断る。制約付き言語モードはスクリプトの最初で検出して `dpapi_unavailable`。AppLocker・WDAC で PowerShell そのものが止められたときは起動の失敗として `dpapi_unavailable`）。
+- U703: Windows のパスワードのリセット・別の PC への移行で DPAPI の鍵が復号できなくなったときの復旧（暫定: バックアップの復旧キーからの復元に頼る）。
+- U704: 鍵の初回作成の並行（**(b) に改めた**: 初回の作成だけ link で排他的に置き、先を越されたら上書きせず読み直す）。
+- U705: データディレクトリの既定を %LOCALAPPDATA% に移すこと（暫定: 移す。旧い場所のデータは模擬の鍵で作ったものなので移さず、起動のログで知らせる）。
+
+## 残ること
+
+- **Windows の実機（本人の PC）での確認は未実施**: 本人の Windows で `buddy-core start` が鍵保護の確認に通り、`%LOCALAPPDATA%\Buddy\key-store` に `.dpapi` のファイルだけができ、再起動で同じ鍵を読めること。手順は [packages/platform/README.md](../../packages/platform/README.md) の「実機での確認（Windows の DPAPI）」。Windows の CI の試験は CI の runner の利用者での確認で、本人の環境の合格ではない。
+- 自動起動（Task Scheduler）・Tailscale・自宅のネットワーク・Windows の中枢の手順（docs/b01・b03）は別の作業。
+- Windows の名前付きパイプの ACL（ADR 0012）は変えていない。
+- link（ハードリンク）は NTFS が前提。FAT・exFAT の上の %LOCALAPPDATA% では初回の作成が `keystore_write_failed` になる（通常の Windows では起きない）。
+
+## 見直しでの修正（2026-11-28）
+
+f5de6fd・5e0319a の見直し（秘密の漏れなし、macOS の挙動の変化なし。中 2・軽微 数件）を受けて直した。
+
+- 中: Windows のデータディレクトリを既定の外（例 `C:\BuddyData`）に向けると、ドライブの既定の ACL（Authenticated Users の変更の許可）を継承し、同じ PC の別の利用者が DB の暗号化していない欄・予算とバックアップの設定を書き換えられた。→ 実パスが %LOCALAPPDATA% か %USERPROFILE% の下でなければ起動を断る（U700 を (b) に）。
+- 中: 初回の鍵の作成が並行したとき、rename の上書きで後の作成が先の鍵を消し、先の鍵で暗号化したデータが読めなくなる窓があった。→ 初回の作成は link で排他的に置き、先を越されたら読み直す（U704 を (b) に）。
+- 軽微: 一時ファイルの後始末（書込みから置くまでを 1 つにまとめ、中断した古い一時ファイルを掃除）、blob の見出しと LocalMachine の印の検査、`Add-Type` を Assembly::Load に、子プロセスの環境を決めた名前だけに、制約付き言語モードの検出、LOCALAPPDATA の検査をデータディレクトリと鍵の置き場所でそろえる、旧い既定の場所の知らせ、README の直し、試験の強化（Windows の CI の本物の起動・終了コードの記録・blob の見出し）、境界の試験。

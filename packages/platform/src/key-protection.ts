@@ -2,14 +2,24 @@
 // 保護手段が使えない場合は秘密情報を平文で保存せず、対象処理を停止して理由を表示する。
 // B02-02 から、確認は実際の KeyStore でデータ鍵を取得（初回は作成）できるかに基づく（ADR 0017）。
 // 取得した鍵は確認の結果に含めず、保持もしない。平文の保存へ切り替える経路・設定は作らない。
-import type { KeyStore, MacKeychainKeyStoreOptions } from './key-store.js';
+// Windows は DPAPI（CurrentUser）で確かめる（ADR 0202）。PowerShell を呼べて、DPAPI でデータ鍵を保護・
+// 復号でき（初回は作成して読み戻す）、置き場所に書けるときだけ使える。
+import type { KeyStore, OsKeyStoreOptions } from './key-store.js';
 import {
   createMacKeychainKeyStore,
   createUnsupportedKeyStore,
+  createWindowsDpapiKeyStore,
 } from './key-store.js';
 import { corePlatformOf } from './supervisor.js';
 
-export type KeyProtectionBackend = 'macos_keychain' | 'none' | 'mock';
+export type KeyProtectionBackend =
+  'macos_keychain' | 'windows_dpapi' | 'none' | 'mock';
+
+/** 実機の probe が「使える」と返してよい保護手段。 */
+const OS_BACKENDS: readonly KeyProtectionBackend[] = [
+  'macos_keychain',
+  'windows_dpapi',
+];
 
 export type KeyProtectionStatus =
   | {
@@ -50,24 +60,31 @@ export function createKeyStoreProbe(keyStore: KeyStore): KeyProtectionProbe {
   };
 }
 
-export interface KeyProtectionProbeOptions extends MacKeychainKeyStoreOptions {
-  /** macOS で確認に使う KeyStore（試験で差し替える）。省略時はキーチェーン。他の OS では使わない。 */
+export interface KeyProtectionProbeOptions extends OsKeyStoreOptions {
+  /**
+   * macOS・Windows で確認に使う KeyStore（試験で差し替える）。省略時は macOS はキーチェーン、
+   * Windows は DPAPI。Linux など対応しない OS では使わない。
+   */
   readonly keyStore?: KeyStore;
 }
 
 /**
  * 実行中の OS に合う probe（Core では process.platform を渡す）。
- * Windows・Linux の中枢は初期版の対象外として使えない（KeyStore も作らない）。
+ * Linux の中枢は初期版の対象外として使えない（KeyStore も作らない）。
  */
 export function createKeyProtectionProbe(
   nodePlatform: string,
   options: KeyProtectionProbeOptions = {},
 ): KeyProtectionProbe {
-  if (corePlatformOf(nodePlatform) !== 'macos')
+  const platform = corePlatformOf(nodePlatform);
+  if (platform !== 'macos' && platform !== 'windows')
     return createKeyStoreProbe(createUnsupportedKeyStore(nodePlatform));
   const { keyStore, ...keyStoreOptions } = options;
+  if (keyStore !== undefined) return createKeyStoreProbe(keyStore);
   return createKeyStoreProbe(
-    keyStore ?? createMacKeychainKeyStore(keyStoreOptions),
+    platform === 'macos'
+      ? createMacKeychainKeyStore(keyStoreOptions)
+      : createWindowsDpapiKeyStore(keyStoreOptions),
   );
 }
 
@@ -123,10 +140,10 @@ export async function keyProtectionPreflight(
   if (status === null || typeof status !== 'object')
     return unavailable('probe_result_invalid');
   if (status.available === true) {
-    // 実機の probe が返してよい「使える」は macOS のキーチェーンだけ。模擬の結果は模擬の probe だけ。
+    // 実機の probe が返してよい「使える」は macOS のキーチェーンと Windows の DPAPI だけ。模擬の結果は模擬の probe だけ。
     const backendMatches = isMock
       ? status.backend === 'mock'
-      : status.backend === 'macos_keychain';
+      : OS_BACKENDS.includes(status.backend);
     return backendMatches ? [] : unavailable('probe_result_invalid');
   }
   if (status.available !== false) return unavailable('probe_result_invalid');

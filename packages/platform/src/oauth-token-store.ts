@@ -3,16 +3,20 @@
 // 別の項目（アカウント名 `oauth-v1:<connection_id>`）に JSON で置く。DB には項目名（credential_ref）だけを置き、
 // トークン本体は DB・バックアップに入れない（ADR 0010）。バックアップの鍵と違い、トークンは更新のたびに
 // 値が変わるのが正常なので、書込みは上書きを許し、読み戻して確かめる。
-// 初期版の中枢は macOS だけ。使えない・読めない・形式が不正なときは理由だけを返し、平文の保存へ切り替えない。
+// macOS はキーチェーン、Windows は DPAPI（CurrentUser）で保護したファイル（ADR 0202）。Linux の中枢は初期版の対象外。
+// 使えない・読めない・形式が不正なときは理由だけを返し、平文の保存へ切り替えない。
 // トークンの値はログ・例外・結果の理由に入れない。
 import { inspect } from 'node:util';
-import { keychainSlotOpener } from './key-store.js';
+import { keychainSlotOpener, slotFailureReason } from './key-store.js';
 import type {
   KeyStoreBackend,
   MacKeychainKeyStoreOptions,
+  OsKeyStoreOptions,
   SecretSlot,
 } from './key-store.js';
 import { corePlatformOf } from './supervisor.js';
+import { windowsDpapiSlotOpener } from './windows-dpapi.js';
+import type { WindowsDpapiOptions } from './windows-dpapi.js';
 
 const CONNECTION_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
 
@@ -23,6 +27,7 @@ export function oauthTokenAccount(connectionId: string): string {
 
 export type OAuthTokenStoreFailureReason =
   | 'keystore_module_unavailable'
+  | 'dpapi_unavailable'
   | 'keystore_read_failed'
   | 'keystore_write_failed'
   | 'keystore_remove_failed'
@@ -31,7 +36,6 @@ export type OAuthTokenStoreFailureReason =
   | 'oauth_token_format_invalid'
   // 書いた値を読み戻したら違った。
   | 'oauth_token_verify_failed'
-  | 'windows_core_not_supported_in_initial_release'
   | 'linux_core_not_supported_in_initial_release'
   | 'platform_not_supported'
   | 'mock_unavailable';
@@ -202,8 +206,10 @@ export function createSlotOAuthTokenStore(
       let stored: string | null;
       try {
         stored = await slot.read();
-      } catch {
-        return fail('keystore_read_failed');
+      } catch (error) {
+        return fail(
+          slotFailureReason(error, unavailableReason, 'keystore_read_failed'),
+        );
       }
       if (stored === null) return fail('oauth_token_missing');
       const tokens = decodeTokens(stored);
@@ -217,14 +223,18 @@ export function createSlotOAuthTokenStore(
       const encoded = tokens.encode();
       try {
         await slot.write(encoded);
-      } catch {
-        return failUnit('keystore_write_failed');
+      } catch (error) {
+        return failUnit(
+          slotFailureReason(error, unavailableReason, 'keystore_write_failed'),
+        );
       }
       let back: string | null;
       try {
         back = await slot.read();
-      } catch {
-        return failUnit('keystore_read_failed');
+      } catch (error) {
+        return failUnit(
+          slotFailureReason(error, unavailableReason, 'keystore_read_failed'),
+        );
       }
       return back === encoded
         ? { ok: true }
@@ -236,8 +246,10 @@ export function createSlotOAuthTokenStore(
       if (slot.remove === undefined) return failUnit(unavailableReason);
       try {
         await slot.remove();
-      } catch {
-        return failUnit('keystore_remove_failed');
+      } catch (error) {
+        return failUnit(
+          slotFailureReason(error, unavailableReason, 'keystore_remove_failed'),
+        );
       }
       return { ok: true };
     },
@@ -264,17 +276,29 @@ export function createMacKeychainOAuthTokenStore(
   });
 }
 
-/** 初期版で中枢の鍵保護に対応しない OS。トークンを返さない・置かない。 */
+/**
+ * Windows の DPAPI（CurrentUser）の OAuth トークンの KeyStore（ADR 0202）。項目名はキーチェーンと同じ
+ * `oauth-v1:<connection_id>`。資格情報マネージャーは 1 項目の大きさの上限が小さく、長いトークンが入らないため使わない。
+ */
+export function createWindowsDpapiOAuthTokenStore(
+  options: WindowsDpapiOptions = {},
+): OAuthTokenStore {
+  return createSlotOAuthTokenStore({
+    kind: 'os',
+    backend: 'windows_dpapi',
+    unavailableReason: 'dpapi_unavailable',
+    openSlot: (account) => windowsDpapiSlotOpener(account, options)(),
+  });
+}
+
+/** 中枢の鍵保護に対応しない OS（Linux など）。トークンを返さない・置かない。 */
 export function createUnsupportedOAuthTokenStore(
   nodePlatform: string,
 ): OAuthTokenStore {
-  const platform = corePlatformOf(nodePlatform);
   const reason: OAuthTokenStoreFailureReason =
-    platform === 'windows'
-      ? 'windows_core_not_supported_in_initial_release'
-      : platform === 'linux'
-        ? 'linux_core_not_supported_in_initial_release'
-        : 'platform_not_supported';
+    corePlatformOf(nodePlatform) === 'linux'
+      ? 'linux_core_not_supported_in_initial_release'
+      : 'platform_not_supported';
   const failure: OAuthTokenResult = { ok: false, backend: 'none', reason };
   const failureUnit: OAuthTokenUnitResult = {
     ok: false,
@@ -292,11 +316,16 @@ export function createUnsupportedOAuthTokenStore(
 
 export function createOAuthTokenStore(
   nodePlatform: string,
-  options: MacKeychainKeyStoreOptions = {},
+  options: OsKeyStoreOptions = {},
 ): OAuthTokenStore {
-  return corePlatformOf(nodePlatform) === 'macos'
-    ? createMacKeychainOAuthTokenStore(options)
-    : createUnsupportedOAuthTokenStore(nodePlatform);
+  switch (corePlatformOf(nodePlatform)) {
+    case 'macos':
+      return createMacKeychainOAuthTokenStore(options);
+    case 'windows':
+      return createWindowsDpapiOAuthTokenStore(options);
+    default:
+      return createUnsupportedOAuthTokenStore(nodePlatform);
+  }
 }
 
 export interface MockOAuthTokenStoreOptions {

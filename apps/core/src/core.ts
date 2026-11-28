@@ -49,6 +49,7 @@ import { createForgetRoutes } from './api-forget.js';
 import { createMemoryRoutes } from './api-memory.js';
 import { createHouseholdRoutes } from './api-household.js';
 import { createCandidateListRefresh } from './candidate-list-refresh.js';
+import { createCalendarCandidateIntake } from './calendar-candidate-intake.js';
 import {
   CONNECTION_REVISION_CHECKED_ROUTES,
   createConnectionRoutes,
@@ -1158,6 +1159,45 @@ export async function startCore(
               lease: () => (retention as RetentionSweeper).lease(),
             },
           });
+    // 予定の重複からの気づき（候補）の取り込み（B11-04、ADR 0194）。Google のトークンの口があるときだけ、予定の走査の
+    // 公開の後に呼ぶ。予定は許可範囲（選んだカレンダー・取得の窓）から読み直し、題・参加者・本文は保存しない。記録しない
+    // 会話の間は作らない（保存境界の保持者が無い組み立てでは、記録しない会話として扱い作らない）。
+    const calendarCandidateIntake =
+      googleTokenSourceFor === undefined
+        ? null
+        : createCalendarCandidateIntake({
+            store: opened.store,
+            calendarFor: (connection) => {
+              const tokenSource = googleTokenSourceFor(connection);
+              return tokenSource === null
+                ? null
+                : createGoogleReadConnector({ tokenSource }).calendar;
+            },
+            dataKey: async () => {
+              const keyResult = await options.keyStore.loadDataKey();
+              return keyResult.ok ? keyResult.dataKey : null;
+            },
+            zone: () => deviceTimeZone(),
+            storage: {
+              privateConversation: () =>
+                storageGate?.privateConversation() ?? true,
+              origin: () => {
+                const origin = storageGate?.origin();
+                return {
+                  segment_id: origin?.segment_id ?? '',
+                  segment_generation: origin?.segment_generation ?? '',
+                };
+              },
+            },
+            now,
+            retention: {
+              ready: async () => {
+                await retention?.idle();
+              },
+              gate: () => (retention as RetentionSweeper).gate(),
+              lease: () => (retention as RetentionSweeper).lease(),
+            },
+          });
     let syncScheduler: SyncScheduler | null = null;
     if (options.sync?.scheduler !== undefined) {
       syncScheduler = createSyncScheduler({
@@ -1165,11 +1205,39 @@ export async function startCore(
         executor: syncExecutor,
         log,
         ...(syncTargetsFor === undefined ? {} : { targetsFor: syncTargetsFor }),
-        ...(householdMailIntake === null
+        ...(householdMailIntake === null && calendarCandidateIntake === null
           ? {}
           : {
-              onPublished: async (connection, target) => {
-                if (target.resource !== 'mail') return;
+              onPublished: async (connection, target, published) => {
+                if (target.resource === 'calendar') {
+                  // 予定を読み直すのは Google の接続だけ（Outlook の予定は同期していない）。
+                  if (
+                    calendarCandidateIntake === null ||
+                    connection.provider !== 'google' ||
+                    !calendarCandidateIntake.notePublished(
+                      target.scope_id,
+                      published,
+                    )
+                  )
+                    return;
+                  const result = await calendarCandidateIntake.run({
+                    connection_id: connection.connection_id,
+                    account_id: target.account_id,
+                    scope_id: target.scope_id,
+                    published_generation: published.scope.active_generation,
+                  });
+                  if (
+                    result.created > 0 ||
+                    result.resolved.length > 0 ||
+                    result.rejected > 0 ||
+                    result.unknown > 0
+                  )
+                    log(
+                      `予定の重複の気づきを取り込みました（作成 ${String(result.created)} 件・解決 ${String(result.resolved.length)} 件・保存できなかった下書き ${String(result.rejected + result.unknown)} 件）。`,
+                    );
+                  return;
+                }
+                if (householdMailIntake === null) return;
                 const result = await householdMailIntake.run({
                   connection,
                   account_id: target.account_id,

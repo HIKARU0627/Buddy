@@ -348,6 +348,9 @@ export interface CandidatePersistPorts {
   readonly newId: () => string;
   // いまの UTC 時刻。
   readonly now: () => string;
+  // 下書きを 1 件送る前ごとの再検査（api-turns.ts の precommit と同じ形。ADR 0194）。false なら、その下書きと残りを送らず
+  // held として返す（記録しない会話に入った・区切りが変わった）。省略は常に送る。
+  readonly precommit?: () => boolean;
 }
 
 export type PersistedCandidate =
@@ -369,6 +372,8 @@ export type PersistedCandidate =
       readonly index: number;
       readonly reasons: readonly string[];
     }
+  // 送る前の再検査（precommit）が止めたので送っていない。
+  | { readonly outcome: 'held'; readonly index: number }
   // 保存の成否が不明（COMMIT の失敗・応答の喪失）。書けたかもしれないので、未保存の拒否と区別する。照合に使う
   // candidate_id と notification_key を返す。同じ下書きを保存し直すと、書けていれば duplicate になる。
   | {
@@ -434,7 +439,13 @@ export async function persistCandidateDrafts(
   drafts: readonly CandidateDraft[],
 ): Promise<PersistedCandidate[]> {
   const results: PersistedCandidate[] = [];
+  let held = false;
   for (const [index, draft] of drafts.entries()) {
+    if (held || (ports.precommit !== undefined && !ports.precommit())) {
+      held = true;
+      results.push({ outcome: 'held', index });
+      continue;
+    }
     const key = notificationKey(draft.key_parts, ports.sha256Hex);
     if (key === null) {
       results.push({ outcome: 'rejected', index, reasons: ['key_invalid'] });

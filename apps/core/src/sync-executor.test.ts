@@ -242,6 +242,9 @@ test('calendar full scan stages page by page and publishes only the diff', async
   assert.equal(outcome.scope.active_generation, '1');
   assert.equal(outcome.scope.committed_watermark, '2030-10-05T00:00:00.000Z');
   assert.equal(outcome.scope.last_full_reconciled_at !== null, true);
+  // 公開の結果に走査の種類と窓の終わり（開始の 90 日後）を添える（ADR 0194）。
+  assert.equal(outcome.kind, 'full');
+  assert.equal(outcome.window_end, '2031-01-03T00:00:00.000Z');
   assert.deepEqual(await publishedItems(h, SCOPE_CAL), [
     { remote_id: 'e1', source_revision: 'v1' },
     { remote_id: 'e2', source_revision: 'v1' },

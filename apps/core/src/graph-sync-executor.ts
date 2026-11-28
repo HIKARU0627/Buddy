@@ -468,6 +468,8 @@ export function createGraphSyncExecutor(
       diff_count: published.value.diff_count,
       resumed,
       scope: published.value.scope,
+      kind: published.value.batch.kind,
+      window_end: published.value.batch.window_end,
     };
   }
 

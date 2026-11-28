@@ -187,6 +187,10 @@ export type CandidateOp =
       readonly after?: CandidateListCursor;
     }
   | { readonly kind: 'candidate.get'; readonly candidate_id: string }
+  // 候補の由来のうち元情報（source_item）が、今どの口座・取得集合の公開済みの行にあるか（ADR 0194）。予定の重複の解消を、
+  // その候補を作った接続の取り込みだけが判断するために使う。行が無い由来は空の配列（期限・同期・忘却のどれで消えたかは
+  // 区別できない。U545）。
+  | { readonly kind: 'candidate.origin_scopes'; readonly candidate_id: string }
   | { readonly kind: 'candidate.counts' }
   | {
       readonly kind: 'candidate.sweep';
@@ -225,6 +229,16 @@ export interface CandidateOpValues {
     readonly candidate: CandidateRow | null;
     readonly origins: readonly CandidateOriginInput[];
   };
+  'candidate.origin_scopes': {
+    readonly origins: readonly {
+      readonly source_kind: CandidateOriginInput['source_kind'];
+      readonly source_id: string;
+      readonly scopes: readonly {
+        readonly account_id: string;
+        readonly scope_id: string;
+      }[];
+    }[];
+  };
   'candidate.counts': Readonly<Record<CandidateState, number>>;
   'candidate.sweep': {
     // 題・抄録を消した候補の ID。
@@ -261,6 +275,7 @@ const OP_KINDS: ReadonlySet<string> = new Set<CandidateOpKind>([
   'candidate.transition',
   'candidate.list',
   'candidate.get',
+  'candidate.origin_scopes',
   'candidate.counts',
   'candidate.sweep',
 ]);
@@ -444,6 +459,7 @@ export function candidateOpShapeReasons(op: CandidateOp): string[] {
       return reasons;
     }
     case 'candidate.get':
+    case 'candidate.origin_scopes':
       return isUuid(op.candidate_id) ? [] : ['candidate_id_invalid'];
     case 'candidate.counts':
       return [];
@@ -673,6 +689,32 @@ export function countCandidates(
     .all() as { state: CandidateState; value: number }[];
   for (const row of rows) counts[row.state] = row.value;
   return counts;
+}
+
+function originScopes(
+  db: SqliteDatabase,
+  candidateId: string,
+): CandidateOpValues['candidate.origin_scopes'] {
+  const edges = readDerivationsByArtifact(db, {
+    artifact_kind: 'notification_candidate',
+    artifact_id: candidateId,
+  });
+  const scopesOf = db.prepare(
+    'SELECT account_id, scope_id FROM source_items WHERE remote_id = ? ORDER BY account_id, scope_id',
+  );
+  return {
+    origins: edges.map((edge) => ({
+      source_kind: edge.source_kind as CandidateOriginInput['source_kind'],
+      source_id: edge.source_id,
+      scopes:
+        edge.source_kind === 'source_item'
+          ? (scopesOf.all(edge.source_id) as {
+              account_id: string;
+              scope_id: string;
+            }[])
+          : [],
+    })),
+  };
 }
 
 // --- 書込み ---
@@ -992,6 +1034,11 @@ export function executeCandidateOp(
     case 'candidate.get':
       return {
         result: { ok: true, value: getCandidate(db, op.candidate_id) },
+        halt: false,
+      };
+    case 'candidate.origin_scopes':
+      return {
+        result: { ok: true, value: originScopes(db, op.candidate_id) },
         halt: false,
       };
     case 'candidate.counts':

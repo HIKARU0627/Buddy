@@ -10,7 +10,11 @@
 // - account_id と資源種別は接続の作成（B03-04）が持つ値で、呼び出し側（targetsFor）から渡されたものだけを使う。
 //   対象が無い接続は走査しない。実接続が無い間、製品の起動では実行器は呼ばれない（ADR 0136 と同じ）。
 
-import type { ConnectionRecord, DbWorkerClient } from '@buddy/storage';
+import type {
+  ConnectionRecord,
+  DbWorkerClient,
+  SyncScopeRecord,
+} from '@buddy/storage';
 import type {
   SyncExecutor,
   SyncResourceKind,
@@ -22,6 +26,15 @@ export interface SyncSchedulerTarget {
   readonly account_id: string;
   readonly scope_id: string;
   readonly resource: SyncResourceKind;
+}
+
+// 公開の結果のうち、公開の後の処理が使うもの。
+export interface SyncPublishedNotice {
+  readonly diff_count: number;
+  readonly scope: SyncScopeRecord;
+  // 公開した走査の種類と取得の窓の終わり。
+  readonly kind: SyncScanKind;
+  readonly window_end: string;
 }
 
 export interface SyncSchedulerOptions {
@@ -48,11 +61,12 @@ export interface SyncSchedulerOptions {
   // 接続ごとの指数バックオフの上限（設計 11 §1 の 15 分）。初項はポーリングの間隔、倍率は 2。
   readonly backoffMaxMs?: number;
   readonly log?: (message: string) => void;
-  // 走査を公開した後の知らせ（家計簿の利用通知の取り込み、ADR 0160）。待たずに呼び、例外は記録して捨てる
-  // （同期の周期を止めない）。
+  // 走査を公開した後の知らせ（家計簿の利用通知の取り込み ADR 0160、予定の重複の候補 ADR 0194）。待たずに呼び、例外は
+  // 記録して捨てる（同期の周期を止めない）。3 つ目の引数は公開の結果（差分の数・公開後の取得集合・走査の種類・窓の終わり）。
   readonly onPublished?: (
     connection: ConnectionRecord,
     target: SyncSchedulerTarget,
+    published: SyncPublishedNotice,
   ) => void | Promise<void>;
 }
 
@@ -179,7 +193,14 @@ export function createSyncScheduler(
         if (options.onPublished !== undefined) {
           const notify = options.onPublished;
           void Promise.resolve()
-            .then(() => notify(connection, target))
+            .then(() =>
+              notify(connection, target, {
+                diff_count: outcome.diff_count,
+                scope: outcome.scope,
+                kind: outcome.kind,
+                window_end: outcome.window_end,
+              }),
+            )
             .catch(() => {
               log('走査の公開の後の処理に失敗しました。');
             });

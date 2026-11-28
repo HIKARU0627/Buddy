@@ -651,6 +651,82 @@ test('Calendar listEventsPage: 最終ページは nextPageToken を含まない'
   assert.deepEqual(page, { items: [{ id: 'ev-9', status: 'cancelled' }] });
 });
 
+test('Calendar listEventsPage: 空き時間・種類・本人の出欠だけを写し、ほかの参加者は写さない', async () => {
+  const { connector } = setup([
+    json({
+      items: [
+        {
+          id: 'ev-1',
+          status: 'confirmed',
+          transparency: 'transparent',
+          eventType: 'workingLocation',
+          attendees: [
+            { email: 'other@example.com', responseStatus: 'accepted' },
+            {
+              email: 'me@example.com',
+              self: true,
+              responseStatus: 'declined',
+            },
+          ],
+        },
+        // 本人が参加者に居ない予定は出欠を持たない。
+        {
+          id: 'ev-2',
+          status: 'confirmed',
+          attendees: [
+            { email: 'other@example.com', responseStatus: 'accepted' },
+          ],
+        },
+      ],
+    }),
+  ]);
+
+  const page = await connector.calendar.listEventsPage(WINDOW);
+
+  assert.deepEqual(page, {
+    items: [
+      {
+        id: 'ev-1',
+        status: 'confirmed',
+        transparency: 'transparent',
+        eventType: 'workingLocation',
+        selfResponseStatus: 'declined',
+      },
+      { id: 'ev-2', status: 'confirmed' },
+    ],
+  });
+});
+
+test('Calendar listEventsPage: 足した項目の形が想定外なら無しとして読み、頁を拒まない', async () => {
+  const { connector } = setup([
+    json({
+      accessRole: 7,
+      items: [
+        { id: 'ev-1', status: 'confirmed', attendees: 'x', transparency: 1 },
+        {
+          id: 'ev-2',
+          status: 'confirmed',
+          eventType: { kind: 'default' },
+          attendees: [null, 'x', { self: true, responseStatus: 3 }],
+        },
+      ],
+    }),
+    json({ accessRole: 'owner', items: [] }),
+  ]);
+
+  assert.deepEqual(await connector.calendar.listEventsPage(WINDOW), {
+    items: [
+      { id: 'ev-1', status: 'confirmed' },
+      { id: 'ev-2', status: 'confirmed' },
+    ],
+  });
+  // 本人のカレンダーへの権限は頁に添える。
+  assert.deepEqual(await connector.calendar.listEventsPage(WINDOW), {
+    items: [],
+    accessRole: 'owner',
+  });
+});
+
 test('Gmail listMessageIdsPage: pageToken を伝え、1 ページだけ読んで nextPageToken を返す', async () => {
   const { connector, urls, requests } = setup([
     json({

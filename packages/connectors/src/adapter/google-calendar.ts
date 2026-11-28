@@ -31,6 +31,12 @@ export interface GoogleCalendarEvent {
   readonly recurringEventId?: string;
   readonly originalStartTime?: GoogleCalendarEventTime;
   readonly sequence?: number;
+  // 空き時間扱いか（opaque・transparent）。予定の重複の判定に使う（ADR 0194）。
+  readonly transparency?: string;
+  // 予定の種類（default・outOfOffice・focusTime・workingLocation・birthday など）。
+  readonly eventType?: string;
+  // 本人の出欠（attendees のうち self が真の 1 件の responseStatus）。ほかの参加者・アドレスは写さない。
+  readonly selfResponseStatus?: string;
 }
 
 export interface ListCalendarEventsRequest {
@@ -59,7 +65,7 @@ export interface GoogleCalendarReader {
   // ページ単位の読み取り（B08-05）。page_cursor の保存・再開は呼び出し側（Core の走査実行器）が持つ。
   listEventsPage(
     request: ListCalendarEventsRequest & { readonly pageToken?: string },
-  ): Promise<GooglePage<GoogleCalendarEvent>>;
+  ): Promise<GoogleCalendarEventsPage>;
 }
 
 const CALENDAR_PAGE_SIZE = '250';
@@ -104,6 +110,9 @@ function toEvent(value: unknown): GoogleCalendarEvent {
     recurringEventId?: string;
     originalStartTime?: GoogleCalendarEventTime;
     sequence?: number;
+    transparency?: string;
+    eventType?: string;
+    selfResponseStatus?: string;
   } = { id, status };
   const updated = optionalString(value, 'updated');
   const etag = optionalString(value, 'etag');
@@ -128,17 +137,47 @@ function toEvent(value: unknown): GoogleCalendarEvent {
   if (recurringEventId !== undefined) event.recurringEventId = recurringEventId;
   if (originalStartTime !== undefined)
     event.originalStartTime = originalStartTime;
+  // 予定の重複の判定のために足した項目（ADR 0194）は、形が想定外なら「無し」として読み、頁を拒まない（同期と発言の読み取りに
+  // 影響させない）。
+  const transparency = lenientString(value['transparency']);
+  const eventType = lenientString(value['eventType']);
+  if (transparency !== undefined) event.transparency = transparency;
+  if (eventType !== undefined) event.eventType = eventType;
+  const selfResponseStatus = selfResponse(value['attendees']);
+  if (selfResponseStatus !== undefined)
+    event.selfResponseStatus = selfResponseStatus;
   return event;
 }
 
-function toEventsPage(body: unknown): GooglePage<GoogleCalendarEvent> {
+const lenientString = (value: unknown): string | undefined =>
+  typeof value === 'string' ? value : undefined;
+
+// 参加者の一覧から、本人（self が真）の出欠だけを取り出す。一覧そのもの・ほかの参加者のアドレスは返さない。形が想定外なら
+// 「無し」（頁を拒まない）。
+function selfResponse(value: unknown): string | undefined {
+  if (!Array.isArray(value)) return undefined;
+  for (const attendee of value)
+    if (isRecord(attendee) && attendee['self'] === true)
+      return lenientString(attendee['responseStatus']);
+  return undefined;
+}
+
+// events.list の 1 頁。accessRole は本人のこのカレンダーへの権限（owner・writer・reader・freeBusyReader）。予定の重複を
+// 本人の持ち物のカレンダーだけで求めるのに使う（ADR 0194、U550）。形が想定外なら無し。
+export interface GoogleCalendarEventsPage extends GooglePage<GoogleCalendarEvent> {
+  readonly accessRole?: string;
+}
+
+function toEventsPage(body: unknown): GoogleCalendarEventsPage {
   if (!isRecord(body)) throw invalidResponse();
   const items = body['items'];
   // Calendar の events.list は空でも items を返す。配列でなければ不正。
   if (!Array.isArray(items)) throw invalidResponse();
+  const accessRole = lenientString(body['accessRole']);
   return {
     items: items.map(toEvent),
     ...readNextPageToken(body),
+    ...(accessRole === undefined ? {} : { accessRole }),
   };
 }
 

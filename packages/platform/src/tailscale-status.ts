@@ -8,7 +8,9 @@
 // - 状態は短い間（既定 5 秒）だけ保持し、それを過ぎたら取り直す（「短い周期で取り直す」）。失敗も同じ間だけ保持する。
 // - 出力（ホスト名・アドレス）はログ・例外・理由に入れない。
 // 試験では模擬の runner に合成の JSON を渡し、実機の tailscale は呼ばない。
+import { win32 } from 'node:path';
 import type { CommandRunner } from './runner.js';
+import { isWindowsDriveAbsolute } from './windows-paths.js';
 
 // 中枢の Tailscale から見た、接続元のピアへの経路（domain の TailscalePeerPath と同じ形）。
 export type TailscalePeerPath =
@@ -37,7 +39,7 @@ export interface TailscaleStatusSource {
   peerPath(remoteAddress: string): Promise<TailscalePeerPath>;
 }
 
-// tailscale の実行ファイルの候補（macOS）。先に見つかったものを使う。
+// tailscale の実行ファイルの候補（macOS）。先に見つかったものを使う。Windows は tailscaleCommandsFor（下）。
 // 1. Mac App Store 版・スタンドアロン版のアプリに同梱の CLI
 // 2. Homebrew（Apple シリコン・Intel）や手動で入れた CLI
 // launchd から起動すると PATH が短いので、名前だけの指定は最後にする。
@@ -47,6 +49,40 @@ export const TAILSCALE_COMMANDS: readonly string[] = [
   '/usr/local/bin/tailscale',
   'tailscale',
 ];
+
+// Windows の Tailscale の CLI（ADR 0203）。インストーラーは `%ProgramFiles%\Tailscale\tailscale.exe` に置く。
+// 候補は Program Files の下（管理者だけが書ける）と既定の場所だけ。名前だけ（PATH・カレントディレクトリの探索）では
+// 呼ばず、PATH の各ディレクトリも探さない。PATH には別の利用者が書けるディレクトリ（ドライブの直下に作ったフォルダー
+// など）が入り得て、そこに置かれた tailscale.exe が Core の権限で動くため（ADR 0022 のレビューの指摘 L9 と同じ考え）。
+// 別の場所に入れた場合は Program Files に入れ直す（明示のパスの設定は作っていない。U728）。
+export const WINDOWS_TAILSCALE_DEFAULT =
+  'C:\\Program Files\\Tailscale\\tailscale.exe';
+
+// 実行中の OS に合う tailscale の候補。macOS（と対象外の OS）は TAILSCALE_COMMANDS。
+// env は Core では process.env。
+export function tailscaleCommandsFor(
+  nodePlatform: string,
+  env: Readonly<Record<string, string | undefined>>,
+): readonly string[] {
+  if (nodePlatform !== 'win32') return TAILSCALE_COMMANDS;
+  const candidates: string[] = [];
+  const add = (path: string) => {
+    if (
+      !candidates.some(
+        (existing) => existing.toLowerCase() === path.toLowerCase(),
+      )
+    )
+      candidates.push(path);
+  };
+  // 64 ビットの Program Files（32 ビットの node でも ProgramW6432 が指す）を先に試す。
+  for (const name of ['ProgramW6432', 'ProgramFiles']) {
+    const base = env[name];
+    if (isWindowsDriveAbsolute(base))
+      add(win32.join(base as string, 'Tailscale', 'tailscale.exe'));
+  }
+  add(WINDOWS_TAILSCALE_DEFAULT);
+  return candidates;
+}
 
 export const TAILSCALE_STATUS_ARGS: readonly string[] = ['status', '--json'];
 export const DEFAULT_TAILSCALE_TTL_MS = 5_000;
@@ -134,7 +170,9 @@ export function findPeerPath(
   };
 }
 
-// tailscale を一度実行して状態を読む。候補を順に試し、起動できなかったもの（exitCode null）は次へ進む。
+// tailscale を一度実行して状態を読む。候補を順に試し、実行ファイルがないもの（ENOENT）だけ次へ進む。
+// 実行ファイルがあって応答しない（時間切れ）・起動に失敗した（権限など）ときは、次の候補（別の実行ファイル）へ
+// 進まずに失敗にする（ADR 0203）。模擬の runner の理由のない exitCode null は、ない扱いで次へ進む。
 export async function fetchTailscaleStatus(
   runner: CommandRunner,
   commands: readonly string[] = TAILSCALE_COMMANDS,
@@ -148,7 +186,11 @@ export async function fetchTailscaleStatus(
       reason = 'tailscale_command_failed';
       continue;
     }
-    if (result.exitCode === null) continue;
+    if (result.exitCode === null) {
+      if (result.failure === undefined || result.failure === 'not_found')
+        continue;
+      return { ok: false, reason: 'tailscale_command_failed' };
+    }
     if (result.exitCode !== 0)
       return { ok: false, reason: 'tailscale_status_failed' };
     return parseTailscaleStatus(result.stdout);

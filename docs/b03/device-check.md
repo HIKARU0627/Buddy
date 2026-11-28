@@ -1,4 +1,4 @@
-# B03 の実機確認（Mac mini の中枢・Tailscale・macOS / Windows の端末）
+# B03 の実機確認（Mac mini・Windows の中枢・Tailscale・macOS / Windows の端末）
 
 B03 の完了条件のうち、実機でしか確かめられないもの（Mac mini のキーチェーンの TLS の秘密鍵、Tailscale の直接経路と DERP、端末での自宅の指紋の取得、macOS・Windows の safeStorage、別のマシンの 2 台の再接続・失効・証明書の差し替え）の手順と記録の形式です。CI の試験は同じマシンの模擬（127.0.0.1・模擬の KeyStore・模擬の safeStorage）だけで、実機のキーチェーン・Tailscale に触れません（[ADR 0025](../adr/0025-b03-client-desktop-connection.md)）。
 
@@ -6,13 +6,14 @@ B03 の完了条件のうち、実機でしか確かめられないもの（Mac 
 
 ## 状況
 
-| 確認                                              | 端末                              | 状態                                                                                                                     | 記録                      |
-| ------------------------------------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ------------------------- |
-| A. Mac mini のキーチェーンの TLS の秘密鍵         | 中枢（Mac mini）                  | 開発機（MacBook Air）で期待どおり（参考、2026-10-22）。Mac mini は未実施                                                 | `evidence-b03-macos.json` |
-| B. Tailscale の状態の取得（中枢）                 | 中枢（Mac mini）                  | 未実施                                                                                                                   | —                         |
-| C. 1 台目の登録と safeStorage（中枢と同じマシン） | 中枢（Mac mini）のデスクトップ    | 開発機（MacBook Air）で C1〜C6・C8・C9 が期待どおり（参考、2026-10-22）。C7（ロック）は本人の操作待ち。Mac mini は未実施 | `evidence-b03-macos.json` |
-| D. 自宅の登録・判定と指紋の取得（別のマシン）     | 中枢の画面・macOS・Windows の端末 | 未実施（自宅の登録は D0 の中枢の画面で行う。B03-08）                                                                     | —                         |
-| E. 2 台の再接続・失効・証明書の差し替え           | 中枢と別のマシンの端末 2 台       | 未実施（D0 で自宅を登録してから行う）                                                                                    | —                         |
+| 確認                                                       | 端末                              | 状態                                                                                                                     | 記録                      |
+| ---------------------------------------------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ------------------------- |
+| A. Mac mini のキーチェーンの TLS の秘密鍵                  | 中枢（Mac mini）                  | 開発機（MacBook Air）で期待どおり（参考、2026-10-22）。Mac mini は未実施                                                 | `evidence-b03-macos.json` |
+| B. Tailscale の状態の取得（中枢）                          | 中枢（Mac mini）                  | 未実施                                                                                                                   | —                         |
+| C. 1 台目の登録と safeStorage（中枢と同じマシン）          | 中枢（Mac mini）のデスクトップ    | 開発機（MacBook Air）で C1〜C6・C8・C9 が期待どおり（参考、2026-10-22）。C7（ロック）は本人の操作待ち。Mac mini は未実施 | `evidence-b03-macos.json` |
+| D. 自宅の登録・判定と指紋の取得（別のマシン）              | 中枢の画面・macOS・Windows の端末 | 未実施（自宅の登録は D0 の中枢の画面で行う。B03-08）                                                                     | —                         |
+| E. 2 台の再接続・失効・証明書の差し替え                    | 中枢と別のマシンの端末 2 台       | 未実施（D0 で自宅を登録してから行う）                                                                                    | —                         |
+| W. Windows の中枢（Tailscale・1 台目・自宅の登録・2 台目） | 中枢（Windows）と別のマシンの端末 | 未実施（ADR 0203。鍵の保護の ADR 0202 が入った版で行う）                                                                 | —                         |
 
 ## 前提と注意
 
@@ -113,6 +114,48 @@ D0-4 の後に、別のマシンの端末（macOS・Windows）を登録します
 | E5  | 中枢の TLS の鍵の項目を消して（`security delete-generic-password -s dev.buddy.core -a tls-key-v1`）起動し直す | 中枢の `certificate_creation` が作り直しを示し、前の証明書の端末を失効する。B は「中枢の証明書が登録時と違います」で再登録が必要。B は中枢へ要求を送っていない（中枢のログに B の要求がない） |
 | E6  | B を登録し直す（C2〜C4 と同じ手順。指紋は新しい証明書のもの）                                                 | 登録でき、「● 接続中」                                                                                                                                                                        |
 
+## W. Windows の中枢（ADR 0203）
+
+本人の決定（2026-11-28）で、Windows でも中枢を使えるようにしました。A〜E は Mac mini の中枢の手順で、ここでは中枢が Windows のときに違うところだけを書きます。Core の起動・停止・自動起動は docs/b01 の device-check の W で先に確かめます。TLS の秘密鍵・データ鍵の保護（DPAPI）は別の作業（ADR 0202）で入るので、その版で行います（入る前は `start` が鍵保護が使えないとして拒否する）。操作は PowerShell で、リポジトリのルートで行います。
+
+### W1〜W3. Tailscale の状態の取得と HTTPS（中枢）
+
+自動起動の Core が動いていると、手で起動する `start` は二重起動として拒否されます。先に `node apps/core/dist/cli.js stop`（自動起動もやめるなら `autostart disable`）で止めてから行います。
+
+| #   | 操作                                                                                                                      | 期待する結果                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| --- | ------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| W1  | `& "$env:ProgramFiles\Tailscale\tailscale.exe" status --json` と `& "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4`    | JSON が出て `BackendState` が `Running`。`ip -4` の値を `<hub-ip>` とする（値は記録に写さない）。Tailscale が `C:\Program Files\Tailscale` 以外に入っているときは、その旨を記録する（Core は Program Files の下と既定の場所しか探さないので、自宅の判定が常に `tailscale_unavailable` になる。U728）                                                                                                                                                                                |
+| W2  | PowerShell 1: `node apps/core/dist/cli.js start --https-host <hub-ip> --save`                                             | `https_config_saved` の後に `{"event":"https_listening",...}`。初回は `certificate_creation` が鍵と証明書の作成。Windows のファイアウォールの許可を求められたら、すべてのネットワークを許可せず、受信の規則を Tailscale の接続口（`Tailscale`）と使うポート（既定 47443）だけに絞る（例: `New-NetFirewallRule -DisplayName "Buddy Core" -Direction Inbound -Protocol TCP -LocalPort 47443 -InterfaceAlias Tailscale -Action Allow` を管理者の PowerShell で）。作った規則を記録する |
+| W3  | PowerShell 2: `node apps/core/dist/cli.js stop` → PowerShell 1: `node apps/core/dist/cli.js start`（`--https-host` なし） | 保存した https.json を読んで待ち受ける（`https_listening` に `host` がない）。2 回目は既存の鍵・証明書を使い、`certificate_fingerprint` が 1 回目と同じ（値は写さず、同じかだけ）                                                                                                                                                                                                                                                                                                   |
+
+Core は Tailscale の CLI を `%ProgramW6432%`・`%ProgramFiles%` の下の `Tailscale\tailscale.exe` と `C:\Program Files\Tailscale\tailscale.exe` だけで探します（名前だけ・PATH では呼ばない）。自動起動した Core も、W2 で保存した https.json（docs/b01 の W6 の `autostart enable --https-host` でも保存できる）を読んで HTTPS を開きます（U723）。ログインの直後で Tailscale がまだ動いていないときは、Core は起動して HTTPS を `pending` にし、15 秒ごとに待ち受けをやり直します（`status` の `https`）。
+
+### W4〜W6. 1 台目（中枢と同じマシンのデスクトップ）
+
+| #   | 操作                                                                                                    | 期待する結果                                                                                                                         |
+| --- | ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| W4  | 中枢でデスクトップを起動し、C2〜C4 と同じ手順で登録する（`first-device start`・`first-device approve`） | 「● 接続中」になり、中枢の画面の端末になる（「端末の登録」「登録済みの端末」「このマシンの接続」「自宅のネットワーク」のタブが出る） |
+| W5  | `Test-Path "$env:APPDATA\Buddy Desktop\device-credential.bin"` と、中身に平文のトークンがないこと       | `True`。43 文字の英数字のトークンが平文で入っていない（Windows の safeStorage は DPAPI）                                             |
+| W6  | `node apps/core/dist/cli.js device list`                                                                | 端末 1 台（`hub_local` が true）。トークン・指紋の値が出ない                                                                         |
+
+### W7〜W9. 自宅の登録（中枢の画面）
+
+D0 と同じ手順を、中枢が Windows のときの読み取りで確かめます。
+
+| #   | 操作                                                                                                                                                                                                                                                                       | 期待する結果                                                                                                                                                                                                                                                                                           |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| W7  | 中枢の画面で「自宅のネットワーク」のタブを開き、PowerShell の `Get-NetRoute -AddressFamily IPv4 -DestinationPrefix 0.0.0.0/0`・`Get-NetNeighbor -AddressFamily IPv4 -IPAddress <gateway>`・`Get-NetIPAddress -AddressFamily IPv4`・`netsh wlan show interfaces` と見比べる | 伏せた MAC の最後の 2 組とサブネットが同じ（値は写さない）。Hyper-V・WSL・VPN の仮想の接続口があっても、実際の LAN の既定の経路が選ばれる。Wi-Fi で SSID が読めないとき（位置情報の許可がない）は、その旨と、設定の「プライバシーとセキュリティ」>「位置情報」で許可した後に読めるかを記録する（U726） |
+| W8  | D0-3（登録の前に別のマシンの端末で申請すると拒否される）と D0-4（登録）                                                                                                                                                                                                    | D0-3・D0-4 と同じ。中枢のログ・デスクトップのログに MAC・SSID の値が出ない                                                                                                                                                                                                                             |
+| W9  | D0-5〜D0-8                                                                                                                                                                                                                                                                 | D0-5〜D0-8 と同じ                                                                                                                                                                                                                                                                                      |
+
+### W10〜W12. 2 台目の端末（別のマシン）
+
+| #   | 操作                                                                                                                                                                                                                        | 期待する結果                                                                                             |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| W10 | 中枢の画面で「ペアリングを始める（コードを出す）」→ 別のマシンの端末（macOS か Windows）で宛先 `<hub-ip>`・指紋の最後の 4 桁・コードを入れて申請 → 中枢の画面の「端末の登録」で、端末の画面と同じ確認コードの申請を承認する | 端末が「● 接続中」。中枢の画面の「登録済みの端末」で、その端末に「中枢と同じマシン」と出ない             |
+| W11 | 2 台目の端末で D1〜D3 を行う（中枢で `& "$env:ProgramFiles\Tailscale\tailscale.exe" status --json` のそのピアの `CurAddr` を見る）                                                                                          | D1〜D3 と同じ（自宅の LAN では「● 自宅のネットワーク」、外では `tailscale_derp` などで拒否、戻すと通る） |
+| W12 | 中枢の画面の「登録済みの端末」で 2 台目を失効する                                                                                                                                                                           | E3 と同じ（2 台目は「この端末は失効しました」、中枢の画面の端末は「● 接続中」のまま）                    |
+
 ## 後片付け（任意）
 
 - 端末の登録をやめる場合は、デスクトップを終了してから userData の `device-credential.bin` を消し、中枢で端末を失効します。safeStorage の鍵（キーチェーンの「Buddy Desktop Safe Storage」）は他の Electron アプリと共有しないので、消しても他に影響しません。
@@ -122,17 +165,21 @@ D0-4 の後に、別のマシンの端末（macOS・Windows）を登録します
 
 各項目が期待どおりか、違った点を伝えてもらい、司令塔が `tests/integration/evidence-b03-<端末>.json` に写します（`{ "status": "recorded", "description": ..., "records": [...] }`、1 項目 1 件、09 §8 の項目をすべて埋める）。
 
-| case_id                         | 対応       | `final_state` の例                                           |
-| ------------------------------- | ---------- | ------------------------------------------------------------ |
-| `B03-mac-hub-tls-key`           | A1〜A5     | `created（キーチェーンに TLS の鍵、指紋は再起動で同じ）`     |
-| `B03-mac-hub-tailscale-status`  | B1〜B2     | `available（候補 <n> で取得）`                               |
-| `B03-mac-first-device-pairing`  | C1〜C6     | `connected（safeStorage に保存、平文なし）`                  |
-| `B03-mac-lock-and-restart`      | C7〜C8     | `connected（ロック中は隠す、再起動の後に再接続）`            |
-| `B03-mac-hub-home-registration` | D0-1〜D0-8 | `registered（伏せた値が中枢の値と同じ、登録前は申請が 403）` |
-| `B03-<os>-home-network`         | D1〜D7     | `allowed / denied（理由のコードだけ）`                       |
-| `B03-two-devices-reconnect`     | E1〜E2     | `connected（同じ ID・版・状態、切断中の命令は送らない）`     |
-| `B03-two-devices-revoke`        | E3〜E4     | `reregistration_required（A のみ。B は connected）`          |
-| `B03-two-devices-certificate`   | E5〜E6     | `reregistration_required → connected（再登録）`              |
+| case_id                         | 対応       | `final_state` の例                                              |
+| ------------------------------- | ---------- | --------------------------------------------------------------- |
+| `B03-mac-hub-tls-key`           | A1〜A5     | `created（キーチェーンに TLS の鍵、指紋は再起動で同じ）`        |
+| `B03-mac-hub-tailscale-status`  | B1〜B2     | `available（候補 <n> で取得）`                                  |
+| `B03-mac-first-device-pairing`  | C1〜C6     | `connected（safeStorage に保存、平文なし）`                     |
+| `B03-mac-lock-and-restart`      | C7〜C8     | `connected（ロック中は隠す、再起動の後に再接続）`               |
+| `B03-mac-hub-home-registration` | D0-1〜D0-8 | `registered（伏せた値が中枢の値と同じ、登録前は申請が 403）`    |
+| `B03-<os>-home-network`         | D1〜D7     | `allowed / denied（理由のコードだけ）`                          |
+| `B03-two-devices-reconnect`     | E1〜E2     | `connected（同じ ID・版・状態、切断中の命令は送らない）`        |
+| `B03-two-devices-revoke`        | E3〜E4     | `reregistration_required（A のみ。B は connected）`             |
+| `B03-two-devices-certificate`   | E5〜E6     | `reregistration_required → connected（再登録）`                 |
+| `B03-win-hub-tailscale-https`   | W1〜W3     | `available（候補 <n> で取得）・listening（指紋は再起動で同じ）` |
+| `B03-win-hub-first-device`      | W4〜W6     | `connected（safeStorage に保存、平文なし）`                     |
+| `B03-win-hub-home-registration` | W7〜W9     | `registered（伏せた値が中枢の値と同じ、登録前は申請が 403）`    |
+| `B03-win-hub-second-device`     | W10〜W12   | `connected → revoked（2 台目のみ）`                             |
 
 - `kind` は `real_device`、`commit` は確認したビルドのコミット、`environment.os` は OS の版、`environment.hub` は機種、`environment.devices` は端末の OS と種類（値・名前は写さない）、直接経路か DERP かは `final_state` に書く、`provider_requests`・`provider_state_changes`・`approvals` は 0、`seed`・`fault_point`・`voice_stop_ms` は null。
 - 模擬の試験（CI）の結果をこのファイルに混ぜません（`scripts/test-map.test.mjs` が `kind: real_device` 以外を拒否する）。

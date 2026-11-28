@@ -260,7 +260,7 @@ function envValue(
  * Windows PowerShell 5.1 の絶対パス（%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe）。
  * PATH から探さない（PATH の前の方に置かれた別の実行ファイルを呼ばないため）。SystemRoot がなければ null。
  */
-export function windowsPowerShellPath(
+export function dpapiPowerShellPath(
   env: Readonly<Record<string, string | undefined>>,
 ): string | null {
   const root = envValue(env, 'SystemRoot');
@@ -426,7 +426,7 @@ function resolveContext(options: WindowsDpapiOptions): DpapiContext {
   const env = options.env ?? process.env;
   const directory = options.directory ?? defaultWindowsKeyStoreDir(env);
   if (directory === null) throw new KeyStoreUnavailableError('directory');
-  const powershell = options.powershellPath ?? windowsPowerShellPath(env);
+  const powershell = options.powershellPath ?? dpapiPowerShellPath(env);
   if (powershell === null) throw new KeyStoreUnavailableError('powershell');
   return {
     directory,

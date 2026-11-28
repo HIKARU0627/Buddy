@@ -282,10 +282,11 @@ test(
     await core.exited;
 
     // 生きている pid（この試験のプロセス）で応答がないロックは、終了を確認できないので拒否する。
+    // 今回の OS の起動の後に始まったロック（今の時刻）。起動より前のロックは pid によらず片付ける（U721）。
     const live = {
       pid: process.pid,
       core_instance_id: ID,
-      started_at: '2026-10-20T00:00:00.000Z',
+      started_at: new Date().toISOString(),
     };
     await writeFile(join(dataDir, 'core.lock'), `${JSON.stringify(live)}\n`);
     const refused = await run([

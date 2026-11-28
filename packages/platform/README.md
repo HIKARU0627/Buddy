@@ -3,7 +3,7 @@
 OS 別の鍵保護・起動・端末能力のアダプターを置きます（[ADR 0013](../../docs/adr/0013-b01-platform-adapters.md)・[ADR 0017](../../docs/adr/0017-b02-keystore-and-encryption.md)・[ADR 0020](../../docs/adr/0020-b03-https-tls-and-route-checks.md)・[ADR 0202](../../docs/adr/0202-windows-core-key-protection-dpapi.md)）。Core から使い、共有層（contracts・domain）からは import しません。Electron には依存しません。
 
 - `src/runner.ts`: コマンド実行の境界 `CommandRunner`。実機用の `createNodeCommandRunner`（shell を通さない）と、試験用の `createMockCommandRunner`。
-- `src/supervisor.ts`: 起動・監督の境界 `StartupSupervisor`（register・unregister・status）。Windows・Linux は `unsupported` を返す。
+- `src/supervisor.ts`: 起動・監督の境界 `StartupSupervisor`（register・unregister・status）。Linux などは `unsupported` を返す。
 - `src/macos-launch-agent.ts`: ログイン後の LaunchAgent。plist の生成（純粋関数）、`~/Library/LaunchAgents/dev.buddy.core.plist` への書き出しと `launchctl bootstrap` / `bootout`。`enabled: true` を受け取らない限り登録しません。KeepAlive は付けません。
 - `src/macos-diagnostics.ts`: `pmset -g` のスリープ設定と `fdesetup status` の FileVault の状態のパーサー。判定できなければ unknown。
 - `src/key-store.ts`: 中枢のデータ鍵の `KeyStore`（`loadDataKey`・`loadOrCreateDataKey`）。macOS はキーチェーン（`@napi-rs/keyring`、サービス名 `dev.buddy.core`・アカウント名 `data-key-v1`）に 32 バイトの乱数を base64 で保存し、読み出し時に形式と長さを検査します。ネイティブモジュールは初めて鍵を読むときに読み込み、Windows・Linux では読み込みません。試験用の `createMockKeyStore`（`kind: 'mock'`）。鍵の値は結果の理由・例外・`JSON.stringify`・`inspect` に出しません。
@@ -11,8 +11,11 @@ OS 別の鍵保護・起動・端末能力のアダプターを置きます（[A
 - `src/windows-dpapi.ts`: Windows の中枢の鍵の保護（[ADR 0202](../../docs/adr/0202-windows-core-key-protection-dpapi.md)）。DPAPI（CurrentUser）で保護した値を `%LOCALAPPDATA%\Buddy\key-store\<項目名の SHA-256>.dpapi` に置く保護領域の 1 項目（`windowsDpapiSlotOpener`）。PowerShell（`%SystemRoot%` の下の `powershell.exe -NoProfile -NonInteractive`）を子プロセスで呼び、値は標準入力で渡します（引数に載せない）。データ鍵・TLS の秘密鍵・バックアップの鍵・OAuth のトークンの各 KeyStore は `win32` でこれを使います（`createWindowsDpapi*`）。試験用の `createMockStdinCommandRunner`。
 - `src/key-protection.ts`: 鍵保護の可否の確認 `KeyProtectionProbe` と、起動前検査 `keyProtectionPreflight`。macOS の確認は KeyStore でデータ鍵を取得（初回は作成）できるかで判定します（`createKeyStoreProbe`）。使えなければ `key_protection_unavailable:<理由>` を返します。平文の保存へ切り替える経路はありません。
 - `src/startup.ts`: 実行中の OS に合う起動・監督アダプターの選択。
+- `src/windows-scheduled-task.ts`: Windows のログオン時のタスク（[ADR 0203](../../docs/adr/0203-windows-hub-autostart-and-network.md)）。本人の SID・`InteractiveToken`・`LeastPrivilege`・失敗時の再起動なし・時間の上限なしの XML の生成（純粋関数）、`schtasks /Create /XML`・`/Delete`、固定の PowerShell のスクリプトでの状態の読み取り。
+- `src/windows-diagnostics.ts`: `powercfg /query` の AC のスリープ・休止状態の時間の読み取り（見出しは読まず 16 進の値の並びだけ）。判定できなければ unknown。
+- `src/windows-paths.ts`: %SystemRoot%\System32 のコマンドの絶対パスと、ドライブ文字から始まる絶対パスの検査（指紋の収集・自動起動・診断で共有）。
 - `src/home-fingerprint.ts`: 端末側の自宅の指紋（既定のゲートウェイの MAC・サブネット・SSID）の収集（[ADR 0022](../../docs/adr/0022-b03-home-network-check.md)）。macOS は `route -n get default`・`arp -n`・接続口のアドレス・`ipconfig getsummary`（SSID が `<redacted>` なら `networksetup -getairportnetwork`）、Windows は PowerShell の `Get-NetRoute`・`Get-NetNeighbor`・`Get-NetIPAddress` と `netsh wlan show interfaces`。取れない要素は null。試験用の `createMockHomeFingerprintCollector`。デスクトップの main は公開出口 `@buddy/platform/home-fingerprint`（`src/home-fingerprint-entry.ts`: 指紋の収集と runner だけ）から読み込む（[ADR 0025](../../docs/adr/0025-b03-client-desktop-connection.md)。キーチェーンなど中枢側のアダプターを含めない）。
-- `src/tailscale-status.ts`: 中枢側の Tailscale の状態の取得（`tailscale status --json`、既定 5 秒だけ保持して取り直す）。接続元のアドレスからピアを特定し、CurAddr・Relay・PeerRelay を返す。取得できない・Running でないは unavailable。試験用の `createMockTailscaleStatusSource`。
+- `src/tailscale-status.ts`: 中枢側の Tailscale の状態の取得（`tailscale status --json`、既定 5 秒だけ保持して取り直す）。接続元のアドレスからピアを特定し、CurAddr・Relay・PeerRelay を返す。取得できない・Running でないは unavailable。Windows の候補（`tailscaleCommandsFor`）は Program Files と PATH の各ディレクトリの `tailscale.exe` の絶対パス。試験用の `createMockTailscaleStatusSource`。
 
 試験は `src/*.test.ts`（ビルド後の `dist/*.test.js`）で、模擬の runner・模擬の KeyStore・模擬の keyring モジュールと一時ディレクトリを使います。実機のキーチェーンには書き込みません。実機の launchctl への登録、pmset・fdesetup の実機での読み取り（B01-05）、キーチェーンへの鍵の作成・読み出し（下の手順）は試験の対象外です。
 

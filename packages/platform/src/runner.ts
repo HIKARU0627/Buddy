@@ -8,6 +8,12 @@ export interface CommandResult {
   readonly exitCode: number | null;
   readonly stdout: string;
   readonly stderr: string;
+  /**
+   * exitCode が null のときの理由（実機の runner が付ける。模擬では省略してよい）。
+   * not_found は実行ファイルがない（ENOENT）、timed_out は時間切れ、signal はシグナルでの終了、
+   * spawn_failed はそのほかの起動の失敗（権限など）。
+   */
+  readonly failure?: 'not_found' | 'timed_out' | 'signal' | 'spawn_failed';
 }
 
 export interface CommandRunner {
@@ -74,10 +80,22 @@ export function createNodeCommandRunner(
             }
             const code = (error as { code?: unknown }).code;
             const killed = (error as { killed?: unknown }).killed === true;
+            const signal = (error as { signal?: unknown }).signal;
+            if (typeof code === 'number' && !killed) {
+              resolve({ exitCode: code, stdout, stderr });
+              return;
+            }
             resolve({
-              exitCode: typeof code === 'number' && !killed ? code : null,
+              exitCode: null,
               stdout,
               stderr,
+              failure: killed
+                ? 'timed_out'
+                : code === 'ENOENT'
+                  ? 'not_found'
+                  : typeof signal === 'string' && signal !== ''
+                    ? 'signal'
+                    : 'spawn_failed',
             });
           },
         );

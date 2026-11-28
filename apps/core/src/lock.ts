@@ -4,9 +4,13 @@
 // 既存のロックがあれば、制御チャネルへ status を問い合わせて応答があれば二重起動として拒否する。
 // 応答がなく pid も生きていなければ古いロックとして片付ける。pid が生きているのに応答が
 // なければ、旧担当の終了を確認できないので並行実行せずに拒否する。
+// ただし、ロックの起動時刻が今回の OS の起動より前（余裕 10 分）なら、そのロックの Core は OS の再起動・
+// シャットダウンで終わっている（pid は再起動の後に別のプロセスへ使い回され得る）ので、pid によらず古いロックとして
+// 片付ける（ADR 0203 の U721。ログオフ・シャットダウンで終了処理なしに止まった後の、次のログインの起動を拒否し続けない）。
 
 import { randomUUID } from 'node:crypto';
 import { link, open, readFile, rename, rm } from 'node:fs/promises';
+import { uptime } from 'node:os';
 import { join } from 'node:path';
 import { callControl } from './control-channel.js';
 import { LOCK_FILE } from './paths.js';
@@ -47,6 +51,26 @@ export interface AcquireLockOptions {
   readonly probeTimeoutMs: number;
   // 古いロックを片付けたあと、残ったソケットファイルを消す（Windows のパイプは不要）。
   readonly removeStaleEndpoint: () => Promise<void>;
+  // 今回の OS の起動時刻（エポックからのミリ秒）。省略すると Date.now() - os.uptime()。試験で差し替える。
+  readonly bootTimeMs?: () => number;
+}
+
+// 起動時刻の見積もりの誤差（時計の補正・uptime の丸め）に取る余裕。これより前に始まったロックだけを
+// 「OS の起動より前」とみなす（見積もりが遅れても、動いている Core のロックを片付けないように）。
+export const LOCK_BOOT_MARGIN_MS = 10 * 60_000;
+
+export function defaultBootTimeMs(): number {
+  return Date.now() - uptime() * 1000;
+}
+
+// ロックが今回の OS の起動より前に作られたか。起動時刻が読めない・時刻が読めないときは false（従来どおり pid で判断）。
+export function lockStartedBeforeBoot(
+  holder: LockRecord,
+  bootTimeMs: number,
+): boolean {
+  const started = Date.parse(holder.started_at);
+  if (!Number.isFinite(started) || !Number.isFinite(bootTimeMs)) return false;
+  return started < bootTimeMs - LOCK_BOOT_MARGIN_MS;
 }
 
 export function parseLockRecord(text: string): LockRecord | null {
@@ -122,7 +146,11 @@ export async function acquireLock(options: AcquireLockOptions): Promise<void> {
     if (probe.kind === 'response')
       throw new LockError('already_running', holder);
     if (!holder) throw new LockError('lock_unreadable', null);
-    if (options.isPidAlive(holder.pid))
+    const beforeBoot = lockStartedBeforeBoot(
+      holder,
+      (options.bootTimeMs ?? defaultBootTimeMs)(),
+    );
+    if (!beforeBoot && options.isPidAlive(holder.pid))
       throw new LockError('previous_owner_unconfirmed', holder);
     if (attempt > 0) break;
     await removeStaleLock(path, text, holder);

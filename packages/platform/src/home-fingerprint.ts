@@ -19,6 +19,7 @@
 // Linux は対象外（すべて取得できない）。
 import { win32 } from 'node:path';
 import type { CommandRunner } from './runner.js';
+import { windowsPowerShellPath, windowsSystem32 } from './windows-paths.js';
 
 export interface HomeFingerprintObservation {
   // 小文字の 16 進 2 桁をコロンでつないだ 6 組。
@@ -50,32 +51,20 @@ export const ARP_PATH = '/usr/sbin/arp';
 export const IPCONFIG_PATH = '/usr/sbin/ipconfig';
 export const NETWORKSETUP_PATH = '/usr/sbin/networksetup';
 
-// SystemRoot として受け付ける形: ドライブ文字と絶対パス（例 C:\Windows）。相対・UNC・`.`・`..`・不正な文字は不可。
-const SYSTEM_ROOT = /^[A-Za-z]:\\(?:[^\\/:*?"<>|\r\n]+\\?)*$/u;
-
 export interface WindowsCommandPaths {
   readonly powershell: string;
   readonly netsh: string;
 }
 
 // %SystemRoot% から PowerShell（Windows PowerShell 5.1）と netsh の絶対パスを作る。使えない値なら null。
+// SystemRoot の形の検査は中枢の自動起動・電源の診断と共有する（windows-paths.ts、ADR 0203）。
 export function windowsCommandPaths(
   systemRoot: string | undefined,
 ): WindowsCommandPaths | null {
-  if (
-    systemRoot === undefined ||
-    !SYSTEM_ROOT.test(systemRoot) ||
-    systemRoot.split('\\').some((part) => part === '..' || part === '.')
-  )
-    return null;
-  const system32 = win32.join(systemRoot, 'System32');
+  const system32 = windowsSystem32(systemRoot);
+  if (system32 === null) return null;
   return {
-    powershell: win32.join(
-      system32,
-      'WindowsPowerShell',
-      'v1.0',
-      'powershell.exe',
-    ),
+    powershell: windowsPowerShellPath(system32),
     netsh: win32.join(system32, 'netsh.exe'),
   };
 }

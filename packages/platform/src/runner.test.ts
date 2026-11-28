@@ -30,11 +30,14 @@ test('起動できない・時間切れは例外ではなく exitCode: null を�
     [],
   );
   assert.equal(missing.exitCode, null);
+  // 実行ファイルがない（ENOENT）と時間切れを区別する（Tailscale の候補の進め方、ADR 0203）。
+  assert.equal(missing.failure, 'not_found');
   const slow = await createNodeCommandRunner({ timeoutMs: 100 }).run(
     process.execPath,
     ['-e', 'setTimeout(() => {}, 10000)'],
   );
   assert.equal(slow.exitCode, null);
+  assert.equal(slow.failure, 'timed_out');
 });
 
 test('模擬の runner は実行せずに呼び出しを記録する', async () => {

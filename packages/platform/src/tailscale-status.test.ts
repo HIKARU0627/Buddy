@@ -14,6 +14,7 @@ import {
   findPeerPath,
   normalizeRemoteAddress,
   parseTailscaleStatus,
+  tailscaleCommandsFor,
 } from './tailscale-status.js';
 
 // 合成の状態。ピアは 4 つ（直接・DERP・ピアの中継・経路不明）。
@@ -281,3 +282,74 @@ test(
     );
   },
 );
+
+// Windows の中枢（ADR 0203）。候補は手で書いた絶対パス。名前だけ・PATH の各ディレクトリでは呼ばない。
+test('Windows の候補は Program Files の下と既定の場所の tailscale.exe だけで、PATH は探さない', () => {
+  assert.deepEqual(
+    tailscaleCommandsFor('win32', {
+      ProgramW6432: 'C:\\Program Files',
+      ProgramFiles: 'C:\\Program Files (x86)',
+      Path: 'C:\\tools;D:\\tailscale;C:\\Windows\\system32',
+    }),
+    [
+      'C:\\Program Files\\Tailscale\\tailscale.exe',
+      'C:\\Program Files (x86)\\Tailscale\\tailscale.exe',
+    ],
+  );
+  // 環境変数がなくても既定の場所は試す。使えない値（相対・UNC・%）は使わない。
+  assert.deepEqual(
+    tailscaleCommandsFor('win32', {
+      ProgramFiles: 'relative',
+      ProgramW6432: '\\\\server\\share',
+      PATH: 'E:\\bin',
+    }),
+    ['C:\\Program Files\\Tailscale\\tailscale.exe'],
+  );
+  assert.deepEqual(
+    tailscaleCommandsFor('win32', { ProgramFiles: 'D:\\%X%\\Apps' }),
+    ['C:\\Program Files\\Tailscale\\tailscale.exe'],
+  );
+  // macOS（と対象外の OS）は従来の候補のまま。
+  assert.equal(tailscaleCommandsFor('darwin', {}), TAILSCALE_COMMANDS);
+  assert.equal(tailscaleCommandsFor('linux', {}), TAILSCALE_COMMANDS);
+});
+
+test('実行ファイルがない候補（ENOENT）だけ飛ばし、見つかった tailscale.exe の JSON を読む', async () => {
+  const commands = tailscaleCommandsFor('win32', {
+    ProgramW6432: 'D:\\Programs',
+  });
+  const runner = createMockCommandRunner((command) =>
+    command === 'C:\\Program Files\\Tailscale\\tailscale.exe'
+      ? { exitCode: 0, stdout: JSON.stringify(STATUS), stderr: '' }
+      : { exitCode: null, stdout: '', stderr: '', failure: 'not_found' },
+  );
+  const status = await fetchTailscaleStatus(runner, commands);
+  assert.equal(status.ok, true);
+  assert.deepEqual(
+    runner.calls.map((call) => [call.command, ...call.args]),
+    [
+      ['D:\\Programs\\Tailscale\\tailscale.exe', 'status', '--json'],
+      ['C:\\Program Files\\Tailscale\\tailscale.exe', 'status', '--json'],
+    ],
+  );
+});
+
+test('時間切れ・起動の失敗では次の候補へ進まず失敗にする', async () => {
+  for (const failure of ['timed_out', 'spawn_failed', 'signal'] as const) {
+    const runner = createMockCommandRunner(() => ({
+      exitCode: null,
+      stdout: '',
+      stderr: '',
+      failure,
+    }));
+    assert.deepEqual(
+      await fetchTailscaleStatus(runner, [
+        '/first/tailscale',
+        '/second/tailscale',
+      ]),
+      { ok: false, reason: 'tailscale_command_failed' },
+      failure,
+    );
+    assert.equal(runner.calls.length, 1, failure);
+  }
+});

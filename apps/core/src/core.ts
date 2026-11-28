@@ -305,6 +305,10 @@ export interface CoreHttpsOptions {
   readonly host: string;
   // 0 は OS が選ぶ（試験用）。
   readonly port: number;
+  // アドレスがまだこのマシンにない（EADDRNOTAVAIL。ログインの直後で Tailscale がまだ動いていない）ときに、
+  // 待ち受けをやり直す間隔（ミリ秒、ADR 0203 の U723）。省略すると従来どおり起動を拒否する（https_listen_failed）。
+  // 指定すると Core 全体は起動し、HTTPS は pending のまま間隔を空けてやり直す（status の https）。
+  readonly listenRetryMs?: number;
   // TLS の秘密鍵の取得元（@buddy/platform の TlsKeyStore。macOS はキーチェーンの tls-key-v1）。
   readonly tlsKeyStore: TlsKeyStore;
   // 判定の元がまだない文脈（ロック状態など）。試験で差し替える。省略したものは安全側。
@@ -390,6 +394,8 @@ export interface CoreTurnOptions {
 export interface CoreHttpsInfo {
   readonly host: string;
   readonly port: number;
+  // 起動の時点で待ち受けられたか。false なら pending で、listenRetryMs の間隔でやり直している（U723）。
+  readonly listening: boolean;
   // 証明書の DER 全体の SHA-256 の小文字の 16 進。
   readonly certificateFingerprint: string;
   readonly certificateCreation: TlsIdentityCreation;
@@ -409,6 +415,9 @@ export interface StartCoreOptions {
   >;
   // 試験用に差し替えられる。既定は process.kill(pid, 0)。
   readonly isPidAlive?: (pid: number) => boolean;
+  // 今回の OS の起動時刻（ミリ秒）。省略すると Date.now() - os.uptime()。起動より前のロックは pid によらず
+  // 古いロックとして片付ける（ADR 0203 の U721）。試験で差し替える。
+  readonly bootTimeMs?: () => number;
   readonly now?: () => Date;
   readonly probeTimeoutMs?: number;
   // 停止時に残りの接続を待つ時間。過ぎたら切断する。
@@ -837,6 +846,9 @@ export async function startCore(
         started_at: startedAt,
       },
       isPidAlive: options.isPidAlive ?? defaultIsPidAlive,
+      ...(options.bootTimeMs === undefined
+        ? {}
+        : { bootTimeMs: options.bootTimeMs }),
       probeTimeoutMs,
       removeStaleEndpoint: removeSocketFile,
     });
@@ -854,6 +866,8 @@ export async function startCore(
   let feed: EventFeed | null = null;
   const deviceConnections = new DeviceConnections();
   let httpsInfo: CoreHttpsInfo | null = null;
+  // HTTPS の待ち受けの状態（U723）。HTTPS を設定しなければ null（status の https は off）。
+  let httpsListen: HttpsListenControl | null = null;
   let homeNetwork: HomeNetworkGate | null = null;
   let pairing: PairingService | null = null;
   let budget: BudgetGate | null = null;
@@ -911,6 +925,7 @@ export async function startCore(
     started_at: startedAt,
     uptime_ms: Math.max(0, Math.floor(performance.now() - startedMono)),
     pid: process.pid,
+    https: httpsListen === null ? 'off' : httpsListen.state(),
   });
   const reply = (request: ControlRequest): ControlResponse => ({
     ok: true,
@@ -956,6 +971,8 @@ export async function startCore(
       await streams?.closeAll();
       feed?.close();
     });
+    // 待ち受けのやり直し（U723）を止めてから閉じる。
+    httpsListen?.stop();
     await step(async () => api?.close(options.shutdownGraceMs ?? 2000));
     // OAuth のループバックの戻り先を閉じる（B03-04）。
     await step(async () => {
@@ -1582,10 +1599,14 @@ export async function startCore(
       voice = started.voice;
       privateHooks = started.privateConversation;
       httpsInfo = started.info;
+      httpsListen = started.listen;
       homeNetwork = started.homeNetwork;
       pairing = started.pairing;
+      // 待ち受けのアドレスはログに出さない（自動起動ではログがファイルに残る。U723）。ポートと指紋だけ。
       log(
-        `HTTPS を待ち受けました（${httpsInfo.host}:${httpsInfo.port}、証明書の指紋 ${httpsInfo.certificateFingerprint}）。`,
+        httpsInfo.listening
+          ? `HTTPS を待ち受けました（ポート ${httpsInfo.port}、証明書の指紋 ${httpsInfo.certificateFingerprint}）。`
+          : `HTTPS の待ち受けのアドレスがまだありません。やり直します（ポート ${httpsInfo.port}、証明書の指紋 ${httpsInfo.certificateFingerprint}）。`,
       );
       if (httpsInfo.certificateCreation !== 'existing')
         log(
@@ -1661,6 +1682,7 @@ export async function startCore(
     await researchRun?.drain().catch(() => undefined);
     retention?.close();
     feed?.close();
+    httpsListen?.stop();
     await api?.close(0).catch(() => undefined);
     await opened?.store.close().catch(() => undefined);
     await releaseLock(dataDir, coreInstanceId).catch(() => undefined);
@@ -1734,6 +1756,110 @@ export async function startCore(
   };
 }
 
+// HTTPS の待ち受けと、アドレスがまだないとき（EADDRNOTAVAIL）のやり直し（ADR 0203 の U723）。
+// ログインの直後は Tailscale のアドレスがまだないことがある。retryMs を指定したときだけ、Core 全体の起動を拒否せず
+// pending にして間隔を空けて待ち受けをやり直す。ほかの失敗（使用中・権限など）は従来どおり起動を拒否する。
+// やり直しの途中で起きたほかの失敗は failed にしてやり直しを止める（ログに理由のコードだけ）。
+export const HTTPS_RETRYABLE_LISTEN_REASONS: ReadonlySet<string> = new Set([
+  'https_listen_failed:eaddrnotavail',
+]);
+
+export class HttpsListenControl {
+  #state: 'pending' | 'listening' | 'failed' = 'pending';
+  #timer: NodeJS.Timeout | null = null;
+  #stopped = false;
+  readonly #api: ApiServer;
+  readonly #retryMs: number | undefined;
+  readonly #log: (message: string) => void;
+  readonly #onListening: () => void;
+
+  constructor(
+    api: ApiServer,
+    retryMs: number | undefined,
+    log: (message: string) => void,
+    onListening: () => void,
+  ) {
+    if (
+      retryMs !== undefined &&
+      (!Number.isSafeInteger(retryMs) || retryMs < 1)
+    )
+      throw new TypeError('listenRetryMs は 1 以上の整数にしてください。');
+    this.#api = api;
+    this.#retryMs = retryMs;
+    this.#log = log;
+    this.#onListening = onListening;
+  }
+
+  state(): 'pending' | 'listening' | 'failed' {
+    return this.#state;
+  }
+
+  // 最初の待ち受け。やり直せる失敗で retryMs があれば pending にして戻る。ほかは投げる。
+  async first(): Promise<void> {
+    try {
+      await this.#api.listen();
+    } catch (error) {
+      if (!this.#retryable(error)) throw error;
+      this.#schedule();
+      return;
+    }
+    this.#listened();
+  }
+
+  stop(): void {
+    this.#stopped = true;
+    if (this.#timer !== null) clearTimeout(this.#timer);
+    this.#timer = null;
+  }
+
+  #retryable(error: unknown): boolean {
+    return (
+      this.#retryMs !== undefined &&
+      error instanceof ApiListenError &&
+      HTTPS_RETRYABLE_LISTEN_REASONS.has(error.reason)
+    );
+  }
+
+  #listened(): void {
+    this.#state = 'listening';
+    this.#onListening();
+  }
+
+  #schedule(): void {
+    if (this.#stopped) return;
+    this.#state = 'pending';
+    this.#timer = setTimeout(() => {
+      this.#timer = null;
+      void this.#retry();
+    }, this.#retryMs);
+    this.#timer.unref();
+  }
+
+  async #retry(): Promise<void> {
+    if (this.#stopped) return;
+    try {
+      await this.#api.listen();
+    } catch (error) {
+      if (this.#retryable(error)) {
+        this.#schedule();
+        return;
+      }
+      this.#state = 'failed';
+      this.#log(
+        `HTTPS の待ち受けのやり直しに失敗しました: ${error instanceof ApiListenError ? error.reason : 'unknown'}`,
+      );
+      return;
+    }
+    // 止めた後に待ち受けが成り立ったら、すぐ閉じる。
+    if (this.#stopped) {
+      await this.#api.close(0).catch(() => undefined);
+      return;
+    }
+    this.#listened();
+    this.#log(`HTTPS を待ち受けました（ポート ${this.#api.port}）。`);
+  }
+}
+
 // TLS の身元を読み込み（初回は作り）、HTTPS を待ち受ける。鍵保護が使えなければ開かない。
 async function startHttps(
   dataDir: string,
@@ -1768,6 +1894,7 @@ async function startHttps(
 ): Promise<{
   readonly api: ApiServer;
   readonly info: CoreHttpsInfo;
+  readonly listen: HttpsListenControl;
   readonly streams: EventStreamManager;
   readonly pairing: PairingService;
   readonly homeNetwork: HomeNetworkGate;
@@ -2458,21 +2585,24 @@ async function startHttps(
       throw new CoreStartError('https_config_invalid', [error.reason]);
     throw error;
   }
+  const listen = new HttpsListenControl(api, https.listenRetryMs, log, () => {
+    listening = { host: api.host, port: api.port };
+  });
   try {
-    await api.listen();
+    await listen.first();
   } catch (error) {
     await api.close(0).catch(() => undefined);
     if (error instanceof ApiListenError)
       throw new CoreStartError('https_listen_failed', [error.reason]);
     throw error;
   }
-  listening = { host: api.host, port: api.port };
   // 起動時の再開: 送出意図の前（approved・preparing）の操作を、対象の確かめ直しから進める。
   for (const operationId of opened.recovery.resumable)
     runner.start(operationId);
   return {
     runner,
     api,
+    listen,
     homeNetwork,
     pairing,
     voice,
@@ -2481,6 +2611,7 @@ async function startHttps(
     info: {
       host: api.host,
       port: api.port,
+      listening: listen.state() === 'listening',
       certificateFingerprint: identity.fingerprint,
       certificateCreation: identity.creation,
     },

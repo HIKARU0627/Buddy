@@ -867,7 +867,7 @@ paths:
     get:
       operationId: listAutoActions
       summary: 自動実行の一覧
-      description: 自動実行した操作と取り消しの可否、安全停止の状態（07 §2、J12）。本文は含めない。
+      description: 自動実行した操作と取り消しの可否、安全停止の状態（07 §2、J12）。本文は含めない。端末は安全停止の知らせ（SafetyNotice）を受けたとき・接続したとき・ロックを解除したときにも読み、状態欄の安全停止を出す（ADR 0198）。
       x-buddy-core-checks: *id001
       responses:
         '200':
@@ -1086,7 +1086,7 @@ paths:
     get:
       operationId: streamEvents
       summary: イベントの購読（WSS）
-      description: WebSocket へ切り替え、EventStreamMessage を流す。認証はヘッダーで行い、秘密を URL クエリーに入れない。開始位置はクエリーの cursor（getSnapshot・getEvents・イベントが返した値）で、その後の COMMIT 済みのイベントを順に流す。中枢が発行した形でない cursor は切り替えずに 422。接続は端末の今の接続範囲（getBootstrap で発行したもの）に結び付き、なければすぐに閉じる。DB 世代の変化・履歴期限・接続範囲の失効（再接続・期限）では resnapshot_required を送って閉じる。端末の失効・自宅判定の不成立でも理由つきで閉じる。同じ端末の同時の購読は上限（4）までで、超えれば切り替えずに 429、同時の切り替えで後から開いたものは理由つきで閉じる。キャンバスの記述が新しい版になったときは canvas の知らせ（版だけ。cursor を持たず、記録に入れない）を購読に送り、端末は getCanvas で取る（ADR 0032）。期限切れ・忘却・忘却台帳の前進の知らせは notice（ID と理由と番号だけ。cursor を持たず、記録に入れず、再送しない）として、接続範囲を確かめた後の購読に送る（UI-05 の段階 3、ADR 0187）。気づきの OS 通知が入のときは、気づきの増減の知らせ（CandidateNotice。題・候補 ID を含めず、OS 通知を出す数だけ）も同じ notice で送る（ADR 0196）。中枢は ping を送り、応答のない接続を切る。閉じるコードは x-buddy-websocket-close-codes（07 §2・§4、ADR 0009・0023）。
+      description: WebSocket へ切り替え、EventStreamMessage を流す。認証はヘッダーで行い、秘密を URL クエリーに入れない。開始位置はクエリーの cursor（getSnapshot・getEvents・イベントが返した値）で、その後の COMMIT 済みのイベントを順に流す。中枢が発行した形でない cursor は切り替えずに 422。接続は端末の今の接続範囲（getBootstrap で発行したもの）に結び付き、なければすぐに閉じる。DB 世代の変化・履歴期限・接続範囲の失効（再接続・期限）では resnapshot_required を送って閉じる。端末の失効・自宅判定の不成立でも理由つきで閉じる。同じ端末の同時の購読は上限（4）までで、超えれば切り替えずに 429、同時の切り替えで後から開いたものは理由つきで閉じる。キャンバスの記述が新しい版になったときは canvas の知らせ（版だけ。cursor を持たず、記録に入れない）を購読に送り、端末は getCanvas で取る（ADR 0032）。期限切れ・忘却・忘却台帳の前進の知らせは notice（ID と理由と番号だけ。cursor を持たず、記録に入れず、再送しない）として、接続範囲を確かめた後の購読に送る（UI-05 の段階 3、ADR 0187）。気づきの OS 通知が入のときは、気づきの増減の知らせ（CandidateNotice。題・候補 ID を含めず、OS 通知を出す数だけ）も同じ notice で送る（ADR 0196）。自動実行の安全停止の状態が変わったときは、安全停止の知らせ（SafetyNotice。理由・状態・版を含めない）も同じ notice で送り、端末は listAutoActions で読み直す（ADR 0198）。中枢は ping を送り、応答のない接続を切る。閉じるコードは x-buddy-websocket-close-codes（07 §2・§4、ADR 0009・0023）。
       x-buddy-core-checks: *id001
       parameters:
         - $ref: '#/components/parameters/Cursor'

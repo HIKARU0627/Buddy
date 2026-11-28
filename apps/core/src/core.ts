@@ -62,6 +62,7 @@ import {
 } from './api-connections.js';
 import {
   AUTO_ACTION_REVISION_CHECKED_ROUTES,
+  CALENDAR_EVENT_UNDO_OPEN,
   createAutoActionRoutes,
 } from './api-auto-actions.js';
 import { createConnectionDiscovery } from './connection-discovery.js';
@@ -125,6 +126,8 @@ import type { ForgetService } from './forget-service.js';
 import { createClockStateFile } from './clock-state.js';
 import type { NoticeSink } from './notice-sink.js';
 import { NoticeRelay } from './notice-relay.js';
+import { createSafetyNotices } from './safety-notices.js';
+import type { SafetyNotices } from './safety-notices.js';
 import { StorageModeGate } from './storage-gate.js';
 import {
   PRIVATE_CONFIRMATION_SCREEN_OPEN,
@@ -377,6 +380,9 @@ export interface CoreTurnOptions {
   // 記録しない会話の独立した確認の口（B06-07a-2 の 2d、ADR 0192・0197）。確認を出す経路と画面の一覧・承認・断るの経路の両方が
   // 読む。試験の組み立てだけが渡す。既定は PRIVATE_CONFIRMATION_SCREEN_OPEN（false。開くかは本人の判断。U503）。
   readonly privateConfirmationScreen?: () => boolean;
+  // 自動で作った予定の取り消し（予定の削除、ADR 0198）を開くか。試験の組み立てだけが渡す。既定は
+  // CALENDAR_EVENT_UNDO_OPEN（false。U310 の予定は本人の決定待ち）。
+  readonly calendarEventUndo?: boolean;
 }
 
 export interface CoreHttpsInfo {
@@ -872,6 +878,10 @@ export async function startCore(
   // 購読がまだなければ送れず delivery_unknown になる）。停止では判定の終わりを待ってから受け手を外す。
   let candidateAlerts: CandidateAlerts | null = null;
   let offCandidateWrite: (() => void) | null = null;
+  // 安全停止の知らせ（U315、ADR 0198）。DB を開いた直後に今の版を読み、操作の命令・停止の解除が終わるたびに読み直して、
+  // 変わっていれば開いている購読へ知らせる。停止では受け手を外し、読み取りの終わりを待つ。
+  let safetyNotices: SafetyNotices | null = null;
+  let offSafetyWrite: (() => void) | null = null;
   let syncRun: {
     executor: SyncExecutor;
     scheduler: SyncScheduler | null;
@@ -954,6 +964,13 @@ export async function startCore(
     await step(async () => voice?.close());
     // 実行中の掃除と後始末を終えてから DB を閉じる（閉じた後の命令で失敗を出さない）。掃除は次の区切りで中断する。
     await step(async () => retention?.drain());
+    // 安全停止の知らせの受け手を外し、読み取りの終わりを待つ（ADR 0198）。
+    await step(async () => {
+      offSafetyWrite?.();
+      offSafetyWrite = null;
+      safetyNotices?.close();
+      await safetyNotices?.idle();
+    });
     // 気づきの通知の判定の終わりを待ち、候補の書込みの受け手を外す（ADR 0196）。
     await step(async () => {
       offCandidateWrite?.();
@@ -999,6 +1016,21 @@ export async function startCore(
     });
     candidateAlerts = alerts;
     offCandidateWrite = opened.store.onCandidateWrite(alerts.observe);
+    // 安全停止の知らせ（U315、ADR 0198）。起動のときの版を読んでから、安全停止を変え得る書込みの受け手を付ける。
+    const safetyStore = opened.store;
+    const safety = createSafetyNotices({
+      read: async () => {
+        const state = await safetyStore.safety({ kind: 'safety.state' });
+        return state.ok ? state.value.safety_revision : null;
+      },
+      send: (message) => notices.publishSafety(message),
+      now,
+      newId: () => randomUUID(),
+      log,
+    });
+    await safety.start();
+    safetyNotices = safety;
+    offSafetyWrite = opened.store.onSafetyWrite(() => safety.observe());
     // 保存期限の掃除（ADR 0053）。起動の直後はゲートを閉じたまま、最初の掃除を始める。検索・クラウドへの
     // 送信・自動利用の入口は、済むまで retention.gate() が閉じていることを確かめる。
     // 順序（ADR 0058）: 台帳のファイルの同期（openStore）→ 掃除 → ゲートが開く。時計の最終確認時刻と epoch は
@@ -1920,6 +1952,8 @@ async function startHttps(
               return result.ok ? result.dataKey : null;
             },
             afterApproval: (operationId) => runner.afterApproval(operationId),
+            calendarEventUndo:
+              https.turns?.calendarEventUndo ?? CALENDAR_EVENT_UNDO_OPEN,
             ...(retention === null
               ? {}
               : {

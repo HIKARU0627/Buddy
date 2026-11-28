@@ -53,6 +53,7 @@ export const OPERATION_KIND_LABELS: Readonly<Record<string, string>> = {
   'mail.draft.delete': '返信の下書きの削除',
   'task.create': '用事の登録',
   'task.delete': '用事の削除',
+  'calendar.event.delete': '予定の削除',
 };
 
 export const SERVICE_LABELS: Readonly<Record<string, string>> = {
@@ -68,6 +69,7 @@ export const TARGET_LABELS: Readonly<Record<string, string>> = {
   'mail.draft.delete': '下書き',
   'task.create': '登録先の一覧',
   'task.delete': '用事',
+  'calendar.event.delete': '予定',
 };
 
 // 変更の前後の 1 行（項目名・変更前・変更後）。変更前は、中枢が確かめた事実から言えることだけを書く

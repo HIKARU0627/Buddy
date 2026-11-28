@@ -203,6 +203,27 @@ export interface ProviderEvent {
   readonly end: string;
 }
 
+// 予定の中身の読み取り（取り消しの削除の前に、Buddy が作ったままかを確かめる。ADR 0198）。revision は予定が変わる
+// たびに変わる版（Google の etag など）で、削除の条件に使う。status は confirmed・tentative・cancelled など。
+// 参加者は数だけ（アドレスを読まない）。recurring は繰り返しの規則を持つか、繰り返しの一部か。
+export interface ProviderEventContent {
+  readonly event_id: string;
+  readonly calendar_id: string;
+  readonly revision: string;
+  readonly status: string;
+  // Buddy が付けた目印。Buddy が作っていない予定は null。
+  readonly marker: string | null;
+  readonly summary: string;
+  readonly start: string;
+  readonly end: string;
+  readonly time_zone: string | null;
+  readonly attendee_count: number;
+  readonly recurring: boolean;
+  // 場所・説明。Buddy は作るときに入れないので、値があれば本人が手を加えた。
+  readonly location: string | null;
+  readonly description: string | null;
+}
+
 export interface ProviderReader {
   // 連携の接続の状態。接続がなければ null。
   connection(): Promise<ProviderConnection | null>;
@@ -213,6 +234,12 @@ export interface ProviderReader {
   findDrafts?(marker: string): Promise<readonly ProviderDraft[]>;
   // 下書きを id で読む。無ければ null。持たない provider では下書きの削除を実行しない（ADR 0156）。
   readDraft?(draftId: string): Promise<ProviderDraftContent | null>;
+  // 予定を id で読む。無ければ null（取り消し済みの予定は status が cancelled のまま返ることがある）。持たない provider では
+  // 予定の削除を実行しない（ADR 0198）。
+  readEvent?(
+    calendarId: string,
+    eventId: string,
+  ): Promise<ProviderEventContent | null>;
 }
 
 // 連携の provider への書込み（B04-04、ADR 0030）。形は #87 の MockMailConnector の書込みに合わせた。
@@ -265,6 +292,17 @@ export interface ProviderWriter {
     identity: ProviderWriteIdentity,
     draft: { readonly draft_id: string; readonly source_revision: string },
   ): Promise<ProviderWriteOutcome<{ readonly draft_id: string }>>;
+  // Buddy が作った予定の削除（取り消し、ADR 0198）。source_revision が今の版と違えば相手は 409・412 で断る（Google は
+  // If-Match）。参加者がいない予定だけを消すので、相手への取り消しの知らせは送らない。持たない provider では予定の削除を
+  // 実行しない。
+  deleteEvent?(
+    identity: ProviderWriteIdentity,
+    event: {
+      readonly calendar_id: string;
+      readonly event_id: string;
+      readonly source_revision: string;
+    },
+  ): Promise<ProviderWriteOutcome<{ readonly event_id: string }>>;
 }
 
 // Core 側の故障点（tests/integration/fault-points.json の fault_points、ADR 0028）。製品では何もしない。

@@ -16,6 +16,10 @@ export const OPERATION_KINDS = [
   'mail.draft.delete',
   // 自動で登録した用事を取り消しで消す補償の操作だけに使う（ADR 0157）。
   'task.delete',
+  // 参加者のいない自分だけの予定の作成（判定表の create_event の行。ADR 0146・0147・0198）。
+  'calendar.event.create',
+  // 自動で作った自分だけの予定を取り消しで消す補償の操作だけに使う（ADR 0198）。
+  'calendar.event.delete',
 ] as const;
 
 export type OperationKind = (typeof OPERATION_KINDS)[number];
@@ -62,6 +66,8 @@ export const OPERATION_STEP_KINDS = [
   'trash_mail',
   'delete_draft',
   'delete_task',
+  'create_event',
+  'delete_event',
 ] as const;
 export type OperationStepKind = (typeof OPERATION_STEP_KINDS)[number];
 
@@ -198,6 +204,28 @@ export const OPERATION_KIND_RULES: Readonly<
     precondition_target_read: null,
     preconditions: ['not_required'],
     steps: ['delete_task'],
+  },
+  // 自分だけの予定の作成（ADR 0198）。作成物の ID は送出前に分からないので、目印で探す。外部の前提の対象はない。
+  // 実行担当の送出は、予定の自動作成を配線するときに作る（今は契約・表・自動承認の対応表だけ）。
+  'calendar.event.create': {
+    route: 'remote_mutation',
+    reconcile_scope: 'operation_marker',
+    lookup: 'by_operation_marker',
+    lookup_read: 'calendar.events',
+    precondition_target_read: null,
+    preconditions: ['recheck_before_dispatch'],
+    steps: ['create_event'],
+  },
+  // 取り消しの補償（ADR 0198）。対象は Buddy が作った予定で、送出の直前に予定を読み直し、版（etag など）と目印を
+  // 確かめ、版を条件にして消す。結果不明は予定の ID で読み、無い・取り消し済みなら削除済みとみなす。
+  'calendar.event.delete': {
+    route: 'remote_mutation',
+    reconcile_scope: 'exact_target',
+    lookup: 'by_remote_id',
+    lookup_read: 'calendar.events',
+    precondition_target_read: 'calendar.events',
+    preconditions: ['conditional_request', 'recheck_before_dispatch'],
+    steps: ['delete_event'],
   },
 };
 

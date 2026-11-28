@@ -488,6 +488,59 @@ test('a draft deletion is made only as the compensation of an undo (ADR 0156)', 
   });
 });
 
+test('an event deletion is made only as the compensation of an undo, and an own event is an auto action (ADR 0198)', async () => {
+  await withStore((db) => {
+    // 取り消しでない予定の削除は、画面の承認待ちでも方針の自動承認でも作らない。
+    for (const auto of [false, true])
+      assert.deepEqual(
+        reasons(
+          exec(
+            db,
+            createCommand('op-event-delete', {
+              auto,
+              operation_kind: 'calendar.event.delete',
+            }),
+            T0,
+          ),
+        ),
+        ['undo_only_kind'],
+      );
+    assert.equal(operationState(db, 'op-event-delete'), undefined);
+    // 自分だけの予定の作成は方針で自動承認でき、成功すると自動実行の一覧に create_event として載る。
+    committed(
+      exec(
+        db,
+        createCommand('op-event', {
+          auto: true,
+          operation_kind: 'calendar.event.create',
+        }),
+        T0,
+      ),
+    );
+    finishAuto(db, 'op-event', T0 + 5);
+    assert.deepEqual(
+      db
+        .prepare('SELECT action_kind FROM auto_actions WHERE operation_id = ?')
+        .get('op-event'),
+      { action_kind: 'create_event' },
+    );
+    committed(
+      exec(
+        db,
+        createCommand('op-event-delete', {
+          operation_kind: 'calendar.event.delete',
+          undo_of: { undo_id: 'u-event', operation_id: 'op-event' },
+        }),
+        T0 + 10,
+      ),
+    );
+    assert.deepEqual(
+      undoRows(db).map((row) => (row as { status: string }).status),
+      ['in_progress'],
+    );
+  });
+});
+
 // 用事の登録・取り消しの LocalCommand（ADR 0030・0157）。用事の正本の暗号文は合成の乱数で、ここでは復号しない。
 const localCommand = (
   kind: 'operation.apply_local' | 'operation.delete_local',

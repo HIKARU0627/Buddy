@@ -242,6 +242,8 @@ export interface HubStatus {
   readonly storageMode: 'normal' | 'extended' | 'private' | null;
   // 流れの表示先（GET /v1/stream/handoff。UI-05 の段階 5、ADR 0193）。不明・キャンバス表示でない組み立ては null。
   readonly displayTarget: 'this_device' | 'other_device' | null;
+  // 自動実行の安全停止（GET /v1/auto-actions の safety。U315、ADR 0198）。不明は null。
+  readonly safetyStopped: boolean | null;
 }
 
 export interface DesktopCoreLinkOptions {
@@ -588,6 +590,8 @@ export class DesktopCoreLink {
       connection: () => this.#connection,
       newRef: () => options.clock.newRequestId(),
       now: () => options.clock.now(),
+      // 安全停止の値が変わった（状態欄を作り直して通知する。ADR 0198）。
+      changed: () => options.onChange(),
       log: (code) => this.#log(code),
     });
     // 気づきの欄に、候補に結び付いた自動実行の行を自動実行の経路の参照で出す（ADR 0199）。
@@ -768,6 +772,8 @@ export class DesktopCoreLink {
       void this.#candidateNotice(0);
       // ロック中に捨てた記録しない会話の確認の一覧を読み直す（中枢はロックの申告で承認前の確認を取り下げる。ADR 0197）。
       void this.#private.refresh();
+      // ロック中に捨てた安全停止を読み直す（状態欄。ロック中に届いた安全停止の知らせは読んでいない。ADR 0198）。
+      void this.#autoActions.refresh();
       // ロック中に捨てた表示先を読み直す（キャンバス表示だけ。ADR 0193）。
       if (this.#options.canvasMode === true) void this.#route.refresh();
     }
@@ -821,6 +827,7 @@ export class DesktopCoreLink {
         budgetHeld: null,
         storageMode: null,
         displayTarget: null,
+        safetyStopped: null,
       };
     const connection = hubConnectionOf(state);
     return {
@@ -834,6 +841,9 @@ export class DesktopCoreLink {
       storageMode: connection === 'connected' ? this.#storage.mode : null,
       // 表示先も中枢の値（接続している間だけ。読めていなければ不明。ADR 0193）。
       displayTarget: connection === 'connected' ? this.#route.target : null,
+      // 安全停止も中枢の値（接続している間だけ。読めていなければ不明。ADR 0198）。
+      safetyStopped:
+        connection === 'connected' ? this.#autoActions.safetyStopped() : null,
     };
   }
 
@@ -1134,6 +1144,9 @@ export class DesktopCoreLink {
         if (this.#lockState === 'unlocked') void this.#candidateNotice(0);
         // 接続するたびに、記録しない会話の承認を待つ確認を読む（ADR 0197）。
         void this.#private.refresh();
+        // 接続するたびに、自動実行の安全停止を読む（状態欄。接続していない間の知らせは届かない。ロック中は読まず、解除で読む。
+        // ADR 0198）。
+        if (this.#lockState === 'unlocked') void this.#autoActions.refresh();
         // 接続するたびに、流れの今の表示先を読む（状態欄の表示先。キャンバス表示だけ。ADR 0193）。
         if (this.#options.canvasMode === true) void this.#route.refresh();
         // 接続するたびに、忘却台帳の複製の head を送って追いつく（B06-07b-3、ADR 0182）。ロック中でも送る（台帳は
@@ -1176,6 +1189,13 @@ export class DesktopCoreLink {
           void this.#candidateNotice(notice.alert_count);
         // ロック中に届いた知らせは捨てる（理由のコードだけを残す。件数・知らせの ID は出さない）。
         else this.#log('candidate_notice_dropped_locked');
+        return;
+      }
+      // 自動実行の安全停止が変わった（止まった・再開した。U315、ADR 0198）。知らせの値を正本にせず、中枢の一覧を読み直して
+      // 状態欄に出す。ロック中は読まない（解除したときに読む）。キャンバスとは関係しないので、ここで終える。
+      if (notice.schema === 'buddy.safety-notice.v1') {
+        if (this.#lockState === 'unlocked') void this.#autoActions.refresh();
+        else this.#log('safety_notice_deferred_locked');
         return;
       }
       if (notice.schema === 'buddy.forget-ledger-notice.v1') {

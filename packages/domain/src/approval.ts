@@ -162,13 +162,16 @@ export const COMPENSATION_FAILURE_LIMIT = 3;
 export const UNDO_WINDOW_MS = 30 * 24 * 60 * 60_000;
 
 // 自動実行の一覧（auto_actions.action_kind）に載る操作の種類。方針による自動承認はこの種類だけに許す。
-// 自分だけの予定の作成（create_event）は操作の種類がまだないため載せない（ADR 0147）。
-export type AutoActionKind = 'create_task' | 'label_mail' | 'draft_reply';
+// 自分だけの予定の作成（create_event）は、操作の種類 calendar.event.create を足したので載せる（ADR 0147 の残り、
+// ADR 0198）。予定を自動で作る配線（候補からの作成）はまだない。
+export type AutoActionKind =
+  'create_task' | 'label_mail' | 'draft_reply' | 'create_event';
 
 const AUTO_ACTION_KINDS: Readonly<Record<string, AutoActionKind>> = {
   'task.create': 'create_task',
   'mail.labels.change': 'label_mail',
   'mail.draft.create': 'draft_reply',
+  'calendar.event.create': 'create_event',
 };
 
 export function autoActionKindFor(

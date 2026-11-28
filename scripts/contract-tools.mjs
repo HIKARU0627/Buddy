@@ -1140,10 +1140,11 @@ export function semanticErrors(name, value) {
     value.action.cc.some((address) => value.action.to.includes(address))
   )
     errors.push('duplicate_recipient');
-  // 取り消しの下書き・用事の削除は、自分自身ではなく、それを作った別の操作を指す（ADR 0156・0157）。
+  // 取り消しの下書き・用事・予定の削除は、自分自身ではなく、それを作った別の操作を指す（ADR 0156・0157・0198）。
   if (
     (name === 'DraftDeleteOperationIntent' ||
-      name === 'TaskDeleteOperationIntent') &&
+      name === 'TaskDeleteOperationIntent' ||
+      name === 'CalendarEventDeleteOperationIntent') &&
     value.action.created_by.operation_id === value.operation_id
   )
     errors.push('created_by_self');
@@ -1184,6 +1185,12 @@ export function semanticErrors(name, value) {
     if (localTimeKey(value.action.end) <= localTimeKey(value.action.start))
       errors.push('event_time_order');
   }
+  // 自分だけの予定の作成も、終わりは始まりより後（参加者がいないので宛先の照合はない。ADR 0198）。
+  if (
+    name === 'CalendarEventCreateOperationIntent' &&
+    localTimeKey(value.action.end) <= localTimeKey(value.action.start)
+  )
+    errors.push('event_time_order');
   // 一般化した intent と preview は、action.kind で種類ごとの意味検査へ回す（ADR 0027・0075）。
   if (name === 'OperationIntent') {
     const byKind = {
@@ -1197,6 +1204,8 @@ export function semanticErrors(name, value) {
       'mail.trash': 'MailTrashOperationIntent',
       'mail.draft.delete': 'DraftDeleteOperationIntent',
       'task.delete': 'TaskDeleteOperationIntent',
+      'calendar.event.create': 'CalendarEventCreateOperationIntent',
+      'calendar.event.delete': 'CalendarEventDeleteOperationIntent',
     };
     const kind = byKind[value.action.kind];
     if (kind) errors.push(...semanticErrors(kind, value));

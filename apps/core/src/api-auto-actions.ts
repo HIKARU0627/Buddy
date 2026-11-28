@@ -4,10 +4,11 @@
 // ここは検査を通った要求の処理で、判定の正本は保存層（safety-store.ts）と domain の autoActionUndoState。
 // - 一覧（GET /v1/auto-actions）は安全停止の状態と自動実行した操作を一つの読み取りで返す。本文（確定 intent）は返さない。
 // - 取り消し（POST /v1/auto-actions/{id}/undo）は補償の操作を新しい operation_id で作る（ADR 0153）。今はメールの
-//   ラベルの変更（label_mail）と返信の下書きの保存（draft_reply、ADR 0156）で、提供元の読み書きの口があるときだけ
-//   取り消せるように見せる。用事は unavailable。一覧での本人の押下が J12 の確認で、補償の操作は画面の承認つきで作り、
-//   すぐ実行担当へ渡す。作る前に対象を読み直し、ラベルが自動実行の後に変わっていれば、または下書きが送られた・
-//   手を加えられた・消えていれば 409（target_changed）で自動では戻さない。期限切れは 410（undo_expired）。
+//   ラベルの変更（label_mail）と返信の下書きの保存（draft_reply、ADR 0156）と用事の登録（create_task、ADR 0157）で、
+//   提供元の読み書きの口があるときだけ取り消せるように見せる。予定の作成（create_event、ADR 0198）は経路を作ったが、
+//   本人の決定（U310 の予定）が出るまで製品では開かない（CALENDAR_EVENT_UNDO_OPEN）。一覧での本人の押下が J12 の確認で、
+//   補償の操作は画面の承認つきで作り、すぐ実行担当へ渡す。作る前に対象を読み直し、ラベルが自動実行の後に変わって
+//   いれば、または下書き・予定が送られた・手を加えられた・消えていれば 409（target_changed）で自動では戻さない。期限切れは 410（undo_expired）。
 //   同じ接続範囲・request_id の再送は保存済みの受付結果、内容が違えば 409（07 §3）。
 // - 解除（POST /v1/safety/resume）は登録済みの端末の画面操作だけ。版（expected_safety_revision）は DB の現在値で
 //   照合し、解除の transaction の中でも同じ値で照合し直す（compare-and-swap）。同じ request_id の再送は、成功済みなら
@@ -42,9 +43,16 @@ import { canRead, canWrite } from './turn-ports.js';
 import type {
   ProviderConnection,
   ProviderDraftContent,
+  ProviderEventContent,
   ProviderMailTarget,
   ProviderReader,
 } from './turn-ports.js';
+
+// 自動で作った予定の取り消し（予定の削除、ADR 0198）を製品で開くか。U310 のうち予定は本人の決定待ちで、下書き（ADR 0156）・
+// 用事（ADR 0157）の決定の記録は「予定は暫定 (b) のまま」と書いているので、経路は作ったが閉じておく。開くのは、本人が
+// 予定も (a) にすると決め、実際の提供元（Google Calendar・Microsoft）で予定の版と条件つきの削除を確かめた後（ADR 0198）。
+// 試験の組み立てだけが CoreTurnOptions.calendarEventUndo で開く。
+export const CALENDAR_EVENT_UNDO_OPEN = false;
 
 // 版の照合を api-auto-actions.ts で行う経路（core.ts が環境の revisionMatches を切り替える）。
 export const AUTO_ACTION_REVISION_CHECKED_ROUTES: ReadonlySet<string> = new Set(
@@ -61,6 +69,9 @@ export interface AutoActionUndoPorts {
   // 対象のメールの読み直し（読み取りだけ）。
   readonly provider: ProviderReader;
   readonly contract: ApiContract;
+  // 予定の取り消しを開くか（ADR 0198）。省略は閉じる（製品は CALENDAR_EVENT_UNDO_OPEN）。開いていても、提供元が予定を
+  // id で読めなければ取り消せるように見せない。
+  readonly calendarEventUndo?: boolean;
   // 要求ごとに読むデータ鍵（保持しない）。読めなければ null。
   readonly dataKey: () => Promise<DataKeyMaterial | null>;
   // 補償の操作を保存した後に実行担当へ渡す（OperationRunner.afterApproval）。
@@ -94,22 +105,30 @@ export interface AutoActionRoutes {
   revisionMatches(input: EnvironmentInput): Promise<boolean>;
 }
 
-// 補償の操作を作れる種類（ADR 0153・0156・0157）。下書きは Buddy が作ったままのものを削除で戻し、用事は登録した
-// ままの（開いている）ものを削除で戻す。下書きの削除は、提供元が下書きを id で読めるときだけ（undoableKindsOf）。
+// 補償の操作を作れる種類（ADR 0153・0156・0157・0198）。下書きは Buddy が作ったままのものを削除で戻し、用事は登録した
+// ままの（開いている）ものを削除で戻し、予定は Buddy が作ったままのものを削除で戻す。下書き・予定の削除は、提供元が
+// id で読めるときだけ。予定は取り消しを開いたときだけ（undoableKindsOf）。
 export const UNDOABLE_KINDS: readonly AutoActionKind[] = [
   'label_mail',
   'draft_reply',
   'create_task',
+  'create_event',
 ];
 
-// 渡された口で取り消せる種類。下書きは id で読み直せないと、作ったままかを確かめられない。
+// 渡された口で取り消せる種類。下書き・予定は id で読み直せないと、作ったままかを確かめられない。
 export function undoableKindsOf(
-  provider: Pick<ProviderReader, 'readDraft'> | null,
+  provider: Pick<ProviderReader, 'readDraft' | 'readEvent'> | null,
+  options: { readonly calendarEventUndo?: boolean } = {},
 ): readonly AutoActionKind[] {
   if (provider === null) return [];
-  return UNDOABLE_KINDS.filter(
-    (kind) => kind !== 'draft_reply' || provider.readDraft !== undefined,
-  );
+  return UNDOABLE_KINDS.filter((kind) => {
+    if (kind === 'draft_reply') return provider.readDraft !== undefined;
+    if (kind === 'create_event')
+      return (
+        options.calendarEventUndo === true && provider.readEvent !== undefined
+      );
+    return true;
+  });
 }
 
 // 掃除の貸し出しを取り直す回数（発言の入口・候補の自動実行と同じ）。
@@ -247,6 +266,77 @@ export function draftCreationOf(
   };
 }
 
+// 自動で作った自分だけの予定の確定 intent から、取り消しの補償に要る値を取り出す（ADR 0198）。形が違えば null。
+export interface EventCreation {
+  readonly provider: string;
+  readonly account_id: string;
+  readonly operation_id: string;
+  readonly content_version: string;
+  readonly calendar_id: string;
+  readonly summary: string;
+  readonly start: string;
+  readonly end: string;
+  readonly time_zone: string;
+}
+
+export function eventCreationOf(
+  intent: Record<string, unknown>,
+): EventCreation | null {
+  const action = intent['action'] as Record<string, unknown> | undefined;
+  if (
+    action?.['kind'] !== 'calendar.event.create' ||
+    typeof intent['provider'] !== 'string' ||
+    typeof intent['account_id'] !== 'string' ||
+    typeof intent['operation_id'] !== 'string' ||
+    typeof intent['content_version'] !== 'string' ||
+    typeof action['calendar_id'] !== 'string' ||
+    typeof action['summary'] !== 'string' ||
+    typeof action['start'] !== 'string' ||
+    typeof action['end'] !== 'string' ||
+    typeof action['time_zone'] !== 'string'
+  )
+    return null;
+  return {
+    provider: intent['provider'],
+    account_id: intent['account_id'],
+    operation_id: intent['operation_id'],
+    content_version: intent['content_version'],
+    calendar_id: action['calendar_id'],
+    summary: action['summary'],
+    start: action['start'],
+    end: action['end'],
+    time_zone: action['time_zone'],
+  };
+}
+
+// 予定が Buddy の作ったままか（ADR 0198、U620）。取り消されておらず、目印・カレンダー・題・開始・終了・タイムゾーンが
+// 保存した内容と同じで、参加者がいない・繰り返しでない・場所と説明が空であること。参加者を足した予定（消すと相手へ
+// 取り消しが届く）・繰り返しにした予定・本人が手を加えた予定は消さない。
+export function eventUnchanged(
+  event: ProviderEventContent,
+  creation: EventCreation,
+): boolean {
+  let marker: string;
+  try {
+    marker = operationMarker(creation.operation_id, creation.content_version);
+  } catch {
+    return false;
+  }
+  return (
+    event.status !== 'cancelled' &&
+    event.marker === marker &&
+    event.calendar_id === creation.calendar_id &&
+    event.summary === creation.summary &&
+    event.start === creation.start &&
+    event.end === creation.end &&
+    event.time_zone === creation.time_zone &&
+    event.attendee_count === 0 &&
+    !event.recurring &&
+    event.location === null &&
+    event.description === null
+  );
+}
+
 const sameList = (a: readonly string[], b: readonly string[]): boolean =>
   a.length === b.length && a.every((item, index) => item === b[index]);
 
@@ -323,6 +413,7 @@ export function createAutoActionRoutes(
   const undo = options.undo ?? null;
   const undoableKinds: readonly AutoActionKind[] = undoableKindsOf(
     undo === null ? null : undo.provider,
+    { calendarEventUndo: undo?.calendarEventUndo === true },
   );
 
   const authenticated =
@@ -494,13 +585,63 @@ export function createAutoActionRoutes(
     }
   };
 
-  // 補償の内容。ラベルは逆向きの変更、下書きと用事は削除。送出・適用の直前には実行担当（用事は DB worker）が
+  type EventRead =
+    | {
+        readonly kind: 'ok';
+        readonly connection: ProviderConnection;
+        readonly permission: string;
+        readonly event: ProviderEventContent;
+      }
+    | { readonly kind: 'unavailable' }
+    // 接続の口座が違う・予定がない（自動では戻さない）。
+    | { readonly kind: 'changed' };
+
+  // Buddy が作った予定を id で読み直す（読み取りだけ。ADR 0198）。
+  const readEvent = async (
+    provider: ProviderReader,
+    creation: EventCreation,
+    eventId: string,
+  ): Promise<EventRead> => {
+    try {
+      const connection = await provider.connection();
+      if (
+        provider.readEvent === undefined ||
+        connection === null ||
+        connection.status !== 'active' ||
+        connection.provider !== creation.provider ||
+        !canWrite(connection, 'calendar.event.delete') ||
+        !canRead(connection, 'calendar.events')
+      )
+        return { kind: 'unavailable' };
+      if (connection.account_id !== creation.account_id)
+        return { kind: 'changed' };
+      const permission = await provider.readPermission(creation.account_id);
+      if (permission === null || permission.account_id !== creation.account_id)
+        return { kind: 'unavailable' };
+      const event = await provider.readEvent(creation.calendar_id, eventId);
+      if (event === null || event.event_id !== eventId)
+        return { kind: 'changed' };
+      return {
+        kind: 'ok',
+        connection,
+        permission: permission.permission_revision,
+        event,
+      };
+    } catch {
+      return { kind: 'unavailable' };
+    }
+  };
+
+  // 補償の内容。ラベルは逆向きの変更、下書き・用事・予定は削除。送出・適用の直前には実行担当（用事は DB worker）が
   // 対象をもう一度確かめる（D1、ADR 0030・0156・0157）。対象が変わっていれば target_changed、読めなければ unavailable。
   type Compensation =
     | {
         readonly kind: 'ok';
         readonly operation_kind:
-          'mail.labels.change' | 'mail.draft.delete' | 'task.delete';
+          | 'mail.labels.change'
+          | 'mail.draft.delete'
+          | 'task.delete'
+          | 'calendar.event.delete';
         readonly effect_route: 'remote_mutation' | 'local_command';
         readonly permission: string;
         readonly content: Record<string, unknown>;
@@ -569,6 +710,46 @@ export function createAutoActionRoutes(
     };
     const task = taskCreationOf(original);
     if (task !== null) return taskCompensation(task, view, base);
+    const event = eventCreationOf(original);
+    if (event !== null) {
+      // 閉じている間は作らない（一覧も取り消せるように見せていないので、ここへは来ない）。
+      if (ports.calendarEventUndo !== true) return { kind: 'unavailable' };
+      // 作った予定の id がなければ、どの予定か確かめられない（自動では消さない）。
+      const eventId = view.external_id;
+      if (eventId === null) return { kind: 'target_changed' };
+      const current = await withLease(() =>
+        readEvent(ports.provider, event, eventId),
+      );
+      if (current === null || current.kind === 'unavailable')
+        return { kind: 'unavailable' };
+      if (current.kind === 'changed' || !eventUnchanged(current.event, event))
+        return { kind: 'target_changed' };
+      return {
+        kind: 'ok',
+        operation_kind: 'calendar.event.delete',
+        effect_route: 'remote_mutation',
+        permission: current.permission,
+        content: {
+          ...base,
+          permission_revision: current.permission,
+          provider: current.connection.provider,
+          account_id: current.connection.account_id,
+          target: {
+            remote_id: current.event.event_id,
+            source_revision: current.event.revision,
+          },
+          action: {
+            kind: 'calendar.event.delete',
+            calendar_id: event.calendar_id,
+            created_by: {
+              operation_id: event.operation_id,
+              content_version: event.content_version,
+            },
+          },
+          effects,
+        },
+      };
+    }
     const change = labelChangeOf(original);
     if (change !== null) {
       // 対象のメールを今読み直す（掃除が済むまで読まない）。

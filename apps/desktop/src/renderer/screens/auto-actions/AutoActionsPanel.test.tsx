@@ -180,6 +180,26 @@ test('a task that can be undone says the undo deletes the task Buddy registered 
   );
 });
 
+test('an event row says the undo deletes the event Buddy made only when the hub offers the undo (ADR 0198)', () => {
+  const effect = '取り消すと、Buddy が作った予定を削除します。';
+  // 中枢が取り消しを開いたとき（製品では閉じている）。
+  const open = text(
+    panel({ view: view([entry(0, { kind: 'create_event' })]), seq: 2 }),
+  );
+  assert.match(open, /予定の作成/u);
+  assert.equal(open.split(effect).length - 1, 1);
+  // 製品の既定（取り消せない）では、削除の説明もボタンも出さない。
+  const closed = panel({
+    view: view([entry(0, { kind: 'create_event', undo_state: 'unavailable' })]),
+    seq: 2,
+  });
+  assert.doesNotMatch(text(closed), /予定を削除します/u);
+  assert.deepEqual(
+    buttons(closed).filter((label) => label === '取り消す'),
+    [],
+  );
+});
+
 test('a stop shows its reason, when it stopped and the resume button; confirming asks first', () => {
   const stopped = panel({ view: view([], { safety: STOPPED }), seq: 2 });
   const words = text(stopped);

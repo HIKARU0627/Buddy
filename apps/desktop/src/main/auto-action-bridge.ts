@@ -18,6 +18,9 @@
 //   反映しない。またいだ変更は結果不明として返す）。
 // - 気づきの欄（ADR 0199）: 候補に結び付いた操作の行を、この欄と同じ参照で気づきの経路へ渡す（linked）。気づきの欄の
 //   「取り消す」も desktop.auto_action_undo でこの経路の undo を通る（別の実行の経路を作らない）。
+// - 状態欄の安全停止（U315、ADR 0198）: 一覧の safety から safetyStopped を出す。読むのは、画面の操作のほか、中枢の安全停止の
+//   知らせ（SafetyNotice）・接続・ロック解除のとき（core-link が refresh を呼ぶ）。値が変わったら host.changed で知らせる。
+//   読めなかったときは前の値のまま（状態欄では一覧の取得の状態を出さず、前に読めた値を出す。読めたことがなければ不明）。
 // Electron に依存しない（node:test で試験する）。
 import type {
   AutoActionItem,
@@ -37,6 +40,8 @@ export interface AutoActionHost {
   readonly newRef: () => string;
   // UTC のミリ秒（最後に読めた時刻）。
   readonly now: () => number;
+  // 安全停止の値（safetyStopped）が変わった（状態欄を作り直す。U315、ADR 0198）。省略は何もしない。
+  readonly changed?: () => void;
   readonly log: (code: string) => void;
 }
 
@@ -94,6 +99,7 @@ export class AutoActionBridge {
 
   // 表示の権限の世代が進んだ（ロック・切断）: 一覧・参照・保留を捨てる。進行中の読み取りは反映しない。
   reset(): void {
+    const before = this.safetyStopped();
     this.#gen += 1;
     this.#records = new Map();
     this.#refs.clear();
@@ -104,6 +110,7 @@ export class AutoActionBridge {
     this.#fetchedAt = null;
     this.#failed = false;
     this.#listSeq += 1;
+    if (before !== null) this.#host.changed?.();
   }
 
   #entry(
@@ -254,9 +261,11 @@ export class AutoActionBridge {
       this.#safety.safety_revision !== body.safety.safety_revision
     )
       this.#safetyRef = this.#host.newRef();
+    const before = this.safetyStopped();
     this.#safety = body.safety;
     this.#fetchedAt = new Date(this.#host.now()).toISOString();
     this.#failed = false;
+    if (this.safetyStopped() !== before) this.#host.changed?.();
   }
 
   // 一覧を読み直して返す（画面を開いたとき・本人が読み直すとき）。

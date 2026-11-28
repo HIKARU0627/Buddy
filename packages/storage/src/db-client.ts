@@ -404,6 +404,10 @@ export type CandidateWriteListener = (
   value: CandidateOpValues[CandidateWriteOp['kind']],
 ) => void;
 
+// 安全停止を変え得る書込み（操作の命令 operation.* と停止の解除 safety.resume）が終わった後に呼ぶ受け手（ADR 0198、U315）。
+// 結果（成功・拒否・不明）を問わず、命令の種類だけを渡す。受け手は安全停止の今の状態を読み直して変化を確かめる。
+export type SafetyWriteListener = (kind: string) => void;
+
 export type MemoryOpOutcome<K extends MemoryOpKind> =
   | { readonly ok: true; readonly value: MemoryOpValues[K] }
   | Extract<MemoryOpResult, { ok: false }>;
@@ -486,6 +490,8 @@ export class DbWorkerClient {
   #exited: Promise<number>;
   // 候補の作成・状態の遷移が書けた後に呼ぶ受け手（気づきの OS 通知とトレイの件数の知らせ。ADR 0196）。
   readonly #candidateWriteListeners = new Set<CandidateWriteListener>();
+  // 安全停止を変え得る書込みが終わった後に呼ぶ受け手（Core の安全停止の知らせ。ADR 0198）。
+  readonly #safetyWriteListeners = new Set<SafetyWriteListener>();
 
   private constructor(
     worker: Worker,
@@ -645,7 +651,34 @@ export class DbWorkerClient {
       };
       this.#worker.postMessage(message);
     });
+    // 操作の命令は安全停止（自動承認の件数・補償の失敗の連続）を変え得る。終わった後に受け手へ知らせる（ADR 0198）。
+    if (
+      command.kind.startsWith('operation.') &&
+      this.#safetyWriteListeners.size > 0
+    )
+      void result.then(() => {
+        this.#notifySafetyWrite(command.kind);
+      });
     return { received, result };
+  }
+
+  // 安全停止を変え得る書込み（operation.* の命令・safety.resume）が終わった後に呼ぶ受け手を足す。戻り値で外す。
+  // 受け手の例外は命令の結果に影響させない（ADR 0198）。
+  onSafetyWrite(listener: SafetyWriteListener): () => void {
+    this.#safetyWriteListeners.add(listener);
+    return () => {
+      this.#safetyWriteListeners.delete(listener);
+    };
+  }
+
+  #notifySafetyWrite(kind: string): void {
+    for (const listener of [...this.#safetyWriteListeners]) {
+      try {
+        listener(kind);
+      } catch {
+        // 受け手の失敗は命令の結果にしない。
+      }
+    }
   }
 
   query(query: {
@@ -948,6 +981,18 @@ export class DbWorkerClient {
   // 自動実行の一覧と安全停止の解除（ADR 0152）。扱いは budget と同じ（使えなければ送らずに rejected、
   // 書込みの応答を失えば成否不明で broken）。
   safety<K extends SafetyOpKind>(
+    op: Extract<SafetyOp, { kind: K }>,
+  ): Promise<SafetyOpOutcome<K>> {
+    const result = this.#safety(op);
+    // 停止の解除が終わった後に受け手へ知らせる（ADR 0198）。読み取りの op では知らせない。
+    if (op.kind === 'safety.resume' && this.#safetyWriteListeners.size > 0)
+      void result.then(() => {
+        this.#notifySafetyWrite(op.kind);
+      });
+    return result;
+  }
+
+  #safety<K extends SafetyOpKind>(
     op: Extract<SafetyOp, { kind: K }>,
   ): Promise<SafetyOpOutcome<K>> {
     return new Promise<SafetyOpResult>((resolve) => {

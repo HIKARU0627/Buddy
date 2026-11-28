@@ -99,6 +99,8 @@ interface Rig {
   post: (call: Call) => Outcome;
   delay: (() => Promise<void>) | null;
   scope: string | null;
+  // 安全停止の値が変わった知らせ（host.changed）の回数。
+  changes: number;
   posts(): Call[];
 }
 
@@ -112,6 +114,7 @@ function rig(): Rig {
     post: () => ({ kind: 'unknown' }),
     delay: null,
     scope: SCOPE,
+    changes: 0,
     posts: () => calls.filter((call) => call.method === 'POST'),
     bridge: undefined as unknown as AutoActionBridge,
   };
@@ -133,6 +136,9 @@ function rig(): Rig {
     connection: () => connection,
     newRef: () => uuid(counter++),
     now: () => NOW,
+    changed: () => {
+      state.changes += 1;
+    },
     log: (code) => logs.push(code),
   };
   return Object.assign(state, { bridge: new AutoActionBridge(host) });
@@ -469,4 +475,39 @@ test('without a connection scope nothing is sent', async () => {
     reason: 'not_connected',
   });
   assert.deepEqual(r.calls, []);
+});
+
+test('the status bar safety value changes only when the read state changes, and a failed read keeps it (ADR 0198)', async () => {
+  const r = rig();
+  assert.equal(r.bridge.safetyStopped(), null);
+  await r.bridge.refresh();
+  assert.equal(r.bridge.safetyStopped(), false);
+  assert.equal(r.changes, 1);
+  // 同じ状態（版だけ違う）を読み直しても知らせない。
+  r.list = () => ({
+    kind: 'response',
+    status: 200,
+    body: listBody(undefined, running('5')),
+  });
+  await r.bridge.refresh();
+  assert.equal(r.changes, 1);
+  r.list = () => ({
+    kind: 'response',
+    status: 200,
+    body: listBody(undefined, stopped('6')),
+  });
+  await r.bridge.refresh();
+  assert.equal(r.bridge.safetyStopped(), true);
+  assert.equal(r.changes, 2);
+  // 読めなかったときは前の値のまま（「動いている」にしない）。
+  r.list = () => ({ kind: 'response', status: 503, body: {} });
+  await r.bridge.refresh();
+  assert.equal(r.bridge.safetyStopped(), true);
+  assert.equal(r.changes, 2);
+  // ロック・切断で捨てると不明になり、知らせる。不明のまま捨てても知らせない。
+  r.bridge.reset();
+  assert.equal(r.bridge.safetyStopped(), null);
+  assert.equal(r.changes, 3);
+  r.bridge.reset();
+  assert.equal(r.changes, 3);
 });

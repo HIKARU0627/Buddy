@@ -4,26 +4,32 @@
 // 動いているで確かめる（行の扱い・取り消し・解除の送り方は auto-action-bridge.test.ts の模擬と apps/core の
 // api-auto-actions.test.ts・api-auto-actions-undo.test.ts）。Electron は起動しない。実機・実 API は未実施。
 // 確かめること: 中枢の一覧と安全停止の状態が画面の値に載る・空の一覧は「取得できた 0 件」で未取得と区別される・受付の規則
-// （ロック中・前面でない・知らない参照・動いているときの解除）が中枢へ何も送らない。
+// （ロック中・前面でない・知らない参照・動いているときの解除）が中枢へ何も送らない。状態欄の安全停止（U315、ADR 0198）は
+// 接続したときに読み、中枢の安全停止の知らせで読み直し、ロック中は読まずに解除したときに読む。
 import assert from 'node:assert/strict';
 import { randomUUID, X509Certificate } from 'node:crypto';
 import { mkdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
 import { createDeviceToken, deviceTokenHash } from '@buddy/core';
+import type { CreateOperationCommand } from '@buddy/storage';
 import type { DesktopIpcResponse } from '@buddy/contracts';
 import type { DesktopIoState } from '@buddy/domain';
 import { createDesktopContract, loadContractSchema } from './contract.js';
 import { DesktopCoreLink } from './core-link.js';
 import { SecretText, saveCredential } from './credential-store.js';
+import { buildStatusBar } from './status-bar.js';
 import {
+  createCommand,
   freePort,
   mockProtector,
   onCleanup,
   startHub,
+  submitDurable,
   tempDir,
   waitUntil,
 } from './hub-test-support.js';
+import type { TestHub } from './hub-test-support.js';
 import { createHubTransport } from './hub-transport.js';
 import type { PinnedHub } from './hub-transport.js';
 import { systemClock } from './system-clock.js';
@@ -38,7 +44,12 @@ const SCREEN = { trustedSender: true, windowFocused: true };
 
 interface Rig {
   readonly link: DesktopCoreLink;
+  readonly hub: TestHub;
+  readonly deviceId: string;
   readonly requests: string[];
+  readonly logs: string[];
+  // 状態欄を作り直す知らせ（onChange）の回数。
+  readonly changes: { count: number };
   ipc(
     channel: string,
     payload: unknown,
@@ -84,6 +95,8 @@ async function start(t: test.TestContext): Promise<Rig> {
     hub: pinned,
   });
   const requests: string[] = [];
+  const logs: string[] = [];
+  const changes = { count: 0 };
   const link = new DesktopCoreLink({
     contract,
     credentialPath,
@@ -93,8 +106,10 @@ async function start(t: test.TestContext): Promise<Rig> {
     collectHome: () =>
       Promise.resolve({ gateway_mac: null, subnet: null, ssid: null }),
     networkSignature: () => 'fixed',
-    onChange: () => undefined,
-    log: () => undefined,
+    onChange: () => {
+      changes.count += 1;
+    },
+    log: (code) => logs.push(code),
     budgetAuto: false,
     backoff: { baseMs: 50, maxMs: 200, jitterRatio: 0 },
     confirmAdmin: () => Promise.resolve(false),
@@ -113,9 +128,19 @@ async function start(t: test.TestContext): Promise<Rig> {
   onCleanup(t, () => link.stop());
   await link.start('unlocked');
   await waitUntil(() => link.linkState?.phase === 'live', 'live');
+  // 接続したときの安全停止の読み取り（状態欄。ADR 0198）が済むのを待ち、以後の要求だけを数える。
+  await waitUntil(
+    () => link.hubStatus().safetyStopped !== null,
+    'safety read on connect',
+  );
+  requests.length = 0;
   return {
     link,
+    hub,
+    deviceId,
     requests,
+    logs,
+    changes,
     async ipc(channel, payload, options = {}) {
       const { response } = await link.handleAutoActionIpc(
         channel,
@@ -201,11 +226,11 @@ test('admission: locked, unfocused, malformed and unknown refs send nothing to t
     unknown.outcome === 'rejected' ? unknown.reason : null,
     'entry_not_found',
   );
-  // まだ一覧を読んでいない解除は、停止の参照がないので送らない。
+  // 画面が見ていない停止の参照（接続のときに読んだ参照と違う）での解除は送らない。
   const resume = await r.ipc('desktop.safety_resume', { ref: randomUUID() });
   assert.equal(
     resume.outcome === 'rejected' ? resume.reason : null,
-    'entry_not_found',
+    'preview_stale',
   );
   // この端末の入出力の停止中でも受付の規則では拒否しない（参照がないので entry_not_found まで進む）。
   const stopped = await r.ipc(
@@ -218,4 +243,65 @@ test('admission: locked, unfocused, malformed and unknown refs send nothing to t
     'entry_not_found',
   );
   assert.deepEqual(autoActionRequests(r), []);
+});
+
+// 方針で自動承認したラベルの変更を、同じ対象の鍵で作る（3 回目は記録せずに安全停止になる。ADR 0147）。
+const sameTarget = (key: string): CreateOperationCommand => {
+  const command = createCommand(randomUUID(), { auto: true });
+  assert(command.auto_approval !== null && command.auto_approval !== undefined);
+  return {
+    ...command,
+    auto_approval: { ...command.auto_approval, safety_target_key: key },
+  };
+};
+
+test('the status bar safety value is read on connect, follows the hub notice, and is not read while locked', async (t) => {
+  const r = await start(t);
+  assert.equal(r.link.hubStatus().safetyStopped, false);
+  // 中枢が安全停止にする（同じ対象への 3 回目）。知らせを受けて一覧を読み直し、状態欄の値が変わる。
+  const key = `target:${randomUUID()}`;
+  await submitDurable(r.hub, sameTarget(key));
+  await submitDurable(r.hub, sameTarget(key));
+  const before = r.changes.count;
+  const third = await r.hub.handle.store.submit(sameTarget(key)).result;
+  assert.equal(third.outcome, 'rejected');
+  await waitUntil(
+    () => r.link.hubStatus().safetyStopped === true,
+    'stopped after the notice',
+  );
+  assert.deepEqual(autoActionRequests(r), ['GET /v1/auto-actions']);
+  assert(r.changes.count > before);
+  const bar = buildStatusBar(UNLOCKED, r.link.hubStatus());
+  assert(contract.valid('DesktopStatusBar', bar));
+  assert.equal(bar.visibility === 'shown' ? bar.safety_stopped : null, true);
+
+  // ロック中は値を捨て、知らせが届いても読まない。
+  r.link.setLockState('locked');
+  assert.equal(r.link.hubStatus().safetyStopped, null);
+  const state = await r.hub.handle.store.safety({ kind: 'safety.state' });
+  assert(state.ok);
+  const resumed = await r.hub.handle.store.safety({
+    kind: 'safety.resume',
+    device_id: r.deviceId,
+    expected_safety_revision: state.value.safety_revision,
+    now: Date.now(),
+  });
+  assert(resumed.ok);
+  await waitUntil(
+    () => r.logs.includes('safety_notice_deferred_locked'),
+    'notice deferred while locked',
+  );
+  assert.deepEqual(autoActionRequests(r), ['GET /v1/auto-actions']);
+  assert.equal(r.link.hubStatus().safetyStopped, null);
+
+  // 解除したら読み直して、再開した値を出す。
+  r.link.setLockState('unlocked');
+  await waitUntil(
+    () => r.link.hubStatus().safetyStopped === false,
+    'running after unlock',
+  );
+  assert.deepEqual(autoActionRequests(r), [
+    'GET /v1/auto-actions',
+    'GET /v1/auto-actions',
+  ]);
 });

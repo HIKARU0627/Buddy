@@ -1561,6 +1561,27 @@ export function semanticErrors(name, value) {
     )
       errors.push('hub_values_without_connection');
   }
+  // 記録しない会話の独立した確認（ADR 0197）。付ける・外すラベルの両方が空・重なる確認は出さない（domain の
+  // privateConfirmationErrors と同じ理由のコード）。端末の main は該当する行を画面に出さない。
+  if (
+    name === 'PrivateConfirmationList' ||
+    name === 'PrivateConfirmationEntry'
+  ) {
+    const entries =
+      name === 'PrivateConfirmationList' ? value.confirmations : [value];
+    if (
+      entries.some(
+        (entry) => entry.add.length === 0 && entry.remove.length === 0,
+      )
+    )
+      errors.push('labels_empty');
+    if (
+      entries.some((entry) =>
+        entry.add.some((label) => entry.remove.includes(label)),
+      )
+    )
+      errors.push('labels_conflicting');
+  }
   // 中枢との接続・ペアリングの状態（ADR 0025）。
   if (name === 'DesktopConnectionView' && value.visibility === 'shown') {
     const pairing = value.pairing;
@@ -1612,6 +1633,17 @@ export function semanticErrors(name, value) {
       )
     )
       errors.push('budget_ordinal_out_of_range');
+    // 記録しない会話の独立した確認（ADR 0197）。接続している間だけ。付ける・外すラベルの両方が空・重なる確認は出さない。
+    if (value.link !== 'connected' && value.private_confirmations.length > 0)
+      errors.push('private_confirmations_without_connection');
+    if (
+      value.private_confirmations.some(
+        (item) =>
+          (item.labels_add.length === 0 && item.labels_remove.length === 0) ||
+          item.labels_add.some((label) => item.labels_remove.includes(label)),
+      )
+    )
+      errors.push('private_confirmation_empty_or_overlapping');
     if (value.link === 'connected' && value.last_confirmed_at === null)
       errors.push('connected_without_confirmation');
     if ((value.link === 'waiting_retry') !== (value.retry_at !== null))

@@ -11,6 +11,7 @@ import type { BudgetConfirmRequest } from './budget-bridge.js';
 import type { AdminConfirmRequest, HomeConfirmRequest } from './core-link.js';
 import type { ForgetConfirmRequest } from './memory-bridge.js';
 import type { OperationConfirmRequest } from './operation-bridge.js';
+import type { PrivateConfirmRequest } from './private-confirmation-bridge.js';
 
 const PLATFORMS: Readonly<Record<string, string>> = {
   macos: 'macOS',
@@ -323,10 +324,54 @@ export function forgetConfirmText(
   };
 }
 
+// 記録しない会話の独立した確認の承認（ADR 0197、U503。ADR 0045 の確認の画面）。値は main が中枢の一覧から読んだもの。
+// 記録しない会話の間であること・会話の内容は保存しないこと・承認すると残る最小の記録（変更の内容の暗号文は 7 日、内容の
+// hash と結果の受領は 90 日。ADR 0040）を書く。
+export function privateConfirmText(
+  request: PrivateConfirmRequest,
+): AdminConfirmText {
+  const lines = [
+    '記録しない会話から頼まれた変更です。会話の内容は保存しません。',
+    `変更先: ${SERVICE_NAMES[request.service] ?? displayText(request.service, 20)}`,
+  ];
+  if (request.accountLabel !== null)
+    lines.push(`アカウント: ${displayText(request.accountLabel, 60)}`);
+  const mail = request.target;
+  if (mail !== null) {
+    if (mail.subject !== null)
+      lines.push(`対象の件名: ${displayText(mail.subject, 80)}`);
+    if (mail.sender !== null)
+      lines.push(`差出人: ${displayText(mail.sender, 60)}`);
+    if (mail.received_at !== null)
+      lines.push(`受信: ${displayText(mail.received_at, 40)}`);
+  }
+  if (request.labelsAdd.length > 0)
+    lines.push(
+      `付けるラベル: ${request.labelsAdd.map((label) => displayText(label, 80)).join('、')}`,
+    );
+  if (request.labelsRemove.length > 0)
+    lines.push(
+      `外すラベル: ${request.labelsRemove.map((label) => displayText(label, 80)).join('、')}`,
+    );
+  lines.push(
+    '',
+    '承認すると、この変更の最小の記録だけを残して、中枢が実行します。変更の内容は完了から 7 日、内容の照合値と結果の受領は 90 日残ります。',
+    'メールを送ることはありません。',
+  );
+  return {
+    title: '記録しない会話の変更の承認',
+    message: '「メールのラベルの変更」を承認しますか',
+    detail: lines.join('\n'),
+    buttons: ['やめる', '承認する'],
+  };
+}
+
 export function adminConfirmText(
   request: AdminConfirmRequest,
 ): AdminConfirmText {
   if (request.action === 'register_home') return homeConfirmText(request);
+  if (request.action === 'approve_private_confirmation')
+    return privateConfirmText(request);
   if (request.action === 'forget_memory') return forgetConfirmText(request);
   if ('operationKind' in request) return operationConfirmText(request);
   if ('poolId' in request) return budgetConfirmText(request);

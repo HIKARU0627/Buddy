@@ -313,6 +313,122 @@ paths:
           $ref: '#/components/responses/RateLimited'
         '503':
           $ref: '#/components/responses/Unavailable'
+  /v1/private-confirmations:
+    get:
+      operationId: listPrivateConfirmations
+      summary: 記録しない会話の承認を待つ独立した確認
+      description: 記録しない会話の間に頼んだ外部の変更（今はメールのラベルの変更だけ。U502）の、承認を待つ独立した確認の一覧（ADR 0045・0192・0197、U503）。認証した端末が頼んだ確認だけを返す（他の端末の確認は返さない。U600）。中身は画面で承認に要る値だけ（何をどう変えるか・対象のメールの表示用の値・内容版・内容の hash・会話の内容は保存されないこと）で、区切りの ID・世代・操作の ID・発言・応答を返さない。確認は中枢の RAM にだけあり、記録しない会話を出る・ロックの申告・忘却の知らせ・中枢の停止で無効になる。記録しない会話の外・確認の画面の口（PRIVATE_CONFIRMATION_SCREEN_OPEN）が閉じている間は空。ロック中・不明は 403。読み取りだけで何も変えない。
+      x-buddy-core-checks:
+        - device_token
+        - home_network
+        - unlocked
+      parameters:
+        - $ref: '#/components/parameters/LockState'
+      responses:
+        '200':
+          description: 承認を待つ確認の一覧。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/PrivateConfirmationList
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /v1/private-confirmations/{confirmation_id}/approve:
+    post:
+      operationId: approvePrivateConfirmation
+      summary: 記録しない会話の独立した確認の承認
+      description: 記録しない会話の独立した確認を、登録済み・ロック解除済みの端末の画面操作で一度だけ承認する（ADR 0045・0192・0197、U503）。承認する端末は本文の値ではなく認証した要求の端末で、確認を頼んだ端末だけが承認できる（他の端末からは 409。U600）。content_version・content_hash を確認と照合し、違えば 409。区切りの世代・操作の ID は中枢が確認に結び付けて持つ（U601）。承認すると最小の操作記録（private_minimal）だけを書き、通常の操作と同じ実行担当へ渡す（結果は操作のイベント・スナップショットで配る。U508）。取り下げた・断った・記録しない会話を出た・入り直した・ロック・忘却で捨てた確認への承認は 409 で、記録も外部変更も作らない。同じ確認への承認の再送（request_id が違っても、同じ端末・同じ内容なら）は最初の結果を返し、記録を書き直さない。同じ request_id で内容が違えば 409。記録の結果が分からなければ record_unknown で、中枢も端末も自動では送り直さない。確認の画面の口が閉じている間は 409。本人の画面操作だけ（Buddy-Input-Origin が screen。音声・チャット・システムの起点では 403。音声の「はい」を承認にしない）。
+      x-buddy-core-checks:
+        - device_token
+        - home_network
+        - command_scope
+        - unlocked
+        - screen_operation
+      parameters:
+        - $ref: '#/components/parameters/PrivateConfirmationId'
+        - $ref: '#/components/parameters/InputOrigin'
+        - $ref: '#/components/parameters/LockState'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas/buddy.schema.json#/$defs/PrivateConfirmationApprovalRequest
+      responses:
+        '202':
+          description: 承認・断るの結果（PrivateConfirmationResult）。recorded は最小の操作記録の受付で、外部変更の成功ではない。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/PrivateConfirmationResult
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/Gone'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /v1/private-confirmations/{confirmation_id}/decline:
+    post:
+      operationId: declinePrivateConfirmation
+      summary: 記録しない会話の独立した確認を断る
+      description: 記録しない会話の独立した確認を断る（取り下げる。ADR 0192・0197）。記録も外部変更も作らない。確認を頼んだ端末だけが断れる（他の端末からは 409。U600）。断った確認への再送は declined を返し、承認済み・捨てた確認は 409。確認の画面の口が閉じている間は 409。本人の画面操作だけ（Buddy-Input-Origin が screen。U602）。
+      x-buddy-core-checks:
+        - device_token
+        - home_network
+        - command_scope
+        - unlocked
+        - screen_operation
+      parameters:
+        - $ref: '#/components/parameters/PrivateConfirmationId'
+        - $ref: '#/components/parameters/InputOrigin'
+        - $ref: '#/components/parameters/LockState'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas/buddy.schema.json#/$defs/PrivateConfirmationDeclineRequest
+      responses:
+        '202':
+          description: 承認・断るの結果（PrivateConfirmationResult）。recorded は最小の操作記録の受付で、外部変更の成功ではない。
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas/buddy.schema.json#/$defs/PrivateConfirmationResult
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/Gone'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
   /v1/canvas:
     get:
       operationId: getCanvas
@@ -2882,6 +2998,13 @@ components:
       schema:
         $ref: ./schemas/buddy.schema.json#/$defs/Id
       description: 忘却の計画の ID（ADR 0180）。計画を求めた端末の計画だけを実行できる。
+    PrivateConfirmationId:
+      name: confirmation_id
+      in: path
+      required: true
+      schema:
+        $ref: ./schemas/buddy.schema.json#/$defs/Id
+      description: 記録しない会話の独立した確認の ID（記録しない会話の応答の item_refs の private_confirmation と同じ値。ADR 0192・0197）。中枢の RAM にだけあり、DB には書かない。
     Cursor:
       name: cursor
       in: query

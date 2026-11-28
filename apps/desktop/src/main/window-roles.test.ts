@@ -117,6 +117,8 @@ const AUTO_ACTIONS = [
   'desktop.storage_mode_change',
   // 流れの表示先の移動（UI-05 の段階 5、ADR 0193。状態の層のパネルから。キャンバス・入力バー・島は使わない）。
   'desktop.display_handoff',
+  // 記録しない会話の独立した確認の承認・断る（ADR 0197。従来の窓と状態の層。キャンバス・入力バー・島には渡さない）。
+  'desktop.private_confirmation_decide',
 ];
 const ALL_CHANNELS = [
   ...LEGACY_CHANNELS,

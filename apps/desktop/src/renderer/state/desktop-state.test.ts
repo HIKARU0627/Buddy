@@ -332,6 +332,7 @@ const connectionView = (
   home_network: null,
   operations: [],
   budget_items: [],
+  private_confirmations: [],
 });
 
 test('the one-time success notice appears only on the change to registered', () => {

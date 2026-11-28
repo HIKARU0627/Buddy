@@ -103,6 +103,8 @@ import type {
   OperationConfirmRequest,
 } from './operation-bridge.js';
 import { PairingFlow } from './pairing-flow.js';
+import { PrivateConfirmationBridge } from './private-confirmation-bridge.js';
+import type { PrivateConfirmRequest } from './private-confirmation-bridge.js';
 import { StorageModeBridge } from './storage-mode-bridge.js';
 import {
   createReplicaFileStore,
@@ -142,6 +144,8 @@ export const OPERATION_CHANNELS: readonly DesktopIpcChannel[] = [
   'desktop.budget_overage_decide',
   'desktop.budget_overrun_review',
   'desktop.budget_manual_settle',
+  // 記録しない会話の独立した確認の承認・断る（ADR 0197、U503）。
+  'desktop.private_confirmation_decide',
 ];
 
 // キャンバスのユーザーの操作のチャネル（UI-06、ADR 0032）。キャンバスの窓だけが使い、キャンバスが前に出ている間だけ受け付ける。
@@ -343,7 +347,8 @@ export type AdminConfirmRequest =
   | HomeConfirmRequest
   | OperationConfirmRequest
   | BudgetConfirmRequest
-  | ForgetConfirmRequest;
+  | ForgetConfirmRequest
+  | PrivateConfirmRequest;
 
 export interface DeviceConfirmRequest {
   readonly action: 'approve' | 'reject' | 'revoke';
@@ -506,6 +511,8 @@ export class DesktopCoreLink {
   readonly #storage: StorageModeBridge;
   // 中枢の流れの表示先と「このPCに出す」（UI-05 の段階 5、ADR 0193）。キャンバス表示の組み立てだけが読む・呼ぶ。
   readonly #route: DisplayRouteBridge;
+  // 記録しない会話の独立した確認の一覧と承認・断る（参照だけを画面へ渡す。ADR 0197、U503）。
+  readonly #private: PrivateConfirmationBridge;
   // 移動の途中の要求（続けて押されたとき、2 つ目を送らずに同じ結果を返す）。
   #handoffInFlight: Promise<BridgeOutcome<'moving' | 'completed'>> | null =
     null;
@@ -522,6 +529,25 @@ export class DesktopCoreLink {
     this.#storage = new StorageModeBridge({
       contract: options.contract,
       connection: () => this.#connection,
+      // 保存モードが変わったら、記録しない会話の確認の一覧も読み直す（入った・出た。ADR 0197）。
+      changed: () => {
+        options.onChange();
+        void this.#private.refresh();
+      },
+      log: (code) => this.#log(code),
+    });
+    this.#private = new PrivateConfirmationBridge({
+      contract: options.contract,
+      connection: () => this.#connection,
+      newRef: () => options.clock.newRequestId(),
+      storageMode: () => this.#storage.mode,
+      confirm: (request) => this.#confirm(request),
+      io: () => {
+        const state = options.ioState?.() ?? null;
+        return state === null
+          ? { permitted: true, epoch: '' }
+          : { permitted: desktopInputPermitted(state), epoch: state.ioEpoch };
+      },
       changed: () => options.onChange(),
       log: (code) => this.#log(code),
     });
@@ -738,6 +764,8 @@ export class DesktopCoreLink {
       void this.#storage.refresh();
       // ロック中に捨てた気づきの件数を読み直す（OS 通知は出し直さない。ADR 0196）。
       void this.#candidateNotice(0);
+      // ロック中に捨てた記録しない会話の確認の一覧を読み直す（中枢はロックの申告で承認前の確認を取り下げる。ADR 0197）。
+      void this.#private.refresh();
       // ロック中に捨てた表示先を読み直す（キャンバス表示だけ。ADR 0193）。
       if (this.#options.canvasMode === true) void this.#route.refresh();
     }
@@ -868,6 +896,10 @@ export class DesktopCoreLink {
       budget_items:
         link === 'connected' && state?.view === 'full'
           ? this.#budget.entries()
+          : [],
+      private_confirmations:
+        link === 'connected' && state?.view === 'full'
+          ? this.#private.entries()
           : [],
     };
     const errors = this.#options.contract.connectionErrors(view);
@@ -1098,6 +1130,8 @@ export class DesktopCoreLink {
         void this.#storage.refresh();
         // 接続するたびに、気づきの OS 通知の設定（入なら一覧も）を読む（トレイの new の件数。ADR 0196）。
         if (this.#lockState === 'unlocked') void this.#candidateNotice(0);
+        // 接続するたびに、記録しない会話の承認を待つ確認を読む（ADR 0197）。
+        void this.#private.refresh();
         // 接続するたびに、流れの今の表示先を読む（状態欄の表示先。キャンバス表示だけ。ADR 0193）。
         if (this.#options.canvasMode === true) void this.#route.refresh();
         // 接続するたびに、忘却台帳の複製の head を送って追いつく（B06-07b-3、ADR 0182）。ロック中でも送る（台帳は
@@ -1152,15 +1186,20 @@ export class DesktopCoreLink {
       // 保存モードが変わった知らせ（この端末・ほかの端末の切り替え。UI-05 の段階 6、ADR 0189、U477）。知らせの値を正本にせず、
       // 中枢の今の値を読み直す。ロック中は読まない（解除したときに読む）。キャンバスは読み直さない（記述は変わっていない）。
       if (notice.schema === 'buddy.storage-mode-notice.v1') {
-        if (this.#lockState === 'unlocked') void this.#storage.refresh();
+        if (this.#lockState === 'unlocked') {
+          void this.#storage.refresh();
+          void this.#private.refresh();
+        }
         return;
       }
       // 記録しない会話が終わった（中枢の再起動で通常の区切りへ戻した）知らせ。保存モードを読み直す（ADR 0189）。
       if (
         notice.schema === 'buddy.storage-boundary-notice.v1' &&
         this.#lockState === 'unlocked'
-      )
+      ) {
         void this.#storage.refresh();
+        void this.#private.refresh();
+      }
       // 忘却で候補が消えると件数が変わり得る（候補の削除は気づきの知らせを出さない）。件数だけ読み直す（ADR 0196 の既知の制限。
       // 元情報だけの忘却の知らせは中枢が送らないので、その場合は次の知らせ・接続・ロック解除まで古いまま）。
       if (
@@ -1329,6 +1368,9 @@ export class DesktopCoreLink {
         raw.channel === 'desktop.operation_retry' ||
         raw.channel === 'desktop.budget_overrun_review' ||
         (raw.channel === 'desktop.budget_overage_decide' &&
+          raw.payload.decision === 'approve') ||
+        // 記録しない会話の独立した確認の承認も外部変更につながるので止める（断るは止めない。ADR 0197、U603）。
+        (raw.channel === 'desktop.private_confirmation_decide' &&
           raw.payload.decision === 'approve')) &&
       !desktopInputPermitted(ioState)
     )
@@ -1365,6 +1407,9 @@ export class DesktopCoreLink {
             this.#log('storage_mode_mismatch_on_turn');
           void this.#storage.refresh();
         }
+        // 記録しない会話の間の発言は、独立した確認を作ったかもしれないので一覧を読み直す（ADR 0197）。
+        if (result.ok && this.#storage.mode === 'private')
+          void this.#private.refresh();
         outcome = this.#operationOutcome(
           requestId,
           raw.channel,
@@ -1372,6 +1417,19 @@ export class DesktopCoreLink {
           (turn) => ({
             turn,
           }),
+        );
+        break;
+      }
+      case 'desktop.private_confirmation_decide': {
+        const result = await this.#private.decide(
+          raw.payload.ref,
+          raw.payload.decision,
+        );
+        outcome = this.#operationOutcome(
+          requestId,
+          raw.channel,
+          result,
+          (decided) => ({ result: decided }),
         );
         break;
       }
@@ -2918,6 +2976,7 @@ export class DesktopCoreLink {
     this.#canvas.reset();
     this.#storage.reset();
     this.#route.reset();
+    this.#private.reset();
     this.#confirmAbort?.abort();
     this.#confirmAbort = null;
   }

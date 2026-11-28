@@ -287,6 +287,7 @@ const connection = (
   home_network: null,
   operations: [],
   budget_items: [],
+  private_confirmations: [],
   ...extra,
 });
 

@@ -11,6 +11,7 @@ import {
 import type {
   DesktopBudgetEntry,
   DesktopOperationEntry,
+  DesktopPrivateConfirmationEntry,
 } from '@buddy/contracts';
 import type { BuddyDesktopApi } from '../../desktop-api.js';
 import { request } from '../../desktop-api.js';
@@ -35,6 +36,8 @@ import {
 } from '../../state/storage-mode-state.js';
 import { StorageModeControl } from '../../components/StorageMode.js';
 import { DisplayHandoffControl } from '../../components/DisplayHandoff.js';
+import { PrivateConfirmations } from '../../components/PrivateConfirmations.js';
+import { usePrivateConfirmationState } from '../../state/use-private-confirmation-state.js';
 import { displayHandoffView } from '../../state/display-handoff-state.js';
 import { useIslandSignals } from '../../state/use-island-signals.js';
 import type { Notice } from '../../state/work-state.js';
@@ -104,6 +107,7 @@ function CanvasWindow({ api }: { readonly api: BuddyDesktopApi }) {
 // 操作がないときの空の配列（描画のたびに新しい配列を作らない）。
 const NO_OPERATIONS: readonly DesktopOperationEntry[] = [];
 const NO_BUDGET_ITEMS: readonly DesktopBudgetEntry[] = [];
+const NO_PRIVATE_CONFIRMATIONS: readonly DesktopPrivateConfirmationEntry[] = [];
 // 島の窓には行の知らせ（パネルの WorkOperations が持つ）がない。島は結果を待っていた操作の状態の移りだけを結果にする。
 const NO_NOTICES: Readonly<Record<string, Notice>> = {};
 
@@ -115,12 +119,14 @@ function IslandWindow({ api }: { readonly api: BuddyDesktopApi }) {
   // 確認が必要な操作の数と結果は、パネルと同じ条件（ロック解除済み・登録済み・中枢に接続中）で数える。
   const live = operationsShown(state.status, connection);
   const operations = connection?.operations ?? NO_OPERATIONS;
-  // 保存モードが変わったら区切りの知らせで広げる（UI-05 の段階 6、ADR 0189）。
+  // 保存モードが変わったら区切りの知らせで広げる（UI-05 の段階 6、ADR 0189）。記録しない会話の承認を待つ確認が増えたら
+  // 確認が必要な操作として広げる（島から承認はしない。パネルを出すだけ。ADR 0197）。
   const signals = useIslandSignals(
     live,
     operations,
     NO_NOTICES,
     storageModeOf(state.status),
+    (connection?.private_confirmations ?? NO_PRIVATE_CONFIRMATIONS).length,
   );
   const [holdingSince, onHoldChange] = useIslandHold();
   const summary = statusSummaryView(state.status, state.connection);
@@ -169,6 +175,14 @@ function StatusWindow({ api }: { readonly api: BuddyDesktopApi }) {
   // 予算の確認（超過枠の承認・M 超過の確認・不明な費用の手での精算。B07-05）。操作の一覧と同じく、ロック・切断で捨てる。
   const budgetItems = connection?.budget_items ?? NO_BUDGET_ITEMS;
   const budget = useBudgetState(api, live, budgetItems);
+  // 記録しない会話の独立した確認（ADR 0197）。main が記録しない会話の間だけ出す。ロック・切断で捨てる。
+  const privateConfirmations =
+    connection?.private_confirmations ?? NO_PRIVATE_CONFIRMATIONS;
+  const privateDecisions = usePrivateConfirmationState(
+    api,
+    live,
+    storageModeOf(state.status),
+  );
   const previewEntry = usePreviewFocus(work.state, operations);
   const view = statusSummaryView(state.status, state.connection);
   const stopped =
@@ -247,6 +261,13 @@ function StatusWindow({ api }: { readonly api: BuddyDesktopApi }) {
       operations={
         live ? (
           <>
+            <PrivateConfirmations
+              entries={privateConfirmations}
+              privateMode={storageModeOf(state.status) === 'private'}
+              state={privateDecisions.state}
+              actions={privateDecisions.actions}
+              stopped={stopped}
+            />
             <BudgetItems
               items={budgetItems}
               state={budget.state}

@@ -95,6 +95,8 @@ export const DESKTOP_IPC_CHANNELS = [
   'desktop.storage_mode_change',
   // UI-05 の段階 5（ADR 0193）: 流れの表示先をこの端末へ移す「このPCに出す」。状態の層のパネルから。
   'desktop.display_handoff',
+  // 記録しない会話の独立した確認の承認・断る（ADR 0197、U503）。状態の層のパネルと従来の窓から。
+  'desktop.private_confirmation_decide',
 ] as const;
 
 export type DesktopIpcChannel = (typeof DESKTOP_IPC_CHANNELS)[number];
@@ -282,6 +284,10 @@ export const DESKTOP_PAIRING_SCREEN_CHANNELS: readonly DesktopIpcChannel[] = [
   // 中枢の表示先の記録を変えるだけで外部へは送らないので、受付は止めない（停止中の端末へ移すことは、main が中枢へ送らずに断り、
   // 中枢も io_suspended で断る）。
   'desktop.display_handoff',
+  // 記録しない会話の独立した確認の承認・断る（ADR 0197、U503）も本人の画面操作（前面）。音声・チャット・発言・島・キャンバス
+  // からは承認しない。承認は外部変更につながるので、この端末の入出力の停止中は main が承認を送らない（断るは送る。main が
+  // 決定ごとに確かめる。U603）。
+  'desktop.private_confirmation_decide',
 ];
 
 // 外部へ送る画面操作（ADR 0177）。この端末の入出力の停止中は受け付けない（停止は外部への送信を止める操作なので）。
@@ -463,6 +469,9 @@ export const DESKTOP_ROLE_CHANNELS: Readonly<
     // られないよう、キャンバス・入力バー・島には渡さない。従来の窓（legacy）は全チャネルを持つが、表示のリースを取らない
     // 組み立て（キャンバス表示でない）では main が断る（U473）。
     'desktop.display_handoff',
+    // 記録しない会話の独立した確認の承認・断る（ADR 0197、U503）。承認・取消と同じく状態の層だけ。キャンバスの部品が確認の
+    // 承認に見せかけられないよう、キャンバス・入力バー・島には渡さない（島は承認を待つ確認があることを広げて知らせるだけ）。
+    'desktop.private_confirmation_decide',
   ],
   input: ['desktop.get_state', 'desktop.turn_submit', 'desktop.canvas_summon'],
   island: [

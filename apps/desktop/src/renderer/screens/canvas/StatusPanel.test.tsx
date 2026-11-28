@@ -89,6 +89,7 @@ const connected = (
   home_network: null,
   operations,
   budget_items: [],
+  private_confirmations: [],
   hub_screen: false,
   hub_target: null,
 });

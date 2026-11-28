@@ -821,6 +821,7 @@ test(
         a.confirms.flatMap((entry) =>
           entry.action === 'register_home' ||
           entry.action === 'forget_memory' ||
+          entry.action === 'approve_private_confirmation' ||
           'operationKind' in entry ||
           'poolId' in entry
             ? []

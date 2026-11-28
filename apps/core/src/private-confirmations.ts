@@ -14,8 +14,11 @@
 // 暫定（ADR 0192）:
 // - 切り出すのはラベルの変更（mail.labels.change）だけ。返信の下書きは本文が本人の発言そのものなので切り出さず、決まった文で
 //   断る（U502）。用事・メモ・記憶（LocalCommand）は切り出さない（U64）。
-// - 確認を画面に出して承認を受ける経路（契約・画面）はまだない（U503）。製品の組み立てでは PRIVATE_CONFIRMATION_SCREEN_OPEN
-//   を false にして、記録しない間の外部変更は今までどおり決まった文で断る。試験の組み立てだけがこの口を開く。
+// - 確認を画面に出して承認を受ける経路（契約・API・画面。ADR 0197、U503）はできたが、口を開くかは本人の判断で、製品の
+//   組み立てでは PRIVATE_CONFIRMATION_SCREEN_OPEN を false のまま、記録しない間の外部変更は今までどおり決まった文で断る。
+//   試験の組み立てだけがこの口を開く。開く条件は ADR 0197 に書いた。
+// - 確認には、頼んだ端末（RAM だけ。U600）と、画面で対象のメールを見分けるための表示用の値（口座の表示名・件名・差出人・
+//   受信日時。提供元から読んだ値で RAM だけ）を添えて持つ。
 // - 記録の書き込みに失敗したら、確認は承認済みのまま（再送は同じ結果を返す）で、自動でやり直さない（U505）。
 
 import { randomUUID } from 'node:crypto';
@@ -35,8 +38,9 @@ import type {
 import type { ApiContract } from './api-contract.js';
 import type { StorageModeGate } from './storage-gate.js';
 
-// 確認を画面に出して承認を受ける経路（契約・画面）ができるまで閉じておく（U503）。閉じている間、記録しない会話の外部変更は
-// 決まった文で断る（ADR 0190 の U483 のまま）。
+// 確認を画面に出して承認を受ける口（ADR 0197、U503）。経路（契約・API・画面）はできたが、開くかは本人の判断で、閉じたまま
+// にする（忘却の公開ゲートと同じ扱い）。閉じている間、記録しない会話の外部変更は決まった文で断る（ADR 0190 の U483 のまま）。
+// 開く条件は ADR 0197 の「口を開く条件」。
 export const PRIVATE_CONFIRMATION_SCREEN_OPEN: boolean = false;
 
 // 記録しない会話から独立した確認へ切り出す操作の種類（暫定。U502）。
@@ -59,6 +63,40 @@ export interface PrivateConfirmationDeskOptions {
   // 最小の操作記録を書けた後に、実行担当へ渡す（通常の承認の後と同じ。OperationRunner.afterApproval）。
   readonly afterRecord?: (operationId: string) => void;
   readonly log?: (message: string) => void;
+}
+
+// 画面で対象のメールを見分けるための表示用の値（確認を出したときに提供元から読んだ値。RAM だけで、DB・ログに書かない）。
+// 読めない項目は null（画面は対象を確認できないと言い、承認へ進ませない）。
+export interface PrivateConfirmationDisplay {
+  readonly account_label: string | null;
+  readonly target: {
+    readonly subject: string | null;
+    readonly sender: string | null;
+    readonly received_at: string | null;
+  } | null;
+}
+
+export const NO_PRIVATE_DISPLAY: PrivateConfirmationDisplay = {
+  account_label: null,
+  target: null,
+};
+
+// 確認に添える値（頼んだ端末と表示用の値）。どちらも RAM だけ。
+export interface PrivateConfirmationContext {
+  // 確認を頼んだ発言の端末（認証した要求の端末）。承認・断るはこの端末だけ（U600）。null は端末が分からない（試験の直接の
+  // 呼び出し）で、画面の経路からは承認できない。
+  readonly device_id: string | null;
+  readonly display: PrivateConfirmationDisplay;
+}
+
+// 確認の今の扱い（画面の経路が端末と内容を照合するために読む）。区切りの世代・操作の ID は Core の中だけで使う。
+export interface PrivateConfirmationOwner {
+  readonly state: 'pending' | 'approved' | 'declined';
+  readonly device_id: string | null;
+  readonly content_version: string;
+  readonly content_hash: string;
+  readonly segment_generation: string;
+  readonly operation_id: string;
 }
 
 export type PrivateConfirmationRequest =
@@ -114,6 +152,25 @@ export interface PrivateConfirmationHeld {
 
 type DecidedOutcome = Exclude<PrivateApprovalOutcome, { kind: 'refused' }>;
 
+// 画面の経路の受付の控えの上限（区切りの間）。
+const MAX_RECEIPTS = 256;
+
+const ownerOf = (
+  state: PrivateConfirmationOwner['state'],
+  shown: {
+    readonly view: PrivateConfirmationView;
+    readonly segment_generation: string;
+    readonly context: PrivateConfirmationContext;
+  },
+): PrivateConfirmationOwner => ({
+  state,
+  device_id: shown.context.device_id,
+  content_version: shown.view.operation.content_version,
+  content_hash: shown.view.content_hash,
+  segment_generation: shown.segment_generation,
+  operation_id: shown.view.operation.operation_id,
+});
+
 export class PrivateConfirmationDesk {
   readonly #options: PrivateConfirmationDeskOptions;
   readonly #newId: () => string;
@@ -124,10 +181,20 @@ export class PrivateConfirmationDesk {
     {
       readonly view: PrivateConfirmationView;
       readonly segment_generation: string;
+      readonly context: PrivateConfirmationContext;
     }
   >();
   // 承認した確認の ID → 結果（RAM だけ。区切りを出ると捨てる）。
   readonly #decided = new Map<string, DecidedOutcome>();
+  // 承認した・断った確認の ID → 頼んだ端末と内容（RAM だけ。区切りを出ると捨てる）。画面の経路が、再送を同じ端末・同じ内容に
+  // 限るために読む。
+  readonly #settled = new Map<string, PrivateConfirmationOwner>();
+  // 画面の経路の受付の控え（接続範囲と request_id から作った鍵 → 照合値と応答。RAM だけ。区切りを出ると捨てる）。同じ要求の
+  // 再送には同じ応答を返し、同じ request_id で内容が違えば断る（approvals の受付と同じ扱い。U604）。
+  readonly #receipts = new Map<
+    string,
+    { readonly hash: string; readonly response: object }
+  >();
 
   constructor(options: PrivateConfirmationDeskOptions) {
     this.#options = options;
@@ -140,6 +207,10 @@ export class PrivateConfirmationDesk {
   async request(
     operation: Readonly<Record<string, unknown>>,
     origin: StorageOrigin,
+    context: PrivateConfirmationContext = {
+      device_id: null,
+      display: NO_PRIVATE_DISPLAY,
+    },
   ): Promise<PrivateConfirmationRequest> {
     const action = operation['action'];
     const kind =
@@ -171,6 +242,10 @@ export class PrivateConfirmationDesk {
             this.#views.set(command.confirmation_id, {
               view: command.view,
               segment_generation: command.segment_generation,
+              context: {
+                device_id: context.device_id,
+                display: structuredClone(context.display),
+              },
             });
             shown.generation = command.segment_generation;
           }
@@ -193,17 +268,48 @@ export class PrivateConfirmationDesk {
     readonly confirmation_id: string;
     readonly segment_generation: string;
     readonly view: PrivateConfirmationView;
+    readonly device_id: string | null;
+    readonly display: PrivateConfirmationDisplay;
   }[] {
     return [...this.#views].map(([id, entry]) => ({
       confirmation_id: id,
       segment_generation: entry.segment_generation,
       view: structuredClone(entry.view),
+      device_id: entry.context.device_id,
+      display: structuredClone(entry.context.display),
     }));
+  }
+
+  // 確認の今の扱い（承認を待つ・承認した・断った）と、頼んだ端末・内容。知らない・捨てた確認は null。
+  owner(confirmationId: string): PrivateConfirmationOwner | null {
+    const shown = this.#views.get(confirmationId);
+    if (shown !== undefined) return ownerOf('pending', shown);
+    return this.#settled.get(confirmationId) ?? null;
+  }
+
+  // 画面の経路の受付の控え（U604）。
+  receipt(
+    key: string,
+  ): { readonly hash: string; readonly response: object } | null {
+    return this.#receipts.get(key) ?? null;
+  }
+
+  remember(key: string, hash: string, response: object): void {
+    this.#receipts.set(key, { hash, response: structuredClone(response) });
+    // 区切りの間に溜まりすぎないよう、古い順に捨てる（捨てた控えへの再送は、確認の扱いから同じ結果を作り直す）。
+    while (this.#receipts.size > MAX_RECEIPTS) {
+      const oldest = this.#receipts.keys().next();
+      if (oldest.done === true) break;
+      this.#receipts.delete(oldest.value);
+    }
   }
 
   // 画面での一度の承認。保存境界の保持者が確認と照合し、通れば最小の操作記録を書く。承認済みの確認への再送は、記録を
   // 書き直さずに最初の結果を返す。
   async approve(input: PrivateApprovalInput): Promise<PrivateApprovalOutcome> {
+    // 承認を始めた時点の確認（頼んだ端末と内容）。待つ間にロック・忘却で RAM の確認が捨てられても、保存境界の保持者が承認した
+    // 確認なら、画面の経路の再送の照合に使う（ADR 0197、U604）。
+    const shownAtStart = this.#views.get(input.confirmation_id);
     const result = await this.#options.gate.confirmation(
       {
         type: 'confirmation_approved',
@@ -228,6 +334,9 @@ export class PrivateConfirmationDesk {
         for (const command of commands)
           if (command.type === 'record_minimal_operation')
             outcome = await this.#record(command.record);
+        const shown = this.#views.get(input.confirmation_id) ?? shownAtStart;
+        if (shown !== undefined)
+          this.#settled.set(input.confirmation_id, ownerOf('approved', shown));
         this.#views.delete(input.confirmation_id);
         this.#decided.set(input.confirmation_id, outcome);
         return outcome;
@@ -246,6 +355,9 @@ export class PrivateConfirmationDesk {
       { type: 'confirmation_declined', confirmation_id: confirmationId },
       () => Promise.resolve(),
     );
+    const shown = this.#views.get(confirmationId);
+    if (result.ok && shown !== undefined)
+      this.#settled.set(confirmationId, ownerOf('declined', shown));
     this.#views.delete(confirmationId);
     return result.ok ? { ok: true } : { ok: false, reason: result.reason };
   }
@@ -254,6 +366,8 @@ export class PrivateConfirmationDesk {
   discard(): void {
     this.#views.clear();
     this.#decided.clear();
+    this.#settled.clear();
+    this.#receipts.clear();
   }
 
   // ロックの申告・忘却の知らせで記録しない区切りの中身を捨てる（区切りは記録しないのまま）。承認を待つ確認を保存境界の

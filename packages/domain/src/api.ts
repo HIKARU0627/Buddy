@@ -54,6 +54,12 @@ export const ROUTE_CHECKS: Readonly<Record<string, readonly CoreCheck[]>> = {
   postStreamHandoff: SCREEN,
   // 流れの今の表示先（ADR 0193）。表示先の内容（どの端末か）なので、ロック中・不明は出さない。読み取りだけ。
   getStreamHandoff: [...READ, 'unlocked'],
+  // 記録しない会話の独立した確認（ADR 0197、U503）。一覧は確認の中身（どのメールのラベルをどう変えるか）なので、ロック中・
+  // 不明は出さない。承認・断るは本人の画面操作だけ（音声の「はい」・チャットでは承認しない）。版の照合は内容の hash で経路の
+  // 処理が行うので、expected_revision の検査は付けない。
+  listPrivateConfirmations: [...READ, 'unlocked'],
+  approvePrivateConfirmation: SCREEN,
+  declinePrivateConfirmation: SCREEN,
   // キャンバスの今の記述（ADR 0032）。内容なので、ロック中・不明は出さない。読み取りなので接続範囲は求めない。
   getCanvas: [...READ, 'unlocked'],
   // キャンバスのユーザーの操作の記録（UI-06、ADR 0032）。本人の画面操作。版の照合は経路の処理が物ごとに行う。

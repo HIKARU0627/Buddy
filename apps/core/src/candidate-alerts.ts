@@ -11,6 +11,9 @@
 //   最後の保証）、開いている購読へ CandidateNotice（OS 通知を出す数だけ。題・候補 ID・識別子を入れない）を 1 通送る。
 //   購読へ渡せたら delivered、購読がない・渡せなかったら delivery_unknown にし、どちらも鳴らし直さない（U583）。
 //   1 回の取り込みで複数の新しい候補ができても、OS 通知は 1 通にまとめる（「新しい気づきが N 件あります」。U584）。
+//   まとまりは取り込みの口（予定の重複の取り込みの回・調査の完了）が batch で明示し、終わり（例外でも）で 1 回だけ判定する。
+//   DB worker の応答は 1 件ずつ届くので、時機（setImmediate）だけではまとまらない。明示のない書込み（画面の操作など）は
+//   書込みごとに次の時機で判定する。まとまりの間の明示のない書込みも、まとまりの終わりの判定に入る。
 // - 状態の遷移だけ（件数が変わった）のときは、OS 通知の数 0 の知らせを送る（端末がトレイの new の件数を読み直す）。
 // - 記録しない会話の間は OS 通知を出さない（送出意図も書かない。件数の知らせだけ送る。U588）。
 // - 本人の指定した再通知（スヌーズの終わり）の OS 通知はまだ出さない（根拠を取り直す経路が無く、candidateAlertDecision が
@@ -32,7 +35,8 @@ import type { StreamNoticeMessage } from './notice-relay.js';
 // 1 通の知らせで数える OS 通知の上限（契約の CandidateNotice.alert_count の最大）。超えた分は送出意図を書かない。
 export const CANDIDATE_ALERT_MAX = 1000;
 
-const REVISION = /^(0|[1-9][0-9]*)$/u;
+// 設定の版の形（保存層の candidate-store.ts と同じ 16 桁まで。超えれば 422）。
+const REVISION = /^(0|[1-9][0-9]{0,15})$/u;
 
 // --- 入・切の設定の経路 ---
 
@@ -123,6 +127,9 @@ export interface CandidateAlerts {
   readonly observe: CandidateWriteListener;
   // 設定を変えたとき（端末へ数 0 の知らせを 1 通送る。切にしたときも、端末がトレイの件数を消せるように送る）。
   readonly settingsChanged: () => void;
+  // 取り込みの 1 回（まとまり）。run の間の書込みは判定せずに溜め、終わり（例外でも）で 1 回だけ判定する。重なったまとまりは、
+  // 最後のまとまりの終わりで判定する。
+  batch<T>(run: () => Promise<T>): Promise<T>;
   // 溜まった判定と送信が終わるまで待つ（試験・停止）。
   idle(): Promise<void>;
 }
@@ -145,9 +152,11 @@ export function createCandidateAlerts(
   let forced = false;
   let scheduled = false;
   let chain: Promise<void> = Promise.resolve();
+  // 開いているまとまりの数。0 より大きい間は判定を始めない。
+  let depth = 0;
 
   const kick = (): void => {
-    if (scheduled) return;
+    if (scheduled || depth > 0) return;
     scheduled = true;
     schedule(() => {
       scheduled = false;
@@ -291,6 +300,15 @@ export function createCandidateAlerts(
     settingsChanged: () => {
       forced = true;
       kick();
+    },
+    async batch<T>(run: () => Promise<T>): Promise<T> {
+      depth += 1;
+      try {
+        return await run();
+      } finally {
+        depth -= 1;
+        if (depth === 0 && (created.length > 0 || changed || forced)) kick();
+      }
     },
     async idle() {
       // 予定した判定が始まるまで待ち、続いて溜まった判定の鎖が空になるまで待つ。

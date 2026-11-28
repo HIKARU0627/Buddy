@@ -1159,6 +1159,14 @@ export class DesktopCoreLink {
         this.#lockState === 'unlocked'
       )
         void this.#storage.refresh();
+      // 忘却で候補が消えると件数が変わり得る（候補の削除は気づきの知らせを出さない）。件数だけ読み直す（ADR 0196 の既知の制限。
+      // 元情報だけの忘却の知らせは中枢が送らないので、その場合は次の知らせ・接続・ロック解除まで古いまま）。
+      if (
+        notice.schema === 'buddy.retention-notice.v1' &&
+        notice.kind === 'forgotten' &&
+        this.#lockState === 'unlocked'
+      )
+        void this.#candidateNotice(0);
       // 消えた物は中枢が記述から閉じて版を進める。版の知らせを取り逃しても、知らせで今の記述を取り直す（ロック中・停止中・
       // 隠れている間は取らない。CanvasBridge.refresh の判定のまま）。
       if (this.#options.canvasMode === true) void this.#canvas.refresh();

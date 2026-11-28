@@ -22,6 +22,8 @@
 //   （最後の保証）。
 // - candidate.alert_settle: 意図を書いた記録を、端末の購読へ渡せた（delivered）か分からない（delivery_unknown）にする。
 //   意図のままの記録だけを変える（delivered と delivery_unknown は変えない。鳴らし直さない）。
+// - candidate.alert_recover: 起動の直後に、前の起動で意図のまま残った OS 通知の記録を delivery_unknown にする（送ったかどうか
+//   分からない。鳴らし直さない。ADR 0196 の U596）。
 // 時刻は呼び出し側の値を信じる（DB は時計を持たない）。結果には ID・件数・状態だけを入れ、SQL・パスを入れない。
 
 import Database from 'better-sqlite3';
@@ -246,6 +248,7 @@ export type CandidateOp =
       readonly delivery_id: string;
       readonly status: 'delivered' | 'delivery_unknown';
     }
+  | { readonly kind: 'candidate.alert_recover' }
   | {
       readonly kind: 'candidate.sweep';
       // 呼び出し側が判定済みの現在時刻（UTC）。時計の巻き戻りの保留は掃除の job が先に行う。
@@ -304,6 +307,8 @@ export interface CandidateOpValues {
     readonly delivery_id: string;
     readonly status: 'delivered' | 'delivery_unknown';
   };
+  // delivery_unknown にした記録の数。
+  'candidate.alert_recover': { readonly recovered: number };
   'candidate.sweep': {
     // 題・抄録を消した候補の ID。
     readonly content_deleted: readonly string[];
@@ -335,6 +340,7 @@ export const CANDIDATE_WRITE_OPS: ReadonlySet<CandidateOpKind> = new Set([
   'candidate.alert_settings_set',
   'candidate.alert_intent',
   'candidate.alert_settle',
+  'candidate.alert_recover',
 ]);
 
 const OP_KINDS: ReadonlySet<string> = new Set<CandidateOpKind>([
@@ -349,6 +355,7 @@ const OP_KINDS: ReadonlySet<string> = new Set<CandidateOpKind>([
   'candidate.alert_records',
   'candidate.alert_intent',
   'candidate.alert_settle',
+  'candidate.alert_recover',
   'candidate.sweep',
 ]);
 
@@ -535,6 +542,7 @@ export function candidateOpShapeReasons(op: CandidateOp): string[] {
       return isUuid(op.candidate_id) ? [] : ['candidate_id_invalid'];
     case 'candidate.counts':
     case 'candidate.alert_settings_get':
+    case 'candidate.alert_recover':
       return [];
     case 'candidate.alert_settings_set': {
       const reasons: string[] = [];
@@ -1138,6 +1146,17 @@ function settleAlert(
   return { delivery_id: op.delivery_id, status: op.status };
 }
 
+function recoverAlerts(
+  db: SqliteDatabase,
+): CandidateOpValues['candidate.alert_recover'] {
+  const recovered = db
+    .prepare(
+      "UPDATE deliveries SET status = 'delivery_unknown' WHERE status = 'intent_saved' AND channel = 'os_notification'",
+    )
+    .run().changes;
+  return { recovered };
+}
+
 // --- 保持の掃除 ---
 
 function deleteBlobs(
@@ -1321,6 +1340,7 @@ export function executeCandidateOp(
         if (op.kind === 'candidate.alert_intent')
           return writeAlertIntent(db, op.input);
         if (op.kind === 'candidate.alert_settle') return settleAlert(db, op);
+        if (op.kind === 'candidate.alert_recover') return recoverAlerts(db);
         return transitionCandidate(
           db,
           (op as Extract<CandidateOp, { kind: 'candidate.transition' }>).input,

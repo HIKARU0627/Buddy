@@ -3,12 +3,13 @@
 // 期待値（知らせの数・中身・配信の記録・理由）は ADR 0073・0117・0196 の決めから手で書いた値で、実装の関数から作っていない。
 
 import assert from 'node:assert/strict';
-import { randomBytes, randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import {
+  DbWorkerClient,
   applyMigrations,
   executeCandidateOp,
   openWriteConnection,
@@ -26,6 +27,8 @@ import {
   createCandidateAlerts,
 } from './candidate-alerts.js';
 import type { CandidateAlerts } from './candidate-alerts.js';
+import { persistCandidateDrafts } from './candidate-intake.js';
+import type { CandidateDraft } from './candidate-intake.js';
 import type { StreamNoticeMessage } from './notice-relay.js';
 
 const NOW = new Date('2031-01-01T00:00:00Z');
@@ -424,10 +427,12 @@ test('the setting route reads off at revision 0, changes with the revision, and 
     // 同じ版の 2 回目（古い画面・同じ要求の再送）は、切にするときも 409。
     for (const value of ['on', 'off'])
       assert.equal((await change('0', value)).status, 409, value);
+    // 版は保存層と同じ 16 桁まで（17 桁は 422）。
     for (const [expected, value] of [
       ['1', 'sometimes'],
       ['01', 'off'],
       [1, 'off'],
+      ['12345678901234567', 'off'],
     ])
       assert.equal(
         (await change(expected, value)).status,
@@ -471,4 +476,163 @@ test('the setting route reads off at revision 0, changes with the revision, and 
     ).status,
     503,
   );
+});
+
+// --- まとまり（U584。見直しの指摘 1） ---
+
+test('writes inside one batch are judged once at its end, even when the batch throws; a state change joins the same notice', async () => {
+  await withWorld(async (world) => {
+    turnOn(world.db);
+    await assert.rejects(
+      world.alerts.batch(async () => {
+        await world.run({ kind: 'candidate.create', input: input(KEY_A) });
+        // まとまりの間は判定しない（次の時機を過ぎても送らない）。
+        await new Promise((resolve) => setImmediate(resolve));
+        await new Promise((resolve) => setImmediate(resolve));
+        assert.deepEqual(world.sent, []);
+        await world.run({ kind: 'candidate.create', input: input(KEY_B) });
+        const id = (
+          world.db
+            .prepare(
+              'SELECT candidate_id FROM notification_candidates WHERE notification_key = ?',
+            )
+            .get(KEY_A) as { candidate_id: string }
+        ).candidate_id;
+        await world.run({
+          kind: 'candidate.transition',
+          input: {
+            candidate_id: id,
+            event: 'open',
+            expected_state: 'new',
+            zone: 'Asia/Tokyo',
+            snooze_until: null,
+            now: '2031-01-01T00:00:01Z',
+          },
+        });
+        throw new Error('intake_failed');
+      }),
+      /intake_failed/u,
+    );
+    await world.alerts.idle();
+    // 2 件の新しい候補と遷移が 1 通にまとまる（開いた候補も、作ったときに新しかったので数える）。
+    assert.deepEqual(counts(world.sent), [2]);
+    assert.equal(deliveries(world.db).length, 2);
+  });
+});
+
+test('nested batches judge once when the outer one ends', async () => {
+  await withWorld(async (world) => {
+    turnOn(world.db);
+    await world.alerts.batch(async () => {
+      await world.alerts.batch(async () => {
+        await world.run({ kind: 'candidate.create', input: input(KEY_A) });
+      });
+      await new Promise((resolve) => setImmediate(resolve));
+      assert.deepEqual(world.sent, []);
+      await world.run({ kind: 'candidate.create', input: input(KEY_B) });
+    });
+    await world.alerts.idle();
+    assert.deepEqual(counts(world.sent), [2]);
+  });
+});
+
+// 本物の DB worker（応答は 1 件ずつ別の時機に届く）と取り込みの保存（persistCandidateDrafts。下書きを 1 件ずつ await で作る）で、
+// まとまりにした 3 件の候補が 1 通の知らせになる。まとまりの外の書込みも、数え落とさずに知らせる。
+test('three drafts saved through the real DB worker in one batch become one notice', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'buddy-candidate-alerts-worker-'));
+  const path = join(dir, 'buddy.sqlite');
+  const generation = randomUUID();
+  try {
+    const first = await DbWorkerClient.start({
+      path,
+      storeGeneration: generation,
+      responseTimeoutMs: 10_000,
+    });
+    await first.close();
+    const db = openWriteConnection(path, { platform: 'macos' });
+    try {
+      db.exec(
+        "INSERT INTO connections VALUES ('c-1', 'google', NULL, 'keystore:c-1', 'active', 'read_write', '[]', '{}', 1, 1)",
+      );
+      db.prepare(
+        "INSERT INTO sync_scopes (scope_id, connection_id, scope_revision, active_generation, executor_generation) VALUES ('sc-1', 'c-1', 0, 0, 0)",
+      ).run();
+      db.prepare(
+        "INSERT INTO source_items (provider, account_id, remote_id, source_revision, scope_id, published_generation, fetched_at, body_blob_id) VALUES ('google', 'acct-1', 'evt-1', 'rev-1', 'sc-1', 0, 1000, NULL)",
+      ).run();
+      turnOn(db);
+    } finally {
+      db.close();
+    }
+    const store = await DbWorkerClient.start({
+      path,
+      storeGeneration: generation,
+      responseTimeoutMs: 10_000,
+    });
+    try {
+      const sent: StreamNoticeMessage[] = [];
+      const alerts = createCandidateAlerts({
+        store,
+        send: (message) => {
+          sent.push(message);
+          return 1;
+        },
+        privateConversation: () => false,
+        now: () => NOW,
+        newId: () => randomUUID(),
+        log: () => undefined,
+      });
+      const off = store.onCandidateWrite(alerts.observe);
+      const ports = {
+        client: store,
+        dataKey: { keyId: 'k-test', key: randomBytes(32) },
+        sha256Hex: (material: string) =>
+          createHash('sha256').update(material, 'utf8').digest('hex'),
+        newId: () => randomUUID(),
+        now: () => '2031-01-01T00:00:00Z',
+      };
+      const draft = (n: number): CandidateDraft => ({
+        candidate_kind: 'research_done',
+        key_parts: {
+          kind: 'research_done',
+          workflow_id: `wf-${String(n)}`,
+          completion_version: '1',
+        },
+        title: '調査の完了',
+        deadline: { kind: 'none' },
+        excerpt: null,
+        request_entity_id: null,
+        request_revision: null,
+        source_revision: null,
+        initial_import: false,
+        unread_partial: false,
+        related_analysis: null,
+        received_at: '2031-01-01T00:00:00Z',
+        origins: [{ source_kind: 'source_item', source_id: 'evt-1' }],
+      });
+      const saved = await alerts.batch(() =>
+        persistCandidateDrafts(ports, [draft(1), draft(2), draft(3)]),
+      );
+      assert.deepEqual(
+        saved.map((item) => item.outcome),
+        ['created', 'created', 'created'],
+      );
+      await alerts.idle();
+      assert.deepEqual(counts(sent), [3]);
+      // まとまりの外（明示のない書込み）は書込みごとに判定する。何通に分かれても、数え落とさない。
+      await persistCandidateDrafts(ports, [draft(4), draft(5)]);
+      await alerts.idle();
+      assert.equal(
+        counts(sent)
+          .slice(1)
+          .reduce((sum, count) => sum + count, 0),
+        2,
+      );
+      off();
+    } finally {
+      await store.close();
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

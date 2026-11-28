@@ -334,3 +334,40 @@ test('a state change is accepted while this device is stopped (it is a record, n
     'entry_not_found',
   );
 });
+
+// 見直しの指摘 8: 忘却の知らせ（候補の削除は気づきの知らせを出さない）でも、件数を読み直す。期限切れの知らせでは読まない。
+test('a forgotten notice makes main re-read the candidate count; an expiry notice does not', async (t) => {
+  const r = await start(t, { alerts: true });
+  await streamOpen(r);
+  await waitUntil(() => r.changed.count >= 1, 'background read');
+  const notice = (kind: 'expired' | 'forgotten') => ({
+    schema: 'buddy.retention-notice.v1' as const,
+    notice_id: randomUUID(),
+    occurred_at: '2030-10-09T03:00:00Z',
+    kind,
+    reason:
+      kind === 'expired' ? ('retention_due' as const) : ('forgotten' as const),
+    forgetting_generation: kind === 'expired' ? null : '1',
+    items: [{ item_kind: 'turn' as const, item_id: randomUUID() }],
+  });
+  const publish = (value: unknown) =>
+    (
+      r.hub.handle.notices as unknown as {
+        publish(notice: unknown): void | Promise<void>;
+      }
+    ).publish(value);
+  const reads = candidateRequests(r).length;
+  await publish(notice('expired'));
+  await publish(notice('forgotten'));
+  await waitUntil(
+    () => candidateRequests(r).length === reads + 1,
+    'one re-read after the forgotten notice',
+  );
+  // 次の既知の知らせ（数 0 の気づきの知らせ）が読まれた時点で、期限切れの知らせで読んでいないことを確かめる。
+  publishCandidate(r, 0);
+  await waitUntil(
+    () => candidateRequests(r).length === reads + 2,
+    'the candidate notice re-read',
+  );
+  assert.deepEqual(r.shown, []);
+});

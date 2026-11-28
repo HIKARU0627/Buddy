@@ -94,6 +94,8 @@ export class CandidateBridge {
   #alert: CandidateAlertSettings | null = null;
   #alertRef: string | null = null;
   #changingAlert = false;
+  // 後ろの読み取りで設定を読んだ直後か（続く一覧の読み取りで設定を読み直さない）。
+  #alertFresh = false;
 
   constructor(host: CandidateHost) {
     this.#host = host;
@@ -112,6 +114,7 @@ export class CandidateBridge {
     this.#failed = false;
     this.#alert = null;
     this.#alertRef = null;
+    this.#alertFresh = false;
     this.#listSeq += 1;
   }
 
@@ -175,6 +178,8 @@ export class CandidateBridge {
     if (connection === null || scope === null) return;
     await this.#readAlert(gen, connection, scope);
     if (gen !== this.#gen || !this.alertEnabled()) return;
+    // いま読んだ設定を、続く一覧の読み取りで読み直さない（中枢への要求を 1 回減らす。U594 の負荷）。
+    this.#alertFresh = true;
     await this.refresh();
   }
 
@@ -213,7 +218,8 @@ export class CandidateBridge {
     });
     if (gen !== this.#gen) return;
     this.#listSeq += 1;
-    await this.#readAlert(gen, connection, scope);
+    if (this.#alertFresh) this.#alertFresh = false;
+    else await this.#readAlert(gen, connection, scope);
     if (gen !== this.#gen) return;
     if (
       listed.kind === 'response' &&
@@ -252,7 +258,14 @@ export class CandidateBridge {
   }
 
   // 中枢の設定を持つ。版が変わったら参照を新しくする（同じ版の読み直しでは参照を変えない）。
+  // 持っている版より小さい版（遅れて届いた古い読み取り）は捨てる（版は 10 進の文字列なので BigInt で比べる）。
   #takeAlert(next: CandidateAlertSettings): void {
+    if (
+      this.#alert !== null &&
+      BigInt(next.candidate_alert_settings_revision) <
+        BigInt(this.#alert.candidate_alert_settings_revision)
+    )
+      return;
     if (
       this.#alert === null ||
       this.#alertRef === null ||

@@ -662,7 +662,6 @@ test('in the background the list is read only while the setting is on', async ()
       '/v1/candidates/alert-settings',
       '/v1/candidates/alert-settings',
       '/v1/candidates',
-      '/v1/candidates/alert-settings',
     ],
   );
   assert.equal(r.bridge.trayCount(), 1);
@@ -731,4 +730,44 @@ test('a setting change carries the main revision, refuses a stale screen ref, an
     );
     assert.equal(r.posts().length, before + 1, reason);
   }
+});
+
+// 見直しの指摘 3・5: 遅れて届いた古い版の設定は捨てる。後ろの読み取りは設定を 1 回だけ読む。
+test('an older settings revision arriving late is dropped, and the background read asks for the settings once', async () => {
+  const r = rig();
+  r.alert = () => ({
+    kind: 'response',
+    status: 200,
+    body: alertBody('on', '10'),
+  });
+  await r.bridge.list();
+  const ref = r.bridge.view().alert?.ref;
+  r.alert = () => ({
+    kind: 'response',
+    status: 200,
+    body: alertBody('off', '9'),
+  });
+  await r.bridge.list();
+  assert.equal(r.bridge.view().alert?.os_notification, 'on');
+  assert.equal(r.bridge.view().alert?.ref, ref);
+  // 桁の多い版も数として比べる（文字列の比べ方なら '9' > '10'）。
+  r.alert = () => ({
+    kind: 'response',
+    status: 200,
+    body: alertBody('off', '11'),
+  });
+  await r.bridge.list();
+  assert.equal(r.bridge.view().alert?.os_notification, 'off');
+  r.alert = () => ({
+    kind: 'response',
+    status: 200,
+    body: alertBody('on', '12'),
+  });
+  const before = r.calls.length;
+  await r.bridge.background();
+  assert.deepEqual(
+    r.calls.slice(before).map((call) => call.path),
+    ['/v1/candidates/alert-settings', '/v1/candidates'],
+  );
+  assert.equal(r.bridge.trayCount(), 1);
 });

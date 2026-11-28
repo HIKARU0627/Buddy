@@ -1796,3 +1796,55 @@ test('the delivery records leave with the candidate key, by the 97 day sweep or 
     assert.deepEqual(keys(), []);
   });
 });
+
+test('at start the OS notification intents left from the last run become delivery_unknown, and nothing else changes', async () => {
+  await withDb((db) => {
+    create(db, { candidate_id: C1, notification_key: KEY_A });
+    create(db, { candidate_id: C2, notification_key: KEY_B });
+    assert.equal(alertSet(db, '0', 'on').ok, true);
+    assert.equal(intent(db).ok, true);
+    assert.equal(
+      intent(db, { delivery_id: D2, notification_key: KEY_B }).ok,
+      true,
+    );
+    assert.equal(
+      run(db, {
+        kind: 'candidate.alert_settle',
+        delivery_id: D2,
+        status: 'delivered',
+      }).ok,
+      true,
+    );
+    // 音声の記録（B05）は対象にしない。
+    db.prepare(
+      "INSERT INTO deliveries (delivery_id, notification_key, reminder_id, device_id, channel, status, intent_at) VALUES ('v-1', ?, ?, NULL, 'voice', 'intent_saved', 0)",
+    ).run(KEY_A, R1);
+    assert.deepEqual(run(db, { kind: 'candidate.alert_recover' }).value, {
+      recovered: 1,
+    });
+    assert.deepEqual(
+      db
+        .prepare(
+          'SELECT delivery_id, channel, status FROM deliveries ORDER BY delivery_id',
+        )
+        .all(),
+      [
+        {
+          delivery_id: D1,
+          channel: 'os_notification',
+          status: 'delivery_unknown',
+        },
+        { delivery_id: D2, channel: 'os_notification', status: 'delivered' },
+        { delivery_id: 'v-1', channel: 'voice', status: 'intent_saved' },
+      ],
+    );
+    // 2 回目は何も変えない。止めた worker は書かない。
+    assert.deepEqual(run(db, { kind: 'candidate.alert_recover' }).value, {
+      recovered: 0,
+    });
+    assert.deepEqual(
+      run(db, { kind: 'candidate.alert_recover' }, true).reasons,
+      ['worker_halted'],
+    );
+  });
+});

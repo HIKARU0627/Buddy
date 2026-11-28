@@ -5,8 +5,9 @@
 // - 一覧は new・seen・acted だけを出す（snoozed は件数だけ。U270 の暫定 (a)）。並びは domain の orderCandidates。
 //   並べたときの本人のタイムゾーンと時刻（zone・as_of）を応答に付ける（画面が見出しを分ける。ADR 0132）。
 //   題の封筒を開けない行があれば一覧全体を 503 にする（黙って落とさない）。
-// - 根拠の再取得は注入された fetchEvidence（B08・B09 の connector）で許可範囲から取り直し、domain の evidenceDecision で
-//   状態と応答を決める。有効なときだけ根拠の位置と保存済みの抄録を返し、本文全体は返さない。
+// - 根拠の再取得は注入された fetchEvidence（candidate-evidence.ts。ADR 0201）で許可範囲から取り直し、domain の
+//   evidenceDecision で状態と応答を決める。有効なときだけ照合できた根拠の位置と引用・保存済みの抄録を返し、本文全体は
+//   返さない。引用は応答に載せるだけで保存しない。
 // - 状態の変更は本人の操作（open・act・dismiss・snooze・resolve）だけ。expected_state による compare-and-swap は保存層が行う。
 // - 本人のタイムゾーンが決まっていない（zone() が null）ときは、一覧・状態の変更を 503 で閉じる（端末の既定で置き換えない）。
 // - 想定外の保存の失敗・成否不明は 503 dependency_unavailable にし、成功にも競合にも見せない。
@@ -39,6 +40,7 @@ import type {
   CandidateOpResult,
   CandidateOpValues,
   CandidateOriginInput,
+  CandidateOriginLocationInput,
   CandidateRow,
   DataKeyMaterial,
   DbWorkerClient,
@@ -65,6 +67,8 @@ const STATES: ReadonlySet<string> = new Set<string>(CANDIDATE_STATES);
 const LIST_PAGE_LIMIT = 1000;
 const LIST_MAX_PAGES = 100;
 const EXCERPT_MAX_CODE_POINTS = 200;
+// 根拠の位置の数の上限（契約の CandidateEvidence.sources の maxItems）。
+const EVIDENCE_MAX_SOURCES = 8;
 const TITLE_MAX_CODE_POINTS = 60;
 
 // 状態が変わった・変わり得たことを表す拒否（409）。画面は読み直す。
@@ -78,8 +82,8 @@ const CONFLICT_REASONS: ReadonlySet<string> = new Set([
 // 根拠を許可範囲から取り直した結果。予定の重複は、重複が解消したときに 'overlap_resolved'（保守の CandidateCheck と同じ）。
 export interface CandidateEvidenceFetch {
   readonly observation: EvidenceObservation | 'overlap_resolved';
-  // available のときに必須。Core が一意に照合できた根拠の位置。
-  readonly source?: SourceRef;
+  // available のときに必須。Core が一意に照合できた根拠の位置と引用（照合できたものが無ければ空。ADR 0201）。
+  readonly sources?: readonly SourceRef[];
   // available のときに必須。根拠の元情報に未読の部分があるか。
   readonly unread?: boolean;
 }
@@ -92,10 +96,12 @@ export interface CandidateRoutesOptions {
   readonly zone: () => string | null;
   // いまの UTC 時刻（ISO 8601）。
   readonly now: () => string;
-  // 根拠を許可範囲から取り直す（B08・B09 の connector が実装する）。無ければ根拠の経路は 503。
+  // 根拠を許可範囲から取り直す（candidate-evidence.ts。ADR 0201）。無ければ根拠の経路は 503。取り直す先は由来の辺と、
+  // 候補を作ったときに控えた由来の位置（candidate.get の locations）。
   readonly fetchEvidence?: (
     candidate: CandidateRow,
     origins: readonly CandidateOriginInput[],
+    locations: readonly CandidateOriginLocationInput[],
   ) => Promise<CandidateEvidenceFetch>;
   // 一覧の 1 頁の件数と頁数の上限（既定 1000 件・100 頁。保守と同じ）。試験で小さくする。
   readonly pageLimit?: number;
@@ -395,7 +401,11 @@ export function createCandidateRoutes(
       return fail(503, 'dependency_unavailable');
     let fetched: CandidateEvidenceFetch;
     try {
-      fetched = await options.fetchEvidence(row, read.value.origins);
+      fetched = await options.fetchEvidence(
+        row,
+        read.value.origins,
+        read.value.locations,
+      );
     } catch {
       // 読めなかった。解決せず、未確認として扱う（保守と同じ）。
       fetched = { observation: 'temporarily_unavailable' };
@@ -439,7 +449,11 @@ export function createCandidateRoutes(
       case 'gone':
         return fail(409, 'conflict');
     }
-    if (fetched.source === undefined || typeof fetched.unread !== 'boolean')
+    if (
+      !Array.isArray(fetched.sources) ||
+      fetched.sources.length > EVIDENCE_MAX_SOURCES ||
+      typeof fetched.unread !== 'boolean'
+    )
       return fail(503, 'dependency_unavailable');
     let excerpt: string | null = null;
     if (row.excerpt !== null) {
@@ -463,13 +477,14 @@ export function createCandidateRoutes(
       candidate_id: row.candidate_id,
       request_entity_id: row.request_entity_id,
       request_revision: revisionText(row.request_revision),
-      source: {
-        source_id: fetched.source.source_id,
-        source_revision: fetched.source.source_revision,
-        quote: fetched.source.quote,
-        start: fetched.source.start,
-        end: fetched.source.end,
-      },
+      // 引用は応答に載せるだけで保存しない（ADR 0201）。
+      sources: fetched.sources.map((source) => ({
+        source_id: source.source_id,
+        source_revision: source.source_revision,
+        quote: source.quote,
+        start: source.start,
+        end: source.end,
+      })) as CandidateEvidence['sources'],
       unread: fetched.unread,
       excerpt,
     };

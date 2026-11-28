@@ -25,7 +25,7 @@
 
 ## 残ること
 
-- `fetchEvidence` の実装（B08・B09 の connector から許可範囲で取り直す）。
+- `fetchEvidence` の実装（B08・B09 の connector から許可範囲で取り直す）。（追記 2026-11-28: ADR 0201 で Google の connector につないだ。本人のタイムゾーンは同じ `deviceTimeZone()` を要求ごとに読む。）
 - 候補の生成・保守の製品の呼び出し側の配線（そのときに zone を `deviceTimeZone()` で渡す）。
 - 明示設定による上書き（将来。本人の判断のあとに、設定の置き場所と優先の配線を決める）。
 - 画面（B11-05）。

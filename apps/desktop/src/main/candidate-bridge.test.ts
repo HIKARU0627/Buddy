@@ -785,3 +785,205 @@ test('an older settings revision arriving late is dropped, and the background re
   );
   assert.equal(r.bridge.trayCount(), 1);
 });
+
+// --- 根拠を見る（ADR 0201） ---
+
+const evidenceBody = (fields: Record<string, unknown> = {}) => ({
+  candidate_id: OVERLAP,
+  request_entity_id: null,
+  request_revision: null,
+  sources: [
+    {
+      source_id: 'synthetic-event-1',
+      source_revision: 'e1',
+      quote: '合成の打ち合わせ',
+      start: 0,
+      end: 8,
+    },
+    {
+      source_id: 'synthetic-event-2',
+      source_revision: 'e2',
+      quote: '合成の通院',
+      start: 0,
+      end: 5,
+    },
+  ],
+  unread: false,
+  excerpt: null,
+  ...fields,
+});
+
+test('the evidence is asked through the scoped connection by candidate id and given to the screen as quotes only', async () => {
+  const r = rig();
+  await r.bridge.list();
+  const ref = refOf(r, OVERLAP_TITLE);
+  r.post = () => ({ kind: 'response', status: 200, body: evidenceBody() });
+  assert.deepEqual(await r.bridge.evidence(ref), {
+    ok: true,
+    value: {
+      ref,
+      status: 'confirmed',
+      quotes: ['合成の打ち合わせ', '合成の通院'],
+      unread: false,
+      excerpt: null,
+    },
+  });
+  // 本文は空で、接続が request_id と接続範囲を付ける。画面操作は求めない（受付は main の IPC の規則）。
+  assert.deepEqual(r.posts(), [
+    {
+      method: 'POST',
+      path: `/v1/candidates/${OVERLAP}/evidence`,
+      body: {},
+      scoped: true,
+      expectedScopeId: SCOPE,
+    },
+  ]);
+  // 引用は main に残さない（一覧の表示用の値に入らない）。
+  assert.ok(!JSON.stringify(r.bridge.view()).includes('合成の打ち合わせ'));
+  // 長すぎる引用は 2000 文字（コードポイント）に切って渡す。
+  r.post = () => ({
+    kind: 'response',
+    status: 200,
+    body: evidenceBody({
+      sources: [
+        {
+          source_id: 'm',
+          source_revision: 'h',
+          quote: 'あ'.repeat(2500),
+          start: 0,
+          end: 2500,
+        },
+      ],
+      unread: true,
+      excerpt: '抄録',
+    }),
+  });
+  const long = await r.bridge.evidence(ref);
+  assert.ok(long.ok);
+  assert.equal([...(long.value.quotes[0] ?? '')].length, 2000);
+  assert.equal(long.value.quotes[0]?.endsWith('…'), true);
+  assert.equal(long.value.unread, true);
+  assert.equal(long.value.excerpt, '抄録');
+});
+
+test('evidence that cannot be confirmed is unconfirmed, a change re-reads the list, and nothing is guessed', async () => {
+  const unconfirmed = (ref: string) => ({
+    ok: true,
+    value: {
+      ref,
+      status: 'unconfirmed',
+      quotes: [],
+      unread: null,
+      excerpt: null,
+    },
+  });
+  const cases: readonly { readonly name: string; readonly outcome: Outcome }[] =
+    [
+      {
+        name: '503',
+        outcome: {
+          kind: 'response',
+          status: 503,
+          body: { error: 'dependency_unavailable' },
+        },
+      },
+      { name: 'unknown', outcome: { kind: 'unknown' } },
+      // 形の違う 2xx・別の候補の根拠は使わない。
+      {
+        name: 'malformed',
+        outcome: { kind: 'response', status: 200, body: { sources: 'x' } },
+      },
+      {
+        name: 'another candidate',
+        outcome: {
+          kind: 'response',
+          status: 200,
+          body: evidenceBody({ candidate_id: MAIL }),
+        },
+      },
+    ];
+  for (const entry of cases) {
+    const r = rig();
+    await r.bridge.list();
+    const ref = refOf(r, OVERLAP_TITLE);
+    r.post = () => entry.outcome;
+    assert.deepEqual(
+      await r.bridge.evidence(ref),
+      unconfirmed(ref),
+      entry.name,
+    );
+    assert.deepEqual(r.logs.slice(-1), ['candidate_evidence_unconfirmed']);
+  }
+  // 409: 根拠や状態が変わった。一覧を読み直して changed。
+  const r = rig();
+  await r.bridge.list();
+  const ref = refOf(r, OVERLAP_TITLE);
+  r.post = () => ({
+    kind: 'response',
+    status: 409,
+    body: { error: 'conflict' },
+  });
+  r.list = () => ({
+    kind: 'response',
+    status: 200,
+    body: listBody([snapshot({})]),
+  });
+  assert.deepEqual(await r.bridge.evidence(ref), {
+    ok: true,
+    value: { ref, status: 'changed', quotes: [], unread: null, excerpt: null },
+  });
+  assert.deepEqual(
+    r.bridge.view().entries.map((item) => item.title),
+    [MAIL_TITLE],
+  );
+  // 422: 候補が無くなった。参照は使えず、読み直す。
+  const gone = rig();
+  await gone.bridge.list();
+  gone.post = () => ({
+    kind: 'response',
+    status: 422,
+    body: { error: 'invalid_input' },
+  });
+  assert.deepEqual(
+    await gone.bridge.evidence(refOf(gone, MAIL_TITLE)),
+    fail('entry_not_found'),
+  );
+  // 403 などの拒否は中枢が受け付けなかった。
+  const locked = rig();
+  await locked.bridge.list();
+  locked.post = () => ({
+    kind: 'response',
+    status: 403,
+    body: { error: 'device_locked' },
+  });
+  assert.deepEqual(
+    await locked.bridge.evidence(refOf(locked, MAIL_TITLE)),
+    fail('core_rejected'),
+  );
+});
+
+test('the evidence of an unknown ref, without a scope, or across a generation change is never given', async () => {
+  const r = rig();
+  await r.bridge.list();
+  assert.deepEqual(
+    await r.bridge.evidence(uuid(0x999)),
+    fail('entry_not_found'),
+  );
+  const ref = refOf(r, OVERLAP_TITLE);
+  r.scope = null;
+  assert.deepEqual(await r.bridge.evidence(ref), fail('not_connected'));
+  r.scope = SCOPE;
+  assert.equal(r.posts().length, 0);
+  // 送った後にロック・切断で世代が進んだら、取り直した根拠を渡さない。
+  let release: () => void = () => undefined;
+  r.delay = () =>
+    new Promise<void>((resolve) => {
+      release = resolve;
+    });
+  r.post = () => ({ kind: 'response', status: 200, body: evidenceBody() });
+  const sent = r.bridge.evidence(ref);
+  await Promise.resolve();
+  r.bridge.reset();
+  release();
+  assert.deepEqual(await sent, fail('not_connected'));
+});

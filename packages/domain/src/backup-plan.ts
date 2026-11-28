@@ -115,6 +115,9 @@ export const BACKUP_INCLUDED_TABLES: readonly string[] = [
   'derivations',
   'related_analyses',
   'notification_candidates',
+  // 0026（ADR 0201）: 気づきの由来の位置（根拠を取り直す先）。候補と一緒に含める（本文は持たない。取り直すときは今の接続の
+  // 口座・取得集合と照合するので、復元の後に接続が変わっていれば取り直さない）。
+  'candidate_origin_locations',
   'deliveries',
   'memories',
   'memory_sources',

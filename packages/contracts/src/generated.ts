@@ -1425,6 +1425,13 @@ export type DesktopIpcRequest =
       };
     }
   | {
+      channel: 'desktop.candidate_evidence';
+      request_id: Id;
+      payload: {
+        ref: Id;
+      };
+    }
+  | {
       channel: 'desktop.connections_list';
       request_id: Id;
       payload: null;
@@ -1979,6 +1986,12 @@ export type DesktopIpcResponse =
     }
   | {
       request_id: Id;
+      channel: 'desktop.candidate_evidence';
+      outcome: 'ok';
+      evidence: DesktopCandidateEvidenceView;
+    }
+  | {
+      request_id: Id;
       channel:
         | 'desktop.connections_list'
         | 'desktop.connection_targets_update'
@@ -2305,7 +2318,7 @@ export type ForgetRemovedKind =
   | 'source_item'
   | 'operation_content';
 /**
- * UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014・0025）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。中枢との接続・ペアリングは用途別のチャネルだけで、要求の宛先・本文を Renderer が決められない。音声レンダラーの IPC（B05）は別に定める。 発言・承認表示の準備・承認・取消・照合は用途別のチャネルで、操作は main が持つ参照（ref）で指す（B04-05、ADR 0031）。 キャンバスを前に出す（canvas_summon）は状態の層と入力バーからだけ使う（UI-02、ADR 0032）。状態の層のパネルを出す・しまう（status_panel）は状態の層と島からだけ使う（UI-04、ADR 0032・0181）。 島（画面の上の中央の島の窓。ADR 0181 の段階 4）は、状態の取得（get_state・get_connection・get_voice）・この端末の入出力の停止（io_stop）・パネルを出す（status_panel）だけを使う。承認・取消・再開・登録・終了・発言・キャンバスを前に出すは使えず、島から確認を出さない（確認の入口は状態の層のパネルのまま）。キャンバスのユーザーの操作（canvas_user_op）はキャンバスの窓からだけ、キャンバスが前に出ている間だけ使う（UI-06、ADR 0032）。 予算の確認（超過枠の承認・見送り budget_overage_decide、M 超過の確認 budget_overrun_review、不明な費用の手での精算 budget_manual_settle）は状態の層からだけ使う。承認・確認・精算は main の OS の確認ダイアログを 1 回だけ挟み、画面が持つのは main が作る参照（ref）だけ（B07-05、ADR 0039）。 音声（B05-06、ADR 0050）: 音声の状態の取得（get_voice）・呼びかけなしで音声の会話を始める「続ける」（voice_continue）・外部への送信の同意の取り消し（voice_consent_revoke）は状態の層からだけ使う（音声の状態の取得だけは島も使う。ADR 0181）。外部への送信の同意は main の OS の確認ダイアログで 1 回だけ取り、画面は同意を作れない。音声レンダラーへの IPC は VoiceRendererRequest で、このチャネルとは別。 気づき（B11-05、ADR 0132）: 一覧の取得（candidates_list）と状態の変更（candidate_state。開く・今回は扱わない・再通知）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バーは使えない。候補は main が作る参照（ref）で指し、候補 ID・expected_state・接続範囲は main が持つ。OS 通知の入・切の変更（candidate_alert_setting、ADR 0196）も同じ窓から、ロック解除済みの画面操作（前面）でだけ使う。設定の版は main が持ち、正本は中枢の設定。 連携の接続（B08-02 P3・B09-05、ADR 0142）: 一覧の取得（connections_list）と取得範囲の変更（connection_targets_update）は中枢の画面（接続・端末）でだけ使い、キャンバス・入力バーは使えない。接続は main が作る参照（ref）で指し、接続 ID・permission_revision は main が持つ。画面が送れるのは今の保存値と、この世代で中枢から読んだ選べる対象（connection_targets_discover）のうちの選択と、期間・添付の範囲だけ（ADR 0145）。選べる対象の読み取りは提供元への読み取りを伴うので、中枢の画面のロック解除済みの画面操作だけ。 自動実行（B13-05、ADR 0154）: 一覧と安全停止の状態の取得（auto_actions_list）・取り消し（auto_action_undo）・安全停止の解除（safety_resume）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バーは使えない。自動実行した操作と安全停止の状態は main が作る参照（ref）で指し、操作 ID・state_revision・safety_revision・接続範囲は main が持つ。 家計簿（ADR 0162）: 月ごとの合計と 1 か月の記録の取得（household_view）・分類の変更（household_category）・削除（household_delete）・利用通知の取り込みの入・切（household_intake、ADR 0163）・書き出しの取り込み（household_import、ADR 0164。ファイルは main が OS のファイル選択で本人に選ばせ、画面はパスも中身も渡さない）・分類ごとの予算の変更（household_budget、ADR 0166）・記録の手入力（household_add、ADR 0167）・記録の中身の変更（household_edit、ADR 0169）・記録の CSV への書き出し（household_export、ADR 0172。保存先は main が OS の保存先の選択で本人に選ばせ、画面はパスも中身も渡さない）・レシートの写真の読み取りの入・切（household_receipt_setting、ADR 0177。入にするときは main の OS の確認ダイアログを挟む）・レシートの写真の読み取り（household_receipt_read、ADR 0177。写真は main が OS のファイル選択で本人に選ばせ、画面はパスも中身も渡さない。結果は手入力の欄に入れる候補だけ）・請求予定を消す（household_bill_delete、ADR 0179）は従来の窓（標準の端末画面）から使い、キャンバス・入力バーは使えない。記録と請求予定は main が作る参照（ref）で指し、記録・請求予定の ID・内容版・接続範囲は main が持つ。 忘却の画面（UI-10、ADR 0183）: 記憶の一覧の取得（memories_list）・忘却の計画を作らせる（forget_plan）・確かめた計画の実行（forget_execute。main の OS の確認ダイアログを 1 回だけ挟む）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バー・島は使えない。記憶と計画は main が作る参照（ref）で指し、記憶 ID・計画 ID・台帳の世代の照合・接続範囲は main が持つ。計画は中枢が作り、承認・実行権限・閉包の判定の正本は中枢にある。保存してよい記憶の種類の設定の変更（memory_settings_change、ADR 0191）も同じ窓から、ロック解除済みの画面操作（前面）でだけ使う。設定の版は main が持ち、正本は中枢の設定。 保存モードの切り替え（UI-05 の段階 6、ADR 0189）: 記録しないモードに入る・出る、通常（7 日）と継続相談（30 日）の切り替え（storage_mode_change）は、従来の窓（標準の端末画面）と状態の層のパネルから、ロック解除済みの画面操作（前面）でだけ使う。キャンバス・入力バー・島は使えない（島は記録しないモードの印を出すだけ）。音声・チャット・文字の発言からは切り替えない。main は中枢の流れの経路（POST /v1/stream/storage-mode）へ画面操作として送り、結果が分からなければ送り直さずに今の保存モードを読み直す。 流れの表示先の移動（UI-05 の段階 5、ADR 0193）: 呼び出したこの端末へ流れの表示先を移す「このPCに出す」（display_handoff）は、状態の層のパネルから、ロック解除済みの画面操作（前面）でだけ使う。キャンバス・入力バー・島・従来の窓は使えない。端末 ID・会話の ID・route_revision は main が持ち、画面は送らない。main は中枢の流れの経路（POST /v1/stream/handoff）へ画面操作として 1 回だけ送り、結果が分からなければ送り直さずに今の表示先を読み直す。 記録しない会話の独立した確認（ADR 0197、U503）: 承認・断る（private_confirmation_decide）は、状態の層のパネルと従来の窓から、ロック解除済みの画面操作（前面）でだけ使う。キャンバス・入力バー・島は使えない（島は承認を待つ確認があることを広げて知らせるだけ）。確認は main が作る参照（ref）で指し、確認の ID・内容の hash・接続範囲は main が持つ。承認は main の OS の確認ダイアログを 1 回だけ挟み、断るは挟まない。音声・チャット・発言からは承認しない。結果が分からなければ送り直さずに一覧を読み直す。
+ * UI レンダラーから main への限定 IPC のチャネル（設計 10 §1、07 §2、ADR 0014・0025）。端末トークン・端末 ID・中枢の停止・任意の URL や HTTP の実行を表すチャネルはない。中枢との接続・ペアリングは用途別のチャネルだけで、要求の宛先・本文を Renderer が決められない。音声レンダラーの IPC（B05）は別に定める。 発言・承認表示の準備・承認・取消・照合は用途別のチャネルで、操作は main が持つ参照（ref）で指す（B04-05、ADR 0031）。 キャンバスを前に出す（canvas_summon）は状態の層と入力バーからだけ使う（UI-02、ADR 0032）。状態の層のパネルを出す・しまう（status_panel）は状態の層と島からだけ使う（UI-04、ADR 0032・0181）。 島（画面の上の中央の島の窓。ADR 0181 の段階 4）は、状態の取得（get_state・get_connection・get_voice）・この端末の入出力の停止（io_stop）・パネルを出す（status_panel）だけを使う。承認・取消・再開・登録・終了・発言・キャンバスを前に出すは使えず、島から確認を出さない（確認の入口は状態の層のパネルのまま）。キャンバスのユーザーの操作（canvas_user_op）はキャンバスの窓からだけ、キャンバスが前に出ている間だけ使う（UI-06、ADR 0032）。 予算の確認（超過枠の承認・見送り budget_overage_decide、M 超過の確認 budget_overrun_review、不明な費用の手での精算 budget_manual_settle）は状態の層からだけ使う。承認・確認・精算は main の OS の確認ダイアログを 1 回だけ挟み、画面が持つのは main が作る参照（ref）だけ（B07-05、ADR 0039）。 音声（B05-06、ADR 0050）: 音声の状態の取得（get_voice）・呼びかけなしで音声の会話を始める「続ける」（voice_continue）・外部への送信の同意の取り消し（voice_consent_revoke）は状態の層からだけ使う（音声の状態の取得だけは島も使う。ADR 0181）。外部への送信の同意は main の OS の確認ダイアログで 1 回だけ取り、画面は同意を作れない。音声レンダラーへの IPC は VoiceRendererRequest で、このチャネルとは別。 気づき（B11-05、ADR 0132）: 一覧の取得（candidates_list）と状態の変更（candidate_state。開く・今回は扱わない・再通知）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バーは使えない。候補は main が作る参照（ref）で指し、候補 ID・expected_state・接続範囲は main が持つ。OS 通知の入・切の変更（candidate_alert_setting、ADR 0196）も同じ窓から、ロック解除済みの画面操作（前面）でだけ使う。設定の版は main が持ち、正本は中枢の設定。根拠を見る（candidate_evidence、ADR 0201）も同じ窓から、ロック解除済みの画面操作（前面）でだけ使う。中枢が許可範囲から取り直した根拠を応答で受け取るだけで、main も画面も保存しない。 連携の接続（B08-02 P3・B09-05、ADR 0142）: 一覧の取得（connections_list）と取得範囲の変更（connection_targets_update）は中枢の画面（接続・端末）でだけ使い、キャンバス・入力バーは使えない。接続は main が作る参照（ref）で指し、接続 ID・permission_revision は main が持つ。画面が送れるのは今の保存値と、この世代で中枢から読んだ選べる対象（connection_targets_discover）のうちの選択と、期間・添付の範囲だけ（ADR 0145）。選べる対象の読み取りは提供元への読み取りを伴うので、中枢の画面のロック解除済みの画面操作だけ。 自動実行（B13-05、ADR 0154）: 一覧と安全停止の状態の取得（auto_actions_list）・取り消し（auto_action_undo）・安全停止の解除（safety_resume）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バーは使えない。自動実行した操作と安全停止の状態は main が作る参照（ref）で指し、操作 ID・state_revision・safety_revision・接続範囲は main が持つ。 家計簿（ADR 0162）: 月ごとの合計と 1 か月の記録の取得（household_view）・分類の変更（household_category）・削除（household_delete）・利用通知の取り込みの入・切（household_intake、ADR 0163）・書き出しの取り込み（household_import、ADR 0164。ファイルは main が OS のファイル選択で本人に選ばせ、画面はパスも中身も渡さない）・分類ごとの予算の変更（household_budget、ADR 0166）・記録の手入力（household_add、ADR 0167）・記録の中身の変更（household_edit、ADR 0169）・記録の CSV への書き出し（household_export、ADR 0172。保存先は main が OS の保存先の選択で本人に選ばせ、画面はパスも中身も渡さない）・レシートの写真の読み取りの入・切（household_receipt_setting、ADR 0177。入にするときは main の OS の確認ダイアログを挟む）・レシートの写真の読み取り（household_receipt_read、ADR 0177。写真は main が OS のファイル選択で本人に選ばせ、画面はパスも中身も渡さない。結果は手入力の欄に入れる候補だけ）・請求予定を消す（household_bill_delete、ADR 0179）は従来の窓（標準の端末画面）から使い、キャンバス・入力バーは使えない。記録と請求予定は main が作る参照（ref）で指し、記録・請求予定の ID・内容版・接続範囲は main が持つ。 忘却の画面（UI-10、ADR 0183）: 記憶の一覧の取得（memories_list）・忘却の計画を作らせる（forget_plan）・確かめた計画の実行（forget_execute。main の OS の確認ダイアログを 1 回だけ挟む）は従来の窓（標準の端末画面）と状態の層から使い、キャンバス・入力バー・島は使えない。記憶と計画は main が作る参照（ref）で指し、記憶 ID・計画 ID・台帳の世代の照合・接続範囲は main が持つ。計画は中枢が作り、承認・実行権限・閉包の判定の正本は中枢にある。保存してよい記憶の種類の設定の変更（memory_settings_change、ADR 0191）も同じ窓から、ロック解除済みの画面操作（前面）でだけ使う。設定の版は main が持ち、正本は中枢の設定。 保存モードの切り替え（UI-05 の段階 6、ADR 0189）: 記録しないモードに入る・出る、通常（7 日）と継続相談（30 日）の切り替え（storage_mode_change）は、従来の窓（標準の端末画面）と状態の層のパネルから、ロック解除済みの画面操作（前面）でだけ使う。キャンバス・入力バー・島は使えない（島は記録しないモードの印を出すだけ）。音声・チャット・文字の発言からは切り替えない。main は中枢の流れの経路（POST /v1/stream/storage-mode）へ画面操作として送り、結果が分からなければ送り直さずに今の保存モードを読み直す。 流れの表示先の移動（UI-05 の段階 5、ADR 0193）: 呼び出したこの端末へ流れの表示先を移す「このPCに出す」（display_handoff）は、状態の層のパネルから、ロック解除済みの画面操作（前面）でだけ使う。キャンバス・入力バー・島・従来の窓は使えない。端末 ID・会話の ID・route_revision は main が持ち、画面は送らない。main は中枢の流れの経路（POST /v1/stream/handoff）へ画面操作として 1 回だけ送り、結果が分からなければ送り直さずに今の表示先を読み直す。 記録しない会話の独立した確認（ADR 0197、U503）: 承認・断る（private_confirmation_decide）は、状態の層のパネルと従来の窓から、ロック解除済みの画面操作（前面）でだけ使う。キャンバス・入力バー・島は使えない（島は承認を待つ確認があることを広げて知らせるだけ）。確認は main が作る参照（ref）で指し、確認の ID・内容の hash・接続範囲は main が持つ。承認は main の OS の確認ダイアログを 1 回だけ挟み、断るは挟まない。音声・チャット・発言からは承認しない。結果が分からなければ送り直さずに一覧を読み直す。
  */
 export type DesktopIpcChannel =
   | 'desktop.get_state'
@@ -2346,6 +2359,7 @@ export type DesktopIpcChannel =
   | 'desktop.candidates_list'
   | 'desktop.candidate_state'
   | 'desktop.candidate_alert_setting'
+  | 'desktop.candidate_evidence'
   | 'desktop.connections_list'
   | 'desktop.connection_targets_update'
   | 'desktop.connection_targets_discover'
@@ -5165,7 +5179,38 @@ export interface CandidateEvidence {
   candidate_id: Id;
   request_entity_id: Id | null;
   request_revision: RequestEntityRevision | null;
-  source: SourceRef;
+  /**
+   * 許可範囲から取り直した元情報で、Core が一意に照合できた根拠の位置と引用（ADR 0201）。予定の重複は重なる予定ごとの題（題の無い予定は入れない）、メールは候補を作ったときに控えた位置の引用（取り直した本文で照合できなければ入れない）。照合できたものが無ければ空で、推測で埋めない。引用は応答に載せるだけで、中枢も端末も保存しない。
+   *
+   * @maxItems 8
+   */
+  sources:
+    | []
+    | [SourceRef]
+    | [SourceRef, SourceRef]
+    | [SourceRef, SourceRef, SourceRef]
+    | [SourceRef, SourceRef, SourceRef, SourceRef]
+    | [SourceRef, SourceRef, SourceRef, SourceRef, SourceRef]
+    | [SourceRef, SourceRef, SourceRef, SourceRef, SourceRef, SourceRef]
+    | [
+        SourceRef,
+        SourceRef,
+        SourceRef,
+        SourceRef,
+        SourceRef,
+        SourceRef,
+        SourceRef,
+      ]
+    | [
+        SourceRef,
+        SourceRef,
+        SourceRef,
+        SourceRef,
+        SourceRef,
+        SourceRef,
+        SourceRef,
+        SourceRef,
+      ];
   unread: boolean;
   /**
    * 表示用の抄録（200 文字以内）。本文全体ではない。
@@ -8345,6 +8390,42 @@ export interface DesktopCandidateAlertView {
    */
   ref: string;
   os_notification: 'on' | 'off';
+}
+/**
+ * 気づきの「根拠を見る」の表示用の値（ADR 0201）。未確認（unconfirmed）・変わった（changed）のときは引用を空、未読と抄録を null に縛る（根拠を確かめていない値を出さない）。候補 ID・元情報の ID・版・位置は main が持ち、画面へは渡さない。根拠を確かめられないときは未確認として示し、推測で埋めない。
+ */
+export interface DesktopCandidateEvidenceView {
+  /**
+   * B00初版のランダムUUID v4。認証情報ではない。
+   */
+  ref: string;
+  /**
+   * confirmed: 中枢が許可範囲から取り直し、根拠が今も有効だった。unconfirmed: 根拠を確かめられなかった（取り直せない・接続や鍵が使えない・記録しない会話の間・応答が読めない）。状態は変えていない。changed: 根拠の元が新しい版になった・取得範囲から外れた・消えた・重複が解消したなど、根拠か気づきの状態が変わった（main は一覧を読み直した）。今の根拠は確かめていない。
+   */
+  status: 'confirmed' | 'unconfirmed' | 'changed';
+  /**
+   * confirmed のときだけ、中枢が照合できた根拠の引用（予定の重複は予定の題、メールは控えた位置の引用）。照合できたものが無ければ空。ほかの状態では空。main・画面は保存しない。
+   *
+   * @maxItems 8
+   */
+  quotes:
+    | []
+    | [string]
+    | [string, string]
+    | [string, string, string]
+    | [string, string, string, string]
+    | [string, string, string, string, string]
+    | [string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string];
+  /**
+   * confirmed のときだけ、根拠の元情報に未読の部分があるか。ほかの状態では null。
+   */
+  unread: boolean | null;
+  /**
+   * confirmed のときだけ、候補を作ったときの抄録（200 文字以内）。ほかの状態では null。
+   */
+  excerpt: string | null;
 }
 /**
  * 連携の接続の画面に出す値（B08-02 P3・B09-05、ADR 0142。設計 01 接続・端末）。

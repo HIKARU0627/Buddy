@@ -346,3 +346,91 @@ test('the audit log records route names and statuses, never tokens or bodies', a
     },
   );
 });
+
+test('the candidate evidence is relayed without its titles, quotes or excerpt; refusals are relayed as-is (ADR 0201)', async () => {
+  let answer: CoreClientOutcome = {
+    kind: 'response',
+    status: 200,
+    body: {
+      candidate_id: 'c-1',
+      request_entity_id: null,
+      request_revision: null,
+      sources: [
+        {
+          source_id: 'synthetic-event-1',
+          source_revision: 'e1',
+          quote: '合成の打ち合わせ',
+          start: 0,
+          end: 8,
+        },
+        {
+          source_id: 'synthetic-event-2',
+          source_revision: 'e2',
+          quote: '合成の通院',
+          start: 0,
+          end: 5,
+        },
+      ],
+      unread: false,
+      excerpt: '合成の抄録',
+    },
+  };
+  await withServer(
+    () => answer,
+    async (base, calls) => {
+      const post = () =>
+        fetch(`${base}/bridge/v1/candidates/c-1/evidence`, {
+          method: 'POST',
+          headers: jsonHeaders,
+          body: '{}',
+        });
+      const ok = await post();
+      assert.equal(ok.status, 200);
+      const text = await ok.text();
+      assert.deepEqual(JSON.parse(text), {
+        candidate_id: 'c-1',
+        request_entity_id: null,
+        request_revision: null,
+        evidence: 'confirmed',
+        quote_count: 2,
+        unread: false,
+        excerpt_present: true,
+        body_withheld: true,
+      });
+      for (const word of [
+        '合成の打ち合わせ',
+        '合成の通院',
+        '合成の抄録',
+        'synthetic-event',
+      ])
+        assert.ok(!text.includes(word), word);
+      assert.deepEqual(calls, [
+        {
+          kind: 'command',
+          method: 'POST',
+          path: '/v1/candidates/c-1/evidence',
+          body: {},
+        },
+      ]);
+      // 未確認（503）・変わった（409）はそのまま中継する。
+      answer = {
+        kind: 'response',
+        status: 503,
+        body: { code: 'dependency_unavailable' },
+      };
+      const unconfirmed = await post();
+      assert.equal(unconfirmed.status, 503);
+      assert.equal(
+        (await bodyOf(unconfirmed))['code'],
+        'dependency_unavailable',
+      );
+      answer = { kind: 'response', status: 409, body: { code: 'conflict' } };
+      assert.equal((await post()).status, 409);
+      // 形の違う 200 は渡さない。
+      answer = { kind: 'response', status: 200, body: { quote: '合成の本文' } };
+      const odd = await post();
+      assert.equal(odd.status, 502);
+      assert.ok(!(await odd.text()).includes('合成の本文'));
+    },
+  );
+});

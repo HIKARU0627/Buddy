@@ -707,13 +707,15 @@ test('evidence is returned only while valid; other observations change or keep t
     // 取り直した元情報は本文全体を持つが、応答は根拠の位置と保存済みの抄録だけ。
     answers.set(valid, {
       observation: 'available',
-      source: {
-        source_id: 'msg-1',
-        source_revision: 'rev-1',
-        quote: '引用',
-        start: 0,
-        end: 2,
-      },
+      sources: [
+        {
+          source_id: 'msg-1',
+          source_revision: 'rev-1',
+          quote: '引用',
+          start: 0,
+          end: 2,
+        },
+      ],
       unread: false,
     });
     const ok = await evidence(valid);
@@ -722,13 +724,15 @@ test('evidence is returned only while valid; other observations change or keep t
       candidate_id: valid,
       request_entity_id: ok.body['request_entity_id'],
       request_revision: '1',
-      source: {
-        source_id: 'msg-1',
-        source_revision: 'rev-1',
-        quote: '引用',
-        start: 0,
-        end: 2,
-      },
+      sources: [
+        {
+          source_id: 'msg-1',
+          source_revision: 'rev-1',
+          quote: '引用',
+          start: 0,
+          end: 2,
+        },
+      ],
       unread: false,
       excerpt: '引用',
     });
@@ -790,9 +794,25 @@ test('evidence is returned only while valid; other observations change or keep t
         code: 'conflict',
         state: 'new',
       },
-      // 有効と言いながら根拠の位置が無いポートの答えは使わない。
+      // 有効と言いながら根拠の位置の一覧が無い・上限（8）を超えるポートの答えは使わない。
       {
         answer: { observation: 'available', unread: false },
+        status: 503,
+        code: 'dependency_unavailable',
+        state: 'new',
+      },
+      {
+        answer: {
+          observation: 'available',
+          unread: false,
+          sources: Array.from({ length: 9 }, (_, index) => ({
+            source_id: `msg-${String(index)}`,
+            source_revision: 'rev-1',
+            quote: '引用',
+            start: 0,
+            end: 2,
+          })),
+        },
         status: 503,
         code: 'dependency_unavailable',
         state: 'new',

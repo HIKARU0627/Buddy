@@ -102,6 +102,8 @@ const ACTIONS: CandidateActions = {
   snooze: noop,
   setAlert: noop,
   undoAutoAction: noop,
+  showEvidence: noop,
+  hideEvidence: noop,
 };
 
 const render = (node: ReactNode) =>
@@ -171,25 +173,31 @@ test('rows are grouped under the headings with the deadline, kind, state and not
   assert.equal(words.split('この気づきから自動で行った操作').length - 1, 1);
   // 初回取り込みの過去の期限は折りたたみ（Disclosure）。
   assert.match(html, /data-heading="initial_import_past"/u);
-  // 内部の ID・理由のコード・API の名前は出さない。相談する・根拠を見るはまだ出さない（ADR 0132）。
+  // 内部の ID・理由のコード・API の名前は出さない。相談するはまだ出さない（ADR 0132）。根拠を見る（ADR 0201）は行ごと。
   for (const banned of [
     'candidate_id',
     'preview_stale',
     '/v1/',
     'expected_state',
+    'source_id',
     '相談する',
-    '根拠を見る',
   ])
     assert(!words.includes(banned), banned);
+  assert.equal(words.split('根拠を見る').length - 1, ENTRIES.length);
 });
 
-test('buttons follow the state: new can be opened; acted has none', () => {
+test('buttons follow the state: new can be opened; acted has only the evidence', () => {
   const html = panel({ view: view(ENTRIES), seq: 2 });
   assert.match(html, /aria-label="開く（参加可否の返信：10\/10まで）"/u);
   assert.doesNotMatch(html, /aria-label="開く（過去の依頼）"/u);
   assert.match(html, /aria-label="今回は扱わない（過去の依頼）"/u);
   assert.match(html, /aria-label="再通知（過去の依頼）"/u);
-  assert.doesNotMatch(html, /（見積の提出）"/u);
+  // 根拠を見る（ADR 0201）は状態を変えないので、対応済みの行にも出す。
+  assert.match(html, /aria-label="根拠を見る（見積の提出）"/u);
+  assert.doesNotMatch(
+    html,
+    /aria-label="(開く|今回は扱わない|再通知)（見積の提出）"/u,
+  );
 });
 
 test('a row with an unknown outcome shows the hold and no buttons', () => {
@@ -199,6 +207,75 @@ test('a row with an unknown outcome shows the hold and no buttons', () => {
   });
   assert.match(text(html), /結果を確認できませんでした/u);
   assert.doesNotMatch(html, /（保留の行）"/u);
+});
+
+test('the evidence of the open row shows the quotes it was given, and an unconfirmed one says so without quotes (ADR 0201)', () => {
+  const ref = id(0);
+  const shown = (
+    evidence: CandidateViewState['evidence'],
+  ): { readonly html: string; readonly body: string } => {
+    const html = panel({ view: view(ENTRIES), seq: 2, evidence });
+    return { html, body: text(html) };
+  };
+  const confirmed = shown({
+    ref,
+    loading: false,
+    problem: null,
+    view: {
+      ref,
+      status: 'confirmed',
+      quotes: ['合成の打ち合わせ', '合成の通院'],
+      unread: false,
+      excerpt: null,
+    },
+  });
+  assert.match(confirmed.body, /元の情報から取り直した根拠です/u);
+  assert.match(confirmed.body, /「合成の打ち合わせ」/u);
+  assert.match(confirmed.body, /「合成の通院」/u);
+  assert.match(
+    confirmed.html,
+    /aria-label="根拠を閉じる（予定の重複：定例と面談）"/u,
+  );
+  assert.match(confirmed.html, /data-evidence="confirmed"/u);
+  // 引用を照合できなかった・一部未読・抄録。
+  const noQuote = shown({
+    ref,
+    loading: false,
+    problem: null,
+    view: {
+      ref,
+      status: 'confirmed',
+      quotes: [],
+      unread: true,
+      excerpt: '明日までにご返信ください',
+    },
+  }).body;
+  assert.match(noQuote, /引用の位置は示せません/u);
+  assert.match(noQuote, /元の情報の一部は未読です/u);
+  assert.match(noQuote, /気づきを作ったときの抄録: 明日までにご返信ください/u);
+  // 未確認・変わった: 引用を出さない。
+  for (const [status, words] of [
+    ['unconfirmed', /根拠を確かめられませんでした（未確認）/u],
+    ['changed', /根拠の元が変わったか、気づきの状態が変わりました（未確認）/u],
+  ] as const) {
+    const body = shown({
+      ref,
+      loading: false,
+      problem: null,
+      view: { ref, status, quotes: [], unread: null, excerpt: null },
+    }).body;
+    assert.match(body, words);
+    assert.doesNotMatch(body, /根拠の引用|「合成/u);
+  }
+  // 取り直している間。
+  const loading = shown({ ref, loading: true, problem: null, view: null });
+  assert.match(loading.body, /元の情報から根拠を取り直しています/u);
+  assert.match(loading.html, /data-evidence="loading"/u);
+  // ほかの行には出さない。
+  assert.doesNotMatch(
+    shown({ ref: id(9), loading: true, problem: null, view: null }).body,
+    /取り直しています/u,
+  );
 });
 
 test('an empty loaded list says there are none; a cut list says it is partial', () => {

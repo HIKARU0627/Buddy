@@ -3,7 +3,8 @@
 // 並べ、初回取り込みの過去の期限は折りたたむ。行は題・期限（日付だけなら「日付のみの期限」）・種類・状態と注記
 // （メールは「対応済みかは未確認」、一部未読、自動実行の操作）。操作は「開く」「今回は扱わない」「再通知」（明日・来週・
 // 日時を指定）。未取得・取得の失敗を「気づきはありません」と言わない。理由のコード・API の名前は出さない。
-// 「根拠を見る」「相談する」は後の段階（ADR 0132 の残論点）。
+// 「根拠を見る」（ADR 0201）: 押すたびに中枢が許可範囲から取り直した根拠（引用・未読・抄録）を行の下に出す。確かめられない
+// ときは「未確認」とだけ出し、推測で埋めない。引用は行を開いている間だけで、保存しない。「相談する」は後の段階（ADR 0132）。
 // 自動実行の操作が結び付いた行には「この気づきから自動で行った操作」の欄（ADR 0199）: 種類・実行からの経過・取り消しの
 // 状態と「取り消す」（自動実行の欄と同じ経路）。取り消せない行は押せないボタンと理由を出す。一覧に無い操作は件数だけ。
 // 頭の下に「新しい気づきを OS の通知で知らせる」の選択（ADR 0196。既定は切）。設定を読めていない間は選択を置かない。
@@ -27,11 +28,13 @@ import { Section } from '../../components/Section.js';
 import { StatusText } from '../../components/StatusText.js';
 import {
   CANDIDATE_LABELS,
+  EVIDENCE_LABELS,
   FETCH_LABELS,
   KIND_LABELS,
   STATE_LABELS,
   candidateSections,
   deadlineText,
+  evidenceLines,
   headerOf,
   rowActions,
   rowNotes,
@@ -312,6 +315,72 @@ function LinkedAutoActions({
   );
 }
 
+// 根拠を見る（ADR 0201）。押すたびに取り直し、開いている行の下に出す。
+function EvidenceBox({
+  entry,
+  state,
+  actions,
+}: {
+  readonly entry: DesktopCandidateEntry;
+  readonly state: CandidateViewState;
+  readonly actions: CandidateActions;
+}) {
+  const shown =
+    state.evidence !== null && state.evidence.ref === entry.ref
+      ? state.evidence
+      : null;
+  if (shown === null) return null;
+  const lines = evidenceLines(shown);
+  return (
+    <div
+      data-evidence={shown.loading ? 'loading' : (shown.view?.status ?? 'none')}
+      className={`${FRAME_CLASS} flex flex-col gap-1.5 p-3`}
+    >
+      {lines.tone === 'muted' ? (
+        <p role="status" className="text-sm text-muted">
+          {lines.text}
+        </p>
+      ) : (
+        <InlineNotice tone={lines.tone} text={lines.text} />
+      )}
+      {lines.quotes.length === 0 ? null : (
+        <div className="flex flex-col gap-1">
+          <p className="text-xs text-muted">{EVIDENCE_LABELS.quotes}</p>
+          <ul className="flex flex-col gap-1 text-sm">
+            {lines.quotes.map((quote, index) => (
+              <li key={`${String(index)}:${quote}`} className="break-words">
+                「{quote}」
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {lines.notes.length === 0 ? null : (
+        <ul className="flex flex-col gap-0.5 text-xs text-muted">
+          {lines.notes.map((note) => (
+            <li key={note}>{note}</li>
+          ))}
+        </ul>
+      )}
+      {lines.excerpt === null ? null : (
+        <p className="text-xs text-muted break-words">
+          {EVIDENCE_LABELS.excerpt}: {lines.excerpt}
+        </p>
+      )}
+      <div className="flex justify-end">
+        <Button
+          size="sm"
+          variant="tertiary"
+          aria-label={`${EVIDENCE_LABELS.hide}（${entry.title}）`}
+          onPress={() => actions.hideEvidence()}
+        >
+          {EVIDENCE_LABELS.hide}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function CandidateRow({
   entry,
   state,
@@ -375,8 +444,21 @@ function CandidateRow({
             text: CANDIDATE_LABELS.unknown,
           }}
         />
-      ) : allowed.length === 0 ? null : (
+      ) : (
         <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button
+            size="sm"
+            variant="secondary"
+            isDisabled={
+              state.evidence?.ref === entry.ref && state.evidence.loading
+            }
+            aria-label={`${EVIDENCE_LABELS.show}（${entry.title}）`}
+            onPress={() => actions.showEvidence(entry.ref)}
+          >
+            {state.evidence?.ref === entry.ref && state.evidence.loading
+              ? CANDIDATE_LABELS.reading
+              : EVIDENCE_LABELS.show}
+          </Button>
           {allowed.includes('open') ? (
             <Button
               size="sm"
@@ -412,6 +494,7 @@ function CandidateRow({
           ) : null}
         </div>
       )}
+      <EvidenceBox entry={entry} state={state} actions={actions} />
       {waiting || !allowed.includes('snooze') ? null : (
         <SnoozeChoices
           entry={entry}

@@ -502,7 +502,7 @@ test('バックアップ: 封筒は契約と手書きの期待値のとおりで
   assert.equal(manifest['schema'], 'buddy.backup-manifest.v1');
   assert.equal(manifest['backup_id'], run.backup_id);
   assert.equal(manifest['store_generation'], r.handle.storeGeneration);
-  assert.equal(manifest['db_schema_version'], 25);
+  assert.equal(manifest['db_schema_version'], 26);
   assert.equal(manifest['forgetting_generation'], '0');
   assert.equal(manifest['ledger_head_hash'], '0'.repeat(64));
   assert.deepEqual(manifest['included_storage_modes'], ['normal', 'extended']);

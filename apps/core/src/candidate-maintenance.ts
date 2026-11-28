@@ -256,3 +256,142 @@ export async function runCandidateMaintenance(
     resume_after: resumeAfter,
   };
 }
+
+// --- 根拠の再確認だけを後ろで回す（ADR 0201 の見直し、U681） ---
+
+export interface EvidenceRecheckReport {
+  // 根拠を取り直した候補の ID。
+  readonly checked: readonly string[];
+  // 取得範囲外・削除・重複の解消で resolved にした候補。
+  readonly evidence_resolved: readonly string[];
+  // 資格を失効した（状態は変えていない）候補。
+  readonly evidence_standing: readonly {
+    readonly candidate_id: string;
+    readonly evidence: EvidenceDecision['evidence'];
+  }[];
+  readonly purge_requested: readonly string[];
+  readonly skipped: readonly {
+    readonly candidate_id: string | null;
+    readonly step: 'list' | 'evidence';
+    readonly reasons: readonly string[];
+  }[];
+  // 上限（件数・時間）で止めたとき、次の回に渡す続きの位置。読み切ったら null（次は先頭から）。
+  readonly resume_after: CandidateListCursor | null;
+  readonly stopped: 'done' | 'count_limit' | 'time_limit' | 'list_failed';
+}
+
+// 活動中の候補の根拠を、1 回あたりの件数と時間の上限の中で取り直す。時間による遷移と掃除はしない（一覧の前の保守が行う）。
+// 時間の上限は、次の候補を取り直す前ごとに確かめる（取り直し中の 1 件は止めない。上限を過ぎた分は次の回へ回す）。
+// 結果の扱いは runCandidateMaintenance の 2 と同じ（取得範囲外・削除・解消は resolved、ほかは資格の失効の報告だけ）。
+export async function runCandidateEvidenceRecheck(
+  ports: Omit<CandidateMaintenancePorts, 'checkEvidence'> & {
+    readonly checkEvidence: NonNullable<
+      CandidateMaintenancePorts['checkEvidence']
+    >;
+  },
+  options: {
+    // 1 回で取り直す候補の上限。
+    readonly maxChecks: number;
+    // 時間の上限を過ぎたか（呼び出し側の時計）。
+    readonly expired: () => boolean;
+    // 前の回の resume_after。省略は先頭から。
+    readonly after?: CandidateListCursor;
+    readonly pageLimit?: number;
+  },
+): Promise<EvidenceRecheckReport> {
+  const pageLimit = options.pageLimit ?? 100;
+  const checked: string[] = [];
+  const resolved: string[] = [];
+  const standing: {
+    candidate_id: string;
+    evidence: EvidenceDecision['evidence'];
+  }[] = [];
+  const purge: string[] = [];
+  const skipped: {
+    candidate_id: string | null;
+    step: 'list' | 'evidence';
+    reasons: readonly string[];
+  }[] = [];
+  const now = ports.now();
+  const transition = async (
+    row: CandidateRow,
+    event: CandidateEvent,
+  ): Promise<void> => {
+    const out = await ports.client.candidate({
+      kind: 'candidate.transition',
+      input: {
+        candidate_id: row.candidate_id,
+        event,
+        expected_state: row.state,
+        zone: ports.zone,
+        snooze_until: null,
+        now,
+      },
+    });
+    if (out.ok) resolved.push(row.candidate_id);
+    else
+      skipped.push({
+        candidate_id: row.candidate_id,
+        step: 'evidence',
+        reasons: out.reasons,
+      });
+  };
+  let after = options.after;
+  let last: CandidateListCursor | null = null;
+  const stop = (
+    stopped: EvidenceRecheckReport['stopped'],
+    resumeAfter: CandidateListCursor | null,
+  ): EvidenceRecheckReport => ({
+    checked,
+    evidence_resolved: resolved,
+    evidence_standing: standing,
+    purge_requested: purge,
+    skipped,
+    resume_after: resumeAfter,
+    stopped,
+  });
+  for (;;) {
+    const listed = await ports.client.candidate({
+      kind: 'candidate.list',
+      states: LIVE_CANDIDATE_STATES,
+      limit: pageLimit,
+      ...(after === undefined ? {} : { after }),
+    });
+    if (!listed.ok) {
+      skipped.push({
+        candidate_id: null,
+        step: 'list',
+        reasons: listed.reasons,
+      });
+      // 読めた所までの続きの位置を残す（次の回にそこから）。
+      return stop('list_failed', last ?? options.after ?? null);
+    }
+    for (const row of listed.value.candidates) {
+      if (checked.length >= options.maxChecks) return stop('count_limit', last);
+      if (options.expired()) return stop('time_limit', last);
+      let check: CandidateCheck;
+      try {
+        check = await ports.checkEvidence(row);
+      } catch {
+        check = 'temporarily_unavailable';
+      }
+      checked.push(row.candidate_id);
+      last = { received_at: row.received_at, candidate_id: row.candidate_id };
+      if (check === 'overlap_resolved') {
+        await transition(row, 'overlap_resolved');
+        continue;
+      }
+      const decision = evidenceDecision(row.state, check);
+      if (decision.purge) purge.push(row.candidate_id);
+      if (decision.event !== null) await transition(row, decision.event);
+      else if (decision.evidence !== 'valid')
+        standing.push({
+          candidate_id: row.candidate_id,
+          evidence: decision.evidence,
+        });
+    }
+    if (!listed.value.truncated || listed.value.next_after === null)
+      return stop('done', null);
+    after = listed.value.next_after;
+  }
+}

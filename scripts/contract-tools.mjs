@@ -1316,9 +1316,13 @@ export function semanticErrors(name, value) {
       found.push('category_duplicate');
     errors.push(...new Set(found));
   }
-  // 気づきの根拠は SourceRef の意味検査（引用の範囲）をそのまま使う（B11-01、ADR 0073）。
+  // 気づきの根拠は根拠の位置ごとに SourceRef の意味検査（引用の範囲）をそのまま使う（B11-01、ADR 0073・0201）。
   if (name === 'CandidateEvidence')
-    errors.push(...semanticErrors('SourceRef', value.source));
+    errors.push(
+      ...new Set(
+        value.sources.flatMap((source) => semanticErrors('SourceRef', source)),
+      ),
+    );
   // 家計簿（ADR 0158・0161）。分類の向きは domain の HOUSEHOLD_CATEGORIES と同じ（scripts/household.test.mjs が照合）。
   if (name === 'HouseholdEntry') {
     if (!isHouseholdDate(value.occurred_on)) errors.push('occurred_on_invalid');

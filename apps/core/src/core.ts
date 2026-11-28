@@ -56,6 +56,8 @@ import { createPrivateConfirmationRoutes } from './api-private-confirmations.js'
 import { createHouseholdRoutes } from './api-household.js';
 import { createCandidateListRefresh } from './candidate-list-refresh.js';
 import { createCalendarCandidateIntake } from './calendar-candidate-intake.js';
+import { createCandidateEvidenceSource } from './candidate-evidence.js';
+import type { CandidateEvidenceSource } from './candidate-evidence.js';
 import {
   CONNECTION_REVISION_CHECKED_ROUTES,
   createConnectionRoutes,
@@ -1265,6 +1267,42 @@ export async function startCore(
               lease: () => (retention as RetentionSweeper).lease(),
             },
           });
+    // 気づきの根拠を許可範囲から取り直す口（Issue #271 の残り (1)、ADR 0201）。Google のトークンの口と同期の対象（口座・取得
+    // 集合）があるときだけ作る。取り直す先は候補を作ったときに控えた由来の位置だけで、今の接続の口座・取得集合・選んだ
+    // カレンダーと照合する。記録しない会話の間は読まない（保存境界の保持者が無い組み立てでは記録しない会話として扱う）。
+    // メールの引用の本文の作り方（mailText）は、製品の抽出の入力がまだ無いので渡さない（メールの引用は出さない。U683）。
+    const candidateEvidence: CandidateEvidenceSource | null =
+      googleTokenSourceFor === undefined || syncTargetsFor === undefined
+        ? null
+        : createCandidateEvidenceSource({
+            store: opened.store,
+            targetsFor: syncTargetsFor,
+            calendarFor: (connection) => {
+              const tokenSource = googleTokenSourceFor(connection);
+              return tokenSource === null
+                ? null
+                : createGoogleReadConnector({ tokenSource }).calendar;
+            },
+            gmailFor: (connection) => {
+              const tokenSource = googleTokenSourceFor(connection);
+              return tokenSource === null
+                ? null
+                : createGoogleReadConnector({ tokenSource }).gmail;
+            },
+            zone: () => deviceTimeZone(),
+            storage: {
+              privateConversation: () =>
+                storageGate?.privateConversation() ?? true,
+            },
+            now,
+            retention: {
+              ready: async () => {
+                await retention?.idle();
+              },
+              gate: () => (retention as RetentionSweeper).gate(),
+              lease: () => (retention as RetentionSweeper).lease(),
+            },
+          });
     let syncScheduler: SyncScheduler | null = null;
     if (options.sync?.scheduler !== undefined) {
       syncScheduler = createSyncScheduler({
@@ -1536,6 +1574,7 @@ export async function startCore(
                 ? {}
                 : { graphTokenSourceFor }),
             }),
+        candidateEvidence,
       );
       api = started.api;
       streams = started.streams;
@@ -1724,6 +1763,8 @@ async function startHttps(
   memoryLedgerKey?: () => Promise<Uint8Array | null>,
   // 選べる取得対象の読み取り口（ADR 0145）。無ければ undefined で、その経路は 503 で閉じる。
   discovery?: TargetDiscoveryPort,
+  // 気づきの根拠を許可範囲から取り直す口（ADR 0201）。無ければ根拠の経路は 503 で、一覧の前の再確認もしない。
+  candidateEvidence?: CandidateEvidenceSource | null,
 ): Promise<{
   readonly api: ApiServer;
   readonly info: CoreHttpsInfo;
@@ -1902,7 +1943,7 @@ async function startHttps(
   // 気づき（候補）の一覧・根拠の再取得・状態の変更（B11-04 P2、ADR 0130）。データ鍵は保持せず要求ごとに読む。
   // 本人のタイムゾーン（IANA）の出所は端末（OS）のタイムゾーン（本人の決定 2026-11-21、ADR 0131）で、要求ごとに読む。
   // 取得不能・不正なときだけ zone が null になり、一覧・状態の変更は 503 で閉じる（黙って代替しない）。
-  // 根拠を取り直す connector は B08・B09 なので渡さない（根拠の経路は引き続き 503）。
+  // 根拠は Google の connector から許可範囲で取り直す（ADR 0201）。口が無い組み立てでは根拠の経路は 503。
   const candidateRoutes = createCandidateRoutes({
     store,
     dataKey: async () => {
@@ -1911,9 +1952,12 @@ async function startHttps(
     },
     zone: () => deviceTimeZone(),
     now: () => now().toISOString(),
+    ...(candidateEvidence == null
+      ? {}
+      : { fetchEvidence: candidateEvidence.fetchEvidence }),
   });
   // 一覧を開くたびの状態の見直し（B11-05、ADR 0132）。一覧の前に保守の時間による遷移と保持の掃除を回す（根拠の再確認は
-  // connector が無いので渡さない）。時計は掃除のゲート（retention.gate()）の理由のうち時計のもの（clock_*: 巻き戻り・
+  // 取り直す口があるときだけ、一覧を待たせずに後ろで回す。ADR 0201）。時計は掃除のゲート（retention.gate()）の理由のうち時計のもの（clock_*: 巻き戻り・
   // 時計の状態ファイルの欠け・不正・読めない時刻）で確かめ、該当すれば保守を保留して一覧だけ返す。掃除の進み具合
   // （sweep_*）は候補の保守の可否に関わらないので見ない（clockStatus() のように掃除の完了を待たず、一覧を遅らせない）。
   // 掃除の仕組みが無い組み立て（試験）は、時計の状態ファイルが無いときの掃除と同じく今の時刻をそのまま使う。
@@ -1921,6 +1965,14 @@ async function startHttps(
   const candidateRefresh = createCandidateListRefresh({
     client: store,
     zone: () => deviceTimeZone(),
+    // 根拠の再確認（ADR 0201）。一覧の応答とは切り離して後ろで回し、前の再確認から 15 分空いた一覧の要求のときだけ
+    // 始める。1 回 20 件・20 秒まで（U681）。書込みは気づきの通知の 1 回の判定にまとめ、件数の知らせで端末が読み直す。
+    ...(candidateEvidence == null
+      ? {}
+      : {
+          checkEvidence: candidateEvidence.checkEvidence,
+          batch: <T>(run: () => Promise<T>) => candidateAlerts.batch(run),
+        }),
     clock: async () => {
       const at = now().toISOString();
       if (retention === null) return { ok: true, now: at } as const;

@@ -363,6 +363,62 @@ test('the excerpt is the quote of the summary, falls back to any quote, is squas
   assert.equal([...(cut ?? '')].length, 200);
 });
 
+test('with the account it was read from, a mail draft notes where to read the evidence again and the position of the excerpt quote (ADR 0201)', () => {
+  const scope = {
+    provider: 'google' as const,
+    connection_id: 'c-1',
+    account_id: 'acct-1',
+    scope_id: 'sc-mail',
+  };
+  const quoted = (sourceId: string, start: number, end: number) =>
+    request({
+      fields: [
+        {
+          field: 'summary',
+          status: 'explicit',
+          refs: [
+            {
+              source_id: sourceId,
+              source_revision: 'rev-1',
+              quote: '参加可否をご返信ください。',
+              start,
+              end,
+            },
+          ],
+          rule_id: null,
+        },
+      ],
+    });
+  const locationsOf = (item: ExtractedRequest) =>
+    mailCandidateDrafts(extraction([item]), { ...CONTEXT, location: scope })
+      .drafts[0]?.locations;
+  // 本文の根拠: 位置を控える（引用そのものは控えない）。
+  assert.deepEqual(locationsOf(quoted('body', 4, 17)), [
+    {
+      source_id: 'msg-1',
+      provider: 'google',
+      connection_id: 'c-1',
+      account_id: 'acct-1',
+      scope_id: 'sc-mail',
+      resource: 'mail',
+      container_id: '',
+      quote: { part: 'body', start: 4, end: 17 },
+    },
+  ]);
+  assert.deepEqual(locationsOf(quoted('subject', 0, 5))?.[0]?.quote, {
+    part: 'subject',
+    start: 0,
+    end: 5,
+  });
+  // 添付の根拠・空の範囲・根拠の無い依頼は、読み直す先だけを控え、引用の位置を控えない。
+  assert.equal(locationsOf(quoted('att-1', 0, 5))?.[0]?.quote, null);
+  assert.equal(locationsOf(quoted('body', 3, 3))?.[0]?.quote, null);
+  assert.equal(locationsOf(request({ fields: [] }))?.[0]?.quote, null);
+  // 口座を知らない取り込みは位置を控えない（根拠は未確認になる）。
+  const plain = mailCandidateDrafts(extraction([request()]), CONTEXT).drafts[0];
+  assert.ok(plain !== undefined && !('locations' in plain));
+});
+
 // --- 予定の重複 ---
 
 const event = (

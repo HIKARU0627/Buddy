@@ -196,6 +196,7 @@ for (const [index, row] of planRows.entries()) {
     },
     facts: [],
     speech: null,
+    layout_hint: null,
   };
   assert(
     validators['ResponsePlan'](value),
@@ -212,6 +213,49 @@ assert.equal(
   responsePlanCases.intent_views.length,
   'Duplicate intent in intent_views',
 );
+// モデルが出す配置のヒント（UI-09、ADR 0200）。形の許可例・拒否例と、評価セットのヒントが形の検査を通るか
+// （schema_valid）・共通の記述とコードの束の形を検査する。意味の検査と結果は scripts/layout-hint.test.mjs が確かめる。
+const layoutHintCases = parseStrictJson(
+  await readFile(
+    new URL('packages/contracts/fixtures/layout-hint-cases.json', root),
+    'utf8',
+  ),
+);
+for (const entry of layoutHintCases.shape_cases) {
+  assert(!ids.has(entry.id), `Duplicate fixture id: ${entry.id}`);
+  ids.add(entry.id);
+  const validate = validators[entry.schema];
+  assert(validate, `Unknown schema: ${entry.schema}`);
+  assert.equal(
+    validate(entry.value),
+    entry.valid,
+    `${entry.id}: ${JSON.stringify(validate.errors)}`,
+  );
+}
+assert(
+  validators['CanvasDocument'](layoutHintCases.base.canvas),
+  JSON.stringify(validators['CanvasDocument'].errors),
+);
+assert(
+  validators['CanvasOpBatch'](layoutHintCases.base.batch),
+  JSON.stringify(validators['CanvasOpBatch'].errors),
+);
+for (const entry of layoutHintCases.evaluation) {
+  assert(!ids.has(entry.id), `Duplicate fixture id: ${entry.id}`);
+  ids.add(entry.id);
+  assert.equal(
+    validators['CanvasLayoutHint'](entry.hint),
+    entry.schema_valid,
+    `${entry.id}: ${JSON.stringify(validators['CanvasLayoutHint'].errors)}`,
+  );
+  // 形の検査で戻る例の理由は schema だけ。
+  if (!entry.schema_valid) assert.equal(entry.expected.reason, 'schema');
+  if (entry.batch !== undefined)
+    assert(
+      validators['CanvasOpBatch'](entry.batch),
+      `${entry.id}: ${JSON.stringify(validators['CanvasOpBatch'].errors)}`,
+    );
+}
 // connector の能力と再試行の契約（B08-01、ADR 0027・0071）。読み取り・書込みの宣言と、
 // トークン・本文を返さない同期の状態の形式を検査する。規則との一致は scripts/connector-capability.test.mjs が確かめる。
 const connectorCases = parseStrictJson(

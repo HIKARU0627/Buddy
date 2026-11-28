@@ -43,6 +43,7 @@ import type {
 import {
   CANVAS_OPS_LIMIT,
   applyCanvasBatch,
+  applyCanvasLayoutHint,
   applyCanvasUserOp,
   automaticSegmentBoundary,
   canvasBatchPlacementTargets,
@@ -51,7 +52,11 @@ import {
   nextCarriedSummary,
   streamSegmentErrors,
 } from '@buddy/domain';
-import type { AutomaticSegmentBoundaryReason } from '@buddy/domain';
+import type {
+  AutomaticSegmentBoundaryReason,
+  CanvasLayoutHintFallbackReason,
+  CanvasLayoutHintLike,
+} from '@buddy/domain';
 import type { ApiContract } from './api-contract.js';
 import { createApiContract } from './api-contract.js';
 import { API_ROUTES } from './api-routes.js';
@@ -104,6 +109,23 @@ export interface CanvasUserRecordEntry {
 // 記録の上限（Core の RAM。保存は UI-05）。
 export const CANVAS_USER_RECORD_LIMIT = 64;
 
+// 配置のヒント（UI-09、ADR 0200）を使ったか、捨ててコードの配置に戻したかの記録。理由のコードだけを持ち、ヒントの中身・
+// 物の名前・見出し・版を持たない（Core の RAM。記録しない区切りの間の記録は区切りの終わりで捨てる）。
+export interface CanvasLayoutHintRecordEntry {
+  readonly outcome: 'applied' | 'fallback';
+  readonly reason: CanvasLayoutHintFallbackReason | null;
+}
+
+export const CANVAS_LAYOUT_HINT_RECORD_LIMIT = 64;
+// 忘却・期限切れ・記録しない区切りの終わりで記述から消えた物の名前を覚える数（ヒントの拒否の理由を分けるためだけ）。
+export const CANVAS_WITHDRAWN_LIMIT = 64;
+
+// ヒントつきで当てた結果。batch は実際に当てた束（ヒントを捨てたときはコードの束）。
+export interface CanvasHintedApplyOutcome {
+  readonly outcome: CanvasApplyOutcome;
+  readonly batch: CanvasOpBatch;
+}
+
 // キャンバスの正本（Core の RAM）。1 人に 1 本の流れの、今の記述。
 export class CanvasHub {
   readonly #contract: ApiContract;
@@ -112,6 +134,8 @@ export class CanvasHub {
   // 物ごとの、置き場所・存在が最後に変わった版（UI-06。古い版へのユーザーの操作を当ててよいかに使う）。
   #placedAt = new Map<string, string>();
   #record: CanvasUserRecordEntry[] = [];
+  #hintRecord: CanvasLayoutHintRecordEntry[] = [];
+  #withdrawn: string[] = [];
   // 物の本文（U120）。記述・イベント・ログには載せず、content の経路でだけ返す（ADR 0032・0066）。
   #texts = new Map<string, string>();
   // 記録しない区切りに入る前の記述（ADR 0032 の persisted。B06-07a-2 の 2c、ADR 0190）。記録しない間の変更は、AI の束・
@@ -121,6 +145,7 @@ export class CanvasHub {
     readonly document: CanvasDocument;
     readonly placedAt: Map<string, string>;
     readonly record: CanvasUserRecordEntry[];
+    readonly hintRecord: CanvasLayoutHintRecordEntry[];
     readonly texts: Map<string, string>;
   } | null = null;
 
@@ -135,6 +160,11 @@ export class CanvasHub {
   // ユーザーの操作の記録（古い順。最大 CANVAS_USER_RECORD_LIMIT 件）。
   get record(): readonly CanvasUserRecordEntry[] {
     return this.#record;
+  }
+
+  // 配置のヒントの記録（古い順。最大 CANVAS_LAYOUT_HINT_RECORD_LIMIT 件。UI-09）。
+  get layoutHintRecord(): readonly CanvasLayoutHintRecordEntry[] {
+    return this.#hintRecord;
   }
 
   // 記録しない区切りの一時の記述を使っているか。
@@ -157,6 +187,7 @@ export class CanvasHub {
       document: this.#document,
       placedAt: new Map(this.#placedAt),
       record: [...this.#record],
+      hintRecord: [...this.#hintRecord],
       texts: new Map(this.#texts),
     };
   }
@@ -173,8 +204,17 @@ export class CanvasHub {
       ephemeral: this.#document,
     });
     const next = ended.persisted as CanvasDocument;
+    // 一時の記述にだけあった物は、記録しない区切りの終わりで消えた物として覚える（名前だけ。ヒントの拒否の理由に使う）。
+    const kept = new Set(next.items.map((item) => item.item_id));
+    this.#rememberWithdrawn(
+      this.#document.items
+        .map((item) => item.item_id)
+        .filter((itemId) => !kept.has(itemId)),
+    );
     this.#placedAt = saved.placedAt;
     this.#record = saved.record;
+    // 記録しない区切りの間のヒントの記録も捨てる（入る前の記録に戻す）。
+    this.#hintRecord = saved.hintRecord;
     this.#texts = saved.texts;
     this.#commit(next);
     return next.canvas_revision;
@@ -201,6 +241,55 @@ export class CanvasHub {
     this.#pruneTexts(next);
     this.#commit(next);
     return { ok: true, revision: next.canvas_revision };
+  }
+
+  // コードの配置者の束を、モデルの配置のヒント（UI-09、ADR 0200）つきで当てる。ヒントは信頼しない入力として、形
+  // （CanvasLayoutHint）と意味（applyCanvasLayoutHint）を確かめ、どちらかに反する・当てた束が検査に反するときは、
+  // ヒントを捨ててコードの束をそのまま当てる（コードの配置に戻す）。使ったか戻したかと理由のコードだけを記録する。
+  // hint が null・undefined なら、ヒントなしで当てる（記録しない）。
+  applyHinted(batch: CanvasOpBatch, hint: unknown): CanvasHintedApplyOutcome {
+    if (hint === null || hint === undefined)
+      return { outcome: this.apply(batch), batch };
+    if (!this.#contract.valid('CanvasLayoutHint', hint)) {
+      this.recordLayoutHint('schema');
+      return { outcome: this.apply(batch), batch };
+    }
+    const hinted = applyCanvasLayoutHint({
+      canvas: this.#document,
+      batch,
+      hint: hint as CanvasLayoutHintLike,
+      withdrawn: new Set(this.#withdrawn),
+    });
+    if (!hinted.ok) {
+      this.recordLayoutHint(hinted.reason);
+      return { outcome: this.apply(batch), batch };
+    }
+    const hintedBatch = hinted.batch as CanvasOpBatch;
+    const outcome = this.apply(hintedBatch);
+    if (outcome.ok) {
+      this.recordLayoutHint(null);
+      return { outcome, batch: hintedBatch };
+    }
+    this.recordLayoutHint('apply_rejected');
+    return { outcome: this.apply(batch), batch };
+  }
+
+  // 配置のヒントの結果を記録する（null は使った）。理由のコードだけ。
+  recordLayoutHint(reason: CanvasLayoutHintFallbackReason | null): void {
+    this.#hintRecord = [
+      ...this.#hintRecord,
+      reason === null
+        ? { outcome: 'applied' as const, reason: null }
+        : { outcome: 'fallback' as const, reason },
+    ].slice(-CANVAS_LAYOUT_HINT_RECORD_LIMIT);
+  }
+
+  #rememberWithdrawn(itemIds: readonly string[]): void {
+    if (itemIds.length === 0) return;
+    this.#withdrawn = [
+      ...this.#withdrawn.filter((itemId) => !itemIds.includes(itemId)),
+      ...itemIds,
+    ].slice(-CANVAS_WITHDRAWN_LIMIT);
   }
 
   // 画面へ回した文字の結果の本文（U120）。物の名前ごとに 1 つだけ持つ（同じ物を更新して使い回す）。
@@ -326,6 +415,8 @@ export class CanvasHub {
     const alive = new Set(this.#document.items.map((item) => item.item_id));
     for (const itemId of targets)
       if (!alive.has(itemId)) this.#placedAt.delete(itemId);
+    // 消えた物の名前を覚える（ヒントがこの物を指したら withdrawn_item で戻す。UI-09）。
+    this.#rememberWithdrawn(targets.filter((itemId) => !alive.has(itemId)));
     return ok ? this.#document.canvas_revision : false;
   }
 
@@ -606,6 +697,10 @@ export interface StreamRoutesOptions {
   readonly utcOffset?: string;
   // 模擬の配置者の差し替え（試験用。検査に反する束を当てようとしても前の版が残ることを確かめる）。
   readonly place?: typeof placeCanvasForTurn;
+  // モデルが出した配置のヒント（ResponsePlan の layout_hint。UI-09、ADR 0200）を発言ごとに返す口。値は信頼しない入力として
+  // 形と意味を確かめ、反すれば捨ててコードの配置に戻す。省略・null はヒントなし。製品の Core はまだつながない（モデルが
+  // ヒントを出す呼出しは未実装。U662）。今は試験の模擬だけが使う。
+  readonly layoutHint?: (turn: TurnResponse) => unknown;
   // 保存モードを切り替えて区切りを開き直したことを知らせる口（UI-05 の段階 6、ADR 0189、U477）。Core は NoticeRelay へつなぎ、
   // 開いている購読（ほかの端末を含む）へ流す。保存モードと理由だけで、区切り・会話の ID・世代を入れない。省略は知らせない。
   readonly announceStorageMode?: (notice: StorageModeNotice) => void;
@@ -1131,15 +1226,29 @@ export function createStreamRoutes(options: StreamRoutesOptions): StreamRoutes {
         ? placeReplyForTurn(options.canvas.document, turn, context, text)
         : null;
     if (reply !== null) batch = reply.batch;
-    // 検査に反した束は当てない（前の版が残る）。発言は記録済みなので、文字の結果だけを返す。
+    // モデルの配置のヒント（UI-09、ADR 0200）。コードの束があるときだけ使い、なければ記述を変えずに理由だけを記録する。
+    // 口が失敗しても発言は止めず、ヒントなし（コードの配置）にする。
+    let hint: unknown;
+    try {
+      hint = options.layoutHint?.(turn) ?? null;
+    } catch {
+      hint = null;
+    }
+    if (batch === null && hint !== null)
+      options.canvas.recordLayoutHint('no_placement');
+    // 検査に反した束は当てない（前の版が残る）。発言は記録済みなので、文字の結果だけを返す。ヒントが反していれば、
+    // ヒントを捨ててコードの束を当てる。
+    const applied =
+      batch === null ? null : options.canvas.applyHinted(batch, hint);
     const canvas =
-      batch !== null && options.canvas.apply(batch).ok ? batch : null;
+      applied !== null && applied.outcome.ok ? applied.batch : null;
     // 本文は、当てた束の物にだけ預ける（当てられなかった本文を残さない）。
     if (canvas !== null && reply !== null)
       options.canvas.setText(reply.item_id, reply.text);
-    // 当てた束の物を、この発言に結び付ける（追加と中身の更新。ADR 0187）。閉じた物の結び付きは捨てる。
-    if (canvas !== null)
-      for (const op of canvas.ops)
+    // 当てた束の物を、この発言に結び付ける（追加と中身の更新。ADR 0187）。閉じた物の結び付きは捨てる。ヒントが足した
+    // 強調・まとまりだけの update は中身を変えないので、結び付けはコードの束の操作だけで決める。
+    if (canvas !== null && batch !== null)
+      for (const op of batch.ops)
         if (op.op === 'add') itemTurns.set(op.item.item_id, turn.turn_id);
         else if (op.op === 'update') itemTurns.set(op.item_id, turn.turn_id);
         else if (op.op === 'close') itemTurns.delete(op.item_id);

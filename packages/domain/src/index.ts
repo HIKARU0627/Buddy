@@ -18,6 +18,8 @@ export * from './budget-money.js';
 export * from './canvas.js';
 // UI-06: キャンバスの配置のエンジン（ADR 0032）。
 export * from './canvas-layout.js';
+// UI-09: モデルが出す配置のヒントの意味の検査とコードの束への当て方（ADR 0200）。
+export * from './canvas-layout-hint.js';
 // UI-07: キャンバスの物の中身の意味の検査（ADR 0032）。
 export * from './canvas-content.js';
 // B11-01: 気づき（候補）の状態・保持（ADR 0073）。

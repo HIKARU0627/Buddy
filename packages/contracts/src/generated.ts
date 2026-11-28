@@ -586,6 +586,18 @@ export type ResultViewKind =
  */
 export type TemplateVersion = string;
 /**
+ * キャンバスの記述の版（ADR 0032）。Core が変更の束ごとに 1 進める。state_revision・request_revision とは別。
+ */
+export type CanvasRevision = string;
+/**
+ * キャンバスの中の物の名前（ADR 0032）。同じキャンバスの中だけで一意。操作 ID・会話 ID などの内部の識別子を使わない。
+ */
+export type CanvasItemId = string;
+/**
+ * まとまりの名前（ADR 0032）。同じまとまりの物を近くに置く。
+ */
+export type CanvasGroupId = string;
+/**
  * 停止命令（設計 10 §1A F03、02 停止）。現在の世代にだけ作用し、古い世代の開始・再生・ASR 結果・遅着 ACK では解除しない。理由ごとの再開条件は domain の表（ADR 0005）。会話の終了と処理の取消は別の命令。
  */
 export type AudioControl =
@@ -1072,10 +1084,6 @@ export type EventStreamMessage =
       type: 'resnapshot_required';
       reason: 'store_generation_changed' | 'history_expired' | 'scope_expired';
     };
-/**
- * キャンバスの記述の版（ADR 0032）。Core が変更の束ごとに 1 進める。state_revision・request_revision とは別。
- */
-export type CanvasRevision = string;
 /**
  * 期限切れ・忘却の知らせ（キャンバス向け。UI-05、ADR 0040）。ID と理由だけで、本文・要約・検索語を入れない。受け取った側は該当の物を表示から消す。期限切れは forgetting_generation が null、忘却は台帳の世代を持つ。
  */
@@ -1823,10 +1831,6 @@ export type CanvasUserOp =
       item_id: CanvasItemId;
     };
 /**
- * キャンバスの中の物の名前（ADR 0032）。同じキャンバスの中だけで一意。操作 ID・会話 ID などの内部の識別子を使わない。
- */
-export type CanvasItemId = string;
-/**
  * main から UI レンダラーへの応答（ADR 0014・0025）。どの拒否を返すかは domain の desktop.ts の規則と main のペアリングの手順が決める。
  */
 export type DesktopIpcResponse =
@@ -2433,10 +2437,6 @@ export type CanvasHeading = string;
  * 強調の度合い（ADR 0032）。色・大きさ・置き場所は部品と配置のエンジンが決める。
  */
 export type CanvasEmphasis = 'low' | 'normal' | 'high';
-/**
- * まとまりの名前（ADR 0032）。同じまとまりの物を近くに置く。
- */
-export type CanvasGroupId = string;
 /**
  * 置き場所（ADR 0032）。canvas は見える物、shelf は下の棚に片付けた物。
  */
@@ -4260,7 +4260,7 @@ export interface ResultView {
   template_version: TemplateVersion | null;
 }
 /**
- * Core が決めた表示と読み上げの計画（ADR 0070）。モデルの生出力（WireResponse）でも、検証済みの解釈（Interpretation）でも、実行可否（ActionReadiness）でもない。応答文の本文・宛先・承認・実行経路の欄を持たない。
+ * Core が決めた表示と読み上げの計画（ADR 0070）。モデルの生出力（WireResponse）でも、検証済みの解釈（Interpretation）でも、実行可否（ActionReadiness）でもない。応答文の本文・宛先・承認・実行経路の欄を持たない。配置のヒント（layout_hint）は候補だけを持つ（ADR 0200）。
  */
 export interface ResponsePlan {
   schema: 'buddy.response-plan.v1';
@@ -4274,6 +4274,10 @@ export interface ResponsePlan {
   view: ResultView;
   facts: ResultFact[];
   speech: ResponseSpeech | null;
+  /**
+   * モデルが出した配置のヒント（UI-09、ADR 0200）。配置の候補だけで、承認・実行権限・処理状態・表示してよい内容の正本にならない。キャンバスへ置く時点で意味を検査し、反すれば捨ててコードの配置に戻す。なければ null。
+   */
+  layout_hint: CanvasLayoutHint | null;
 }
 /**
  * 読み上げの定型文（ADR 0005・0070）。文はコードの定型文だけから作り、モデルの自由文を入れない。
@@ -4288,6 +4292,219 @@ export interface ResponseSpeech {
    * @maxItems 3
    */
   parts: [string] | [string, string] | [string, string, string];
+}
+/**
+ * モデルが出す配置のヒント（UI-09、ADR 0200）。今のキャンバスにある見える物の名前だけを指し、強調・読む順・まとまりの候補だけを持つ。物の追加・閉じる・動かす・棚への出し入れ・見出し・本文・承認・実行・処理状態の項目を持たない。Core は置く時点の記述で意味を検査し、反すればヒントを捨ててコードの配置に戻す。base_canvas_revision はモデルが見た記述の版。
+ */
+export interface CanvasLayoutHint {
+  base_canvas_revision: CanvasRevision;
+  /**
+   * 目立たせる（強調を high にする）物の候補。
+   *
+   * @maxItems 2
+   */
+  focus: [] | [CanvasItemId] | [CanvasItemId, CanvasItemId];
+  /**
+   * 周辺に回す（強調を low にする）物の候補。Core の配置が high にした物は指せない（意味の検査）。
+   *
+   * @maxItems 12
+   */
+  peripheral:
+    | []
+    | [CanvasItemId]
+    | [CanvasItemId, CanvasItemId]
+    | [CanvasItemId, CanvasItemId, CanvasItemId]
+    | [CanvasItemId, CanvasItemId, CanvasItemId, CanvasItemId]
+    | [CanvasItemId, CanvasItemId, CanvasItemId, CanvasItemId, CanvasItemId]
+    | [
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+      ]
+    | [
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+      ]
+    | [
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+      ]
+    | [
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+      ]
+    | [
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+      ]
+    | [
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+      ]
+    | [
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+      ];
+  /**
+   * 読む順の候補。空なら変えない。空でなければ、Core の配置を当てた後の見える物をちょうど 1 回ずつ含む（意味の検査）。
+   *
+   * @maxItems 24
+   */
+  order: CanvasItemId[];
+  /**
+   * @maxItems 4
+   */
+  groups:
+    | []
+    | [CanvasLayoutHintGroup]
+    | [CanvasLayoutHintGroup, CanvasLayoutHintGroup]
+    | [CanvasLayoutHintGroup, CanvasLayoutHintGroup, CanvasLayoutHintGroup]
+    | [
+        CanvasLayoutHintGroup,
+        CanvasLayoutHintGroup,
+        CanvasLayoutHintGroup,
+        CanvasLayoutHintGroup,
+      ];
+}
+/**
+ * 配置のヒントのまとまりの候補（UI-09、ADR 0200）。members の物に、まとまりの名前 group を付ける候補。名前は画面に出さない。
+ */
+export interface CanvasLayoutHintGroup {
+  group: CanvasGroupId;
+  /**
+   * @minItems 2
+   * @maxItems 12
+   */
+  members:
+    | [CanvasItemId, CanvasItemId]
+    | [CanvasItemId, CanvasItemId, CanvasItemId]
+    | [CanvasItemId, CanvasItemId, CanvasItemId, CanvasItemId]
+    | [CanvasItemId, CanvasItemId, CanvasItemId, CanvasItemId, CanvasItemId]
+    | [
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+      ]
+    | [
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+      ]
+    | [
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+      ]
+    | [
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+      ]
+    | [
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+      ]
+    | [
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+      ]
+    | [
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+        CanvasItemId,
+      ];
 }
 /**
  * 音声・機密表示のリース（設計 07 §5、10 §2A）。端末は要求送信時の単調時計から期限を計算し、遅れた応答の受信時刻から足し直さない。heartbeat 2 秒・期限 6 秒は設計初期値。

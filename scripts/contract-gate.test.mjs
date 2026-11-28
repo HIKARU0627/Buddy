@@ -28,6 +28,7 @@ const FILES = [
   'packages/contracts/fixtures/voice-contract-cases.json',
   'packages/contracts/fixtures/storage-contract-cases.json',
   'packages/contracts/fixtures/response-plan-cases.json',
+  'packages/contracts/fixtures/layout-hint-cases.json',
   'packages/contracts/fixtures/connector-capability-cases.json',
   'packages/contracts/fixtures/graph-account-cases.json',
   'packages/contracts/fixtures/candidate-cases.json',
